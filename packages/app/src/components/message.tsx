@@ -82,6 +82,7 @@ import { getMarkdownListMarker, getMarkdownListSpacing } from "@/utils/markdown-
 import { markdownNodeContainsType } from "@/utils/markdown-ast";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
+import { MarkdownFence } from "@/components/markdown/fence";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 import { formatDuration } from "@/utils/time";
 // Re-exported so existing importers (turn-footer) keep resolving it from here;
@@ -1778,7 +1779,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         styles: MarkdownStyles,
         inheritedStyles: TextStyle = {},
       ) => (
-        <HighlightedCodeBlock
+        <MarkdownFence
           key={node.key}
           code={node.content}
           language={node.sourceInfo}

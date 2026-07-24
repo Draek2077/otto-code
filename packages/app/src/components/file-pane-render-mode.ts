@@ -5,9 +5,27 @@ export function isRenderedMarkdownFile(filePath: string): boolean {
   return normalizedPath.endsWith(".md") || normalizedPath.endsWith(".markdown");
 }
 
+/** A standalone mermaid diagram: rendered as a diagram, not as its source. */
+export function isRenderedMermaidFile(filePath: string): boolean {
+  const normalizedPath = filePath.trim().toLowerCase();
+  return normalizedPath.endsWith(".mmd") || normalizedPath.endsWith(".mermaid");
+}
+
+/**
+ * Which kind of document the viewer renders through the markdown pipeline
+ * instead of showing as highlighted source. `null` means "show the source".
+ */
+export type RenderedDocumentKind = "markdown" | "mermaid";
+
+export function renderedDocumentKind(filePath: string): RenderedDocumentKind | null {
+  if (isRenderedMarkdownFile(filePath)) return "markdown";
+  if (isRenderedMermaidFile(filePath)) return "mermaid";
+  return null;
+}
+
 // Formats whose preview is not just the highlighted source: rendered (SVG as
 // an image), viewable-only (images, media), or binary. Grows as the
-// file-rendering project ships more rich previews (mermaid, CSV, notebooks).
+// file-rendering project ships more rich previews (CSV, notebooks).
 const PREVIEW_FIRST_EXTENSIONS = new Set([
   // Images (the viewer renders them; SVG renders as an image, not XML).
   "png",
@@ -72,7 +90,7 @@ function fileExtension(filePath: string): string {
  * the editor. An explicit choice, remembered per file, always wins.
  */
 export function defaultFileViewMode(filePath: string): FileViewMode {
-  if (isRenderedMarkdownFile(filePath)) {
+  if (isRenderedMarkdownFile(filePath) || isRenderedMermaidFile(filePath)) {
     return "preview";
   }
   return PREVIEW_FIRST_EXTENSIONS.has(fileExtension(filePath)) ? "preview" : "editor";

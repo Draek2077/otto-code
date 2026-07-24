@@ -470,10 +470,10 @@ function PreviewOnlyView({
   const [matchCount, setMatchCount] = useState(0);
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
 
-  // Find only makes sense over the syntax-highlighted text view: markdown
-  // renders to prose with no line mapping to highlight, and images/binaries
-  // have no text. The button and strip stay hidden for those.
-  const findAvailable = fileInfo?.kind === "text" && !fileInfo.isMarkdown;
+  // Find only makes sense over the syntax-highlighted text view: a rendered
+  // document (markdown, a mermaid diagram) has no line mapping to highlight,
+  // and images/binaries have no text. The button and strip stay hidden for those.
+  const findAvailable = fileInfo?.kind === "text" && !fileInfo.isRenderedDocument;
 
   const findQuery = useMemo<PreviewFindQuery | null>(
     () =>

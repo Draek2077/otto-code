@@ -29,7 +29,8 @@ import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { lineNumberGutterWidth } from "@/components/code-insets";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
-import { isRenderedMarkdownFile } from "@/components/file-pane-render-mode";
+import { renderedDocumentKind } from "@/components/file-pane-render-mode";
+import { toRenderedDocument } from "@/components/markdown/rendered-document";
 import {
   findPreviewMatches,
   splitTokensForMatches,
@@ -37,7 +38,6 @@ import {
   type PreviewFindQuery,
   type PreviewLineMatchRange,
 } from "@/components/file-preview-find";
-import { splitMarkdownFrontmatter } from "@/components/markdown-frontmatter";
 import { isNative, isWeb } from "@/constants/platform";
 import { SvgXml } from "react-native-svg";
 import type { AttachmentMetadata } from "@/attachments/types";
@@ -69,7 +69,12 @@ interface CodeLineProps {
 /** What the preview learned about the file after reading it. */
 export interface FilePreviewFileInfo {
   kind: "text" | "image" | "binary";
-  isMarkdown: boolean;
+  /**
+   * The preview renders this file through the markdown pipeline (`.md`,
+   * `.markdown`, `.mmd`, `.mermaid`) rather than as highlighted lines — so
+   * there is no line mapping for find-in-file to highlight.
+   */
+  isRenderedDocument: boolean;
   /** Bytes on disk; feeds the status bar in preview-only mode. */
   size: number;
   /** Null when the read path didn't report line endings (binary transfer). */
@@ -422,8 +427,12 @@ function FilePreviewBody({
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const filePath = location.path;
-  const isMarkdownFile =
-    preview?.kind === "text" && isRenderedMarkdownFile(filePath) && !location.lineStart;
+  // Which files render through the markdown pipeline instead of as highlighted
+  // source. A deep link to a line always wins — you asked for that line.
+  const documentKind = useMemo(
+    () => (preview?.kind === "text" && !location.lineStart ? renderedDocumentKind(filePath) : null),
+    [filePath, location.lineStart, preview?.kind],
+  );
   const effectiveContent = useMemo(() => {
     if (preview?.kind !== "text") {
       return "";
@@ -553,12 +562,12 @@ function FilePreviewBody({
   }, []);
 
   const highlightedLines = useMemo(() => {
-    if (!preview || preview.kind !== "text" || isMarkdownFile) {
+    if (!preview || preview.kind !== "text" || documentKind) {
       return null;
     }
 
     return highlightCode(effectiveContent, filePath);
-  }, [isMarkdownFile, preview, effectiveContent, filePath]);
+  }, [documentKind, preview, effectiveContent, filePath]);
 
   const gutterWidth = useMemo(() => {
     if (!highlightedLines) return 0;
@@ -623,8 +632,11 @@ function FilePreviewBody({
   }
 
   if (preview.kind === "text") {
-    if (isMarkdownFile) {
-      const { frontmatter, body } = splitMarkdownFrontmatter(effectiveContent);
+    if (documentKind) {
+      const { frontmatter, body, enableHtmlish } = toRenderedDocument(
+        documentKind,
+        effectiveContent,
+      );
       return (
         <View style={styles.previewScrollContainer}>
           <RNScrollView
@@ -646,7 +658,7 @@ function FilePreviewBody({
                 </View>
               ) : null}
               {/* A repo document must not be able to reach the network just by being previewed. */}
-              <MarkdownRenderer text={body} remoteImages="altText" />
+              <MarkdownRenderer text={body} remoteImages="altText" enableHtmlish={enableHtmlish} />
             </View>
           </RNScrollView>
           {scrollbar.overlay}
@@ -885,7 +897,7 @@ export function FilePreview({
       fileKind
         ? {
             kind: fileKind,
-            isMarkdown: fileKind === "text" && isRenderedMarkdownFile(location.path),
+            isRenderedDocument: fileKind === "text" && renderedDocumentKind(location.path) !== null,
             size: fileSize,
             eol: fileEol,
           }

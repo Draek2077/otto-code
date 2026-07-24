@@ -40,6 +40,7 @@ import {
   type MarkdownDisplayPart,
   type MarkdownInlineImagePart,
 } from "./html-ish";
+import { MarkdownFence } from "./fence";
 import { applyTaskListMarkers } from "./task-lists";
 import { resolveInlineImageSize, type InlineImageDimensions } from "./inline-image-size";
 import { groupMarkdownParts, type MarkdownPartGroup } from "./part-groups";
@@ -647,7 +648,7 @@ export function createSharedMarkdownRules(): RenderRules {
       styles: MarkdownStyles,
       inheritedStyles: TextStyle = {},
     ) => (
-      <HighlightedCodeBlock
+      <MarkdownFence
         key={node.key}
         code={node.content}
         language={node.sourceInfo}

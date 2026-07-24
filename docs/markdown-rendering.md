@@ -58,8 +58,69 @@ with no `https:`, so remote images cannot load there regardless of this setting 
 takes effect on native. Do not widen that CSP to "fix" a blank image; the alt-text fallback is the
 intended behavior.
 
+## Fences: one dispatch point
+
+A fence info string that means something other than "highlight this as code" is resolved in exactly
+one place, `components/markdown/fence.tsx` (`MarkdownFence`). Both `fence` render rules route
+through it — the shared one in `markdown/renderer.tsx` and the **duplicate copy in `message.tsx`**,
+which maintains its own `RenderRules` object for iOS text-hoisting reasons. Adding a fence language
+means editing `MarkdownFence`, not the rules; forget the `message.tsx` rule and the feature works
+everywhere except chat, which is the surface most people see first.
+
+## Mermaid diagrams
+
+` ```mermaid ` (and ` ```mmd `) fences render as diagrams on all four platforms, and `.mmd` /
+`.mermaid` files render as one diagram in the viewer. `components/markdown/mermaid/` owns it:
+
+| Module                       | Role                                                                              |
+| ---------------------------- | --------------------------------------------------------------------------------- |
+| `mermaid-render.ts`          | The only module that knows the mermaid library. Needs a DOM. Also owns the cache. |
+| `mermaid-diagram.tsx`        | Web/Electron host — injects the SVG into a raw `<div>`.                           |
+| `mermaid-diagram.native.tsx` | iOS/Android host — a `react-native-webview` running the self-contained payload.   |
+| `mermaid-block.tsx`          | Surface-facing: the themed wrapper and the source-block fallback.                 |
+| `mermaid-theme.ts`           | Otto theme → mermaid `themeVariables`.                                            |
+| `mermaid-document.ts`        | Standalone `.mmd` source → a one-fence markdown document.                         |
+
+The load-bearing decisions:
+
+- **Web renders in the page; native renders in a webview.** There is no DOM on iOS/Android and
+  mermaid measures label text by laying it out, so native gets the CM6 editor's recipe: an esbuilt
+  self-contained HTML payload (`scripts/build-mermaid-webview-html.mjs`, wired into
+  `eas-build-post-install` next to the editor and terminal payloads) driven over a typed bridge.
+  Rebuild it with `npm run build:mermaid-webview` after touching anything the payload imports —
+  including `mermaid-render.ts`, which it shares with web. Nothing in the payload reaches the
+  network.
+- **Both hosts sit behind a dynamic `import()`, and that is not optional.** Mermaid is **~3.4 MB
+  minified / ~950 KB gzipped** — bigger than the editor and terminal payloads combined. On web
+  `import("mermaid")` is the boundary; on native it is `import("./webview/mermaid-webview-html")`,
+  which is why nothing else may reference that generated module. Per
+  [feature-flags.md](feature-flags.md), a dynamic boundary is the only lever Metro respects. If the
+  native bundle ever needs trimming, aliasing out `cytoscape` (mindmap, architecture) and `katex`
+  (math labels) removes ~24% — at the cost of web/native parity, which is why it was not done.
+- **A diagram that can't be drawn shows its source.** `MermaidDiagram` takes a `renderFallback`
+  rather than having a "nothing yet" state, so neither host has a code path that draws an empty box.
+  Failure adds the parse message under the source block; the source block is a normal
+  `HighlightedCodeBlock`, copy button included.
+- **Theme values must be concrete, never `themeColorRef`.** Mermaid runs color math (khroma) over
+  every variable it is handed, so a `var(--colors-surface2)` produces `NaN` shades and an unstyled
+  diagram. `mermaid-theme.ts` therefore reads resolved colors through a `withUnistyles` mapping.
+  Consequence, accepted: a diagram inside the black chat scope on web follows the app theme rather
+  than the scope — the same class of leak as icon `color` props (see [unistyles.md](unistyles.md)).
+  Only mermaid's `base` theme honours `themeVariables`; the others hardcode their palettes.
+- **Rendering is always debounced, and outcomes are cached.** `react-native-markdown-display` mints
+  fresh node keys on every parse (`getUniqueID`), so any surface that re-parses — a streaming chat
+  message above all — unmounts and remounts every block. Rendering eagerly on mount would mean one
+  full mermaid render (on native, one WebView create/destroy) per streamed flush. So: no immediate
+  first attempt, and `peekMermaidOutcome` answers a remount synchronously from a bounded cache keyed
+  by source **and** theme. This is why the first appearance of a diagram costs a beat of source
+  text and later ones don't.
+- **Sizing belongs to the host.** Mermaid's `useMaxWidth` writes an inline `max-width` onto the
+  `<svg>`; `mermaid-render` strips it and returns the natural size instead, which the web host
+  reapplies as a container `maxWidth` (natural size, scaled down in narrow panes). The native
+  payload posts its laid-out height back so the host can size the WebView, and re-posts on reflow.
+
 ## What is still missing
 
-Tracked in `projects/file-rendering/`: mermaid, relative image resolution (a workspace-local
+Tracked in `projects/file-rendering/`: relative image resolution (a workspace-local
 `![](docs/x.png)` still shows alt text — see `relative-image-resolution.md`), CSV, notebooks,
 GitHub alerts (`> [!NOTE]` renders its literal marker), tables, footnotes, math.

@@ -34,30 +34,20 @@ subset, sized inline images, highlighted fences, YAML frontmatter as a metadata 
 - **SVG on native** — `image/svg+xml` renders through `SvgXml` (react-native-svg) on iOS/Android
   instead of a blank `Image`; parse failures fall back to the binary message. Web keeps the
   blob-URL `<img>` path, which tolerates more of the SVG spec.
+- **Mermaid diagrams — SHIPPED.** ` ```mermaid ` / ` ```mmd ` fences render on every surface the
+  markdown pipeline feeds (chat, viewer, PR panel) and on all four platforms; `.mmd`/`.mermaid`
+  files render as a single diagram in the viewer. Web/Electron render in-page from a lazily
+  imported mermaid; iOS/Android run the same render core inside a self-contained webview payload
+  (`npm run build:mermaid-webview`). Malformed diagrams show their source with the parse message
+  beneath. `components/markdown/mermaid/`; the durable design notes — the ~3.4 MB bundle and its
+  dynamic-import boundary, why theme values must be concrete, the debounce-and-cache rule that
+  streaming forces — now live in
+  [docs/markdown-rendering.md](../../docs/markdown-rendering.md). Deferred polish: pan/zoom for
+  diagrams wider than the pane, and a source/diagram toggle.
 
 ## Workstreams
 
-### 1. Mermaid diagrams (flagship)
-
-Render ` ```mermaid ` fences (chat + viewer) and standalone `.mmd`/`.mermaid` files through one
-`MermaidView` component. Both hard problems already have in-repo precedent:
-
-- **Web + Electron: direct render.** Mermaid is a bundled dependency (`script-src 'self'` — the
-  strict app-shell CSP that blocks _artifact_ inline scripts does not apply to our own bundle; see
-  the partition note in `components/artifacts/artifact-html-view.electron.tsx`). Lazy `import()`
-  keeps its size (order of ~1 MB gzipped) out of startup. `mermaid.render()` → SVG string →
-  DOM-injected under an `isWeb` gate.
-- **Native: webview payload.** No DOM on iOS/Android. Reuse the CM6 editor's recipe:
-  `scripts/build-editor-webview-html.mjs` esbuilds a TS entry into a self-contained HTML module
-  rendered in `react-native-webview` (`editor/webview/`). A mermaid payload posts the diagram
-  source in and either displays in-webview (free pan/zoom) or returns the SVG for `SvgXml`.
-- **Theming:** map our theme tokens (docs/design.md) onto mermaid `themeVariables` so diagrams
-  follow dark/light.
-- **Failure mode:** invalid diagrams render the highlighted source with the parse error beneath —
-  never a blank box.
-- Estimated ~2–3 days (web first, then the native payload).
-
-### 2. Relative image resolution in markdown files
+### 1. Relative image resolution in markdown files
 
 `![](docs/diagram.png)` and `<img src="packages/website/public/logo.svg">` in a repo markdown file
 don't resolve — the renderer has no base path, and the two forms fail in two different places.
@@ -68,35 +58,36 @@ and only via existing RPCs. Moderate.
 Broken out in full: **[relative-image-resolution.md](relative-image-resolution.md)** — the two
 code paths, the containment boundary, and the open fallback-behavior decision.
 
-### 3. CSV/TSV table view
+### 2. CSV/TSV table view
 
 Client-side parse + virtualized rows (FlatList patterns as in the explorer). Toggle between table
 and raw text. Moderate.
 
-### 4. Jupyter notebooks (`.ipynb`)
+### 3. Jupyter notebooks (`.ipynb`)
 
 JSON parse → markdown cells via `MarkdownRenderer`, code cells via `HighlightedCodeBlock`,
 base64 image outputs via the existing image path, text outputs as code blocks. Moderate, very
 high perceived value.
 
-### 5. Markdown polish (smaller items, batch as convenient)
+### 4. Markdown polish (smaller items, batch as convenient)
 
 - Icon (or interactive) checkboxes replacing the ☐/☑ glyphs.
 - GitHub alerts — `> [!NOTE]` / `[!WARNING]` / `[!TIP]` blockquotes currently render the literal
   marker text. Token-level markdown-it rule mapping the five kinds onto themed callouts; lights up
   chat and viewer at once. Common in READMEs, so higher value than its size suggests.
 - Footnotes.
-- Math (KaTeX): feasible on web; native needs the webview approach — piggyback on the mermaid
-  payload infrastructure if demand shows up.
+- Math (KaTeX): feasible on web; native needs the webview approach — the mermaid payload
+  (`components/markdown/mermaid/webview/`) is now the pattern to copy, and it already bundles
+  katex.
 
-### 6. PDF (deferred)
+### 5. PDF (deferred)
 
 The one genuinely heavy item: pdf.js on web, a separate native library, large payloads. Revisit
-after 1–4 ship.
+after 1–3 ship.
 
 ## Sequencing
 
-1 (mermaid) → 2 (relative images) → 3/4 in either order → 5 opportunistically → 6 deferred.
+1 (relative images) → 2/3 in either order → 4 opportunistically → 5 deferred.
 
 ## Exit
 
