@@ -66,6 +66,9 @@ function createSnapshot(
 
   return {
     cwd,
+    // Measurement timestamp, not state — every fixture is an expectation, and the
+    // per-test fake clocks differ, so match on shape.
+    gitLoadedAtMs: expect.any(Number) as unknown as number,
     git: {
       ...base.git,
       ...overrides?.git,
@@ -585,6 +588,7 @@ describe("WorkspaceGitServiceImpl", () => {
           },
         },
       }),
+      { prStatusOnly: false },
     );
 
     subscription.unsubscribe();
@@ -659,6 +663,7 @@ describe("WorkspaceGitServiceImpl", () => {
           pullRequest: null,
         },
       }),
+      { prStatusOnly: false },
     );
 
     subscription.unsubscribe();
@@ -686,7 +691,56 @@ describe("WorkspaceGitServiceImpl", () => {
     await flushPromises();
 
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(listener).toHaveBeenCalledWith(createSnapshot(REPO_CWD));
+    expect(listener).toHaveBeenCalledWith(createSnapshot(REPO_CWD), { prStatusOnly: false });
+
+    subscription.unsubscribe();
+    service.dispose();
+  });
+
+  // The PR-status poll measures no git state, so its emission must be tagged
+  // PR-only. Untagged, downstream rebuilds a whole checkout status from the last
+  // git measurement and publishes it as news — which right after a commit ships a
+  // pre-commit aheadOfOrigin and mutes Push (batch-07-24 #2).
+  test("the pull-request status poll emits a PR-status-only update", async () => {
+    const github = createGitHubServiceStub() as GitHubService & {
+      retainCurrentPullRequestStatusPoll?: unknown;
+    };
+    type PolledPrStatus = WorkspaceGitRuntimeSnapshot["github"]["pullRequest"];
+    let emitPollStatus: ((status: PolledPrStatus) => void) | null = null;
+    github.retainCurrentPullRequestStatusPoll = vi.fn(
+      (input: { onStatus: (status: PolledPrStatus) => void }) => {
+        emitPollStatus = input.onStatus;
+        return { unsubscribe: vi.fn() };
+      },
+    );
+    const service = createService({ github });
+
+    const listener = vi.fn();
+    const subscription = service.registerWorkspace({ cwd: REPO_CWD }, listener);
+    await service.getSnapshot(REPO_CWD, { force: true, reason: "test-poll-setup" });
+    await flushPromises();
+    listener.mockClear();
+
+    expect(emitPollStatus).not.toBeNull();
+    emitPollStatus?.({
+      url: "https://github.com/acme/repo/pull/123",
+      title: "Checks finished",
+      state: "open",
+      baseRefName: "main",
+      headRefName: "feature",
+      isMerged: false,
+    });
+    await flushPromises();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const [snapshot, meta] = listener.mock.calls[0] as [
+      WorkspaceGitRuntimeSnapshot,
+      { prStatusOnly: boolean },
+    ];
+    expect(meta).toEqual({ prStatusOnly: true });
+    expect(snapshot.github.pullRequest?.title).toBe("Checks finished");
+    // Same git block as before the poll: it refreshed nothing about the tree.
+    expect(snapshot.git).toEqual(createSnapshot(REPO_CWD).git);
 
     subscription.unsubscribe();
     service.dispose();
@@ -890,6 +944,7 @@ describe("WorkspaceGitServiceImpl", () => {
       createSnapshot(REPO_CWD, {
         git: { diffStat: { additions: 8, deletions: 3 } },
       }),
+      { prStatusOnly: false },
     );
 
     diffSubscription.unsubscribe();

@@ -4,6 +4,7 @@ import type { WorkspaceDescriptorPayload } from "../../messages.js";
 import type {
   WorkspaceGitRuntimeSnapshot,
   WorkspaceGitService,
+  WorkspaceGitSnapshotMeta,
 } from "../../workspace-git-service.js";
 import type { PersistedWorkspaceRecord } from "../../workspace-registry.js";
 
@@ -48,7 +49,11 @@ export function createWorkspaceGitObserverService(deps: {
   ) => Promise<WorkspaceDescriptorPayload>;
   emitWorkspaceUpdateForCwd: (cwd: string) => Promise<void>;
   emitWorkspaceUpdateForWorkspaceId: (workspaceId: string) => Promise<void>;
-  emitStatusUpdate: (cwd: string, snapshot: WorkspaceGitRuntimeSnapshot) => void;
+  emitStatusUpdate: (
+    cwd: string,
+    snapshot: WorkspaceGitRuntimeSnapshot,
+    meta: WorkspaceGitSnapshotMeta,
+  ) => void;
   onBranchChanged?: (
     workspaceId: string,
     oldBranch: string | null,
@@ -143,7 +148,7 @@ export function createWorkspaceGitObserverService(deps: {
 
     const subscription = workspaceGitService.registerWorkspace(
       { cwd: normalizedCwd },
-      (snapshot) => {
+      (snapshot, meta) => {
         handleBranchSnapshot(normalizedCwd, snapshot.git.currentBranch ?? null);
         void emitWorkspaceUpdateForCwd(normalizedCwd).catch((error) => {
           logger.warn(
@@ -151,7 +156,7 @@ export function createWorkspaceGitObserverService(deps: {
             "Failed to emit workspace update after git branch snapshot",
           );
         });
-        emitStatusUpdate(normalizedCwd, snapshot);
+        emitStatusUpdate(normalizedCwd, snapshot, meta);
       },
     );
     subscriptions.set(normalizedCwd, subscription.unsubscribe);

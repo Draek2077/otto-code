@@ -923,7 +923,8 @@ export class Session {
       emitWorkspaceUpdateForCwd: (cwd) => this.emitWorkspaceUpdateForCwd(cwd),
       emitWorkspaceUpdateForWorkspaceId: (workspaceId) =>
         this.emitWorkspaceUpdateForWorkspaceId(workspaceId),
-      emitStatusUpdate: (cwd, snapshot) => this.checkoutSession.emitStatusUpdate(cwd, snapshot),
+      emitStatusUpdate: (cwd, snapshot, meta) =>
+        this.checkoutSession.emitStatusUpdate(cwd, snapshot, meta),
       onBranchChanged,
       logger: this.sessionLogger,
     });

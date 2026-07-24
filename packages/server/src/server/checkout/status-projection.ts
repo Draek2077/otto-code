@@ -11,7 +11,20 @@ type CheckoutPrStatusPayload = Extract<
 >["payload"];
 type CheckoutPrStatusPayloadStatus = NonNullable<CheckoutPrStatusPayload["status"]>;
 
-export function buildCheckoutStatusPayloadFromSnapshot({
+export function buildCheckoutStatusPayloadFromSnapshot(params: {
+  cwd: string;
+  requestId: string;
+  snapshot: WorkspaceGitRuntimeSnapshot;
+}): CheckoutStatusResponse["payload"] {
+  const payload = buildCheckoutStatusFields(params);
+  const gitStateAt = params.snapshot.gitLoadedAtMs;
+  // Stamp when the git-tracking fields were measured so a client can tell an
+  // out-of-order push from fresh news. Omitted when the snapshot predates any
+  // measurement — an absent stamp reads as "unknown", not "oldest".
+  return gitStateAt == null ? payload : { ...payload, gitStateAt };
+}
+
+function buildCheckoutStatusFields({
   cwd,
   requestId,
   snapshot,

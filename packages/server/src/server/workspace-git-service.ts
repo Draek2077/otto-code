@@ -66,6 +66,10 @@ const linuxWatchReaddirLimit = pLimit(linuxWatchReaddirConcurrency);
 
 export interface WorkspaceGitRuntimeSnapshot {
   cwd: string;
+  // Daemon clock (epoch ms) at which `git` below was last measured. Projected onto
+  // the wire as `gitStateAt` so clients can reject an out-of-order status push.
+  // Deliberately excluded from the emission fingerprint (see rememberSnapshot).
+  gitLoadedAtMs?: number | null;
   git: {
     isGit: boolean;
     repoRoot: string | null;
@@ -182,7 +186,21 @@ export interface WorkspaceGitService {
   dispose(): void;
 }
 
-export type WorkspaceGitListener = (snapshot: WorkspaceGitRuntimeSnapshot) => void;
+/**
+ * What a snapshot emission actually refreshed.
+ *
+ * `prStatusOnly` marks the hosting PR-status poll's re-broadcast: it refreshed the
+ * PR/check block only, and the git block it carries is whatever the last git
+ * measurement left behind. Consumers must not treat that git block as news.
+ */
+export interface WorkspaceGitSnapshotMeta {
+  prStatusOnly: boolean;
+}
+
+export type WorkspaceGitListener = (
+  snapshot: WorkspaceGitRuntimeSnapshot,
+  meta: WorkspaceGitSnapshotMeta,
+) => void;
 export type WorkspaceGitSnapshotUpdatedListener = (snapshot: WorkspaceGitRuntimeSnapshot) => void;
 
 export interface WorkspaceGitSubscription {
@@ -1780,6 +1798,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
 
     return {
       cwd: target.cwd,
+      gitLoadedAtMs: target.latestGitLoadedAtMs,
       git: target.latestGit,
       github: target.latestGithub ?? buildGitHubUnavailableSnapshot(),
     };
@@ -1815,22 +1834,30 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
 
     target.latestGithub = github;
     target.latestGithubLoadedAtMs = this.deps.now().getTime();
+    // The PR poll refreshes nothing about the working tree, so its emission is
+    // tagged PR-only. Without the tag, downstream projections rebuild a whole
+    // checkout status from the last git measurement and publish it as news —
+    // which, right after a commit, ships a pre-commit aheadOfOrigin and mutes Push.
     this.rememberSnapshot(target, this.combineSnapshot(target), {
       notify: options?.notify,
       forceEmit: false,
+      prStatusOnly: true,
     });
   }
 
   private rememberSnapshot(
     target: WorkspaceGitTarget,
     snapshot: WorkspaceGitRuntimeSnapshot,
-    options?: { forceEmit?: boolean; notify?: boolean },
+    options?: { forceEmit?: boolean; notify?: boolean; prStatusOnly?: boolean },
   ): void {
     target.latestSnapshot = snapshot;
     if (target.listeners.size > 0) {
       this.updateGitHubPollForTarget(target);
     }
-    const fingerprint = JSON.stringify(snapshot);
+    // gitLoadedAtMs is a measurement timestamp, not state: including it would make
+    // every refresh look like a change and defeat the no-op dedupe below.
+    const { gitLoadedAtMs: _gitLoadedAtMs, ...fingerprintSource } = snapshot;
+    const fingerprint = JSON.stringify(fingerprintSource);
     const fingerprintMatches = target.latestFingerprint === fingerprint;
     if (fingerprintMatches && !options?.forceEmit) {
       return;
@@ -1839,8 +1866,9 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     if (!options?.notify || target.listeners.size === 0) {
       return;
     }
+    const meta: WorkspaceGitSnapshotMeta = { prStatusOnly: options?.prStatusOnly === true };
     for (const listener of target.listeners) {
-      listener(snapshot);
+      listener(snapshot, meta);
     }
     for (const listener of this.snapshotUpdatedListeners) {
       try {
