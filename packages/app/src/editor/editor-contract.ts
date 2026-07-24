@@ -129,8 +129,6 @@ export interface EditorController {
   getWordAtCursor(): Promise<string>;
   /** Replace the whole document (revert/reload) and reset the dirty baseline. */
   setDoc(doc: string): void;
-  /** Reset the dirty baseline without touching the document (after save). */
-  markClean(): void;
   setFind(find: EditorFindState | null): void;
   findNext(): void;
   findPrevious(): void;
@@ -145,7 +143,20 @@ export interface EditorController {
    * highlighted and a single keystroke replaces it. Used when a caller knows
    * the extent of what it sent you to (a finding, a diff hunk).
    */
-  selectLines(startLine: number, endLine: number): void;
+  /**
+   * `reveal` (default true) is what makes this a jump. Pass false when the
+   * range is already what the user is looking at — selecting the line under the
+   * pointer must not scroll the page out from under them.
+   */
+  selectLines(startLine: number, endLine: number, options?: { reveal?: boolean }): void;
+  /** Select the whole document, then focus (context menu "Select all"). */
+  selectAll(): void;
+  /**
+   * Overwrite the primary selection — insertion when it is empty. The host owns
+   * the clipboard (one API across web and native), so cut and paste are this
+   * plus a clipboard read or write.
+   */
+  replaceSelection(text: string): void;
   // Split-view scroll sync. Optional: the web host implements these; the
   // native webview host does not (split view is web/desktop only).
   getScrollMetrics?(): EditorScrollMetrics | null;
@@ -159,6 +170,17 @@ export interface CodeEditorProps {
   /** Workspace-relative path; drives language detection. */
   path: string;
   initialDoc: string;
+  /**
+   * The saved text the document is dirty *against*, kept live: whenever the
+   * buffer's baseline moves (a save lands, the disk version is adopted) pass the
+   * new one and the editor re-derives dirty from it. It is the only way the
+   * editor is told what clean means, which is what lets undoing an edit — or a
+   * cut put back by a paste — report not-dirty again.
+   *
+   * Differs from `initialDoc` only when a recovered draft is mounted: then the
+   * document is the draft and this is what is on disk.
+   */
+  cleanDoc: string;
   theme: EditorThemeSpec;
   /** Soft-wrap long lines instead of scrolling horizontally; live-togglable. */
   wordWrap: boolean;
@@ -185,6 +207,13 @@ export interface CodeEditorProps {
   // Split-view scroll sync (web host only; see EditorController notes).
   onScrolled?: (metrics: EditorScrollMetrics) => void;
   onPointerSelect?: (select: EditorPointerSelect) => void;
+  /**
+   * Right-click inside the editor, in viewport coordinates. Web host only:
+   * supplying it suppresses the platform menu, so the host must offer the edit
+   * actions itself. Native keeps the platform's own text menu — a long-press
+   * selection menu is what a phone user expects there.
+   */
+  onContextMenu?: (point: { x: number; y: number }) => void;
   onReady?: (controller: EditorController) => void;
 }
 
@@ -195,11 +224,12 @@ export type EditorWebViewInbound =
       type: "mount";
       path: string;
       doc: string;
+      cleanDoc: string;
       theme: EditorThemeSpec;
       wordWrap: boolean;
     }
   | { type: "setDoc"; doc: string }
-  | { type: "markClean" }
+  | { type: "setCleanDoc"; doc: string }
   | { type: "setTheme"; theme: EditorThemeSpec }
   | { type: "setWordWrap"; enabled: boolean }
   | { type: "setFind"; find: EditorFindState | null }
@@ -209,7 +239,9 @@ export type EditorWebViewInbound =
   | { type: "replaceAll" }
   | { type: "focus" }
   | { type: "goToLine"; line: number }
-  | { type: "selectLines"; startLine: number; endLine: number }
+  | { type: "selectLines"; startLine: number; endLine: number; reveal?: boolean }
+  | { type: "selectAll" }
+  | { type: "replaceSelection"; text: string }
   | { type: "getDoc"; requestId: number }
   | { type: "getSelection"; requestId: number }
   | { type: "getWordAtCursor"; requestId: number };

@@ -55,8 +55,15 @@ interface ShortcutWhen {
   mac?: boolean;
   /** true = desktop only, false = web only */
   desktop?: boolean;
-  /** false = disabled when a text-editing surface is focused */
+  /** false = disabled when a text-editing surface is focused (the file editor counts) */
   editable?: false;
+  /**
+   * false = disabled when the file editor is focused, but still live in plain
+   * text fields. For combos the editor's own keymap claims (Mod+B) and a
+   * textarea has no use for; `editable: false` would be too broad, since it
+   * would also silence the shortcut while the composer is focused.
+   */
+  codeEditor?: false;
   /** false = disabled when terminal is focused */
   terminal?: false;
   /** false = disabled when command center is open */
@@ -148,10 +155,8 @@ const SHORTCUT_HELP_LABEL_KEYS: Record<string, string> = {
   "toggle-right-sidebar": "settings.shortcuts.help.toggleRightSidebar",
   "toggle-both-sidebars": "settings.shortcuts.help.toggleBothSidebars",
   "open-files-sidebar": "settings.shortcuts.help.openFilesSidebar",
-  "open-search-sidebar": "settings.shortcuts.help.openSearchSidebar",
   "find-in-files": "settings.shortcuts.help.findInFiles",
   "open-changes-sidebar": "settings.shortcuts.help.openChangesSidebar",
-  "toggle-settings": "settings.shortcuts.help.toggleSettings",
   "toggle-focus": "settings.shortcuts.help.toggleFocusMode",
   "cycle-theme": "settings.shortcuts.help.cycleTheme",
   "focus-message-input": "settings.shortcuts.help.focusMessageInput",
@@ -710,11 +715,15 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   },
 
   // --- Sidebar toggles ---
+  // Mod+B overlaps the file editor's Go to Definition, so both bindings carry
+  // codeEditor:false — not editable:false, which would also drop the toggle
+  // while the composer is focused, and the composer is focused most of the
+  // time. See the "find" note below for the general overlap rule.
   {
     id: "sidebar-toggle-left-mac-cmd-b",
     action: "sidebar.toggle.left",
     combo: "Cmd+B",
-    when: { mac: true },
+    when: { mac: true, codeEditor: false },
     help: {
       id: "toggle-left-sidebar",
       section: "panels",
@@ -728,7 +737,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "sidebar-toggle-left-ctrl-period-non-mac",
     action: "sidebar.toggle.left",
     combo: "Ctrl+B",
-    when: { mac: false, commandCenter: false, terminal: false },
+    when: { mac: false, commandCenter: false, terminal: false, codeEditor: false },
     help: {
       id: "toggle-left-sidebar",
       section: "panels",
@@ -767,71 +776,66 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { commandCenter: false },
   },
 
-  // --- Open files sidebar ---
-  // editable:false so the editor's own Find (CodeMirror Mod-f) wins when a text
-  // surface is focused. General rule: an Otto shortcut that OVERLAPS an editor
-  // shortcut carries editable:false so the editor's version takes over while
-  // editing; non-overlapping Otto shortcuts keep working in the editor. (Today's
-  // editor shortcuts are Save/Find/Go-to-line — only Save+Find overlap. The
-  // planned "File Editor" section generalizes this via the registry.)
+  // --- Find a file (Files tab + its filename finder) ---
+  // The four "find" gestures, kept straight because they are easy to conflate:
+  //   Mod+,         — find A FILE by name, anywhere (this pair, the documented one)
+  //   Mod+F         — find in this file (CodeMirror's own keymap, editor only)
+  //   Mod+F         — find A FILE by name, everywhere else (the alias pair below)
+  //   Mod+Shift+F   — find in project, i.e. text across every file (below)
+  // Mod+, is the row we print because it is the only one that survives a focused
+  // text surface: the Mod+F pair carries editable:false so the editor's own Find
+  // wins while you are typing, which is also what lets the two Mod+F meanings
+  // share a combo. General rule: an Otto shortcut that OVERLAPS an editor
+  // shortcut steps aside so the editor's version takes over; non-overlapping
+  // Otto shortcuts keep working in the editor. Which flag to use depends on how
+  // far the overlap reaches — editable:false when the combo also means something
+  // in a plain text field (Mod+F does), and the narrower codeEditor:false when
+  // only the editor claims it (Mod+B does).
+  // (The planned "File Editor" section generalizes this via the registry.)
+  {
+    id: "sidebar-open-files-cmd-comma-mac",
+    action: "sidebar.open.files",
+    combo: "Cmd+,",
+    when: { mac: true, commandCenter: false },
+    help: {
+      id: "open-files-sidebar",
+      section: "panels",
+      label: "Find file in project",
+      keys: ["mod", ","],
+    },
+  },
+  {
+    id: "sidebar-open-files-ctrl-comma-non-mac",
+    action: "sidebar.open.files",
+    combo: "Ctrl+,",
+    when: { mac: false, commandCenter: false, terminal: false },
+    help: {
+      id: "open-files-sidebar",
+      section: "panels",
+      label: "Find file in project",
+      keys: ["mod", ","],
+    },
+  },
+  // Mod+F stays as an alias, deliberately with no help row: one feature gets one
+  // row, and that row has to be the combo that always works. Same shape as
+  // Ctrl+` aliasing the right sidebar above.
   {
     id: "sidebar-open-files-cmd-f-mac",
     action: "sidebar.open.files",
     combo: "Cmd+F",
     when: { mac: true, commandCenter: false, editable: false },
-    help: {
-      id: "open-files-sidebar",
-      section: "panels",
-      label: "Open files sidebar",
-      keys: ["mod", "F"],
-    },
   },
   {
     id: "sidebar-open-files-ctrl-f-non-mac",
     action: "sidebar.open.files",
     combo: "Ctrl+F",
     when: { mac: false, commandCenter: false, terminal: false, editable: false },
-    help: {
-      id: "open-files-sidebar",
-      section: "panels",
-      label: "Open files sidebar",
-      keys: ["mod", "F"],
-    },
   },
 
-  // --- Open search sidebar ---
-  {
-    // editable:false so a focused editor keeps Cmd+S for Save (CodeMirror's own
-    // Mod-s handler) — the universal shortcut wins over "open search sidebar"
-    // whenever a text surface is focused. Cmd+Shift+F still opens search.
-    id: "sidebar-open-search-cmd-s-mac",
-    action: "sidebar.open.search",
-    combo: "Cmd+S",
-    when: { mac: true, commandCenter: false, editable: false },
-    help: {
-      id: "open-search-sidebar",
-      section: "panels",
-      label: "Open search sidebar",
-      keys: ["mod", "S"],
-    },
-  },
-  {
-    id: "sidebar-open-search-ctrl-s-non-mac",
-    action: "sidebar.open.search",
-    combo: "Ctrl+S",
-    when: { mac: false, commandCenter: false, terminal: false, editable: false },
-    help: {
-      id: "open-search-sidebar",
-      section: "panels",
-      label: "Open search sidebar",
-      keys: ["mod", "S"],
-    },
-  },
-  // Find in files, on the combo every other editor uses for it. Mod+F stays
-  // find-in-*file*: that one is bound inside CodeMirror's own keymap, so it
-  // only ever fires while an editor has focus and never shadows a global.
-  // Both of these are second bindings for the same action — the Mod+S pair
-  // above keeps working, and the help dialog lists the id once.
+  // --- Find in project ---
+  // Mod+S is deliberately NOT bound here. It used to open this same sidebar,
+  // which made it a duplicate of Mod+Shift+F while shadowing the one thing
+  // Mod+S means to everyone — Save. It stays free.
   {
     id: "sidebar-open-search-cmd-shift-f-mac",
     action: "sidebar.open.search",
@@ -840,7 +844,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     help: {
       id: "find-in-files",
       section: "panels",
-      label: "Find in files",
+      label: "Find in project",
       keys: ["mod", "shift", "F"],
     },
   },
@@ -852,7 +856,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     help: {
       id: "find-in-files",
       section: "panels",
-      label: "Find in files",
+      label: "Find in project",
       keys: ["mod", "shift", "F"],
     },
   },
@@ -910,30 +914,11 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   },
 
   // --- Settings toggle ---
-  {
-    id: "settings-toggle-cmd-comma-mac",
-    action: "settings.toggle",
-    combo: "Cmd+,",
-    when: { mac: true, commandCenter: false },
-    help: {
-      id: "toggle-settings",
-      section: "panels",
-      label: "Toggle settings",
-      keys: ["mod", ","],
-    },
-  },
-  {
-    id: "settings-toggle-ctrl-comma-non-mac",
-    action: "settings.toggle",
-    combo: "Ctrl+,",
-    when: { mac: false, commandCenter: false, terminal: false },
-    help: {
-      id: "toggle-settings",
-      section: "panels",
-      label: "Toggle settings",
-      keys: ["mod", ","],
-    },
-  },
+  // Intentionally unbound. Mod+, used to open Settings, the way it does in most
+  // apps; it now opens the file finder, which is what that combo is worth here.
+  // The `settings.toggle` action and its route stay live for whatever combo
+  // Settings lands on later, as do its `settings.shortcuts.help.toggleSettings`
+  // strings.
 
   // --- Focus mode ---
   // Mod+Alt+F, not Mod+Shift+F: the latter is find-in-files everywhere
@@ -1224,10 +1209,13 @@ function matchesWhen(when: ShortcutWhen | undefined, context: KeyboardShortcutCo
   if (when.desktop !== undefined && when.desktop !== context.isDesktop) return false;
   if (
     when.editable === false &&
-    (context.focusScope === "message-input" || context.focusScope === "editable")
+    (context.focusScope === "message-input" ||
+      context.focusScope === "editable" ||
+      context.focusScope === "code-editor")
   ) {
     return false;
   }
+  if (when.codeEditor === false && context.focusScope === "code-editor") return false;
   if (when.terminal === false && context.focusScope === "terminal") return false;
   if (when.commandCenter === false && context.commandCenterOpen) return false;
   if (when.focusScope !== undefined && context.focusScope !== when.focusScope) return false;

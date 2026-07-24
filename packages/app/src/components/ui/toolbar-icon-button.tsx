@@ -1,9 +1,11 @@
 import { useCallback, useMemo, type ComponentType } from "react";
-import { Text, type PressableStateCallbackType } from "react-native";
+import { Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { ShortcutKey } from "@/utils/format-shortcut";
 import type { Theme } from "@/styles/theme";
 
 // Pane-toolbar glyphs follow the app-wide compact convention: doubled on mobile
@@ -42,6 +44,7 @@ export function ToolbarIconButton({
   disabled = false,
   selected = false,
   loading = false,
+  shortcut,
   testID,
 }: {
   label: string;
@@ -50,6 +53,12 @@ export function ToolbarIconButton({
   disabled?: boolean;
   selected?: boolean;
   loading?: boolean;
+  /**
+   * Key hint printed after the label, in the app's tooltip idiom (see
+   * header-toggle-button). Omit when the button has no binding — a tooltip that
+   * names a key the button doesn't answer to is worse than no hint.
+   */
+  shortcut?: ShortcutKey[];
   testID?: string;
 }) {
   const buttonStyle = useCallback(
@@ -83,7 +92,10 @@ export function ToolbarIconButton({
         )}
       </TooltipTrigger>
       <TooltipContent side="bottom" align="center" offset={8}>
-        <Text style={styles.tooltipText}>{label}</Text>
+        <View style={styles.tooltipRow}>
+          <Text style={styles.tooltipText}>{label}</Text>
+          {shortcut ? <Shortcut keys={shortcut} style={styles.tooltipShortcut} /> : null}
+        </View>
       </TooltipContent>
     </Tooltip>
   );
@@ -106,8 +118,14 @@ const styles = StyleSheet.create((theme: Theme) => ({
   iconButtonDisabled: {
     opacity: 0.4,
   },
+  tooltipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
   tooltipText: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
   },
+  tooltipShortcut: {},
 }));

@@ -68,6 +68,19 @@ describe("resolveKeyboardFocusScope", () => {
     expect(scope).toBe("terminal");
   });
 
+  // CM6's content node is contenteditable, so the file editor would otherwise
+  // read as a plain text field and lose the combos its own keymap binds.
+  it("resolves code-editor scope ahead of the generic editable test", () => {
+    const content = new FakeElement({ isContentEditable: true });
+    const surface = new FakeElement({ selectors: ["[data-testid='code-editor-surface']"] });
+    content.parentElement = surface;
+    const scope = resolveKeyboardFocusScope({
+      target: content as unknown as EventTarget,
+      commandCenterOpen: false,
+    });
+    expect(scope).toBe("code-editor");
+  });
+
   it("detects editable scope from activeElement fallback", () => {
     const activeElement = new FakeElement({ tagName: "input" });
     globalRef.document = { activeElement };

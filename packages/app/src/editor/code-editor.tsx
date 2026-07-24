@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import type { CodeEditorProps, EditorController } from "./editor-contract";
 import { createEditorCore, type EditorCore } from "./editor-core";
@@ -46,7 +46,13 @@ export function CodeEditor(props: CodeEditorProps) {
 
   // The core mounts once per (tab, document identity); doc updates flow
   // through the controller, not through props.
-  useEffect(() => {
+  //
+  // Layout effect, not a passive one: switching view mode remounts this
+  // component, and a passive effect builds the CM6 DOM *after* the browser has
+  // already painted the new pane — one frame of empty editor, then one of
+  // unstyled scrollbar as `scrollerReady` flips. Mounting before paint means
+  // the first frame the user sees is the finished editor.
+  useLayoutEffect(() => {
     const parent = hostRef.current;
     if (!parent) {
       return;
@@ -56,8 +62,12 @@ export function CodeEditor(props: CodeEditorProps) {
       parent,
       path: callbacksRef.current.path,
       doc: callbacksRef.current.initialDoc,
+      cleanDoc: callbacksRef.current.cleanDoc,
       theme: callbacksRef.current.theme,
       wordWrap: callbacksRef.current.wordWrap,
+      // This host draws the overlay bar below, so the platform's own must never
+      // paint — not even for the frame before the overlay takes over.
+      hideNativeScrollbar: true,
       onDirtyChanged: (dirty) => callbacksRef.current.onDirtyChanged?.(dirty),
       onMatchInfo: (info) => callbacksRef.current.onMatchInfo?.(info),
       onCursorMoved: (position) => callbacksRef.current.onCursorMoved?.(position),
@@ -67,6 +77,11 @@ export function CodeEditor(props: CodeEditorProps) {
       onGoToDefinitionShortcut: () => callbacksRef.current.onGoToDefinitionShortcut?.(),
       onScrolled: (metrics) => callbacksRef.current.onScrolled?.(metrics),
       onPointerSelect: (select) => callbacksRef.current.onPointerSelect?.(select),
+      // Only claim the right-click when the host actually has a menu: without a
+      // handler the core leaves the platform menu alone.
+      onContextMenu: callbacksRef.current.onContextMenu
+        ? (point) => callbacksRef.current.onContextMenu?.(point)
+        : undefined,
       onDocChanged: () => {
         if (docSyncTimer !== null) {
           clearTimeout(docSyncTimer);
@@ -90,7 +105,6 @@ export function CodeEditor(props: CodeEditorProps) {
       getSelection: () => Promise.resolve(core.getSelection()),
       getWordAtCursor: () => Promise.resolve(core.getWordAtCursor()),
       setDoc: (doc) => core.setDoc(doc),
-      markClean: () => core.markClean(),
       setFind: (find) => core.setFind(find),
       findNext: () => core.findNext(),
       findPrevious: () => core.findPrevious(),
@@ -98,7 +112,9 @@ export function CodeEditor(props: CodeEditorProps) {
       replaceAll: () => core.replaceAll(),
       focus: () => core.focus(),
       goToLine: (line) => core.goToLine(line),
-      selectLines: (startLine, endLine) => core.selectLines(startLine, endLine),
+      selectLines: (startLine, endLine, options) => core.selectLines(startLine, endLine, options),
+      selectAll: () => core.selectAll(),
+      replaceSelection: (text) => core.replaceSelection(text),
       getScrollMetrics: () => core.getScrollMetrics(),
       scrollToFraction: (fraction) => core.scrollToFraction(fraction),
       scrollToLineAtOffset: (line, offset) => core.scrollToLineAtOffset(line, offset),
@@ -130,11 +146,29 @@ export function CodeEditor(props: CodeEditorProps) {
     coreRef.current?.setWordWrap(props.wordWrap);
   }, [props.wordWrap]);
 
+  // The saved text is a prop, not a command: the buffer's baseline is the single
+  // source of truth for what clean means, so a save landing or the disk version
+  // being adopted reaches the editor as a new value here rather than as an
+  // imperative "you are clean now" the editor would have to take on faith.
+  // Skipped on mount — the core was constructed with this exact value.
+  const mountedCleanDocRef = useRef(props.cleanDoc);
+  useEffect(() => {
+    if (props.cleanDoc === mountedCleanDocRef.current) {
+      return;
+    }
+    mountedCleanDocRef.current = props.cleanDoc;
+    coreRef.current?.setCleanDoc(props.cleanDoc);
+  }, [props.cleanDoc]);
+
   return (
     // data-pmono excludes the CM6 subtree from the app-wide interface-font rule
     // (see styles/code-surface.ts) — that rule's specificity beats the CM6 theme's
     // `.cm-scroller` font-family, which would silently un-mono the whole editor.
-    <div style={WRAPPER_STYLE} data-pmono="">
+    // data-testid marks the keyboard focus scope (see keyboard/focus-scope.ts):
+    // it is what tells the shortcut registry that focus is in the file editor
+    // rather than in some anonymous text field, so the editor's own keymap wins
+    // the combos it binds.
+    <div style={WRAPPER_STYLE} data-pmono="" data-testid="code-editor-surface">
       <div ref={hostRef} style={HOST_STYLE} />
       {scrollbarOverlay}
     </div>

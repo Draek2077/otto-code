@@ -2358,6 +2358,7 @@ function WorkspaceScreenContent({
   const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
   const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
   const requestProjectSearchFocus = usePanelStore((state) => state.requestProjectSearchFocus);
+  const requestFileFinderOpen = usePanelStore((state) => state.requestFileFinderOpen);
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
 
   const activeExplorerCheckout = useMemo<ExplorerCheckoutContext | null>(() => {
@@ -3730,7 +3731,12 @@ function WorkspaceScreenContent({
           handleToggleExplorer();
           return true;
         case "sidebar.open.files":
+          // Mod+F means "find" everywhere else in the app, so outside an editor
+          // it opens the Files tab AND its filename finder — the tab on its own
+          // is a destination, not an answer. Find-in-*project* (text, not
+          // names) stays on Mod+Shift+F.
           handleOpenExplorerTab("files");
+          requestFileFinderOpen();
           return true;
         case "sidebar.open.search":
           handleOpenExplorerTab("search");
@@ -3743,7 +3749,7 @@ function WorkspaceScreenContent({
           return false;
       }
     },
-    [handleOpenExplorerTab, handleToggleExplorer, requestProjectSearchFocus],
+    [handleOpenExplorerTab, handleToggleExplorer, requestFileFinderOpen, requestProjectSearchFocus],
   );
 
   const handleWorkspacePaneAction = useCallback(

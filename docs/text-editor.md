@@ -37,6 +37,15 @@ All live in `packages/server/src/server/session/files/workspace-files-session.ts
 - **`file.replace.request` / `.response`** — per-file edit list, each edit preconditioned on `expectedHash`.
 - **`code.list_files.response`**, **`code.symbols.response`**, **`code.outline.response`** — the navigation trio (see below).
 
+## What "dirty" means
+
+Dirty is a **comparison against the saved text, not a latch on "an edit happened"**. The editor holds the buffer's baseline (`CodeEditorProps.cleanDoc`, kept live — whenever the baseline moves the prop moves) and re-derives dirty from the document on every change, so an edit that leaves the file equal to what is on disk reports **not dirty** however it got there: an undo, a redo back to clean, a cut whose paste puts it back, retyping the character you deleted. Save and Revert disarm with it.
+
+Two consequences worth keeping:
+
+- **There is no "you are clean now" command.** A save landing, a revert, a reload, "Keep my changes" — all of them reach the editor as a new baseline, and the editor decides whether that leaves it dirty. This is what keeps a save that landed while the user kept typing honestly dirty against the text that was actually written.
+- **The comparison must stay cheap.** It runs per keystroke, so it compares CM6 `Text` ropes (`Text.eq` rejects on length/line count first and prunes shared subtrees) rather than building document strings. The baseline reuses the document's own rope whenever the two are the same text — that sharing is what keeps the common case off the full-walk path. See the `cleanDoc` comment in `editor-core.ts`; `editor-core-dirty.browser.test.ts` covers the paths in a real browser, undo included.
+
 ## Watch / save-conflict model
 
 The client reacts to files changing under the editor by buffer state:

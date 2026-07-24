@@ -64,6 +64,16 @@ export function resolveKeyboardFocusScope(input: {
     return "message-input";
   }
 
+  // Checked before the generic editable test below: CM6's content node is
+  // contenteditable, so without this the file editor would read as a plain text
+  // field and every shortcut it binds itself (Mod+B → Go to Definition) would
+  // still lose to the app-wide binding for the same combo.
+  if (
+    candidates.some((element) => Boolean(element.closest("[data-testid='code-editor-surface']")))
+  ) {
+    return commandCenterOpen ? "command-center" : "code-editor";
+  }
+
   if (
     candidates.some((element) => {
       const editable = element as HTMLElement;

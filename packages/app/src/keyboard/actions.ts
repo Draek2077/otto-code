@@ -2,6 +2,10 @@ export type KeyboardFocusScope =
   | "terminal"
   | "message-input"
   | "command-center"
+  // The CM6 file editor. A narrower "editable" — every shortcut that steps
+  // aside for a text field also steps aside here, but the editor additionally
+  // owns combos (Mod+B → Go to Definition) that mean nothing in a plain input.
+  | "code-editor"
   | "editable"
   | "other";
 

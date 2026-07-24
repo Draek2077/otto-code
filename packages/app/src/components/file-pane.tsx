@@ -121,6 +121,14 @@ export interface FilePreviewSyncHandle {
   scrollToFraction(fraction: number): void;
   /** Scroll so content Y `contentY` sits `viewportOffsetY` px below the viewport top. */
   scrollToContentY(contentY: number, viewportOffsetY: number): void;
+  /**
+   * Scroll a 1-based line just below the top of the viewport — the preview's
+   * answer to the editor's `goToLine`, so the outline can drive both views.
+   * Exact over the code view, whose lines are a fixed height. Rendered markdown
+   * has no line→pixel mapping, so it lands proportionally: the same
+   * approximation the split view already scrolls by.
+   */
+  scrollToLine(line: number): void;
 }
 
 interface FilePreviewBodyProps {
@@ -131,6 +139,12 @@ interface FilePreviewBodyProps {
   location: WorkspaceFileLocation;
   imagePreviewUri: string | null;
   svgXml: string | null;
+  /**
+   * Soft-wrap long code lines instead of scrolling sideways — the same
+   * preference the editor toolbar toggles, so the two views agree. Compact
+   * always wraps: there is no room to scroll sideways on a phone.
+   */
+  wrapLines?: boolean;
   /** Live buffer contents to render instead of the disk read (split view). */
   contentOverride?: string | null;
   /** Active find-in-preview query; null when the find strip is closed/empty. */
@@ -416,6 +430,7 @@ function FilePreviewBody({
   location,
   imagePreviewUri,
   svgXml,
+  wrapLines = false,
   contentOverride,
   findQuery,
   activeMatchIndex = 0,
@@ -524,22 +539,6 @@ function FilePreviewBody({
     previewScrollRef.current?.scrollTo({ y: clamped, animated: false });
   }, []);
 
-  useImperativeHandle(
-    syncRef,
-    () => ({
-      getMetrics: () => ({ ...syncMetricsRef.current }),
-      scrollToFraction: (fraction: number) => {
-        const metrics = syncMetricsRef.current;
-        const max = Math.max(0, metrics.contentHeight - metrics.clientHeight);
-        scrollToSyncTop(Math.max(0, Math.min(fraction, 1)) * max);
-      },
-      scrollToContentY: (contentY: number, viewportOffsetY: number) => {
-        scrollToSyncTop(contentY - viewportOffsetY);
-      },
-    }),
-    [scrollToSyncTop],
-  );
-
   // Click alignment is web-only: it needs the content's bounding rect to turn
   // a pointer position into a content Y.
   const syncContentRef = useRef<View>(null);
@@ -584,6 +583,41 @@ function FilePreviewBody({
       lineCount: highlightedLines.length,
     });
   }, [highlightedLines, location.lineEnd, location.lineStart]);
+
+  // Declared here, below the layout facts it reads: `scrollToLine` needs the
+  // code view's line height to be exact, and the split-view methods have no
+  // reason to be measured any earlier.
+  useImperativeHandle(
+    syncRef,
+    () => ({
+      getMetrics: () => ({ ...syncMetricsRef.current }),
+      scrollToFraction: (fraction: number) => {
+        const metrics = syncMetricsRef.current;
+        const max = Math.max(0, metrics.contentHeight - metrics.clientHeight);
+        scrollToSyncTop(Math.max(0, Math.min(fraction, 1)) * max);
+      },
+      scrollToContentY: (contentY: number, viewportOffsetY: number) => {
+        scrollToSyncTop(contentY - viewportOffsetY);
+      },
+      scrollToLine: (line: number) => {
+        const target = Math.max(1, line);
+        if (highlightedLines) {
+          scrollToSyncTop((target - 1) * lineHeight);
+          return;
+        }
+        // Rendered markdown: prose has no line height, so place the line
+        // proportionally through the rendered document — close enough to land
+        // on the heading the outline named.
+        const lineCount = effectiveContent ? effectiveContent.split("\n").length : 0;
+        if (lineCount <= 0) {
+          return;
+        }
+        const metrics = syncMetricsRef.current;
+        scrollToSyncTop((Math.min(target, lineCount) - 1) * (metrics.contentHeight / lineCount));
+      },
+    }),
+    [effectiveContent, highlightedLines, lineHeight, scrollToSyncTop],
+  );
 
   const imageSource = useMemo(
     () => (imagePreviewUri ? { uri: imagePreviewUri } : null),
@@ -706,7 +740,9 @@ function FilePreviewBody({
           scrollEventThrottle={16}
           showsVerticalScrollIndicator={!showWebScrollbar}
         >
-          {isMobile ? (
+          {/* Wrapping is the absence of the horizontal scroller: the line text
+              already wraps when nothing lets it grow sideways. */}
+          {isMobile || wrapLines ? (
             <View style={styles.previewCodeScrollContent}>{codeLines}</View>
           ) : (
             <RNScrollView
@@ -780,6 +816,8 @@ export interface FilePreviewProps {
   serverId: string;
   workspaceRoot: string;
   location: WorkspaceFileLocation;
+  /** Soft-wrap long code lines instead of scrolling sideways. */
+  wrapLines?: boolean;
   /** Live buffer contents to render instead of the disk read (split view). */
   contentOverride?: string | null;
   /** Reports what kind of file the read produced (gates the editor modes). */
@@ -799,6 +837,7 @@ export function FilePreview({
   serverId,
   workspaceRoot,
   location,
+  wrapLines,
   contentOverride,
   onFileInfo,
   findQuery,
@@ -925,6 +964,7 @@ export function FilePreview({
         location={location}
         imagePreviewUri={imagePreviewUri}
         svgXml={query.data?.svgXml ?? null}
+        wrapLines={wrapLines}
         contentOverride={contentOverride}
         findQuery={findQuery}
         activeMatchIndex={activeMatchIndex}

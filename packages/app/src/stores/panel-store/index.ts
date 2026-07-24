@@ -98,6 +98,10 @@ export interface PanelState {
   // Ephemeral (not persisted): bumped when a keyboard action wants the project
   // search input focused; the search pane consumes it back to 0.
   projectSearchFocusToken: number;
+  // Ephemeral (not persisted): bumped when a keyboard action wants the Files
+  // tab's filename finder open; the file explorer consumes it back to 0. Mod+F
+  // outside an editor means "find a file" — the tab alone is only half of that.
+  fileFinderOpenToken: number;
   // Ephemeral (not persisted): set when another pane (e.g. the Changes view)
   // wants a file revealed in the Files tree; the file explorer consumes it
   // back to null. The token disambiguates repeat reveals of the same path.
@@ -147,6 +151,8 @@ export interface PanelState {
   setExplorerFilesSplitRatio: (ratio: number) => void;
   requestProjectSearchFocus: () => void;
   clearProjectSearchFocusRequest: () => void;
+  requestFileFinderOpen: () => void;
+  clearFileFinderOpenRequest: () => void;
   requestFilesReveal: (path: string) => void;
   clearFilesRevealRequest: () => void;
   setExplorerSidebarVisible: (visible: boolean) => void;
@@ -189,6 +195,7 @@ export const usePanelStore = create<PanelState>()(
       explorerShowHiddenFiles: true,
       explorerFilesSplitRatio: DEFAULT_EXPLORER_FILES_SPLIT_RATIO,
       projectSearchFocusToken: 0,
+      fileFinderOpenToken: 0,
       filesRevealRequest: null,
       explorerSidebarVisible: false,
       focusModeTabStripVisible: false,
@@ -338,6 +345,9 @@ export const usePanelStore = create<PanelState>()(
       requestProjectSearchFocus: () =>
         set((state) => ({ projectSearchFocusToken: state.projectSearchFocusToken + 1 })),
       clearProjectSearchFocusRequest: () => set({ projectSearchFocusToken: 0 }),
+      requestFileFinderOpen: () =>
+        set((state) => ({ fileFinderOpenToken: state.fileFinderOpenToken + 1 })),
+      clearFileFinderOpenRequest: () => set({ fileFinderOpenToken: 0 }),
       requestFilesReveal: (path) =>
         set((state) => ({
           filesRevealRequest: { path, token: (state.filesRevealRequest?.token ?? 0) + 1 },

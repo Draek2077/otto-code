@@ -951,6 +951,20 @@ export function FileExplorerPane({
   const [finderOpen, setFinderOpen] = useState(false);
   const openFinder = useCallback(() => setFinderOpen(true), []);
   const closeFinder = useCallback(() => setFinderOpen(false), []);
+  // Mod+F outside an editor opens this tab and asks for the finder in one go
+  // (see the sidebar.open.files action). The token is consumed here rather than
+  // read as a boolean so repeat presses re-open it after a dismiss.
+  const finderOpenToken = usePanelStore((state) => state.fileFinderOpenToken);
+  const clearFinderOpenRequest = usePanelStore((state) => state.clearFileFinderOpenRequest);
+  useEffect(() => {
+    if (finderOpenToken === 0) {
+      return;
+    }
+    clearFinderOpenRequest();
+    if (canIndexCode) {
+      setFinderOpen(true);
+    }
+  }, [canIndexCode, clearFinderOpenRequest, finderOpenToken]);
   const handleFinderOpenFile = useCallback(
     (path: string) => {
       selectExplorerEntry(path);

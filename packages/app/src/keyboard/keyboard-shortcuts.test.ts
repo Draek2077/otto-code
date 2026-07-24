@@ -280,6 +280,20 @@ describe("keyboard-shortcuts", () => {
       context: { isMac: true },
       action: "sidebar.toggle.left",
     },
+    // Mod+B steps aside only for the file editor, not for text fields at large:
+    // the composer holds focus most of the time, and Mod+B means nothing there.
+    {
+      name: "still toggles the left sidebar with Cmd+B from the composer",
+      event: { key: "b", code: "KeyB", metaKey: true },
+      context: { isMac: true, focusScope: "message-input" },
+      action: "sidebar.toggle.left",
+    },
+    {
+      name: "still toggles the left sidebar with Ctrl+B from a plain text field",
+      event: { key: "b", code: "KeyB", ctrlKey: true },
+      context: { isMac: false, focusScope: "editable" },
+      action: "sidebar.toggle.left",
+    },
     {
       name: "routes Mod+. to toggle both sidebars on non-mac",
       event: { key: ".", code: "Period", ctrlKey: true },
@@ -408,6 +422,24 @@ describe("keyboard-shortcuts", () => {
       name: "does not match question-mark shortcut inside editable scopes",
       event: { key: "?", code: "Slash", shiftKey: true },
       context: { focusScope: "message-input" },
+    },
+    // Mod+B is the editor's Go to Definition; the sidebar toggle must not eat it.
+    {
+      name: "leaves Cmd+B to the file editor on macOS",
+      event: { key: "b", code: "KeyB", metaKey: true },
+      context: { isMac: true, focusScope: "code-editor" },
+    },
+    {
+      name: "leaves Ctrl+B to the file editor on non-mac",
+      event: { key: "b", code: "KeyB", ctrlKey: true },
+      context: { isMac: false, focusScope: "code-editor" },
+    },
+    // The file editor is also an editable surface, so editable:false bindings
+    // keep standing down there — Mod+F stays CodeMirror's find-in-file.
+    {
+      name: "leaves Ctrl+F to the file editor's find rather than opening Find a file",
+      event: { key: "f", code: "KeyF", ctrlKey: true },
+      context: { isMac: false, focusScope: "code-editor" },
     },
     {
       name: "does not close tab with Ctrl+W on mac desktop (Cmd+W only)",

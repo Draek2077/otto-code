@@ -66,6 +66,7 @@ const mount = (message: Extract<EditorWebViewInbound, { type: "mount" }>): void 
     parent: root,
     path: message.path,
     doc: message.doc,
+    cleanDoc: message.cleanDoc,
     theme: message.theme,
     wordWrap: message.wordWrap,
     onDirtyChanged: (dirty) => sendToNative({ type: "dirtyChanged", dirty }),
@@ -86,8 +87,8 @@ const applyCommand = (target: EditorCore, message: EditorCommand): void => {
     case "setDoc":
       target.setDoc(message.doc);
       break;
-    case "markClean":
-      target.markClean();
+    case "setCleanDoc":
+      target.setCleanDoc(message.doc);
       break;
     case "setTheme":
       target.setTheme(message.theme);
@@ -117,7 +118,13 @@ const applyCommand = (target: EditorCore, message: EditorCommand): void => {
       target.goToLine(message.line);
       break;
     case "selectLines":
-      target.selectLines(message.startLine, message.endLine);
+      target.selectLines(message.startLine, message.endLine, { reveal: message.reveal ?? true });
+      break;
+    case "selectAll":
+      target.selectAll();
+      break;
+    case "replaceSelection":
+      target.replaceSelection(message.text);
       break;
   }
 };

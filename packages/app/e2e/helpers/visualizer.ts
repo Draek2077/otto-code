@@ -87,10 +87,19 @@ export async function closeVisualizerChatsDropdown(page: Page, dialog: Locator):
   await expect(dialog).not.toBeVisible({ timeout: 10_000 });
 }
 
-/** Toggle Settings visibility with the app-wide keyboard shortcut. */
-export async function pressSettingsToggleShortcut(page: Page): Promise<void> {
-  const modifier = process.platform === "darwin" ? "Meta" : "Control";
-  await page.keyboard.press(`${modifier}+Comma`);
+/**
+ * Toggle Settings visibility through the UI: sidebar button in, back button out.
+ * Mod+, used to do this in one keystroke; it opens the file finder now, and
+ * Settings has no shortcut of its own.
+ */
+export async function toggleSettingsFromUi(page: Page): Promise<void> {
+  if (new URL(page.url()).pathname.startsWith("/settings")) {
+    await page.getByTestId("settings-back-to-workspace").click();
+    return;
+  }
+  const settingsButton = page.locator('[data-testid="sidebar-settings"]:visible').first();
+  await expect(settingsButton).toBeVisible({ timeout: 15_000 });
+  await settingsButton.click();
 }
 
 /**
