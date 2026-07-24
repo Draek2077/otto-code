@@ -29,6 +29,11 @@ export default defineConfig({
       },
       {
         extends: true,
+        // Pre-bundle mermaid up front. Discovered lazily it triggers vite's
+        // "optimized dependencies changed. reloading" mid-run, which vitest
+        // warns is a flake vector — and the app's dependency scan can't always
+        // find it for itself (it bails when a workspace `dist` isn't built yet).
+        optimizeDeps: { include: ["mermaid"] },
         test: {
           name: "browser",
           fileParallelism: false,

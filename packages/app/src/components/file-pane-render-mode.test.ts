@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { defaultFileViewMode, isRenderedMarkdownFile } from "@/components/file-pane-render-mode";
+import {
+  defaultFileViewMode,
+  isRenderedMarkdownFile,
+  isRenderedMermaidFile,
+  renderedDocumentKind,
+} from "@/components/file-pane-render-mode";
 
 describe("isRenderedMarkdownFile", () => {
   it("detects .md files", () => {
@@ -22,10 +27,32 @@ describe("isRenderedMarkdownFile", () => {
   });
 });
 
+describe("isRenderedMermaidFile", () => {
+  it("detects standalone diagram files", () => {
+    expect(isRenderedMermaidFile("docs/flow.mmd")).toBe(true);
+    expect(isRenderedMermaidFile("ARCH.MERMAID")).toBe(true);
+  });
+
+  it("does not treat other text files as diagrams", () => {
+    expect(isRenderedMermaidFile("README.md")).toBe(false);
+    expect(isRenderedMermaidFile("flow.mmd.txt")).toBe(false);
+  });
+});
+
+describe("renderedDocumentKind", () => {
+  it("names the pipeline a file renders through", () => {
+    expect(renderedDocumentKind("README.md")).toBe("markdown");
+    expect(renderedDocumentKind("docs/flow.mmd")).toBe("mermaid");
+    expect(renderedDocumentKind("src/index.ts")).toBeNull();
+  });
+});
+
 describe("defaultFileViewMode", () => {
   it("opens rendered formats in preview", () => {
     expect(defaultFileViewMode("README.md")).toBe("preview");
     expect(defaultFileViewMode("docs/guide.markdown")).toBe("preview");
+    expect(defaultFileViewMode("docs/flow.mmd")).toBe("preview");
+    expect(defaultFileViewMode("docs/arch.mermaid")).toBe("preview");
     expect(defaultFileViewMode("assets/logo.svg")).toBe("preview");
     expect(defaultFileViewMode("shots/screen.PNG")).toBe("preview");
     expect(defaultFileViewMode("build/app.zip")).toBe("preview");

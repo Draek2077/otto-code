@@ -33,8 +33,11 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation/decision · �
   `features.codeIndex` (`use-code-index-feature.ts`), which also corrected the
   outline and fuzzy-finder gates that were reading `projectSearch`. Folded into
   [docs/text-editor.md](../../docs/text-editor.md).
-- 🔴 **Mermaid doesn't render in markdown preview** — batch-07-23. Chartered by
-  `projects/file-rendering/file-rendering.md`.
+- ✅ ~~**Mermaid doesn't render in markdown preview**~~ — SHIPPED.
+  ` ```mermaid ` fences render in chat, the viewer and the PR panel, plus `.mmd`/`.mermaid`
+  files; web/Electron render in-page, iOS/Android in a self-contained webview payload.
+  Durable facts folded into
+  [docs/markdown-rendering.md](../../docs/markdown-rendering.md).
 - 🔵 **Verify caret auto-scroll follow + search-match-scroll fixes** — batch-07-23.
   Both marked fixed but carry "verify on the live repro across plain and split
   mode before deleting the note." (See memory `editor-caret-follow-reassert`.)
