@@ -17,7 +17,7 @@ import {
 async function openAgentsSettingsSection(page: Page): Promise<void> {
   await gotoAppShell(page);
   await openSettings(page);
-  await openSettingsHostSection(page, getServerId(), "agents");
+  await openSettingsHostSection(page, getServerId(), "teams");
   await expect(page.getByTestId("agent-personalities-section")).toBeVisible({ timeout: 30_000 });
 }
 

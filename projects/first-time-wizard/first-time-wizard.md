@@ -1,6 +1,6 @@
 # First-time wizard — charter
 
-Status: **PLANNED** (design drafted 2026-07-12, not yet locked).
+Status: **SHIPPED** (design drafted 2026-07-12; built and committed — `packages/app/src/screens/setup-wizard/`, covered by `packages/app/e2e/first-time-wizard.spec.ts`). Verified against the tree 2026-07-24. Remaining tail: i18n for the wizard strings. The text below is the original build plan, kept for the locked decisions (Mode-first ordering, brand bookends, preset resolution against detected providers).
 
 Otto currently drops a new user onto the Welcome/pairing screen and then straight into the open-project screen — everything else (providers, personalities, teams, display depth) is discovered piecemeal in settings. The **first-time wizard** replaces that cold start with one guided, full-screen run-through that both **sets up** the host and **teaches** what Otto is, in a single pass. The guiding principle: **configure the least amount needed for proper function; everything else is tweaked and discovered later.** When the wizard finishes, the user lands on the normal home (open-project) screen with a working, themed agent roster and at least one team ready to go.
 

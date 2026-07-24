@@ -8,7 +8,8 @@
 > provider sends before they type a word, understands why, and refactors it. **Context Health is the
 > summary panel inside it**, not the feature.
 >
-> **Status: BUILT (uncommitted), 2026-07-19.** Phases 0–3 plus the edge-convert half of Phase 4 are
+> **Status: BUILT and committed** (built 2026-07-19; commit state verified against the tree 2026-07-24 —
+> `packages/app/src/context-management/`). Phases 0–3 plus the edge-convert half of Phase 4 are
 > implemented end to end: daemon scanner + evaluator, protocol, session RPCs, composer flyout, and the
 > three-pane tab. Typecheck and lint clean; 48 daemon + 10 app unit tests green.
 >

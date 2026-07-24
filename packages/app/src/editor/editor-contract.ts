@@ -121,6 +121,12 @@ export interface EditorController {
   getDoc(): Promise<string>;
   /** Current primary selection (for AI Refactor scoping). */
   getSelection(): Promise<EditorSelection>;
+  /**
+   * The identifier under the caret, or `""` when the caret is not in one.
+   * Drives go-to-definition, whose daemon-side index is name-based — see
+   * word-at-cursor.ts for why nothing smarter belongs here.
+   */
+  getWordAtCursor(): Promise<string>;
   /** Replace the whole document (revert/reload) and reset the dirty baseline. */
   setDoc(doc: string): void;
   /** Reset the dirty baseline without touching the document (after save). */
@@ -166,6 +172,8 @@ export interface CodeEditorProps {
   onFindShortcut?: () => void;
   /** Mod-G inside the editor; the host opens the go-to-line dialog. */
   onGoToLineShortcut?: () => void;
+  /** Mod-B / F12 inside the editor; the host runs go-to-definition. */
+  onGoToDefinitionShortcut?: () => void;
   /**
    * Debounced buffer mirror. The document lives inside the editor (web DOM or
    * native webview); this keeps a recoverable copy outside it so host
@@ -203,7 +211,8 @@ export type EditorWebViewInbound =
   | { type: "goToLine"; line: number }
   | { type: "selectLines"; startLine: number; endLine: number }
   | { type: "getDoc"; requestId: number }
-  | { type: "getSelection"; requestId: number };
+  | { type: "getSelection"; requestId: number }
+  | { type: "getWordAtCursor"; requestId: number };
 
 export type EditorWebViewOutbound =
   | { type: "bridgeReady" }
@@ -213,8 +222,10 @@ export type EditorWebViewOutbound =
   | { type: "saveShortcut" }
   | { type: "findShortcut" }
   | { type: "goToLineShortcut" }
+  | { type: "goToDefinitionShortcut" }
   | { type: "doc"; requestId: number; doc: string }
   | { type: "selection"; requestId: number; selection: EditorSelection }
+  | { type: "wordAtCursor"; requestId: number; word: string }
   // Debounced buffer mirror so a webview render-process death cannot lose
   // edits; the host remounts from the last synced doc. Saves never read it —
   // they always round-trip getDoc for the exact buffer.

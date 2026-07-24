@@ -829,6 +829,12 @@ interface ComposerProps {
   externalKeyboardShift?: boolean;
   /** Optional panel/container layout breakpoint. Defaults to the screen breakpoint. */
   isCompactLayout?: boolean;
+  /**
+   * Height of the box this composer has to fit inside, when the host measures
+   * one. Caps how far the input grows on a large paste. Defaults to the window
+   * height, which overstates the room a short split pane actually has.
+   */
+  viewportHeight?: number;
 }
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
@@ -1035,6 +1041,7 @@ export function Composer({
   footer,
   externalKeyboardShift,
   isCompactLayout: isCompactLayoutOverride,
+  viewportHeight,
 }: ComposerProps) {
   const { t } = useTranslation();
   const iconSize = useIconSize();
@@ -2245,6 +2252,7 @@ export function Composer({
                 onSelectionChange={handleSelectionChange}
                 onFocusChange={handleFocusChange}
                 onHeightChange={onComposerHeightChange}
+                viewportHeight={viewportHeight}
                 inputWrapperStyle={inputWrapperStyle}
                 attachmentSlot={attachmentTray}
               />

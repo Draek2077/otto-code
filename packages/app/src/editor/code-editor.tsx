@@ -64,6 +64,7 @@ export function CodeEditor(props: CodeEditorProps) {
       onSaveShortcut: () => callbacksRef.current.onSaveShortcut?.(),
       onFindShortcut: () => callbacksRef.current.onFindShortcut?.(),
       onGoToLineShortcut: () => callbacksRef.current.onGoToLineShortcut?.(),
+      onGoToDefinitionShortcut: () => callbacksRef.current.onGoToDefinitionShortcut?.(),
       onScrolled: (metrics) => callbacksRef.current.onScrolled?.(metrics),
       onPointerSelect: (select) => callbacksRef.current.onPointerSelect?.(select),
       onDocChanged: () => {
@@ -87,6 +88,7 @@ export function CodeEditor(props: CodeEditorProps) {
     const controller: EditorController = {
       getDoc: () => Promise.resolve(core.getDoc()),
       getSelection: () => Promise.resolve(core.getSelection()),
+      getWordAtCursor: () => Promise.resolve(core.getWordAtCursor()),
       setDoc: (doc) => core.setDoc(doc),
       markClean: () => core.markClean(),
       setFind: (find) => core.setFind(find),

@@ -1181,6 +1181,11 @@ export const zhCN: TranslationResources = {
       composerStateRequired: "Composer 状态必填",
       selectModel: "请选择模型",
     },
+    occupiedDirectory: {
+      title: "此文件夹已有工作区",
+      openExisting: "打开",
+      createWorktree: "创建 worktree",
+    },
     refPicker: {
       startingRef: "起始 ref",
       chooseStart: "选择起始位置",
@@ -1947,6 +1952,12 @@ export const zhCN: TranslationResources = {
     title: "Outline",
     empty: "No symbols in this file.",
     unsupported: "Outline isn't available for this file type.",
+  },
+  goToDefinition: {
+    action: "Go to definition",
+    noSymbol: "Put the caret on a symbol to go to its definition.",
+    notFound: 'No definition found for "{{name}}".',
+    pickerTitle: '{{total}} definitions of "{{name}}"',
   },
   gitFileHistory: {
     open: "Git history",

@@ -34,6 +34,14 @@ packages/app/
 - **`run.log`** — flat text, greppable, everything in order.
 - **`playwright-report/`** — traces, videos, step timelines. `npm run e2e:report`.
 
+Both report roots are overridable so concurrent runs don't overwrite each other mid-write:
+`E2E_REPORT_DIR` for the QA report, `E2E_HTML_REPORT_DIR` for Playwright's. The tier scripts
+already set them (`e2e-report-local-ai/`, `e2e-report-real/`, and the matching
+`playwright-report-*`), so a T2/T3 run never clobbers the T1 report. Trace/video/screenshot
+artifacts are separated a level lower — each Playwright project owns an `outputDir` under
+`test-results/<project>` (or under `E2E_OUTPUT_DIR`, which you should point outside
+`packages/app`; see the Run mechanics section of [iron-out.md](iron-out.md)).
+
 Module grouping is derived from [`coverage-matrix.md`](coverage-matrix.md): the
 reporter reads its `## <n>. <Title>` sections and the backtick-quoted spec names
 inside them. The matrix stays the single source of truth for what belongs where,

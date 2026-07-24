@@ -74,6 +74,7 @@ const mount = (message: Extract<EditorWebViewInbound, { type: "mount" }>): void 
     onSaveShortcut: () => sendToNative({ type: "saveShortcut" }),
     onFindShortcut: () => sendToNative({ type: "findShortcut" }),
     onGoToLineShortcut: () => sendToNative({ type: "goToLineShortcut" }),
+    onGoToDefinitionShortcut: () => sendToNative({ type: "goToDefinitionShortcut" }),
     onDocChanged: scheduleDocSync,
   });
 };
@@ -138,6 +139,14 @@ const receive = (message: EditorWebViewInbound): void => {
       isEmpty: true,
     };
     sendToNative({ type: "selection", requestId: message.requestId, selection });
+    return;
+  }
+  if (message.type === "getWordAtCursor") {
+    sendToNative({
+      type: "wordAtCursor",
+      requestId: message.requestId,
+      word: core?.getWordAtCursor() ?? "",
+    });
     return;
   }
   if (!core) {

@@ -15,11 +15,20 @@ export interface ConfirmDialogInput {
   // "alert" drops the cancel action — one acknowledge button, nothing to
   // decide. Used by `alertDialog` for messages that only need to be seen.
   kind?: "confirm" | "alert";
+  // Optional third action, rendered between cancel and confirm. For dialogs that
+  // refuse something and offer a way forward instead of a dead end — the caller
+  // reads `choice === "alternate"`. Ignored for `kind: "alert"`.
+  alternateLabel?: string;
 }
+
+export type ConfirmDialogChoice = "confirm" | "alternate" | "cancel";
 
 export interface ConfirmDialogResult {
   confirmed: boolean;
   checkboxChecked: boolean;
+  // `confirmed` stays the boolean it always was ("confirm" only), so existing
+  // two-action callers are unaffected by the third action existing.
+  choice: ConfirmDialogChoice;
 }
 
 export interface ConfirmDialogRequest extends ConfirmDialogInput {

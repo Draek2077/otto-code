@@ -39,7 +39,9 @@ function assistantMessages(page: Page) {
 }
 
 test.describe("rewind flow - openai-compatible (local AI)", () => {
-  test.setTimeout(600_000);
+  // `test.setTimeout()` in a describe body does not take effect (the project
+  // timeout wins); `describe.configure` is the form that does.
+  test.describe.configure({ timeout: 420_000 });
 
   test("rewinds the conversation and the session keeps working", async ({ page }) => {
     const seeded = await seedLocalAiAgent({

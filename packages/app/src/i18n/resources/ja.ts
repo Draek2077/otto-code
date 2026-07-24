@@ -1206,6 +1206,11 @@ export const ja: TranslationResources = {
       composerStateRequired: "コンポーザーの状態が必要です",
       selectModel: "モデルを選択してください",
     },
+    occupiedDirectory: {
+      title: "このフォルダには既にワークスペースがあります",
+      openExisting: "開く",
+      createWorktree: "ワークツリーを作成",
+    },
     refPicker: {
       startingRef: "開始Ref",
       chooseStart: "開始点を選択",
@@ -1986,6 +1991,12 @@ export const ja: TranslationResources = {
     title: "Outline",
     empty: "No symbols in this file.",
     unsupported: "Outline isn't available for this file type.",
+  },
+  goToDefinition: {
+    action: "Go to definition",
+    noSymbol: "Put the caret on a symbol to go to its definition.",
+    notFound: 'No definition found for "{{name}}".',
+    pickerTitle: '{{total}} definitions of "{{name}}"',
   },
   gitFileHistory: {
     open: "Git history",

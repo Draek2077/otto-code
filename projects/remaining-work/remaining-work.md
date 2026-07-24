@@ -10,6 +10,10 @@ ships" convention, so they carry no open items.)
 When you finish an item, strike it here **and** in its source doc. When a whole
 source doc is drained, fold its keepers into `docs/` and delete the folder.
 
+**For build order, see [prioritization.md](prioritization.md)** — this file is the
+inventory of what is open; that one scores every initiative (scope / difficulty /
+impact), records the four ordering traps, and lays out the Wave 0–4 sequence.
+
 Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation/decision · ⚪ charter (unbuilt)
 
 ---
@@ -22,10 +26,13 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation/decision · �
   capability streamed into a side panel/sheet. Not Refine (read-only). Open:
   render target, throwaway vs real turn, how much surrounding context. Shares the
   focused-controller dispatch path with the shortcut overhaul's "Full" stage.
-- 🟡 **Go-to-definition — client bridge + multi-hit picker** — `projects/todos/editor-go-to-definition.md`.
-  Daemon `code.symbols` RPC (behind `features.codeIndex`) is shipped; the client
-  never calls it. Add word-under-cursor resolution, a "Go to definition" action,
-  and a picker (reuse `refactor-dialog.tsx`) for >1 hit.
+- ✅ ~~**Go-to-definition — client bridge + multi-hit picker**~~ — SHIPPED.
+  `getWordAtCursor` editor command (`word-at-cursor.ts`, unit-tested) + a
+  toolbar action and Mod-B/F12 binding calling `code.symbols`; one hit jumps,
+  several open `definition-picker-dialog.tsx`, none is a plain toast. Gated on
+  `features.codeIndex` (`use-code-index-feature.ts`), which also corrected the
+  outline and fuzzy-finder gates that were reading `projectSearch`. Folded into
+  [docs/text-editor.md](../../docs/text-editor.md).
 - 🔴 **Mermaid doesn't render in markdown preview** — batch-07-23. Chartered by
   `projects/file-rendering/file-rendering.md`.
 - 🔵 **Verify caret auto-scroll follow + search-match-scroll fixes** — batch-07-23.
@@ -88,8 +95,12 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation/decision · �
 
 - 🟡 **Queued messages should merge into one send** — batch-07-23. Interacts with
   `projects/steer-queue/`.
-- 🔴 **Large pasted code blocks overflow the composer** — batch-07-23. Pushes the
-  send button off-screen; needs max-height + internal scroll.
+- ~~🔴 **Large pasted code blocks overflow the composer** — batch-07-23. Pushes the
+  send button off-screen; needs max-height + internal scroll.~~ — FIXED. The cap
+  and the internal scroll existed but were measured against the window, not the
+  pane, and covered only the text input. `composer/input/max-height.ts` now bounds
+  the whole composer against a host-measured viewport (0.5 regular / 0.4 compact,
+  less 68px of chrome). See `projects/bug-batch-2026-07-23/` item 13.
 
 ## Performance / resource management
 
@@ -127,6 +138,47 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation/decision · �
   exist yet. Overlaps the `visualizer-node-richness` context-composition ring — do the
   instrumentation once. Also deferred there: cursor pagination UI beyond "load more",
   and provider/kind filters. See `docs/activity-stats.md`.
+- ⚫ **Duplicate base workspaces — CLOSED AND ARCHIVED, do not re-open.**
+  Investigation closed 2026-07-24; verdict **prevent and steer to a worktree**,
+  which is already the shipped policy. Three execution gaps fixed the same day:
+  the client steer (`new-workspace-occupied-directory.ts` — Open it / Create a
+  worktree), the schedule-reveal occupancy bypass (`schedule-workspace-reveal.ts`
+  — reattach instead of reveal), and the stale same-`cwd` e2e tests (two of them,
+  plus the Windows `EPERM` teardown that was masking the failures). Behaviour is
+  documented in `docs/workspace-lifecycle.md`. **Still deferred by choice:**
+  workspace-level reconciliation of pre-guard duplicates — no standing duplicates
+  observed, so it stays unbuilt. Folder in
+  `projects/_archive/duplicate-base-workspaces/`; listed here only so it is not
+  rediscovered as new work.
+- 🔴 **Metro dies mid-E2E when Playwright churns `packages/app/test-results`** — found
+  running the chat/composer iron-out batch (2026-07-24). Playwright's default
+  `outputDir` sits **inside Metro's watched project root**, so when a run deletes its
+  `.playwright-artifacts-N/traces/resources` scratch dir, Metro's watcher throws
+  `ENOENT: ... watch '...test-results\.playwright-artifacts-0\traces\resources'`, the
+  Expo CLI rethrows, and the bundler exits. Every later navigation then fails with
+  `ERR_CONNECTION_REFUSED`, so specs report bogus navigation failures instead of their
+  real result. Hits any second run in a checkout that still has artifacts on disk (and
+  `test-results` can be left `Device or resource busy`, so it cannot simply be deleted).
+  Workaround today: `E2E_OUTPUT_DIR=<path outside packages/app>`. Real fix: default
+  `outputRoot` outside the Metro root, or add `test-results` to a Metro `blockList`
+  (`packages/app` currently has **no** `metro.config.js`). `playwright.config.ts:10-17`
+  already documents the sibling artifact-collision hazard — this is the same root cause
+  killing the bundler rather than just the trace.
+- 🔵 **Pinned metadata-generation providers silently fall through when the provider
+  can't do a tool-less completion** — found via `chat-auto-title.spec.ts` (2026-07-24).
+  Only `claude` and `openai-compat` implement `generateBareCompletion`; every other
+  provider throws in `AgentManager.generateBareCompletion`
+  (`agent-manager.ts:1794`) and the ladder moves on — by design
+  (`generateStructuredAgentResponseWithFallback`). Consequence: a host that pins
+  `metadataGeneration.providers` to such a provider gets its pin quietly bypassed and
+  **another provider billed**. Confirmed live: the spec pins the chain to `mock`, the
+  daemon logs `Structured generation: provider failed, trying next` and then
+  `succeeded after fallback` with `provider: "claude"` — a real Claude call. Two
+  angles: (a) product — should a pinned-but-incapable provider warn/surface rather than
+  silently re-route spend? (b) test harness — the mock provider has no
+  `generateBareCompletion`, so **no E2E can pin metadata generation deterministically**
+  (titles, commit messages, branch names, voice cues, run summaries). The auto-title
+  spec is therefore not hermetic and would likely fail on a runner without Claude auth.
 - 🔵 **Do models volunteer suggested tasks at Claude Desktop's rate?** — from the
   drained suggested-tasks work. The trigger-first description rewrite (2026-07-20)
   fixed reachability; the open question is unprompted call _rate_ in real use. If it
@@ -147,7 +199,7 @@ file-rendering · web-search-providers · site-demos · personality-memory ·
 diff-base · preview-file-tabs · total-token-accounting · workflow-decomposition ·
 visualizer-node-richness (context ring) · history-management · context-management ·
 refine · visualizer-pip · upstream-subagent-convergence ·
-duplicate-base-workspaces · git-hosting-providers (GitLab+) ·
+git-hosting-providers (GitLab+) ·
 git-file-history (presentation) · e2e-qa-coverage (build-out) ·
 marketing-strategy · outreach _(non-product)_.
 

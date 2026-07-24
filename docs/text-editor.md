@@ -25,7 +25,7 @@ Three capability flags in `server_info.features.*` (`packages/protocol/src/messa
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `features.textEditor`    | The editable buffer + save/revert/dirty guard, disk-sync watching, and the in-file find/replace strip (Phases 1–2). AI Refactor rides on this flag too — there is deliberately **no** separate `aiRefactor` flag; the refactor entry lives on the editor. |
 | `features.projectSearch` | Project-wide search and replace (Phase 3). Search and replace shipped together under this one flag.                                                                                                                                                       |
-| `features.codeIndex`     | Navigation (Phase 4): fuzzy file finder, document outline, and the symbol index behind `code.symbols` / `code.outline` / `code.list_files`.                                                                                                               |
+| `features.codeIndex`     | Navigation (Phase 4): fuzzy file finder, document outline, go-to-definition, and the symbol index behind `code.symbols` / `code.outline` / `code.list_files`. Read it through `use-code-index-feature.ts` — every `code.*` caller shares that one gate.   |
 
 ## Daemon file RPCs
 
@@ -66,6 +66,11 @@ Deliberately ctags-style, **no LSP** (LSP means per-language external server pro
 - **Fuzzy file finder** — `listWorkspaceFiles` returns the gitignore-aware workspace listing (cap 20,000 files); the client does the fuzzy match. Highest value-per-effort, and a top-bar action on mobile (faster than tree-walking on touch).
 - **Symbol index** — a name → `[{ path, line, kind }]` map built by walking the same Lezer parse trees the highlighter uses, via **`extractSymbols` from `@otto-code/highlight`** (`packages/highlight/src/symbols.ts`), which reuses the highlighter's trees. Built **lazily per workspace**, cached with a **30 s TTL** (`INDEX_TTL_MS`) and **invalidated on writes/replaces** (`invalidate(root)`); indexing caps at 5,000 files / 1 MB each. Exposed as `code.symbols` (lookup) and the pure lookup helper `findCodeSymbols`.
 - **Document outline** — `getFileOutline` parses a single file's current buffer per request (cheap, uncached) via the same `extractSymbols`, exposed as `code.outline`. Client outline UI: `editor-outline-sheet.tsx` (bottom sheet on mobile).
+- **Go to definition** — the editor toolbar action (and `Mod-B` / `F12`, both bound because muscle memory splits between JetBrains and VS Code) resolves the identifier under the caret and asks `code.symbols` for it. `use-go-to-definition.ts` turns the answer into one of three outcomes, and the three-way split is the whole design: **one hit jumps** (in-buffer via `goToLine` when the definition is in the open file, otherwise by opening the target file at that line), **several hits open a picker** (`definition-picker-dialog.tsx`, file + line per row) because a name-based index with no type resolution genuinely cannot choose, and **no hits is a plain toast, never an error tone** — the ctags-style walker only sees languages it has a Lezer grammar for, so "not found" is an ordinary answer.
+
+  The identifier itself comes from `getWordAtCursor`, a pull command on `EditorController` alongside `getSelection`, backed by the pure, unit-tested `word-at-cursor.ts`. A caret touching a word on either side resolves to that word; a token starting with a digit resolves to nothing, since a number literal is never a definition. Nothing smarter belongs there — the lookup on the other end could not honour the extra precision.
+
+  One path-shape trap worth keeping: `code.symbols` answers **relative to the workspace it indexed**, while `openFileInWorkspace` anchors a relative path to the **pane's** workspace. Those are the same root for an ordinary tab and different roots for a linked project's file (gated-multi-root), so `file-tab-pane.tsx` sends an absolute path when they diverge and lets the cross-project open gate re-derive the owner.
 
 ## Editor engine: CodeMirror 6 + platform split
 
@@ -139,6 +144,8 @@ Where each value comes from — worth knowing before adding a fifth item, becaus
 
 Adding a push callback to the editor means seven touchpoints, all of which must land together or native silently loses the feature: the payload type + `CodeEditorProps` and the `EditorWebViewOutbound` variant (`editor-contract.ts`), `EditorCoreOptions` + the `updateListener` emit + an initial emit after the view is constructed (`editor-core.ts`), the web host forward (`code-editor.tsx`), the webview `sendToNative` (`webview/editor-webview-entry.ts`), and the native `handleMessage` case (`code-editor.native.tsx`). **Then rerun `npm run build:editor-webview`** — the webview bundle is a generated, committed file, so native runs whatever was last built, not your source.
 
+A **pull command** (`getDoc`, `getSelection`, `getWordAtCursor`) has the same trap and a different list: an `EditorController` method plus a request/reply pair on `EditorWebViewInbound`/`Outbound` (`editor-contract.ts`), the `EditorCore` implementation (`editor-core.ts`), the web host's synchronous `Promise.resolve` bridge (`code-editor.tsx`), the webview's `receive` branch answering with the `requestId` (`webview/editor-webview-entry.ts`), and — on native — a pending-request map with a timeout, a `settlePendingReply` branch, and unmount rejection (`code-editor.native.tsx`). That native trio is why the message switches there are split into `settlePendingReply` / `forwardPushedEvent`: every new command adds a branch to exactly one of them. Rerun the webview build the same way.
+
 ## The unified file tab and view modes
 
 Originally two tab kinds (a `file` viewer and an `editor` buffer) were planned; they were folded into a **single `file` tab kind** hosting three views behind an icon mode bar, **`FileViewModeBar`** (`packages/app/src/components/file-view-mode-bar.tsx`, hosted by `file-tab-pane.tsx`):
@@ -169,12 +176,11 @@ From there the change flows through the ordinary composer/agent path: the user r
 
 Preserved here so nothing is lost — these were explicitly scoped out of the shipped Phases 1–5:
 
-1. **Go-to-definition client bridge + multi-hit picker.** The daemon half is fully shipped and tested: `code.symbols` / `findCodeSymbols` under `features.codeIndex`. Only the editor client wiring is missing — a word-under-cursor command, the `code.symbols` call, and a multi-hit picker (single hit jumps, >1 shows a JetBrains-style picker). Small, client-side. Extracted as a pull-off task: **`projects/todos/editor-go-to-definition.md`**.
-2. **Read-only viewer gutter line-range touch selection.** The charter's _hard mobile requirement_ — tap a line number, drag/tap a second to extend a line range, in both viewer and editor, so a refactor can be scoped one-handed. Deep CM6/viewer work; **not built**. Until it lands, mobile refactor scoping relies on character-precise selection.
-3. **Direct agent auto-spawn that skips the composer.** Deliberately deferred, not merely unfinished: it touches the central agent-creation path, and the safe-core design routes through the composer/draft path on purpose. Any future version must preserve a user review step.
+1. **Read-only viewer gutter line-range touch selection.** The charter's _hard mobile requirement_ — tap a line number, drag/tap a second to extend a line range, in both viewer and editor, so a refactor can be scoped one-handed. Deep CM6/viewer work; **not built**. Until it lands, mobile refactor scoping relies on character-precise selection.
+2. **Direct agent auto-spawn that skips the composer.** Deliberately deferred, not merely unfinished: it touches the central agent-creation path, and the safe-core design routes through the composer/draft path on purpose. Any future version must preserve a user review step.
 
 Also parked from the original charter: **line comments in editor/viewer** (Phase 6) — workspace-scoped drafts bound to no agent at creation, surfaced as an "N code comments" pill on any composer in that workspace, included at send time (same decouple-collect-from-send model as the diff-review draft store).
 
 ## Testing
 
-Daemon RPCs go through the ad-hoc daemon harness ([ad-hoc-daemon-testing.md](ad-hoc-daemon-testing.md)); editor-buffer and conflict-policy logic and `refactor-prompt.ts` are pure unit tests (`editor-buffer-state.test.ts`, `refactor-prompt.test.ts`, `workspace-files-session.test.ts`, highlight `symbols.test.ts`). Run only changed test files.
+Daemon RPCs go through the ad-hoc daemon harness ([ad-hoc-daemon-testing.md](ad-hoc-daemon-testing.md)); editor-buffer and conflict-policy logic and `refactor-prompt.ts` and `word-at-cursor.ts` are pure unit tests (`editor-buffer-state.test.ts`, `refactor-prompt.test.ts`, `word-at-cursor.test.ts`, `workspace-files-session.test.ts`, highlight `symbols.test.ts`). Run only changed test files.

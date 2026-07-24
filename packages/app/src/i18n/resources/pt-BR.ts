@@ -1209,6 +1209,11 @@ export const ptBR: TranslationResources = {
       composerStateRequired: "O estado do composer é obrigatório",
       selectModel: "Selecione um modelo",
     },
+    occupiedDirectory: {
+      title: "Esta pasta já tem um espaço de trabalho",
+      openExisting: "Abrir",
+      createWorktree: "Criar worktree",
+    },
     refPicker: {
       startingRef: "Ref inicial",
       chooseStart: "Escolha de onde começar",
@@ -1992,6 +1997,12 @@ export const ptBR: TranslationResources = {
     title: "Outline",
     empty: "No symbols in this file.",
     unsupported: "Outline isn't available for this file type.",
+  },
+  goToDefinition: {
+    action: "Go to definition",
+    noSymbol: "Put the caret on a symbol to go to its definition.",
+    notFound: 'No definition found for "{{name}}".',
+    pickerTitle: '{{total}} definitions of "{{name}}"',
   },
   gitFileHistory: {
     open: "Git history",

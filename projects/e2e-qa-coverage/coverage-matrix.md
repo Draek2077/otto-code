@@ -87,38 +87,40 @@ least one row — `node scripts/e2e-coverage-check.mjs` enforces both directions
 
 ## 5. Agent lifecycle & control
 
-| Behavior                                                                                                   | Status | Specs / plan                                                                                                                                                               | Tier | Pri |
-| ---------------------------------------------------------------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --- |
-| Model switch requires/handles restart                                                                      | ✅     | `workspace-model-restart.spec.ts`, `workspace-model-regressions.spec.ts`                                                                                                   | T1   | —   |
-| Sidebar model display                                                                                      | ✅     | `sidebar-model-b.spec.ts`                                                                                                                                                  | T1   | —   |
-| Codex plan approval flow                                                                                   | ✅     | `codex-plan-approval.spec.ts`                                                                                                                                              | T1   | —   |
-| Archive tab semantics                                                                                      | ✅     | `archive-tab.spec.ts`                                                                                                                                                      | T1   | —   |
-| Subagent detach                                                                                            | ✅     | `subagent-detach.spec.ts`                                                                                                                                                  | T1   | —   |
-| Rewind menu UI contract                                                                                    | ✅     | `rewind-menu.ui-contract.spec.ts`                                                                                                                                          | T1   | —   |
-| Rewind end-to-end per provider                                                                             | ✅     | `rewind-flow.claude.real.spec.ts`, `rewind-flow.codex.real.spec.ts`, `rewind-flow.opencode.real.spec.ts`, `rewind-flow.pi.real.spec.ts` (+ shared `rewind-flow.shared.ts`) | T3   | —   |
-| Session import (OpenCode)                                                                                  | ✅     | `import-session.opencode.real.spec.ts`                                                                                                                                     | T3   | —   |
-| Permission prompt approve/deny round-trip (mock synthetic tool permission)                                 | ✅     | `permission-prompt-roundtrip.spec.ts`                                                                                                                                      | T1   | —   |
-| Safe unattended: deny-responder answers hidden prompts; hidden run stays hidden; promote-on-error reveals  | ✅     | `safe-unattended-deny-responder.spec.ts`                                                                                                                                   | T1   | —   |
-| Locked mode badge for unattended/dontAsk agents (Auto→Haiku coercion itself is provider-side, unit-tested) | ✅     | `auto-mode-haiku-coercion.spec.ts`                                                                                                                                         | T1   | —   |
-| Rewind on openai-compat provider (conversation rewind)                                                     | 🟡     | `rewind-flow.openai-compat.local.spec.ts`                                                                                                                                  | T2   | P1  |
-| Observed subagents: read-only track rows appear for provider subagents                                     | ❌     | mock-agent subagent events → rows                                                                                                                                          | T1   | P1  |
-| Subagent liveness (elapsed, current tool, tool count)                                                      | ❌     | pending charter ship                                                                                                                                                       | T1   | P2  |
+| Behavior                                                                                                     | Status | Specs / plan                                                                                                                                                               | Tier | Pri |
+| ------------------------------------------------------------------------------------------------------------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --- |
+| Model switch requires/handles restart                                                                        | ✅     | `workspace-model-restart.spec.ts`, `workspace-model-regressions.spec.ts`                                                                                                   | T1   | —   |
+| Sidebar model display                                                                                        | ✅     | `sidebar-model-b.spec.ts`                                                                                                                                                  | T1   | —   |
+| Codex plan approval flow                                                                                     | ✅     | `codex-plan-approval.spec.ts`                                                                                                                                              | T1   | —   |
+| Archive tab semantics                                                                                        | ✅     | `archive-tab.spec.ts`                                                                                                                                                      | T1   | —   |
+| Subagent detach                                                                                              | ✅     | `subagent-detach.spec.ts`                                                                                                                                                  | T1   | —   |
+| Rewind menu UI contract                                                                                      | ✅     | `rewind-menu.ui-contract.spec.ts`                                                                                                                                          | T1   | —   |
+| Rewind end-to-end per provider                                                                               | ✅     | `rewind-flow.claude.real.spec.ts`, `rewind-flow.codex.real.spec.ts`, `rewind-flow.opencode.real.spec.ts`, `rewind-flow.pi.real.spec.ts` (+ shared `rewind-flow.shared.ts`) | T3   | —   |
+| Session import (OpenCode)                                                                                    | ✅     | `import-session.opencode.real.spec.ts`                                                                                                                                     | T3   | —   |
+| Permission prompt approve/deny round-trip (mock synthetic tool permission)                                   | ✅     | `permission-prompt-roundtrip.spec.ts`                                                                                                                                      | T1   | —   |
+| Safe unattended: deny-responder answers hidden prompts; a content-less failure archives its hidden workspace | ✅     | `safe-unattended-deny-responder.spec.ts`                                                                                                                                   | T1   | —   |
+| Promote-on-error WITH content reveals the failed run's workspace                                             | ❌     | needs a mock scenario that streams content then errors (today's mock can only fail before producing any)                                                                   | T1   | P2  |
+| Locked mode badge for unattended/dontAsk agents (Auto→Haiku coercion itself is provider-side, unit-tested)   | ✅     | `auto-mode-haiku-coercion.spec.ts`                                                                                                                                         | T1   | —   |
+| Rewind on openai-compat provider (conversation rewind)                                                       | ✅     | `rewind-flow.openai-compat.local.spec.ts`                                                                                                                                  | T2   | —   |
+| Observed subagents: read-only track rows appear for provider subagents                                       | ❌     | mock-agent subagent events → rows                                                                                                                                          | T1   | P1  |
+| Subagent liveness (elapsed, current tool, tool count)                                                        | ❌     | pending charter ship                                                                                                                                                       | T1   | P2  |
 
 ## 6. Providers & models
 
-| Behavior                                                                                             | Status | Specs / plan                                                        | Tier | Pri |
-| ---------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------- | ---- | --- |
-| ACP provider catalog                                                                                 | ✅     | `acp-provider-catalog.spec.ts`                                      | T1   | —   |
-| Provider settings refresh                                                                            | ✅     | `provider-settings-refresh.spec.ts`                                 | T1   | —   |
-| Provider usage settings + tooltip                                                                    | ✅     | `provider-usage-settings.spec.ts`, `provider-usage-tooltip.spec.ts` | T1   | —   |
-| openai-compat live loop: prompt → native tool call → file on disk → change visible                   | ✅     | `openai-compat-loop.local.spec.ts`                                  | T2   | —   |
-| openai-compat permission gating: Always Ask prompts on write; deny blocks, allow proceeds            | ✅     | `openai-compat-permissions.local.spec.ts`                           | T2   | —   |
-| openai-compat compaction (/compact marker; local model stalls on post-compaction turn)               | 🟡     | `openai-compat-compaction.local.spec.ts`                            | T2   | P1  |
-| openai-compat image attachment reaches model (vision)                                                | ❌     | needs a vision-capable pinned model; design in local-ai-tier.md     | T2   | P1  |
-| openai-compat max tool rounds honored (provider config, live rebuild, exact cap message)             | ✅     | `openai-compat-max-rounds.local.spec.ts`                            | T2   | —   |
-| openai-compat resume after daemon restart (tool-call badge absent — model didn't reliably tool-call) | 🟡     | `openai-compat-resume.local.spec.ts`                                | T2   | P1  |
-| Custom provider profiles (Z.AI / Qwen / custom binaries) render + validate                           | ❌     | catalog/settings-level assertions, no live calls                    | T1   | P2  |
-| Effort selector per-model (effort unification)                                                       | ❌     | model picker shows correct effort levels per catalog                | T1   | P2  |
+| Behavior                                                                                       | Status | Specs / plan                                                        | Tier | Pri |
+| ---------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------- | ---- | --- |
+| ACP provider catalog                                                                           | ✅     | `acp-provider-catalog.spec.ts`                                      | T1   | —   |
+| Provider settings refresh                                                                      | ✅     | `provider-settings-refresh.spec.ts`                                 | T1   | —   |
+| Provider usage settings + tooltip                                                              | ✅     | `provider-usage-settings.spec.ts`, `provider-usage-tooltip.spec.ts` | T1   | —   |
+| openai-compat live loop: prompt → native tool call → file on disk → change visible             | ✅     | `openai-compat-loop.local.spec.ts`                                  | T2   | —   |
+| openai-compat permission gating: Always Ask prompts on write; deny blocks, allow proceeds      | ✅     | `openai-compat-permissions.local.spec.ts`                           | T2   | —   |
+| openai-compat compaction (/compact marker; session still completes a follow-up turn)           | ✅     | `openai-compat-compaction.local.spec.ts`                            | T2   | —   |
+| openai-compat image attachment reaches model (vision)                                          | ❌     | needs a vision-capable pinned model; design in local-ai-tier.md     | T2   | P1  |
+| openai-compat max tool rounds honored (provider config, live rebuild, exact cap message)       | ✅     | `openai-compat-max-rounds.local.spec.ts`                            | T2   | —   |
+| openai-compat resume after daemon restart (prompt + tool call replay, on disk and in the chat) | ✅     | `openai-compat-resume.local.spec.ts`                                | T2   | —   |
+| Settled action run collapses into one action group (tool row only inside the expanded group)   | 🟡     | asserted incidentally by `openai-compat-resume.local.spec.ts`       | T1   | P2  |
+| Custom provider profiles (Z.AI / Qwen / custom binaries) render + validate                     | ❌     | catalog/settings-level assertions, no live calls                    | T1   | P2  |
+| Effort selector per-model (effort unification)                                                 | ❌     | model picker shows correct effort levels per catalog                | T1   | P2  |
 
 ## 7. Personalities & teams
 
@@ -126,7 +128,7 @@ least one row — `node scripts/e2e-coverage-check.mjs` enforces both directions
 | ----------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------- | ---- | --- |
 | Personality CRUD in settings (tabbed editor: name, role, prompt, provider/model)                      | ✅     | `personalities-settings-crud.spec.ts`       | T1   | —   |
 | Personality applied on new chat (provider/model/mode/personality stamped on agent)                    | ✅     | `personality-new-chat-apply.spec.ts`        | T1   | —   |
-| Personality preserved on new-chat autosubmit (composer blocks same-dir; needs fresh-project target)   | 🟡     | `personality-autosubmit-regression.spec.ts` | T1   | P1  |
+| Personality preserved on new-chat autosubmit (create targets a workspace-free project)                | ✅     | `personality-autosubmit-regression.spec.ts` | T1   | —   |
 | Live personality switch on running agent (agent.personality.set)                                      | ✅     | `personality-live-switch.spec.ts`           | T1   | —   |
 | Model picker personality section/drill-down (rows exercised; dedicated submenu assertions still open) | ✅     | `personality-new-chat-apply.spec.ts`        | T1   | —   |
 | Teams: create via editor, activate, switch, host-scoped activeTeamId                                  | ✅     | `agent-teams-switcher.spec.ts`              | T1   | —   |
@@ -188,14 +190,14 @@ least one row — `node scripts/e2e-coverage-check.mjs` enforces both directions
 
 ## 12. Schedules & runs
 
-| Behavior                                                                   | Status | Specs / plan                             | Tier | Pri |
-| -------------------------------------------------------------------------- | ------ | ---------------------------------------- | ---- | --- |
-| Schedule edit form model hydration                                         | ✅     | `schedules-edit-model-hydration.spec.ts` | T1   | —   |
-| Schedule project targeting                                                 | ✅     | `schedules-project-target.spec.ts`       | T1   | —   |
-| Schedule create full flow (form → daemon record → card → delete)           | ✅     | `schedule-create-flow.spec.ts`           | T1   | —   |
-| Runs screen: run card renders, Visualize opens run-scoped tab              | ✅     | `runs-screen.spec.ts`                    | T1   | —   |
-| Hidden schedule runs stay hidden; promote-on-error reveals live in sidebar | ✅     | `schedule-hidden-runs-promote.spec.ts`   | T1   | —   |
-| Suggested tasks chips (spawn_task → chip → session)                        | ❌     | seed chip, click, assert session created | T1   | P2  |
+| Behavior                                                                                              | Status | Specs / plan                             | Tier | Pri |
+| ----------------------------------------------------------------------------------------------------- | ------ | ---------------------------------------- | ---- | --- |
+| Schedule edit form model hydration                                                                    | ✅     | `schedules-edit-model-hydration.spec.ts` | T1   | —   |
+| Schedule project targeting                                                                            | ✅     | `schedules-project-target.spec.ts`       | T1   | —   |
+| Schedule create full flow (form → daemon record → card → delete)                                      | ✅     | `schedule-create-flow.spec.ts`           | T1   | —   |
+| Runs screen: run card renders, Visualize opens run-scoped tab                                         | ✅     | `runs-screen.spec.ts`                    | T1   | —   |
+| Hidden schedule runs: healthy stays hidden, content-less failure archived, kept success revealed live | ✅     | `schedule-hidden-runs-promote.spec.ts`   | T1   | —   |
+| Suggested tasks chips (spawn_task → chip → session)                                                   | ❌     | seed chip, click, assert session created | T1   | P2  |
 
 ## 13. Visualizer
 

@@ -79,7 +79,22 @@ multi-step ambiguity. Rules:
 
 ## Status
 
-Phase 2 infra is BUILT (uncommitted): `local-ai` Playwright project (240s timeout, 1 retry),
-global-setup preflight + provider injection (`maxToolRounds: 25`), `test:e2e:local-ai` npm
-script, `helpers/local-ai.ts`, repo-root `.env.test` populated. All planned specs below are
-written but not yet run — iron-out pass pending.
+Phase 2 infra is BUILT: `local-ai` Playwright project (240s project timeout, 1 retry, its own
+`outputDir`), global-setup preflight + provider injection (`maxToolRounds: 25`),
+`test:e2e:local-ai` npm script, `helpers/local-ai.ts`, repo-root `.env.test` populated.
+
+**6/6 written specs are green** (2026-07-24). The whole batch runs in ~1.2 min of specs on a
+warm model, on top of the ~2 min global-setup cold start. Only the vision spec is unwritten —
+it waits on a vision-capable pinned model. Iron-out details in `iron-out.md`.
+
+Two gotchas that cost the most time, worth knowing before touching this tier:
+
+- **Never share `test-results/` with another Playwright run.** Playwright wipes a test's output
+  dir as the test starts, so a concurrent run deletes your in-flight trace and the failure is
+  reported as `ENOENT ... trace.zip` rather than the real assertion. Projects now each own an
+  `outputDir`; pass `E2E_OUTPUT_DIR` (outside `packages/app`) when two agents run the same
+  project.
+- **A settled tool call may not render as `tool-call-badge`.** On a freshly loaded chat every
+  action is settled, and a run of 2+ settled actions (e.g. a reasoning block plus the tool call
+  a thinking model emits) collapses into one `action-group-badge`; the tool row only exists
+  inside the expanded group. Assert on either shape — see `openai-compat-resume.local.spec.ts`.

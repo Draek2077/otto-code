@@ -61,7 +61,19 @@ const SECTION_LABELS = {
 
 export type SettingsSection = keyof typeof SECTION_LABELS | "projects";
 
-type HostSection = "connections" | "agents" | "workspaces" | "providers" | "usage" | "host";
+// Mirrors HOST_SECTION_SLUGS in @/utils/host-routes. Personalities and teams
+// live under "teams" (split out of "agents"); agent-facing tool surfaces live
+// under "tools".
+type HostSection =
+  | "connections"
+  | "agents"
+  | "teams"
+  | "tools"
+  | "workspaces"
+  | "providers"
+  | "usage"
+  | "terminals"
+  | "host";
 
 export async function openSettingsSection(page: Page, section: SettingsSection): Promise<void> {
   const sidebar = page.getByTestId("settings-sidebar");

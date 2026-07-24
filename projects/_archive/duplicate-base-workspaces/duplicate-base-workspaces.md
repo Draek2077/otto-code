@@ -1,5 +1,14 @@
 # Investigation: duplicate non-worktree workspaces on the same base folder
 
+> **ARCHIVED 2026-07-24 — closed, do not re-open.** Verdict: **prevent and steer
+> to a worktree**. Items 1–3 of the revised recommendation were implemented the
+> same day (client steer, schedule-reveal reattach, stale e2e tests + the `EPERM`
+> teardown that was masking them). Item 4 (workspace-level reconciliation of
+> pre-guard duplicates) stays deliberately deferred. Current behaviour is
+> documented in [docs/workspace-lifecycle.md](../../../docs/workspace-lifecycle.md)
+> — read that first; everything below is the reasoning that produced it, kept for
+> the record.
+
 Users are ending up with **multiple non-worktree workspaces pointing at the same
 base folder**. Run this as its own session.
 
@@ -122,6 +131,13 @@ needed:
 - **15 of those are now visible** (`hidden` false), co-existing with the
   permanently-visible `"Qwen Development"` workspace on that same cwd
 
+> **Correction (2026-07-24 re-verification):** that last bullet conflated
+> `hidden: false` with _live_. Re-measured, 23 records on that cwd have
+> `hidden: false` but **22 are archived — exactly 1 is live and visible**. The
+> duplicates were real and did co-exist, but the user manually drained them. See
+> the re-verification section at the end; the conclusion is unchanged and the
+> reveal-path finding gets stronger, not weaker.
+
 That is the charter's scenario, occurring in production data, entirely via the
 reveal path. Note also that unnamed duplicates default to the **branch name** —
 the registry contains several workspaces literally titled `"main"` and
@@ -219,3 +235,125 @@ Keep **prevent and steer**. Finish it:
   friction, the guard needs a cheap escape hatch rather than a hard refusal.
 - If a future non-schedule path legitimately needs two visible workspaces on one
   cwd, the invariant is wrong rather than the reveal path.
+
+---
+
+## Re-verification — 2026-07-24
+
+Re-ran the verdict against current `main`. **The recommendation stands: prevent
+and steer to a worktree.** Every structural claim above still holds in code. Two
+factual claims needed correcting, and one gap was missed entirely — the missed
+gap is now the highest-value item on the list.
+
+### Confirmed unchanged
+
+| Claim                                                                        | Where                                                                      |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Guard exists and rejects a 2nd visible workspace on an occupied dir          | `otto-worktree-service.ts:340-352`                                         |
+| Guard is wired to the user-facing RPC, not just an internal helper           | `session.ts:6091` maps it to `workspace_directory_occupied`                |
+| Hidden schedule-run records are exempt                                       | `findOccupyingWorkspaceForCwd` skips `archivedAt \|\| hidden` (`:319`)     |
+| `revealScheduleWorkspaceExternal` flips `hidden → false` with no re-check    | `bootstrap.ts:1416-1427` — the whole body, no occupancy call               |
+| Reconciler has no workspace-level dedup, and _preserves_ workspaces on merge | `workspace-reconciliation-service.ts:230-249`                              |
+| Branch labels stay honest, just identical across siblings                    | `reconcileProject` overwrites `branch` per workspace (`:348`)              |
+| The isolation e2e test encodes the opposite policy                           | `workspace-same-cwd-isolation.e2e.test.ts:456-509` creates a 2nd _and_ 3rd |
+
+### Correction 1 — the standing backlog is empty, so fix #2 is speculative
+
+Fresh measurement of `packages/desktop/.dev/otto-home/projects/workspaces.json`:
+
+- 90 records (up 1); 88 `local_checkout`, 1 `worktree`, 1 `directory`
+- 75 still on the `otto-code` directory — but of those, **1 is live and visible**
+  (`"Qwen Development"`), 52 are hidden, 74 are archived
+- **0 directories anywhere in the registry currently hold more than one visible,
+  active workspace**
+
+The 22 archived-but-`hidden: false` records are the reveal path's fingerprints:
+hourly `"Artifact refresh"` / `"Artifacts refresh"` / `"Artifact maintenance"`
+runs, revealed onto the occupied directory, then cleared by hand — six of them
+archived inside the same 5-second burst at `2026-07-18T23:37`, which is what a
+user mass-selecting rows in the sidebar looks like.
+
+Two consequences:
+
+- **Fix #1 (reveal-time re-check) gets stronger.** This is not a theoretical
+  hole. It minted ~22 unwanted visible rows across ~2 days of hourly runs and
+  cost the user a manual cleanup pass. It is a recurring tax, not a one-off.
+- **Fix #2 (reconcile the legacy backlog) gets weaker and should drop in
+  priority.** There is no standing backlog to migrate here — the user already
+  drained it manually. Writing a `merged_duplicate_workspace` reconciliation rule
+  that mutates workspace records, migrates agents and terminals, and archives
+  rows is a genuinely risky piece of automation to build against zero observed
+  data. Ship #1 first; only build #2 if duplicates are still found in the wild
+  afterwards.
+
+Caveat on the clean reading: the newest record on that cwd is
+`2026-07-19T00:00`, so no schedule has run in five days. The zero-duplicate state
+reflects an idle schedule plus a manual cleanup, **not** a fix. Re-enable the
+hourly schedule and the duplicates come back.
+
+### Correction 2 — "steer" was never built; only "prevent" shipped
+
+This is the miss. `workspace_directory_occupied` has **zero handlers anywhere in
+`packages/app/src`** — no error-code branch, no dedicated UI. The client renders
+the daemon's raw message string:
+
+> This directory already backs the workspace "X". Open that workspace instead, or
+> archive it before creating a new one here.
+
+The copy is good, but it is a dead end: there is no button to open workspace X,
+and **no offer to create a worktree instead** — which is the entire point of
+"steer to a worktree". The user is told what they cannot do and left to find the
+alternative themselves.
+
+Meanwhile individual internal callers each hand-roll their own reuse workaround
+rather than surfacing the error — `bootstrap.ts:1150` for MCP `create_agent`,
+loops, and agent-spawned terminals, and `new-workspace-view-documentation.ts:36`
+for the README button, whose comment says it plainly: _"without this the button
+just surfaces that error instead of opening the file the user asked for."_ Every
+caller that cared has independently discovered that raw refusal is the wrong
+answer, and patched around it locally. That is the shape of a missing shared
+affordance.
+
+**This is now the top item.** A guard that refuses without offering the
+alternative is exactly the "adds friction" failure mode the steelman warned
+about, and it is the difference between users experiencing the policy as helpful
+and experiencing it as a wall.
+
+### Correction 3 — reveal has two call sites, not one
+
+A fix for #1 must cover both, or interrupted runs keep leaking duplicates:
+
+1. `schedule/service.ts:1185` — post-run, on finish-and-keep or error
+2. `schedule/service.ts:683` → `:716` — interrupted-run recovery after a daemon
+   restart, which deliberately reveals so a kept run is not orphaned hidden
+   forever
+
+Both call the same unchecked `revealWorkspace`. The cleanest fix is to put the
+occupancy decision inside `revealScheduleWorkspaceExternal` itself rather than at
+either call site, so both inherit it and any third caller does too.
+
+### Revised recommendation — same verdict, reordered
+
+1. **Build the steer.** Handle `workspace_directory_occupied` in the client with
+   two real actions: _Open "X"_ and _Create a worktree here instead_. Without
+   this the shipped policy is prevention only.
+2. **Re-check occupancy at reveal time**, inside
+   `revealScheduleWorkspaceExternal` so both call sites are covered. Prefer
+   reattaching the run to the occupying workspace; otherwise archive-and-surface
+   instead of revealing.
+3. **Update or delete the stale isolation tests** and fix the Windows `EPERM`
+   cleanup masking their failure. They currently assert the opposite policy in a
+   file whose name implies it is the spec.
+4. **Defer the legacy-backlog reconciliation** until duplicates are observed
+   after (2) lands. No standing backlog exists to justify it today.
+5. **Do not remove the per-`workspaceId` isolation machinery** — unchanged from
+   the original verdict, and load-bearing regardless.
+
+### What would still have to be true for the verdict to be wrong
+
+Unchanged from above, with one sharpened tell: the original said the giveaway
+would be _users asking for duplicates on purpose_. The re-measured data makes
+that test cleaner — of 75 same-cwd records, exactly **one** is a deliberate,
+human-named, still-live workspace. Every other same-cwd record was machine-minted
+and has since been archived. Nobody is asking for this. If that ratio inverts,
+revisit.

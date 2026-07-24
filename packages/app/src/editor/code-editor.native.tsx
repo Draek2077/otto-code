@@ -37,6 +37,12 @@ interface PendingSelectionRequest {
   timer: ReturnType<typeof setTimeout>;
 }
 
+interface PendingWordRequest {
+  resolve: (word: string) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 function settlePendingRequest<T>(
   map: Map<number, { resolve: (value: T) => void; timer: ReturnType<typeof setTimeout> }>,
   requestId: number,
@@ -51,6 +57,64 @@ function settlePendingRequest<T>(
   pending.resolve(value);
 }
 
+interface PendingRequestMaps {
+  doc: Map<number, PendingDocRequest>;
+  selection: Map<number, PendingSelectionRequest>;
+  word: Map<number, PendingWordRequest>;
+}
+
+/**
+ * The half of the outbound protocol that answers a `requestId`. Split out from
+ * the pushed events below so neither switch grows past what one function should
+ * be doing — every pull command adds a branch to exactly one of them.
+ * Returns whether the message was a reply.
+ */
+function settlePendingReply(message: EditorWebViewOutbound, pending: PendingRequestMaps): boolean {
+  switch (message.type) {
+    case "doc":
+      settlePendingRequest(pending.doc, message.requestId, message.doc);
+      return true;
+    case "selection":
+      settlePendingRequest(pending.selection, message.requestId, message.selection);
+      return true;
+    case "wordAtCursor":
+      settlePendingRequest(pending.word, message.requestId, message.word);
+      return true;
+    default:
+      return false;
+  }
+}
+
+/** The half the webview pushes on its own; forwarded straight to the host. */
+function forwardPushedEvent(message: EditorWebViewOutbound, props: CodeEditorProps): void {
+  switch (message.type) {
+    case "dirtyChanged":
+      props.onDirtyChanged?.(message.dirty);
+      break;
+    case "matchInfo":
+      props.onMatchInfo?.(message.info);
+      break;
+    case "cursorMoved":
+      props.onCursorMoved?.(message.position);
+      break;
+    case "saveShortcut":
+      props.onSaveShortcut?.();
+      break;
+    case "findShortcut":
+      props.onFindShortcut?.();
+      break;
+    case "goToLineShortcut":
+      props.onGoToLineShortcut?.();
+      break;
+    case "goToDefinitionShortcut":
+      props.onGoToDefinitionShortcut?.();
+      break;
+    case "docSync":
+      props.onDocSync?.(message.doc);
+      break;
+  }
+}
+
 export function CodeEditor(props: CodeEditorProps) {
   const webViewRef = useRef<WebView | null>(null);
   const bridgeReadyRef = useRef(false);
@@ -60,6 +124,7 @@ export function CodeEditor(props: CodeEditorProps) {
   const lastDocRef = useRef(props.initialDoc);
   const pendingDocRequestsRef = useRef(new Map<number, PendingDocRequest>());
   const pendingSelectionRequestsRef = useRef(new Map<number, PendingSelectionRequest>());
+  const pendingWordRequestsRef = useRef(new Map<number, PendingWordRequest>());
   const nextRequestIdRef = useRef(1);
   const controllerAnnouncedRef = useRef(false);
   const [webViewEpoch, setWebViewEpoch] = useState(0);
@@ -101,6 +166,17 @@ export function CodeEditor(props: CodeEditorProps) {
           }, GET_DOC_TIMEOUT_MS);
           pendingSelectionRequestsRef.current.set(requestId, { resolve, reject, timer });
           sendToWebView({ type: "getSelection", requestId });
+        }),
+      getWordAtCursor: () =>
+        new Promise<string>((resolve, reject) => {
+          const requestId = nextRequestIdRef.current;
+          nextRequestIdRef.current += 1;
+          const timer = setTimeout(() => {
+            pendingWordRequestsRef.current.delete(requestId);
+            reject(new Error("Editor did not respond"));
+          }, GET_DOC_TIMEOUT_MS);
+          pendingWordRequestsRef.current.set(requestId, { resolve, reject, timer });
+          sendToWebView({ type: "getWordAtCursor", requestId });
         }),
       setDoc: (doc) => {
         lastDocRef.current = doc;
@@ -150,43 +226,22 @@ export function CodeEditor(props: CodeEditorProps) {
       } catch {
         return;
       }
-      switch (message.type) {
-        case "bridgeReady":
-          handleBridgeReady();
-          break;
-        case "dirtyChanged":
-          callbacksRef.current.onDirtyChanged?.(message.dirty);
-          break;
-        case "matchInfo":
-          callbacksRef.current.onMatchInfo?.(message.info);
-          break;
-        case "cursorMoved":
-          callbacksRef.current.onCursorMoved?.(message.position);
-          break;
-        case "saveShortcut":
-          callbacksRef.current.onSaveShortcut?.();
-          break;
-        case "findShortcut":
-          callbacksRef.current.onFindShortcut?.();
-          break;
-        case "goToLineShortcut":
-          callbacksRef.current.onGoToLineShortcut?.();
-          break;
-        case "doc":
-          lastDocRef.current = message.doc;
-          settlePendingRequest(pendingDocRequestsRef.current, message.requestId, message.doc);
-          break;
-        case "selection":
-          settlePendingRequest(
-            pendingSelectionRequestsRef.current,
-            message.requestId,
-            message.selection,
-          );
-          break;
-        case "docSync":
-          lastDocRef.current = message.doc;
-          callbacksRef.current.onDocSync?.(message.doc);
-          break;
+      if (message.type === "bridgeReady") {
+        handleBridgeReady();
+        return;
+      }
+      // Both doc-bearing messages refresh the crash-recovery mirror, so it is
+      // updated once here rather than in each handler below.
+      if (message.type === "doc" || message.type === "docSync") {
+        lastDocRef.current = message.doc;
+      }
+      const settled = settlePendingReply(message, {
+        doc: pendingDocRequestsRef.current,
+        selection: pendingSelectionRequestsRef.current,
+        word: pendingWordRequestsRef.current,
+      });
+      if (!settled) {
+        forwardPushedEvent(message, callbacksRef.current);
       }
     },
     [handleBridgeReady],
@@ -222,6 +277,7 @@ export function CodeEditor(props: CodeEditorProps) {
   useEffect(() => {
     const pendingDocRequests = pendingDocRequestsRef.current;
     const pendingSelectionRequests = pendingSelectionRequestsRef.current;
+    const pendingWordRequests = pendingWordRequestsRef.current;
     return () => {
       for (const pending of pendingDocRequests.values()) {
         clearTimeout(pending.timer);
@@ -233,6 +289,11 @@ export function CodeEditor(props: CodeEditorProps) {
         pending.reject(new Error("Editor closed"));
       }
       pendingSelectionRequests.clear();
+      for (const pending of pendingWordRequests.values()) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error("Editor closed"));
+      }
+      pendingWordRequests.clear();
     };
   }, []);
 

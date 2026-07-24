@@ -58,9 +58,15 @@ test-results/
 **/test-results/
 playwright-report/
 **/playwright-report/
+# Per-tier report dirs (E2E_HTML_REPORT_DIR / E2E_REPORT_DIR) so a T2/T3 run
+# never overwrites the T1 report mid-write.
+playwright-report-*/
+**/playwright-report-*/
 # QA run artifacts (index/evidence/money-shot digest/failure report) — regenerated every run
 e2e-report/
 **/e2e-report/
+e2e-report-*/
+**/e2e-report-*/
 
 # Vercel
 .vercel/

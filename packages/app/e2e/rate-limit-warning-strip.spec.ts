@@ -2,6 +2,7 @@ import { test, expect } from "./fixtures";
 import { expectComposerVisible } from "./helpers/composer";
 import { openAgentRoute, seedMockAgentWorkspace } from "./helpers/mock-agent";
 import { buildRateLimitScenarioPrompt } from "./helpers/mock-scenarios";
+import { MOCK_PROVIDER_LABEL } from "./helpers/personalities";
 
 const WARNING_STRIP = "composer-rate-limit-warning";
 
@@ -21,16 +22,21 @@ test.describe("Rate limit warning strip", () => {
       // Drive the event out of band so the composer state is purely event-fed.
       await agent.client.sendAgentMessage(agent.agentId, buildRateLimitScenarioPrompt("warning"));
 
-      // Deterministic mock payload: warning, 85% used, five_hour window.
+      // Deterministic mock payload: warning, 85% used, five_hour window. The
+      // headline names the *resolved provider label* for this agent, never a
+      // hardcoded "Claude" (see composer/rate-limit-warning-track.tsx) — so a
+      // mock agent reads "Mock Load Test".
       const strip = page.getByTestId(WARNING_STRIP);
       await expect(strip).toBeVisible({ timeout: 30_000 });
-      await expect(strip).toContainText("Approaching your Claude 5-hour limit");
+      await expect(strip).toContainText(`Approaching your ${MOCK_PROVIDER_LABEL} 5-hour limit`);
       await expect(strip).toContainText("85% used");
       await agent.client.waitForFinish(agent.agentId, 30_000);
 
       // A "rejected" update swaps the copy to the hard-limit variant.
       await agent.client.sendAgentMessage(agent.agentId, buildRateLimitScenarioPrompt("rejected"));
-      await expect(strip).toContainText("Claude 5-hour limit reached", { timeout: 30_000 });
+      await expect(strip).toContainText(`${MOCK_PROVIDER_LABEL} 5-hour limit reached`, {
+        timeout: 30_000,
+      });
       await agent.client.waitForFinish(agent.agentId, 30_000);
 
       // An "allowed" recovery event clears the strip entirely.

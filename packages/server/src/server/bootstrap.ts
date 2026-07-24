@@ -99,6 +99,7 @@ import {
   createLocalCheckoutWorkspace,
   findOccupyingWorkspaceForCwd,
 } from "./otto-worktree-service.js";
+import { revealScheduleRunWorkspace } from "./schedule-workspace-reveal.js";
 import { createOttoWorktreeWorkflow } from "./worktree-session.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
@@ -1413,17 +1414,33 @@ export async function createOttoDaemon(
   // Reveal a hidden schedule-run workspace: flip `hidden` to false in the shared
   // registry, then emit so every session upserts it into the sidebar (the
   // descriptor now resolves). No-op if the workspace is already visible or gone.
+  // When the directory is already backed by a visible workspace, this reattaches
+  // the finished run to that occupant instead of revealing a duplicate — see
+  // revealScheduleRunWorkspace for why.
   const revealScheduleWorkspaceExternal = async (workspaceId: string) => {
-    const existing = await workspaceRegistry.get(workspaceId);
-    if (!existing || !existing.hidden || existing.archivedAt) {
-      return;
-    }
-    await workspaceRegistry.upsert({
-      ...existing,
-      hidden: false,
-      updatedAt: new Date().toISOString(),
+    const outcome = await revealScheduleRunWorkspace(workspaceId, {
+      workspaceRegistry,
+      agentStorage,
+      archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
     });
-    await emitWorkspaceUpdatesExternal([workspaceId]);
+    switch (outcome.kind) {
+      case "noop":
+        return;
+      case "revealed":
+        await emitWorkspaceUpdatesExternal([workspaceId]);
+        return;
+      case "reattached":
+        logger.info(
+          {
+            workspaceId,
+            occupantWorkspaceId: outcome.occupantWorkspaceId,
+            movedAgents: outcome.movedAgentIds.length,
+          },
+          "Reattached scheduled run to the workspace already backing its directory",
+        );
+        await emitWorkspaceUpdatesExternal([workspaceId, outcome.occupantWorkspaceId]);
+        return;
+    }
   };
   const archiveScheduleWorkspaceExternal = async (workspaceId: string, repoRoot: string) => {
     await archiveByScope(
