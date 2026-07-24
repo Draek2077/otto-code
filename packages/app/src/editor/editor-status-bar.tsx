@@ -10,6 +10,7 @@ import {
   Pilcrow,
   TextSelectStart,
 } from "@/components/icons/material-icons";
+import { isWeb } from "@/constants/platform";
 import { useIconSize, type Theme } from "@/styles/theme";
 import { formatFileSize, utf8ByteSize } from "@/utils/format-file-size";
 import type { EditorBufferState } from "./editor-buffer-state";
@@ -142,6 +143,11 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 24,
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
+    // Chrome, not content: every item here reports state, so there is nothing
+    // worth selecting and the plain arrow is the honest pointer. Cast because
+    // RN's CursorValue only admits "auto" | "pointer" — the repo idiom for a
+    // web-only cursor (see explorer-sidebar's resize handle).
+    ...(isWeb ? ({ cursor: "default", userSelect: "none" } as object) : {}),
   },
   group: {
     flexDirection: "row",

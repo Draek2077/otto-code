@@ -16,7 +16,6 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
-  FileSymlink,
   History,
   List,
   Save,
@@ -27,7 +26,14 @@ import {
   X,
 } from "@/components/icons/material-icons";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+} from "@/components/ui/context-menu";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Shortcut } from "@/components/ui/shortcut";
 import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
 import { ToolbarSeparator } from "@/components/ui/toolbar-separator";
 import { PANE_TOOLBAR_HEIGHT } from "@/components/ui/control-geometry";
@@ -48,8 +54,10 @@ import { buildEditorThemeSpec } from "@/editor/editor-theme";
 import type { EditorBufferState } from "@/editor/editor-buffer-state";
 import { buildEditorBufferKey, useEditorBufferStore } from "@/editor/editor-buffer-store";
 import { useEditorBuffer } from "@/editor/use-editor-buffer";
+import { useEditorClipboardActions } from "@/editor/use-editor-clipboard-actions";
 import { DefinitionPickerDialog } from "@/editor/definition-picker-dialog";
 import { EditorOutlineSheet } from "@/editor/editor-outline-sheet";
+import { getEditorShortcutHints } from "@/editor/editor-shortcut-hints";
 import { EditorStatusBar, useBufferByteSize } from "@/editor/editor-status-bar";
 import { useEditorPrefsStore } from "@/editor/editor-prefs-store";
 import { GoToLineDialog } from "@/editor/go-to-line-dialog";
@@ -108,7 +116,6 @@ const warningIconColorMapping = (theme: Theme) => ({
 });
 const ThemedSearch = withUnistyles(Search);
 const ThemedList = withUnistyles(List);
-const ThemedFileSymlink = withUnistyles(FileSymlink);
 const ThemedHistory = withUnistyles(History);
 const ThemedSave = withUnistyles(Save);
 const ThemedUndo2 = withUnistyles(Undo2);
@@ -466,6 +473,23 @@ function PreviewOnlyView({
   // Preview has no selection to scope by, so it always investigates the file.
   const handleOpenHistory = useCallback(() => onOpenHistory?.(null), [onOpenHistory]);
 
+  // Wrap is one preference, shared with the editor: a user who wraps long lines
+  // wants that in whichever view they are reading in.
+  const wordWrap = useEditorPrefsStore((state) => state.wordWrap);
+  const toggleWordWrap = useEditorPrefsStore((state) => state.toggleWordWrap);
+
+  // The outline reads the daemon's symbol index, which knows nothing about the
+  // view it is driving — so preview gets the same jump list the editor has, it
+  // just scrolls instead of moving a caret.
+  const hasCodeIndex = useCodeIndexFeature(serverId);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const openOutline = useCallback(() => setOutlineOpen(true), []);
+  const closeOutline = useCallback(() => setOutlineOpen(false), []);
+  const previewSyncRef = useRef<FilePreviewSyncHandle | null>(null);
+  const handleOutlineLine = useCallback((line: number) => {
+    previewSyncRef.current?.scrollToLine(line);
+  }, []);
+
   const [find, setFind] = useState<PreviewFindState>(INITIAL_PREVIEW_FIND_STATE);
   const [matchCount, setMatchCount] = useState(0);
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
@@ -545,9 +569,21 @@ function PreviewOnlyView({
 
   return (
     <View style={styles.container} testID="workspace-file-tab-pane">
+      {/* Same shape as the editor toolbar: file actions, a separator, then the
+          navigate-within-the-file tools — so the two views don't move the
+          buttons around under the user when they switch mode. */}
       <View style={styles.previewToolbar}>
-        {toolbarLeadingSlot}
-        <View style={styles.toolbarSpacer} />
+        <FileHistoryToolbarButton supported={onOpenHistory !== null} onPress={handleOpenHistory} />
+        <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
+        <ToolbarSeparator />
+        {hasCodeIndex ? (
+          <ToolbarIconButton
+            label={t("codeOutline.open")}
+            testID="preview-outline-toggle"
+            Icon={ThemedList}
+            onPress={openOutline}
+          />
+        ) : null}
         {findAvailable ? (
           <ToolbarIconButton
             label={t("editor.find.open")}
@@ -557,7 +593,18 @@ function PreviewOnlyView({
             selected={find.open}
           />
         ) : null}
-        <FileHistoryToolbarButton supported={onOpenHistory !== null} onPress={handleOpenHistory} />
+        <View style={styles.toolbarSpacer} />
+        {/* Wrap only means anything over the line-numbered code view; markdown
+            prose and images wrap by their own rules. */}
+        {findAvailable ? (
+          <ToolbarIconButton
+            label={t("editor.wordWrap")}
+            testID="preview-wordwrap-toggle"
+            Icon={ThemedWrapText}
+            onPress={toggleWordWrap}
+            selected={wordWrap}
+          />
+        ) : null}
         {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
       </View>
       {findAvailable && find.open ? (
@@ -567,11 +614,13 @@ function PreviewOnlyView({
         serverId={serverId}
         workspaceRoot={workspaceRoot}
         location={location}
+        wrapLines={wordWrap}
         contentOverride={draftOverride}
         onFileInfo={onFileInfo}
         findQuery={findQuery}
         activeMatchIndex={activeMatchIndex}
         onFindMatchCount={setMatchCount}
+        syncRef={previewSyncRef}
       />
       {/* Null until the preview has read the file — the bar appears with real
           values rather than flashing zeroes. No caret: there is no editor. */}
@@ -582,6 +631,17 @@ function PreviewOnlyView({
           eol={fileInfo.eol}
           isText={fileInfo.kind === "text"}
           cursor={null}
+        />
+      ) : null}
+
+      {hasCodeIndex ? (
+        <EditorOutlineSheet
+          serverId={serverId}
+          workspaceRoot={workspaceRoot}
+          path={location.path}
+          visible={outlineOpen}
+          onClose={closeOutline}
+          onSelectLine={handleOutlineLine}
         />
       ) : null}
     </View>
@@ -611,6 +671,105 @@ function FileHistoryToolbarButton({
       Icon={ThemedHistory}
       onPress={onPress}
     />
+  );
+}
+
+/**
+ * Right-click inside the editor.
+ *
+ * Go to Definition lives here rather than in the toolbar: it acts on the word
+ * you are pointing at, so the pointer is the natural place to ask for it (the
+ * core moves the caret to the click first — see its `contextmenu` handler).
+ *
+ * Because claiming the right-click suppresses the platform's own menu, this
+ * menu owes the user the edit actions that menu had. On Electron the native one
+ * is suppressed to match, via `shouldShowDefaultContextMenu` — two menus for
+ * one click is worse than either. Web-only: on a phone, long-press belongs to
+ * the platform's text selection menu.
+ */
+function EditorContextMenu({
+  anchor,
+  onClose,
+  cursor,
+  canGoToDefinition,
+  onGoToDefinition,
+  onCut,
+  onCopy,
+  onPaste,
+  onSelectAll,
+  onSelectLine,
+}: {
+  anchor: { x: number; y: number } | null;
+  onClose: () => void;
+  cursor: EditorCursorPosition | null;
+  canGoToDefinition: boolean;
+  onGoToDefinition: () => void;
+  onCut: () => void;
+  onCopy: () => void;
+  onPaste: () => void;
+  onSelectAll: () => void;
+  onSelectLine: () => void;
+}) {
+  const { t } = useTranslation();
+  // Derived here rather than at the call site so the cursor readout's optional
+  // hops stay out of the editor view's branch budget.
+  const hasSelection = (cursor?.selectedChars ?? 0) > 0;
+  // Built once as elements rather than inline per item: the key hints never
+  // change for a session, and jsx-as-a-prop is a lint error besides.
+  const hints = useMemo(() => {
+    const keys = getEditorShortcutHints();
+    return {
+      goToDefinition: <Shortcut keys={keys.goToDefinition} />,
+      cut: <Shortcut keys={keys.cut} />,
+      copy: <Shortcut keys={keys.copy} />,
+      paste: <Shortcut keys={keys.paste} />,
+      selectLine: <Shortcut keys={keys.selectLine} />,
+      selectAll: <Shortcut keys={keys.selectAll} />,
+    };
+  }, []);
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) onClose();
+    },
+    [onClose],
+  );
+  return (
+    <ContextMenu open={anchor !== null} onOpenChange={handleOpenChange} anchor={anchor}>
+      <ContextMenuContent width={240} testID="editor-context-menu">
+        {canGoToDefinition ? (
+          <>
+            <ContextMenuItem
+              testID="editor-context-go-to-definition"
+              onSelect={onGoToDefinition}
+              trailing={hints.goToDefinition}
+            >
+              {t("goToDefinition.action")}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        ) : null}
+        <ContextMenuItem disabled={!hasSelection} onSelect={onCut} trailing={hints.cut}>
+          {t("editor.contextMenu.cut")}
+        </ContextMenuItem>
+        <ContextMenuItem disabled={!hasSelection} onSelect={onCopy} trailing={hints.copy}>
+          {t("editor.contextMenu.copy")}
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={onPaste} trailing={hints.paste}>
+          {t("editor.contextMenu.paste")}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          testID="editor-context-select-line"
+          onSelect={onSelectLine}
+          trailing={hints.selectLine}
+        >
+          {t("editor.contextMenu.selectLine")}
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={onSelectAll} trailing={hints.selectAll}>
+          {t("editor.contextMenu.selectAll")}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -839,6 +998,10 @@ function EditorModeView({
 
   const wordWrap = useEditorPrefsStore((state) => state.wordWrap);
   const toggleWordWrap = useEditorPrefsStore((state) => state.toggleWordWrap);
+  // Only the buttons whose key is really bound inside CodeMirror get a hint;
+  // revert, history, outline and wrap have none, and inventing one would be a
+  // lie the tooltip cannot honour.
+  const shortcutHints = getEditorShortcutHints();
 
   const { settings } = useAppSettings();
   const rulerColumn = resolveRulerColumn(settings);
@@ -1034,7 +1197,6 @@ function EditorModeView({
     [openFileInWorkspace, paneWorkspaceRoot, workspaceRoot],
   );
   const {
-    running: definitionRunning,
     pickerName: definitionPickerName,
     candidates: definitionCandidates,
     goToDefinition,
@@ -1048,8 +1210,8 @@ function EditorModeView({
     onJumpInFile: jumpToLineInBuffer,
     onOpenTarget: handleOpenDefinitionTarget,
   });
-  // The keystroke reaches the editor even when the toolbar button is hidden, so
-  // the capability gate has to be re-applied here rather than only on the icon.
+  // The keystroke reaches the editor even when the menu item is hidden, so the
+  // capability gate has to be re-applied here rather than only on the item.
   const handleGoToDefinition = useCallback(() => {
     if (!hasCodeIndex) {
       return;
@@ -1057,18 +1219,37 @@ function EditorModeView({
     void goToDefinition();
   }, [goToDefinition, hasCodeIndex]);
 
-  // Git investigation is selection-aware from the toolbar, not from a
-  // right-click menu. Right-click inside the editor belongs to the platform's
-  // own edit menu (copy/paste/spellcheck) — and on Electron that menu fires
-  // even when the renderer calls preventDefault (see
-  // shouldShowDefaultContextMenu in packages/desktop), so an app menu here
-  // would double up. Selecting lines and pressing History is the same gesture
-  // in one fewer step, and the sheet shows the scope with a way out of it.
+  // Git investigation stays selection-aware from the toolbar rather than moving
+  // into the right-click menu: selecting lines and pressing History is the same
+  // gesture in one fewer step, and the sheet shows the scope with a way out.
   const handleOpenHistory = useCallback(() => {
     if (onOpenHistory) {
       void openHistoryForSelection(controllerRef.current, onOpenHistory);
     }
   }, [controllerRef, onOpenHistory]);
+
+  // The editor's right-click menu. The anchor doubles as the open flag; the
+  // core has already moved the caret to the click by the time this fires, so
+  // every action below reads the selection it should act on.
+  const [editorMenuAnchor, setEditorMenuAnchor] = useState<{ x: number; y: number } | null>(null);
+  const closeEditorMenu = useCallback(() => setEditorMenuAnchor(null), []);
+  // Supplying the handler at all is what suppresses the platform menu, so the
+  // web gate lives here rather than at the call site — native must receive
+  // undefined and keep its own long-press text menu.
+  const handleEditorContextMenu = useMemo(
+    () => (isWeb ? (point: { x: number; y: number }) => setEditorMenuAnchor(point) : undefined),
+    [],
+  );
+  const handleGoToDefinitionFromMenu = useCallback(() => {
+    handleGoToDefinition();
+  }, [handleGoToDefinition]);
+  const {
+    copy: handleEditorCopy,
+    cut: handleEditorCut,
+    paste: handleEditorPaste,
+    selectAll: handleEditorSelectAll,
+    selectLine: handleEditorSelectLine,
+  } = useEditorClipboardActions(controllerRef);
 
   // No AI action lives in this toolbar. The editor is a plain document editor;
   // an AI rewrite belongs behind a surface that can scope and review it, which
@@ -1223,6 +1404,7 @@ function EditorModeView({
     <ThemedCodeEditor
       path={path}
       initialDoc={buffer.draft ?? buffer.baseline.content}
+      cleanDoc={buffer.baseline.content}
       wordWrap={wordWrap}
       rulerColumn={rulerColumn}
       docSyncDebounceMs={split ? SPLIT_DOC_SYNC_DEBOUNCE_MS : undefined}
@@ -1236,6 +1418,7 @@ function EditorModeView({
       onGoToDefinitionShortcut={handleGoToDefinition}
       onScrolled={split ? handleEditorScrolled : undefined}
       onPointerSelect={split ? handleEditorPointerSelect : undefined}
+      onContextMenu={handleEditorContextMenu}
       onReady={handleReady}
     />
   );
@@ -1250,6 +1433,7 @@ function EditorModeView({
           onPress={handleSavePress}
           disabled={!buffer.dirty || buffer.saving || buffer.conflict !== null}
           loading={buffer.saving}
+          shortcut={shortcutHints.save}
         />
         <ToolbarIconButton
           label={t("editor.revert")}
@@ -1258,8 +1442,30 @@ function EditorModeView({
           onPress={handleRevertPress}
           disabled={!buffer.dirty || buffer.saving}
         />
+        <FileHistoryToolbarButton supported={onOpenHistory !== null} onPress={handleOpenHistory} />
         <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
+        {/* Save/revert/history act on the FILE; outline and find navigate WITHIN
+            it. The separator is the line between those two jobs, and both groups
+            stay left where the eye starts. */}
+        <ToolbarSeparator />
+        {hasCodeIndex ? (
+          <ToolbarIconButton
+            label={t("codeOutline.open")}
+            testID="editor-outline-toggle"
+            Icon={ThemedList}
+            onPress={openOutline}
+          />
+        ) : null}
+        <ToolbarIconButton
+          label={t("editor.find.open")}
+          testID="editor-find-toggle"
+          Icon={ThemedSearch}
+          onPress={find.open ? closeFind : openFind}
+          selected={find.open}
+          shortcut={shortcutHints.find}
+        />
         <View style={styles.toolbarSpacer} />
+        {/* Word wrap is a view setting, so it lives with the view-mode bar. */}
         <ToolbarIconButton
           label={t("editor.wordWrap")}
           testID="editor-wordwrap-toggle"
@@ -1267,31 +1473,6 @@ function EditorModeView({
           onPress={toggleWordWrap}
           selected={wordWrap}
         />
-        <ToolbarSeparator />
-        {hasCodeIndex ? (
-          <>
-            <ToolbarIconButton
-              label={t("goToDefinition.action")}
-              testID="editor-go-to-definition"
-              Icon={ThemedFileSymlink}
-              onPress={handleGoToDefinition}
-              loading={definitionRunning}
-            />
-            <ToolbarIconButton
-              label={t("codeOutline.open")}
-              testID="editor-outline-toggle"
-              Icon={ThemedList}
-              onPress={openOutline}
-            />
-          </>
-        ) : null}
-        <ToolbarIconButton
-          label={t("editor.find.open")}
-          testID="editor-find-toggle"
-          Icon={ThemedSearch}
-          onPress={find.open ? closeFind : openFind}
-        />
-        <FileHistoryToolbarButton supported={onOpenHistory !== null} onPress={handleOpenHistory} />
         {modeBarProps ? <FileViewModeBar {...modeBarProps} /> : null}
       </View>
 
@@ -1327,6 +1508,7 @@ function EditorModeView({
               serverId={serverId}
               workspaceRoot={workspaceRoot}
               location={locationWithoutLines(location)}
+              wrapLines={wordWrap}
               contentOverride={draftOverride}
               onFileInfo={onFileInfo}
               syncRef={previewSyncRef}
@@ -1365,6 +1547,19 @@ function EditorModeView({
           />
         </>
       ) : null}
+
+      <EditorContextMenu
+        anchor={editorMenuAnchor}
+        onClose={closeEditorMenu}
+        cursor={cursor}
+        canGoToDefinition={hasCodeIndex}
+        onGoToDefinition={handleGoToDefinitionFromMenu}
+        onCut={handleEditorCut}
+        onCopy={handleEditorCopy}
+        onPaste={handleEditorPaste}
+        onSelectAll={handleEditorSelectAll}
+        onSelectLine={handleEditorSelectLine}
+      />
 
       <GoToLineDialog
         visible={goToLineOpen}

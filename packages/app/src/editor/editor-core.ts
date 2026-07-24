@@ -18,8 +18,9 @@ import {
   SearchQuery,
   setSearchQuery,
 } from "@codemirror/search";
-import { Annotation, Compartment, EditorState, type Extension } from "@codemirror/state";
+import { Annotation, Compartment, EditorState, Text, type Extension } from "@codemirror/state";
 import {
+  type BlockInfo,
   drawSelection,
   EditorView,
   highlightActiveLine,
@@ -48,6 +49,12 @@ export interface EditorCoreOptions {
   parent: HTMLElement;
   path: string;
   doc: string;
+  /**
+   * The text that counts as saved. Defaults to `doc`; differs from it only when
+   * the host mounts a recovered draft (a remount or webview crash with unsaved
+   * edits), where the document is the draft and the baseline is what is on disk.
+   */
+  cleanDoc?: string;
   theme: EditorThemeSpec;
   wordWrap: boolean;
   onDirtyChanged?: (dirty: boolean) => void;
@@ -63,6 +70,23 @@ export interface EditorCoreOptions {
   // (programmatic scrolls through the core are suppressed at the source).
   onScrolled?: (metrics: EditorScrollMetrics) => void;
   onPointerSelect?: (select: EditorPointerSelect) => void;
+  /**
+   * A right-click landed in the editor, reported in viewport coordinates so the
+   * host can anchor its own menu. Supplying this SUPPRESSES the platform menu —
+   * the host is then responsible for offering the edit actions (see
+   * file-tab-pane's editor context menu).
+   */
+  onContextMenu?: (point: { x: number; y: number }) => void;
+  /**
+   * Hide the platform's own scrollbar on the editor's scroller. Set by hosts
+   * that draw the app's auto-hiding overlay bar instead (web/desktop). It is a
+   * THEME rule rather than something the overlay hook switches on after mount:
+   * an imperative hide only lands on the second frame, so remounting the editor
+   * — which is what switching to split or preview does — flashed the platform
+   * bar for a frame first. Off by default so the native webview keeps the
+   * touch scroll indicator it has no overlay to replace.
+   */
+  hideNativeScrollbar?: boolean;
 }
 
 export interface EditorCoreSelection {
@@ -77,7 +101,8 @@ export interface EditorCore {
   getSelection(): EditorCoreSelection;
   getWordAtCursor(): string;
   setDoc(doc: string): void;
-  markClean(): void;
+  /** Declare `doc` the saved text and re-derive dirty from the live document. */
+  setCleanDoc(doc: string): void;
   setFind(find: EditorFindState | null): void;
   findNext(): void;
   findPrevious(): void;
@@ -85,7 +110,9 @@ export interface EditorCore {
   replaceAll(): void;
   focus(): void;
   goToLine(line: number): void;
-  selectLines(startLine: number, endLine: number): void;
+  selectLines(startLine: number, endLine: number, options?: { reveal?: boolean }): void;
+  selectAll(): void;
+  replaceSelection(text: string): void;
   getScrollMetrics(): EditorScrollMetrics | null;
   scrollToFraction(fraction: number): void;
   scrollToLineAtOffset(line: number, viewportOffsetY: number): void;
@@ -208,6 +235,12 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
       position: "sticky",
       insetInlineStart: 0,
       minHeight: "100%",
+      // The numbers are a control, not text: plain arrow pointer, and nothing to
+      // highlight. `handleLineNumberMouseDown` already blocks the drag that would
+      // start a selection; this is what stops it reading as selectable text.
+      cursor: "default",
+      userSelect: "none",
+      WebkitUserSelect: "none",
     },
     ".cm-activeLineGutter": {
       backgroundColor: spec.activeLineBackground,
@@ -237,6 +270,20 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
 
 // Mirrors the tag → class mapping in @otto-code/highlight's tagHighlighter so
 // the editor colors agree with the read-only viewer and diff surfaces.
+// Static, so it costs nothing to keep mounted: both properties are needed
+// because Firefox reads `scrollbar-width` and Chromium/WebKit the pseudo-
+// element. See `hideNativeScrollbar` for why this is a theme and not a hook.
+const hiddenScrollbarTheme = EditorView.theme({
+  ".cm-scroller": {
+    scrollbarWidth: "none",
+  },
+  ".cm-scroller::-webkit-scrollbar": {
+    display: "none",
+    width: "0",
+    height: "0",
+  },
+});
+
 function buildSyntaxExtension(spec: EditorThemeSpec): Extension {
   const s = spec.syntax;
   const style = HighlightStyle.define([
@@ -302,11 +349,76 @@ function buildFindQuery(find: EditorFindState): SearchQuery {
   });
 }
 
+// Clicking a line number is a "go here" gesture, not a selection one: the caret
+// lands on that line keeping the column it was already in, clamped to the end of
+// the line when that line is shorter. That is what makes a run of gutter clicks
+// read as vertical movement rather than as a jump to column 1 every time.
+//
+// mousedown, not click, so it lands before the browser starts a drag-selection
+// over the gutter text — and `preventDefault` keeps that drag from starting at
+// all, which is why the numbers stay unselectable without a selection-clearing
+// hack. Scrolling is deliberately left alone: the line was on screen, the user
+// just clicked it.
+function handleLineNumberMouseDown(view: EditorView, block: BlockInfo, event: Event): boolean {
+  const mouse = event as MouseEvent;
+  if (mouse.button !== 0) {
+    return false;
+  }
+  const { state } = view;
+  const head = state.selection.main.head;
+  const column = head - state.doc.lineAt(head).from;
+  const target = state.doc.lineAt(block.from);
+  view.dispatch({
+    selection: { anchor: Math.min(target.from + column, target.to) },
+    userEvent: "select.pointer",
+  });
+  view.focus();
+  mouse.preventDefault();
+  return true;
+}
+
 export function createEditorCore(options: EditorCoreOptions): EditorCore {
   const themeCompartment = new Compartment();
   const wrapCompartment = new Compartment();
-  let dirty = false;
   let findActive = false;
+
+  // Dirty is a COMPARISON against the saved text, not a latch on "an edit
+  // happened". Any edit that leaves the document equal to that text is not a
+  // modification, however it got there — undo, redo, a cut whose paste puts it
+  // back, retyping the character you just deleted. Latching on the first
+  // docChanged left Save and Revert armed against a file that no longer
+  // differed from disk.
+  //
+  // `cleanDoc` is a Text, not a string, because `Text.eq` is the cheap
+  // primitive for a per-keystroke check: it rejects on length or line count
+  // first (O(1) for ordinary typing) and then prunes the subtrees CM6's rope
+  // shares between two near-identical documents, so a full character walk is
+  // reached only for an equal-length edit — exactly the case that might be a
+  // return to clean. That pruning is why the baseline reuses `state.doc` when
+  // the two start out identical rather than building a second, unrelated rope.
+  let cleanDoc: Text;
+  let dirty = false;
+
+  const emitDirty = (next: boolean, force: boolean): void => {
+    if (dirty === next && !force) {
+      return;
+    }
+    dirty = next;
+    options.onDirtyChanged?.(next);
+  };
+
+  const reconcileDirty = (doc: Text, force = false): void => {
+    emitDirty(!doc.eq(cleanDoc), force);
+  };
+
+  // A new baseline always reports, even when the answer is unchanged: the host
+  // sets one at moments (a save landed, the disk version was adopted) where its
+  // own dirty flag may already have moved, and this is what puts the two back
+  // in agreement.
+  const adoptCleanDoc = (baseline: Text): void => {
+    cleanDoc = baseline;
+    reconcileDirty(view.state.doc, true);
+  };
 
   const emitMatchInfo = (view: EditorView): void => {
     if (!options.onMatchInfo) {
@@ -335,14 +447,6 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       }
     }
     options.onMatchInfo({ current, total });
-  };
-
-  const setDirty = (next: boolean): void => {
-    if (dirty === next) {
-      return;
-    }
-    dirty = next;
-    options.onDirtyChanged?.(next);
   };
 
   // Reveal the primary selection by scrolling to its ACTUAL rendered position.
@@ -402,7 +506,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
   const state = EditorState.create({
     doc: options.doc,
     extensions: [
-      lineNumbers(),
+      lineNumbers({ domEventHandlers: { mousedown: handleLineNumberMouseDown } }),
       highlightActiveLineGutter(),
       highlightActiveLine(),
       highlightSpecialChars(),
@@ -454,19 +558,41 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
         ...historyKeymap,
         indentWithTab,
       ]),
+      // Right-click is a "act on what I am pointing at" gesture, so the caret
+      // moves to the click before the menu opens — unless the click landed
+      // inside an existing selection, which the user is pointing at on purpose.
+      // Without this, "Go to Definition" would run on wherever the caret
+      // happened to be, not on the word under the pointer.
+      EditorView.domEventHandlers({
+        contextmenu: (event, v) => {
+          if (!options.onContextMenu) {
+            return false;
+          }
+          const pos = v.posAtCoords({ x: event.clientX, y: event.clientY });
+          const { main } = v.state.selection;
+          if (pos !== null && (main.empty || pos < main.from || pos > main.to)) {
+            v.dispatch({ selection: { anchor: pos }, userEvent: "select.pointer" });
+          }
+          v.focus();
+          options.onContextMenu({ x: event.clientX, y: event.clientY });
+          event.preventDefault();
+          return true;
+        },
+      }),
       buildLanguageExtension(options.path),
       themeCompartment.of([
         buildThemeExtension(options.theme),
         buildSyntaxExtension(options.theme),
       ]),
       wrapCompartment.of(options.wordWrap ? EditorView.lineWrapping : []),
+      options.hideNativeScrollbar ? hiddenScrollbarTheme : [],
       EditorView.updateListener.of((update) => {
         const isSetDoc = update.transactions.some((tr) => tr.annotation(setDocAnnotation));
         if (update.docChanged) {
           options.onDocChanged?.();
         }
         if (update.docChanged && !isSetDoc) {
-          setDirty(true);
+          reconcileDirty(update.state.doc);
           scheduleReveal(update.view);
         }
         if (findActive && (update.docChanged || update.selectionSet)) {
@@ -493,6 +619,16 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
 
   const view = new EditorView({ state, parent: options.parent });
   let destroyed = false;
+
+  // Reuse the document's own rope as the baseline in the ordinary case (nothing
+  // recovered, so the two are the same text) — see the `cleanDoc` note above.
+  // A recovered draft starts out genuinely dirty, and the host is told so rather
+  // than left to infer it from its own restore path.
+  cleanDoc =
+    options.cleanDoc == null || options.cleanDoc === options.doc
+      ? state.doc
+      : Text.of(options.cleanDoc.split("\n"));
+  reconcileDirty(state.doc);
 
   // The listener only fires on change, so the status bar would read blank until
   // the first keystroke without this.
@@ -593,10 +729,17 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
         changes: { from: 0, to: view.state.doc.length, insert: doc },
         annotations: setDocAnnotation.of(true),
       });
-      setDirty(false);
+      // setDoc only ever installs a known-saved document (revert, reload from
+      // disk), so the text it just wrote is the new baseline — and reusing the
+      // rope it produced keeps later comparisons on the cheap path.
+      adoptCleanDoc(view.state.doc);
     },
-    markClean: () => {
-      setDirty(false);
+    setCleanDoc: (doc) => {
+      // Same rope-sharing trick, for the case that matters most: a save landing
+      // on a document nobody has touched since it was written.
+      const live = view.state.doc;
+      const sameAsLive = doc.length === live.length && doc === live.toString();
+      adoptCleanDoc(sameAsLive ? live : Text.of(doc.split("\n")));
     },
     setFind: (find) => {
       if (!find || !find.search) {
@@ -641,19 +784,45 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       scheduleReveal(view);
       focusPersistently();
     },
-    selectLines: (startLine, endLine) => {
+    // `selectOptions`, not `options`: the core's own construction options are
+    // already in scope here.
+    selectLines: (startLine, endLine, selectOptions) => {
       const lastLine = view.state.doc.lines;
       const from = Math.max(1, Math.min(startLine, lastLine));
       const to = Math.max(from, Math.min(endLine, lastLine));
       const fromInfo = view.state.doc.line(from);
       const toInfo = view.state.doc.line(to);
+      const reveal = selectOptions?.reveal ?? true;
       view.dispatch({
         // Anchor at the end so the cursor sits after the span: extending or
         // typing behaves the way a drag-selection would.
         selection: { anchor: toInfo.to, head: fromInfo.from },
-        effects: EditorView.scrollIntoView(fromInfo.from, { y: "center" }),
+        // Centering is for arriving from somewhere else. Selecting the line you
+        // are already looking at must not move the page under you, so that path
+        // asks for no reveal at all — not even the nudge, which would still
+        // shift a line sitting inside the viewport's top or bottom margin.
+        ...(reveal ? { effects: EditorView.scrollIntoView(fromInfo.from, { y: "center" }) } : null),
       });
-      scheduleReveal(view);
+      if (reveal) {
+        scheduleReveal(view);
+      }
+      // Focus regardless: CM6 focuses with preventScroll, so this never travels.
+      focusPersistently();
+    },
+    selectAll: () => {
+      view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } });
+      focusPersistently();
+    },
+    // The clipboard half of cut/paste lives in the host (one clipboard API for
+    // web and native); this is only the document edit, dispatched as a user
+    // event so it joins the undo history like typed input.
+    replaceSelection: (text) => {
+      const { main } = view.state.selection;
+      view.dispatch({
+        changes: { from: main.from, to: main.to, insert: text },
+        selection: { anchor: main.from + text.length },
+        userEvent: "input.paste",
+      });
       focusPersistently();
     },
     getScrollMetrics: () => readScrollMetrics(),

@@ -182,7 +182,6 @@ export function CodeEditor(props: CodeEditorProps) {
         lastDocRef.current = doc;
         sendToWebView({ type: "setDoc", doc });
       },
-      markClean: () => sendToWebView({ type: "markClean" }),
       setFind: (find) => sendToWebView({ type: "setFind", find }),
       findNext: () => sendToWebView({ type: "findNext" }),
       findPrevious: () => sendToWebView({ type: "findPrevious" }),
@@ -193,8 +192,10 @@ export function CodeEditor(props: CodeEditorProps) {
         webViewRef.current?.requestFocus();
       },
       goToLine: (line) => sendToWebView({ type: "goToLine", line }),
-      selectLines: (startLine, endLine) =>
-        sendToWebView({ type: "selectLines", startLine, endLine }),
+      selectLines: (startLine, endLine, options) =>
+        sendToWebView({ type: "selectLines", startLine, endLine, reveal: options?.reveal }),
+      selectAll: () => sendToWebView({ type: "selectAll" }),
+      replaceSelection: (text) => sendToWebView({ type: "replaceSelection", text }),
     }),
     [sendToWebView],
   );
@@ -205,6 +206,10 @@ export function CodeEditor(props: CodeEditorProps) {
       type: "mount",
       path: callbacksRef.current.path,
       doc: lastDocRef.current,
+      // The live baseline, not the one this component mounted with: after a
+      // render-process death the webview remounts mid-session, and the buffer
+      // may have been saved or rebaselined since.
+      cleanDoc: callbacksRef.current.cleanDoc,
       theme: callbacksRef.current.theme,
       wordWrap: callbacksRef.current.wordWrap,
     });
@@ -273,6 +278,22 @@ export function CodeEditor(props: CodeEditorProps) {
     }
     sendToWebView({ type: "setWordWrap", enabled: props.wordWrap });
   }, [props.wordWrap, sendToWebView]);
+
+  // The saved text is a prop, not a command (see CodeEditorProps.cleanDoc). The
+  // mount message already carries the current value, so only later changes are
+  // pushed — and only once the bridge is up, since a queued message would
+  // otherwise arrive before the core exists.
+  const mountedCleanDocRef = useRef(props.cleanDoc);
+  useEffect(() => {
+    if (props.cleanDoc === mountedCleanDocRef.current) {
+      return;
+    }
+    mountedCleanDocRef.current = props.cleanDoc;
+    if (!bridgeReadyRef.current) {
+      return;
+    }
+    sendToWebView({ type: "setCleanDoc", doc: props.cleanDoc });
+  }, [props.cleanDoc, sendToWebView]);
 
   useEffect(() => {
     const pendingDocRequests = pendingDocRequestsRef.current;

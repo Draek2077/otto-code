@@ -128,13 +128,15 @@ export function useEditorBuffer(input: UseEditorBufferInput): UseEditorBufferRes
           eol: state.missingOnDisk ? state.baseline?.eol : undefined,
         });
         if (result.status === "ok") {
+          // No "you are clean now" call to the editor: the new baseline reaches
+          // it as the `cleanDoc` prop, which also keeps it honest when the user
+          // typed while the write was in flight.
           useEditorBufferStore.getState().finishSave(key, {
             content: normalizeToLf(doc),
             modifiedAt: result.modifiedAt,
             hash: result.hash,
             eol: result.eol,
           });
-          controller.markClean();
           return;
         }
         if (result.status === "conflict") {

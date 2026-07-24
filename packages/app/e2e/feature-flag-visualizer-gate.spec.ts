@@ -6,8 +6,8 @@ import {
   allVisualizerTabChips,
   openVisualizerFromHeader,
   openVisualizerSettingsSection,
-  pressSettingsToggleShortcut,
   readAppSettings,
+  toggleSettingsFromUi,
   visualizerHeaderButton,
   visualizerTabChip,
 } from "./helpers/visualizer";
@@ -51,7 +51,7 @@ test.describe("Feature flag: Visualizer gate", () => {
 
       // Settings -> Visualizer: the master switch is on and the dependent
       // sections (Rendering etc.) are visible while enabled.
-      await pressSettingsToggleShortcut(page);
+      await toggleSettingsFromUi(page);
       await expect(page).toHaveURL(/\/settings\//, { timeout: 15_000 });
       await openVisualizerSettingsSection(page);
       await expect(page.getByTestId("settings-visualizer-quality")).toBeVisible();
@@ -65,7 +65,7 @@ test.describe("Feature flag: Visualizer gate", () => {
 
       // Back in the workspace: the header button is gone and the previously
       // open Visualizer tab has been reaped by useCloseDisabledFeatureTabs.
-      await pressSettingsToggleShortcut(page);
+      await toggleSettingsFromUi(page);
       await expect(page).toHaveURL(buildHostWorkspaceRoute(getServerId(), workspace.workspaceId), {
         timeout: 15_000,
       });
@@ -77,7 +77,7 @@ test.describe("Feature flag: Visualizer gate", () => {
       await expect(allVisualizerTabChips(page)).toHaveCount(0, { timeout: 15_000 });
 
       // Re-enable from settings.
-      await pressSettingsToggleShortcut(page);
+      await toggleSettingsFromUi(page);
       await expect(page).toHaveURL(/\/settings\//, { timeout: 15_000 });
       await openVisualizerSettingsSection(page);
       await page.getByTestId("settings-visualizer-enable-switch").click();
@@ -87,7 +87,7 @@ test.describe("Feature flag: Visualizer gate", () => {
       });
 
       // The entry point returns and works again.
-      await pressSettingsToggleShortcut(page);
+      await toggleSettingsFromUi(page);
       await waitForTabBar(page);
       await expect(visualizerHeaderButton(page)).toBeVisible({ timeout: 15_000 });
       await openVisualizerFromHeader(page);

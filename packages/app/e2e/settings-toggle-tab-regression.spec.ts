@@ -5,9 +5,17 @@ import { waitForTabBar, expectAgentTabActive } from "./helpers/launcher";
 import { seedWorkspace } from "./helpers/seed-client";
 import { getServerId } from "./helpers/server-id";
 
-async function pressSettingsToggleShortcut(page: import("@playwright/test").Page) {
-  const modifier = process.platform === "darwin" ? "Meta" : "Control";
-  await page.keyboard.press(`${modifier}+Comma`);
+// Settings has no keyboard shortcut of its own (Mod+, opens the file finder),
+// so the round trip is the sidebar button in and the back button out — the same
+// `navigateToLastWorkspace` path the old Mod+, toggle took.
+async function openSettingsFromSidebar(page: import("@playwright/test").Page) {
+  const settingsButton = page.locator('[data-testid="sidebar-settings"]:visible').first();
+  await expect(settingsButton).toBeVisible({ timeout: 15_000 });
+  await settingsButton.click();
+}
+
+async function backToWorkspaceFromSettings(page: import("@playwright/test").Page) {
+  await page.getByTestId("settings-back-to-workspace").click();
 }
 
 async function expectSendBehavior(
@@ -67,7 +75,7 @@ test.describe("Settings toggle tab regression", () => {
       await waitForTabBar(page);
       await expectAgentTabActive(page, secondAgent.id);
 
-      await pressSettingsToggleShortcut(page);
+      await openSettingsFromSidebar(page);
       await expect(page).toHaveURL(/\/settings\/general$/);
 
       await page.getByRole("button", { name: "Queue", exact: true }).click();
@@ -75,7 +83,7 @@ test.describe("Settings toggle tab regression", () => {
       await page.getByRole("button", { name: "Interrupt", exact: true }).click();
       await expectSendBehavior(page, "interrupt");
 
-      await pressSettingsToggleShortcut(page);
+      await backToWorkspaceFromSettings(page);
       await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, workspace.workspaceId));
       await waitForTabBar(page);
       await expectAgentTabActive(page, secondAgent.id);
