@@ -4,7 +4,7 @@
 **Lineage:** Extends the existing agent-coordination surface (`send_agent_prompt`, `cancel_agent`) in
 [otto-tools.ts](../../packages/server/src/server/agent/tools/otto-tools.ts) and the turn lifecycle in
 [agent-manager.ts](../../packages/server/src/server/agent/agent-manager.ts). Sibling in spirit to the
-shipped subagents-cleanup work (folded into [docs/agent-lifecycle.md](../../docs/agent-lifecycle.md#the-subagents-track))
+shipped subagents-cleanup work (folded into [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md#the-subagents-track))
 — legibility + control over agents you're supervising, not new agent kinds.
 
 ## Why
@@ -143,7 +143,7 @@ to queue-by-default.
   provider, it ships for **all** providers at once in Phase 1 — no observed→native→rest rollout.
 - **Rebuild:** Phase 1/2 touch the daemon → `npm run build:server` + daemon restart to serve.
 - **Fold-in on ship:** fold the durable "interrupt vs queue" delivery semantics into
-  [docs/agent-lifecycle.md](../../docs/agent-lifecycle.md) (turn lifecycle / steering section), then
+  [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md) (turn lifecycle / steering section), then
   delete this folder.
 
 ## SDK note — interrupt receipt (added 2026-07-17)

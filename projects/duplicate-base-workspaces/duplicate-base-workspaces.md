@@ -9,7 +9,7 @@ should prevent, or a **great idea** we should support properly? Either answer is
 acceptable — an unargued "it depends" is not. Do not change behaviour in that
 session; propose.
 
-Related: [docs/agent-lifecycle.md](../../docs/agent-lifecycle.md),
+Related: [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md),
 `packages/server/src/server/workspace-reconciliation-service.ts`.
 
 ## The tension
@@ -153,7 +153,7 @@ Everything Otto owns is already correctly per-`workspaceId` and is
 extensively test-locked — agent ownership, status, attention, terminals, service
 ports, env, script runtimes. `workspace-same-cwd-isolation.e2e.test.ts` exists
 precisely to prove status never fans out across a shared cwd, and
-`docs/agent-lifecycle.md:70` states the rule outright ("Ownership is never
+`docs/chat-lifecycle.md:70` states the rule outright ("Ownership is never
 derived from `cwd` — many workspaces may share one directory").
 
 **So the real defect is not corruption — it is a false promise.** Everything

@@ -3,6 +3,7 @@ import type { Readable } from "node:stream";
 import { v4 as uuidv4 } from "uuid";
 import type { SpeechVoiceOverride, TextToSpeechProvider } from "../speech/speech-provider.js";
 import { toResolver, type Resolvable } from "../speech/provider-resolver.js";
+import { markdownToSpokenText } from "../speech/speech-text.js";
 import type { SessionOutboundMessage } from "../messages.js";
 
 interface PendingPlayback {
@@ -114,7 +115,10 @@ function splitOversizedFragment(fragment: string, maxChars: number): string[] {
 }
 
 function splitTextForTts(text: string): TtsSegment[] {
-  const normalized = text.trim().replace(/\s+/g, " ");
+  // Agent replies are markdown; speak what the chat renders, not the syntax
+  // that styles it. Applied here so every caller — voice mode and the
+  // per-message playback button — is covered by one pass. See speech-text.ts.
+  const normalized = markdownToSpokenText(text).replace(/\s+/g, " ").trim();
   if (!normalized) {
     throw new Error("Cannot synthesize empty text");
   }

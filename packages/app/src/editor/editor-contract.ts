@@ -7,6 +7,13 @@ import type { SyntaxColors } from "@otto-code/highlight";
 export interface EditorThemeSpec {
   background: string;
   foreground: string;
+  /**
+   * Line-number gutter fill. Kept separate from `background` on purpose: the
+   * code area sits in a deepened well (see editor-theme) while the gutter stays
+   * at the surrounding chrome color, so the line numbers read as a margin
+   * rather than as part of the darker code surface.
+   */
+  gutterBackground: string;
   gutterForeground: string;
   gutterActiveForeground: string;
   /** Divider line between the line-number gutter and the code. */
@@ -17,9 +24,24 @@ export interface EditorThemeSpec {
   rulerColor: string;
   selectionBackground: string;
   cursor: string;
+  /**
+   * Caret width in px. A 1px hairline is genuinely hard to find in a wall of
+   * monospace text — this is the one dimension that makes the caret locatable
+   * at a glance, so it is themeable rather than left at CM6's 1.2px default.
+   */
+  cursorWidth: number;
   activeLineBackground: string;
+  /**
+   * Search-match fills. These must NOT resemble `selectionBackground` — a match
+   * that looks like a selection is invisible while you are also selecting, which
+   * is precisely when you are searching. They are amber (the semantic warning
+   * tone) against the neutral selection, and each fill is paired with an outline
+   * so a match is legible even where the fill lands on a busy syntax color.
+   */
   searchMatchBackground: string;
+  searchMatchBorder: string;
   activeSearchMatchBackground: string;
+  activeSearchMatchBorder: string;
   /** CSS font-family stack; must end in a generic mono fallback — the native
    * webview document cannot resolve Expo-registered font names. */
   fontFamily: string;

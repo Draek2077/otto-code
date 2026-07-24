@@ -1,28 +1,12 @@
-import type { ConfirmDialogInput } from "@/utils/confirm-dialog";
-
 /**
- * Bulk "Clear all completed": drop every terminal (completed) background
- * shell task row in one gesture. Only ever called with tidy-eligible ids
- * (terminal, not attention) — it never touches a running or errored row.
- * Confirms once because clearing many rows at once is more consequential
- * than a single clear. Mirrors subagents/clear-completed-subagents.ts.
+ * Clear terminal (completed) background shell task rows off the track. Only
+ * ever called with tidy-eligible ids (terminal, not attention) — it never
+ * touches a running or errored row. Clearing is unconfirmed: a completed task
+ * carries nothing you can lose by dropping its row (the output is already in
+ * the chat), so a confirm dialog was pure friction. Mirrors the single-row X,
+ * which has always cleared without asking.
  */
-export function resolveClearCompletedDialog(count: number): ConfirmDialogInput {
-  const noun = count === 1 ? "completed background task" : "completed background tasks";
-  return {
-    title:
-      count === 1
-        ? "Clear completed background task?"
-        : `Clear ${count} completed background tasks?`,
-    message: `Remove ${count} ${noun} from the track. Running background tasks are untouched.`,
-    confirmLabel: "Clear",
-    cancelLabel: "Cancel",
-    destructive: true,
-  };
-}
-
 export interface ClearCompletedBackgroundTasksDeps {
-  confirm: (input: ConfirmDialogInput) => Promise<boolean>;
   clearBackgroundShellTasks: (parentAgentId: string, taskIds: readonly string[]) => Promise<void>;
   reportError: (error: unknown) => void;
 }
@@ -37,10 +21,6 @@ export async function requestClearCompletedBackgroundTasks(
   deps: ClearCompletedBackgroundTasksDeps,
 ): Promise<void> {
   if (input.taskIds.length === 0) {
-    return;
-  }
-  const confirmed = await deps.confirm(resolveClearCompletedDialog(input.taskIds.length));
-  if (!confirmed) {
     return;
   }
   try {

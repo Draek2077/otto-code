@@ -20,6 +20,8 @@ describe("claude model manifest", () => {
       Object.fromEntries(CLAUDE_MODEL_MANIFEST.map((model) => [model.id, catalogTier(model.id)])),
     ).toEqual({
       "claude-fable-5": "deep",
+      "claude-opus-5[1m]": "deep",
+      "claude-opus-5": "standard",
       "claude-opus-4-8[1m]": "deep",
       "claude-opus-4-8": "standard",
       "claude-sonnet-5": "standard",

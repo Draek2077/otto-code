@@ -18,7 +18,8 @@ policy.** This charter closes that gap and makes the retention story consistent 
 Otto accumulates history: agent records and the metrics ledger.
 
 Framing: [total-token-accounting](../total-token-accounting/total-token-accounting.md) owns "what did
-this chat cost"; [usage-ledger](../usage-ledger/usage-ledger.md) owns "itemize the spend"; History
+this chat cost"; the usage log ([docs/activity-stats.md](../../docs/activity-stats.md)) owns
+"itemize the spend"; History
 Management owns **"how do I get rid of it."**
 
 ## 2. Ground truth (from exploration)
@@ -32,7 +33,7 @@ Management owns **"how do I get rid of it."**
   `markRecordArchived()` does `registry.upsert(...)`, **not** a remove.
 - [agent-storage.ts:297-315](../../packages/server/src/server/agent/agent-storage.ts) —
   `applySnapshot()` explicitly preserves `archivedAt` across every later persist.
-- [docs/agent-lifecycle.md:37](../../docs/agent-lifecycle.md) states the intent outright: "Archive is a
+- [docs/chat-lifecycle.md:37](../../docs/chat-lifecycle.md) states the intent outright: "Archive is a
   **soft delete**". That's correct and stays correct — this charter adds the _hard_ delete beside it,
   it does not change what archive means.
 
@@ -330,5 +331,5 @@ Phases 0 and 1 are independently shippable and together answer the original ques
 
 **Docs (on ship)**
 
-- [docs/agent-lifecycle.md:37](../../docs/agent-lifecycle.md) — document hard delete beside soft delete.
+- [docs/chat-lifecycle.md:37](../../docs/chat-lifecycle.md) — document hard delete beside soft delete.
 - [docs/activity-stats.md](../../docs/activity-stats.md) — ledger retention + the stale counter list (§6.5).

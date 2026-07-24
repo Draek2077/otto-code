@@ -76,7 +76,7 @@ A logical block of related rows lives inside a card — one border around the wh
 
 Rows after the first inside a card carry `settingsStyles.rowBorder` — a single top border. The first row never has one. The same divider pattern appears in the keyboard-shortcuts dialog rows (`packages/app/src/components/keyboard-shortcuts-dialog.tsx:74-83`). Rows do not need their own background to feel separated.
 
-A list that is itself the page content — sidebar items in `sidebar-workspace-list.tsx`, the workspace list, the agent list (`packages/app/src/components/agent-list.tsx`) — uses spacing and surface, not borders, to separate items. Rows-in-a-card is an interior pattern; lists-as-pages are not.
+A list that is itself the page content — sidebar items in `sidebar-workspace-list.tsx`, the workspace list, the chat list (`packages/app/src/components/agent-list.tsx`) — uses spacing and surface, not borders, to separate items. Rows-in-a-card is an interior pattern; lists-as-pages are not.
 
 Pane chrome — the workspace pane header, the file-explorer header, the diff pane header — uses a single bottom border to separate the header from the content (`packages/app/src/git/diff-pane.tsx:2328-2331`). One border, no shadow.
 
@@ -163,7 +163,7 @@ Terminology:
 - Host, except where the user-facing concept is the daemon process itself ("Restart daemon").
 - Project, not "repo" or "repository".
 - Provider, not "model provider".
-- Session and agent are distinct: a session is a historical entry in `sessions-screen.tsx`; an agent is a live entity in the workspace.
+- Session and chat are distinct: a session is a historical entry in `sessions-screen.tsx`; a chat is a live entity in the workspace.
 
 ---
 
@@ -209,7 +209,7 @@ Selected state on rows in a desktop list+detail uses `surfaceSidebarHover` as th
 
 Status pills are `palette.<color>[300]` foreground on a 10%-alpha background of the same color. Success uses green, warning uses amber, danger uses red, muted uses zinc. The `<StatusBadge>` primitive (`packages/app/src/components/ui/status-badge.tsx`) is canonical.
 
-Status dots — the small filled circles next to a host or agent name — are `borderRadius.full` filled with the status color (`statusSuccess`, `statusWarning`, `statusDanger`, or `foregroundMuted`). They sit in the trailing slot of a sidebar row or as a leading marker on a status pill.
+Status dots — the small filled circles next to a host or chat name — are `borderRadius.full` filled with the status color (`statusSuccess`, `statusWarning`, `statusDanger`, or `foregroundMuted`). They sit in the trailing slot of a sidebar row or as a leading marker on a status pill.
 
 The `status<Tone>Surface` fills are the same tones as chrome rather than as a pill: alpha washes (`statusInfoSurface`, `statusWarningSurface`, `statusDangerSurface`, `statusSuccessSurface`, `statusMergedSurface`) that tint whatever sits below them, so one token is correct on the app background, an elevated card, or the pure-black chat pane. Use them to tone a whole surface that carries a meaning — the suggested-task card (`packages/app/src/suggested-tasks/overlay.tsx`) is the reference: a `statusInfo` ring around a `statusInfoSurface`-washed interior, because a suggestion is an offer, not chrome.
 
@@ -251,7 +251,7 @@ The bespoke pills in `packages/app/src/screens/settings/host-page.tsx:97-116`, `
 | Destructive confirmation                            | `confirmDialog` invoked from `packages/app/src/screens/settings/host-page.tsx:541-547`                                                                                                                                                                                                                   |
 | Centered hero / first-run                           | `packages/app/src/components/welcome-screen.tsx`                                                                                                                                                                                                                                                         |
 | Sidebar list (workspaces, hosts)                    | `packages/app/src/components/sidebar-workspace-list.tsx`, `packages/app/src/components/left-sidebar.tsx`                                                                                                                                                                                                 |
-| Live list of items with sections (agents)           | `packages/app/src/components/agent-list.tsx`                                                                                                                                                                                                                                                             |
+| Live list of items with sections (chats)            | `packages/app/src/components/agent-list.tsx`                                                                                                                                                                                                                                                             |
 | Historical list (sessions)                          | `packages/app/src/screens/sessions-screen.tsx`                                                                                                                                                                                                                                                           |
 | Workspace pane (multi-tab, split)                   | `packages/app/src/screens/workspace/workspace-screen.tsx`                                                                                                                                                                                                                                                |
 | Composer / message input                            | `packages/app/src/composer/index.tsx`, `packages/app/src/composer/input/input.tsx`                                                                                                                                                                                                                       |

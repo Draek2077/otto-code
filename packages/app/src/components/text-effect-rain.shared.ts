@@ -39,9 +39,16 @@ export interface RainColumn {
 /**
  * Hard ceiling on animated columns. Native pays two derived styles per column
  * (UI thread, but still per-frame work), so a very wide badge degrades to a
- * shorter strip rather than quietly costing hundreds of worklet evaluations.
+ * sparser strip rather than quietly costing hundreds of worklet evaluations.
+ *
+ * Set high enough that real single-line tool-call labels never reach it: at the
+ * 7px Matrix pitch this covers ~900px of text. The old 48 was hit by any label
+ * past ~380px, and because the overflow is absorbed by *widening* the pitch
+ * (see buildRainColumns), that made long labels visibly less dense than short
+ * ones — the same effect reading differently depending on how much text it
+ * happened to be sitting on.
  */
-export const MAX_RAIN_COLUMNS = 48;
+export const MAX_RAIN_COLUMNS = 128;
 
 function hashSeed(seed: string): number {
   let hash = 0;
@@ -104,6 +111,10 @@ export const rainStylesheet = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     overflow: "hidden",
+    // The glyph line box centers a hair above the label's own optical center
+    // (cap-height vs. the label's x-height run), which reads as the rain
+    // floating above the text. One pixel down sits it on the text.
+    transform: [{ translateY: 1 }],
   },
   column: {
     position: "relative",

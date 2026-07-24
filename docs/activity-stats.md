@@ -33,6 +33,18 @@ interface ActivityStatsFile {
 
 Each of the 12 counters is an individually optional, additive leaf on both the stored JSON and the protocol schema, so new counters can be added — or existing ones dropped from the UI — in later passes without a migration or a breaking change. `increment(field, by = 1)` bumps both `allTime[field]` and today's bucket, then persists; `getRollups()` sums the map into the preset windows on read.
 
+## The usage log
+
+Sibling store to the counters: `UsageLogStore` (`packages/server/src/server/activity-stats/usage-log-store.ts`), mirroring `ActivityStatsStore`'s serialized-queue + atomic-write + coalesce shape. It backs the **Log** tab on the Metrics screen (Summary | Log) — the itemized rows behind the tiles, so a user can scroll every token-costing activity with its model and cost rather than only reading aggregates. Gated behind `server_info.features.usageLog` (`COMPAT(usageLog)`, added in v0.6.4).
+
+**One event, two sinks.** At the existing `AgentManager.recordUsageActivity` chokepoint the daemon builds one `UsageEvent`, then (1) appends it to the capped log and (2) folds it into the day-bucketed counters above. The tiles are therefore the log's rollup **by construction** — one source event, so the two surfaces cannot structurally disagree. The dual-write is **best-effort, with no transactional coupling** between the two files: if they drift by a row, that is accepted rather than defended against.
+
+**Why the counters stay their own durable store** (rather than being recomputed from the log on read): the log is rotated to a **30-day age window**, while the cumulative "All Time" tiles must outlive trimmed rows. Row = bounded detail; counter = cumulative summary, persisted forever as tiny running totals. Retention is the age window only — there is no row cap, so every row inside 30 days is kept.
+
+**What earns a row:** only the token/cost-_bearing_ activities — chat turns, sub-agent turns, and generations (bare completions: titles, names, commit/PR messages, summaries). Compaction is a slice _within_ a turn's usage (openai-compat folds it into the turn's reported usage, so billing it separately would double-count), so it rides its turn's row as a sub-figure rather than standing as its own row. The pure tallies — `messagesSent`, `agentsCreated`, `toolsCalled`, `artifactsCreated`, `schedulesExecuted` — are cost-free counts and are never log rows.
+
+On the wire, `UsageEvent` `kind`/`provider` are `z.string()` rather than enums so an old client still parses kinds a newer daemon invents. The log reuses the existing `activity_stats_changed` push for live refresh instead of adding its own notification, since it writes at the same chokepoint that moves the counters.
+
 ## Chokepoints
 
 `ActivityStatsStore` is instantiated once in `bootstrap.ts` and threaded into `AgentManager`, `RunService`, `ScheduleService`, and `ArtifactService`, which call `increment(field)` at:

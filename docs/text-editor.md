@@ -79,9 +79,41 @@ One engine, four platforms, per the Metro-extension rule (no `if (isWeb)` sprawl
 
 CM6's highlight tags are the same Lezer tags the highlighter consumes, so themes map straight from Otto's design tokens ([design.md](design.md)).
 
+Two appearance rules the spec exists to enforce, both learned the hard way:
+
+- **`activeLineBackground` must stay translucent, and the stripe must stay a line
+  decoration.** These are one rule, because each half is what makes the other survivable.
+
+  `drawSelection` renders into `.cm-selectionLayer` at a _negative_ z-index — behind the
+  content — so an **opaque** background on `.cm-line` hides the selection on the caret's
+  line completely. That was the original bug; upstream never sees it because CM6's own
+  default fill is `#cceeff44`. The fix is to match upstream and keep the fill translucent
+  (currently the foreground at 6%, well under the selection's 15–20% so an overlap still
+  reads as _selected_).
+
+  The tempting alternative — move the stripe into its own `layer({above: false})`
+  registered after `drawSelection()` so it stacks underneath — **was built twice and
+  reverted twice.** It works in principle, but a layer's rectangle has to be _computed_ to
+  match the row instead of _being_ the row, and it kept landing in the wrong place: layers
+  mount on `view.scrollDOM` and position against CM6's `getBase()` (the scroller's rect
+  minus its scroll offset), so marker `(0, 0)` is left of the **gutters** and above
+  `.cm-content`'s padding, while `BlockInfo.top` — the only vertical coordinate CM6 gives
+  you for a line — is in _document_ space. Even with that conversion right, the stripe,
+  the row and the gutter each ended up a different height. A `.cm-line` background can't
+  drift from the row it paints: it is the row's own box.
+
+  So: don't reach for a layer, and don't make the fill opaque. If the current line needs
+  more presence, raise the alpha.
+
+- **Search matches must not reuse the selection color.** They did (both were
+  `terminal.selectionBackground`), which made a hit invisible exactly when you were also
+  selecting. Matches are amber — the semantic `statusWarning*` surfaces — with an
+  `outline` (never a `border`: an inline mark must not reflow the line it sits on), and the
+  active hit steps up to the stronger fill plus a 2px outline.
+
 **`EditorThemeSpec` is the whole appearance surface.** Both hosts receive concrete values (never CSS variables — nested palettes like `colors.syntax` have no per-token variable on web), so anything the editor should render differently belongs in that struct rather than in host-specific code. Most fields come from the Unistyles theme via `buildEditorThemeSpec(theme)`; a field driven by device-local app settings instead (`rulerColumn`) is merged in by the host in `file-tab-pane.tsx`, because the `withUnistyles` mapping only ever sees the theme.
 
-The **line-length ruler** (Settings → Appearance → Syntax; `rulerEnabled` / `rulerColumn`, default on at column 80, clamped to 80–240) is drawn as a 1px `linear-gradient` stripe on `.cm-content` — no decorations, no overlay element, and it paints behind the text. It uses the `ch` unit, so it tracks the code font size for free, and it is repeated on `.cm-activeLine` because that line paints an opaque background over the content layer. The stripe therefore spans the content box only — which is `max(longest line, viewport)`, so a column the ruler doesn't reach is also one the user could never scroll to.
+The **line-length ruler** (Settings → Appearance → Syntax; `rulerEnabled` / `rulerColumn`, default on at column 80, clamped to 80–240) is drawn as a 1px `linear-gradient` stripe on `.cm-content` — no decorations, no overlay element, and it paints behind the text. It uses the `ch` unit, so it tracks the code font size for free, and it needs no repeat on the active line: the active-line fill is translucent (see above), so the ruler shows straight through it. The stripe therefore spans the content box only — which is `max(longest line, viewport)`, so a column the ruler doesn't reach is also one the user could never scroll to.
 
 ## The status bar
 
@@ -115,7 +147,7 @@ Originally two tab kinds (a `file` viewer and an `editor` buffer) were planned; 
 - **Editor + preview split** — web/desktop only; a draggable `ResizeHandle` ratio with proportional scroll sync and click-to-align (`file-split-sync.ts`).
 - **Preview**
 
-**Preview reads are gated on visibility, never on focus.** The preview's read (`isFileQueryEnabled` in `file-pane-enabled.ts`) is disabled while its tab is hidden or the app is backgrounded, so a revisited tab refetches instead of showing a frozen snapshot. A disabled query is indistinguishable from an in-flight one — both are `isPending` — so anything that wrongly reports "not visible" leaves the pane spinning "Loading file..." forever, with no timeout and no error to explain it. Use `getIsAppInForeground` (AppState + `document.visibilityState`) for that gate, **not** `getIsAppActivelyVisible`, which additionally requires `document.hasFocus()`: focus leaves the host document for an Electron `<webview>`, devtools, or a second window while the pane is plainly on screen. Reserve the focus-sensitive predicate for "is the user actually looking at this agent" questions like attention-clearing and notifications.
+**Preview reads are gated on visibility, never on focus.** The preview's read (`isFileQueryEnabled` in `file-pane-enabled.ts`) is disabled while its tab is hidden or the app is backgrounded, so a revisited tab refetches instead of showing a frozen snapshot. A disabled query is indistinguishable from an in-flight one — both are `isPending` — so anything that wrongly reports "not visible" leaves the pane spinning "Loading file..." forever, with no timeout and no error to explain it. Use `getIsAppInForeground` (AppState + `document.visibilityState`) for that gate, **not** `getIsAppActivelyVisible`, which additionally requires `document.hasFocus()`: focus leaves the host document for an Electron `<webview>`, devtools, or a second window while the pane is plainly on screen. Reserve the focus-sensitive predicate for "is the user actually looking at this chat" questions like attention-clearing and notifications.
 
 The view mode is remembered per file in `file-view-store.ts`, with a path-derived default (`defaultFileViewMode`): rendered formats (markdown, images, binaries) open in preview; plain text/code opens straight in the editor. The editor buffer survives mode switches (preview renders the live draft); the discard guard runs only on tab close. Persisted legacy `editor` tab targets coerce to `file` targets — see **`COMPAT(unifiedFileTab)`** in the workspace-tabs store (`packages/app/src/stores/workspace-tabs-store/state.ts`).
 
@@ -131,7 +163,7 @@ The flow (`packages/app/src/editor/`):
 2. It opens a small JetBrains-style dialog (`refactor-dialog.tsx`) showing the scope (file + line range + selected-code preview), an instruction field, and a scope-guard note (_change only within scope; no unrelated reformatting, no dependency changes, no drive-by fixes_).
 3. On confirm, it composes a scope-guarded prompt via the **pure, unit-tested `refactor-prompt.ts`** (`buildRefactorPrompt`) and opens a **pre-filled draft tab** through the draft store (`use-ai-refactor.ts`, using `buildDraftStoreKey` / `generateDraftId`).
 
-From there the change flows through the ordinary composer/agent path: the user reviews provider/model and hits send, and BlobLoader progress plus "view agent log" come for free from the existing agent tab. There is no new observation surface and no auto-spawn. Mechanical rename is already covered by Phase 3's whole-word project replace, surfaced next to the AI action as the honest cheap option.
+From there the change flows through the ordinary composer/agent path: the user reviews provider/model and hits send, and BlobLoader progress plus "view agent log" come for free from the existing chat tab. There is no new observation surface and no auto-spawn. Mechanical rename is already covered by Phase 3's whole-word project replace, surfaced next to the AI action as the honest cheap option.
 
 ## Deferred / not yet built
 

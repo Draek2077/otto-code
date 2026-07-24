@@ -13,7 +13,6 @@ import {
   type StreamStrategy,
 } from "./strategy";
 import { resolveAssistantTurnBoundaryMessageId } from "./turn-boundary";
-import { useAssistantBubbleWidth } from "./assistant-turn-width";
 import { AssistantTurnFooter, LiveElapsed, type AssistantForkTarget } from "@/components/message";
 import type { TurnFooterHost } from "./layout";
 import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
@@ -39,8 +38,6 @@ export const TurnFooter = memo(function TurnFooter({
   strategy,
   onForkAssistantTurn,
   spinner,
-  serverId,
-  agentId,
 }: {
   isRunning: boolean;
   inFlightTurnStartedAt: Date | null;
@@ -49,8 +46,6 @@ export const TurnFooter = memo(function TurnFooter({
   strategy: TurnContentStrategy;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   spinner?: PersonalitySpinnerColors;
-  serverId?: string;
-  agentId?: string;
 }) {
   if (isRunning) {
     return (
@@ -73,8 +68,6 @@ export const TurnFooter = memo(function TurnFooter({
       timing={host.timing}
       startIndex={host.startIndex}
       onForkAssistantTurn={onForkAssistantTurn}
-      serverId={serverId}
-      agentId={agentId}
     />
   );
 });
@@ -94,8 +87,6 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex,
   onForkAssistantTurn,
   revealed = false,
-  serverId,
-  agentId,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
@@ -103,8 +94,6 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex: number;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   revealed?: boolean;
-  serverId?: string;
-  agentId?: string;
 }) {
   const hideDetails = useAppSettings().settings.hideChatMessageDetails;
   const isCompact = useIsCompactFormFactor();
@@ -126,8 +115,6 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
             timing={timing}
             startIndex={startIndex}
             onForkAssistantTurn={onForkAssistantTurn}
-            serverId={serverId}
-            agentId={agentId}
           />
         </View>
       </View>
@@ -211,16 +198,12 @@ function CompletedTurnFooter({
   timing,
   startIndex,
   onForkAssistantTurn,
-  serverId,
-  agentId,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
   timing?: TurnTiming;
   startIndex: number;
   onForkAssistantTurn?: AssistantTurnForkHandler;
-  serverId?: string;
-  agentId?: string;
 }) {
   const getContent = useCallback(
     () =>
@@ -235,13 +218,6 @@ function CompletedTurnFooter({
     items,
     startIndex,
   });
-  // The playback button pins to this turn's message width. The bubble reports
-  // its width under the same key we resolve here (blockGroupId ?? id); see
-  // assistant-turn-width.ts.
-  const startItem = items[startIndex];
-  const widthGroupId =
-    startItem?.kind === "assistant_message" ? (startItem.blockGroupId ?? startItem.id) : undefined;
-  const messageWidth = useAssistantBubbleWidth(widthGroupId);
   return (
     <View style={stylesheet.turnFooterSlot}>
       <AssistantTurnFooter
@@ -251,9 +227,6 @@ function CompletedTurnFooter({
         usage={timing?.usage}
         forkBoundaryMessageId={boundaryMessageId}
         onFork={onForkAssistantTurn}
-        serverId={serverId}
-        agentId={agentId}
-        messageWidth={messageWidth}
       />
     </View>
   );

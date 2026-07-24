@@ -22,9 +22,6 @@ import {
   useCallback,
   createContext,
   useContext,
-  isValidElement,
-  Children,
-  cloneElement,
 } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { MarkdownIt, type ASTNode, type RenderRules } from "react-native-markdown-display";
@@ -69,7 +66,11 @@ import { useTextEffectThemeId } from "@/hooks/use-text-effect-theme";
 import { textEffectActivityForToolName } from "@/agent-stream/action-grouping";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { BubbleCornerSheen } from "@/components/bubble-corner-sheen";
-import { MarkdownRenderer, type MarkdownStyles } from "@/components/markdown/renderer";
+import {
+  MarkdownRenderer,
+  withMarkdownLinkColor,
+  type MarkdownStyles,
+} from "@/components/markdown/renderer";
 import { applyTaskListMarkers } from "@/components/markdown/task-lists";
 import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import { TodoTaskList, useTodoCounts } from "@/components/todo-task-list";
@@ -110,7 +111,6 @@ import {
   reportBubbleSegmentHeight,
   useBubbleGroupOffset,
 } from "@/agent-stream/bubble-group-offsets";
-import { reportAssistantBubbleWidth } from "@/agent-stream/assistant-turn-width";
 import { resolveAssistantImageSource } from "@/utils/assistant-image-source";
 import {
   createPreviewAttachmentId,
@@ -146,6 +146,12 @@ import { RewindMenu, type RewindMode } from "@/components/rewind/rewind-menu";
 import { useRewindAgentMutation } from "@/components/rewind/use-rewind-agent-mutation";
 import { AssistantForkMenu, type AssistantForkTarget } from "@/components/assistant-fork-menu";
 import { MessagePlaybackButton, useTtsSpeakFeature } from "@/components/message-playback-button";
+import {
+  getAssistantBubbleText,
+  reportAssistantBubbleText,
+  useAssistantBubbleHasText,
+} from "@/agent-stream/assistant-bubble-text";
+import { useIsMessagePlaybackActive } from "@/agent-stream/message-playback-activity";
 export type { InlinePathTarget } from "@/assistant-file-links";
 export type { AssistantForkTarget };
 
@@ -600,18 +606,11 @@ interface AssistantTurnFooterProps {
     target: AssistantForkTarget;
     boundaryMessageId?: string;
   }) => Promise<void> | void;
-  /** Host whose TTS reads the message aloud; gates and powers the playback button. */
-  serverId?: string;
-  /** Agent whose personality voice reads the message aloud. */
-  agentId?: string;
-  /**
-   * Rendered width of this turn's message bubble, in px (0 when unknown). The
-   * playback button pins to this width's right edge: for a short message the
-   * footer's own content is wider, so the button sits at the end; for a long
-   * message the row stretches to the bubble and the button pins right.
-   */
-  messageWidth?: number;
 }
+// Playback deliberately does NOT live here. A turn's footer only knows the turn,
+// and `collectAssistantTurnContent` joins every assistant message in it — so a
+// button here read the whole turn aloud. It is now one button per visual bubble,
+// on the bubble itself (AssistantBubblePlayback).
 
 /**
  * Total tokens the turn consumed (fresh input + cache reads + output).
@@ -669,9 +668,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   usage,
   forkBoundaryMessageId,
   onFork,
-  serverId,
-  agentId,
-  messageWidth,
 }: AssistantTurnFooterProps) {
   const timestampLabel = useChatTimestampLabel(completedAt?.getTime());
   const detailsLabel = useMemo(() => {
@@ -689,20 +685,8 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   const canFork = Boolean(onFork && forkBoundaryMessageId);
   // Speak-this-message is available whenever the host can stream speech on
   // demand (the ttsSpeak capability); no live voice session required.
-  const canPlay = useTtsSpeakFeature(serverId ?? "");
-  const showPlayback = canPlay && serverId !== undefined;
-  // Pin the button under the message's right edge by forcing the row at least
-  // as wide as the bubble; the flex spacer fills any slack (see the stylesheet).
-  const containerStyle = useMemo(
-    () =>
-      showPlayback && messageWidth && messageWidth > 0
-        ? [assistantTurnFooterStylesheet.container, { minWidth: messageWidth }]
-        : assistantTurnFooterStylesheet.container,
-    [showPlayback, messageWidth],
-  );
-
   return (
-    <View style={containerStyle}>
+    <View style={assistantTurnFooterStylesheet.container}>
       <TurnCopyButton
         getContent={getContent}
         containerStyle={assistantTurnFooterStylesheet.copyButton}
@@ -710,12 +694,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
       {canFork ? <AssistantForkMenu onFork={handleFork} /> : null}
       {detailsLabel ? (
         <Text style={assistantTurnFooterStylesheet.detailsLabel}>{detailsLabel}</Text>
-      ) : null}
-      {showPlayback && serverId !== undefined ? (
-        <>
-          <View style={assistantTurnFooterStylesheet.spacer} />
-          <MessagePlaybackButton serverId={serverId} agentId={agentId} getContent={getContent} />
-        </>
       ) : null}
     </View>
   );
@@ -728,10 +706,9 @@ interface AssistantMessageProps {
   serverId?: string;
   client?: DaemonClient | null;
   /**
-   * The stream item id. Used as the turn-width key fallback for a standalone
-   * (ungrouped) reply — the turn footer resolves the same `blockGroupId ?? id`
-   * to pin its playback button to this message's right edge
-   * (agent-stream/assistant-turn-width.ts).
+   * The stream item id. Used as the bubble-group key fallback for a standalone
+   * (ungrouped) reply, keying the text registry the per-bubble playback button
+   * reads (agent-stream/assistant-bubble-text.ts).
    */
   id?: string;
   spacing?: "default" | "compactTop" | "compactBottom" | "compactBoth";
@@ -751,6 +728,8 @@ interface AssistantMessageProps {
    */
   blockGroupId?: string;
   blockIndex?: number;
+  /** Agent whose personality voice reads this bubble aloud. */
+  agentId?: string;
 }
 
 export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
@@ -1652,6 +1631,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   revealBudget,
   blockGroupId,
   blockIndex,
+  agentId,
 }: AssistantMessageProps) {
   const showBubbleGradient = useAppSettingValue(selectChatBubbleGradient);
   const displayMessage =
@@ -1764,14 +1744,18 @@ export const AssistantMessage = memo(function AssistantMessage({
         </MarkdownInheritedText>
       ),
       // hardbreak/softbreak fall back to react-native-markdown-display's
-      // default, a plain RN <Text>{"\n"}. Inside the paragraph UITextView that
-      // plain <Text> is not hoisted into a UITextViewChild and is dropped (same
-      // root cause as strong/em/s) — so on iOS a hard line break vanished, and
-      // a softbreak between words jammed them together ("one\ntwo" -> "onetwo").
-      // Emit the break through MarkdownTextSpan so it composes on iOS; web and
-      // Android keep the same "\n" they rendered before.
+      // default, a plain RN <Text>. Inside the paragraph UITextView that plain
+      // <Text> is not hoisted into a UITextViewChild and is dropped (same root
+      // cause as strong/em/s) — so on iOS a hard line break vanished, and a
+      // softbreak between words jammed them together ("one\ntwo" -> "onetwo").
+      // Emit the break through MarkdownTextSpan so it composes on iOS.
+      //
+      // A hardbreak (two trailing spaces, or a backslash) is an explicit line
+      // break and stays "\n". A SOFTbreak is just a newline in the source, which
+      // markdown reflows as a space — the library's "\n" default turned every
+      // hard-wrapped paragraph into a ragged column of short lines.
       hardbreak: (node: ASTNode) => <MarkdownTextSpan key={node.key}>{"\n"}</MarkdownTextSpan>,
-      softbreak: (node: ASTNode) => <MarkdownTextSpan key={node.key}>{"\n"}</MarkdownTextSpan>,
+      softbreak: (node: ASTNode) => <MarkdownTextSpan key={node.key}> </MarkdownTextSpan>,
       code_block: (
         node: ASTNode,
         _children: ReactNode[],
@@ -1928,13 +1912,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           source={getMarkdownLinkSource(node)}
           style={styles.link}
         >
-          {Children.map(children, (child) => {
-            if (!isValidElement(child)) return child;
-            const childProps = child.props as { style?: StyleProp<TextStyle> };
-            return cloneElement(child, {
-              style: [childProps.style, { color: styles.link.color }],
-            } as Partial<{ style: StyleProp<TextStyle> }>);
-          })}
+          {withMarkdownLinkColor(children, styles.link.color)}
         </AssistantMarkdownLink>
       ),
       image: (
@@ -2003,31 +1981,30 @@ export const AssistantMessage = memo(function AssistantMessage({
   // it (agent-stream/bubble-group-offsets.ts).
   const bubbleRef = useRef<View>(null);
   const groupOffsetTop = useBubbleGroupOffset(blockGroupId, blockIndex);
-  // The turn footer pins its playback button to the message's right edge; it
-  // resolves the same key (blockGroupId ?? id) and reads the widest reported
-  // segment (assistant-turn-width.ts). A standalone reply hugs its content so
-  // its width is the true bubble width; grouped continuation segments stretch
-  // to the full column, which is what a long message should pin against.
-  const widthGroupId = blockGroupId ?? id;
-  const widthBlockIndex = blockIndex ?? 0;
+  // The visual bubble's identity: a standalone reply is its own group, a split
+  // streamed reply shares one across its segments. Keys both the text registry
+  // and the playback button (agent-stream/assistant-bubble-text.ts).
+  const bubbleGroupId = blockGroupId ?? id;
+  const bubbleBlockIndex = blockIndex ?? 0;
   const handleBubbleLayout = useCallback(
     (event: LayoutChangeEvent) => {
-      const { width, height } = event.nativeEvent.layout;
-      if (blockGroupId !== undefined && blockIndex !== undefined) {
-        reportBubbleSegmentHeight({ groupId: blockGroupId, blockIndex, height });
+      if (blockGroupId === undefined || blockIndex === undefined) {
+        return;
       }
-      if (widthGroupId !== undefined) {
-        reportAssistantBubbleWidth({ groupId: widthGroupId, blockIndex: widthBlockIndex, width });
-      }
+      reportBubbleSegmentHeight({
+        groupId: blockGroupId,
+        blockIndex,
+        height: event.nativeEvent.layout.height,
+      });
     },
-    [blockGroupId, blockIndex, widthGroupId, widthBlockIndex],
+    [blockGroupId, blockIndex],
   );
   // RN-web fires onLayout only on mount/window-resize, so a segment that
   // grows after mount (the live-turn reveal typing into it) would report a
-  // stale height/width to the registries; re-measure whenever the displayed
-  // text changes. Native onLayout re-fires on every layout change already.
+  // stale height to the registry; re-measure whenever the displayed text
+  // changes. Native onLayout re-fires on every layout change already.
   useEffect(() => {
-    if (!isWeb || widthGroupId === undefined) {
+    if (!isWeb || blockGroupId === undefined || blockIndex === undefined) {
       return;
     }
     const frame = requestAnimationFrame(() => {
@@ -2036,17 +2013,24 @@ export const AssistantMessage = memo(function AssistantMessage({
       if (!rect) {
         return;
       }
-      if (blockGroupId !== undefined && blockIndex !== undefined) {
-        reportBubbleSegmentHeight({ groupId: blockGroupId, blockIndex, height: rect.height });
-      }
-      reportAssistantBubbleWidth({
-        groupId: widthGroupId,
-        blockIndex: widthBlockIndex,
-        width: rect.width,
-      });
+      reportBubbleSegmentHeight({ groupId: blockGroupId, blockIndex, height: rect.height });
     });
     return () => cancelAnimationFrame(frame);
-  }, [blockGroupId, blockIndex, widthGroupId, widthBlockIndex, displayMessage]);
+  }, [blockGroupId, blockIndex, displayMessage]);
+
+  const playback = useAssistantBubblePlaybackState({
+    serverId,
+    spacing,
+    groupId: bubbleGroupId,
+    blockIndex: bubbleBlockIndex,
+    message,
+  });
+  const {
+    showPlayback,
+    visible: playbackVisible,
+    handlePointerEnter,
+    handlePointerLeave,
+  } = playback;
 
   // Not yet reached by the live-turn reveal: take no space (not even the
   // container padding) until the typewriter arrives at this item.
@@ -2068,12 +2052,19 @@ export const AssistantMessage = memo(function AssistantMessage({
   }
 
   return (
-    <View testID="assistant-message" style={assistantContainerStyle}>
+    // Plain View owns hover per docs/hover.md; the playback button is a
+    // separate inner Pressable.
+    <View
+      testID="assistant-message"
+      style={assistantContainerStyle}
+      onPointerEnter={isWeb ? handlePointerEnter : undefined}
+      onPointerLeave={isWeb ? handlePointerLeave : undefined}
+    >
       {keyedBlocks.length > 0 ? (
         <View
           ref={bubbleRef}
           style={bubbleStyle}
-          onLayout={widthGroupId !== undefined ? handleBubbleLayout : undefined}
+          onLayout={blockGroupId !== undefined ? handleBubbleLayout : undefined}
         >
           {sheen}
           {keyedBlocks.map(({ key, block }) => (
@@ -2086,11 +2077,145 @@ export const AssistantMessage = memo(function AssistantMessage({
               />
             </AssistantMessageBlockContainer>
           ))}
+          {showPlayback && serverId !== undefined && bubbleGroupId !== undefined ? (
+            <AssistantBubblePlayback
+              serverId={serverId}
+              agentId={agentId}
+              groupId={bubbleGroupId}
+              visible={playbackVisible}
+            />
+          ) : null}
         </View>
       ) : null}
     </View>
   );
 });
+
+/**
+ * Everything the bubble needs to decide whether — and when — to show its
+ * playback button. Extracted from AssistantMessage purely to keep that
+ * component under the complexity ceiling; it holds no state the bubble's
+ * rendering depends on beyond hover.
+ */
+function useAssistantBubblePlaybackState(input: {
+  serverId?: string;
+  spacing: AssistantMessageProps["spacing"];
+  groupId: string | undefined;
+  blockIndex: number;
+  message: string;
+}): {
+  showPlayback: boolean;
+  visible: boolean;
+  handlePointerEnter: () => void;
+  handlePointerLeave: () => void;
+} {
+  const { serverId, spacing, groupId, blockIndex, message } = input;
+  const [hovered, setHovered] = useState(false);
+  const handlePointerEnter = useCallback(() => setHovered(true), []);
+  const handlePointerLeave = useCallback(() => setHovered(false), []);
+  const isCompact = useIsCompactFormFactor();
+  const canPlay = useTtsSpeakFeature(serverId ?? "");
+
+  // Report the FULL message (not the typewriter-revealed slice) so playback
+  // reads the whole block even mid-reveal; the button resolves the group's
+  // joined text on press.
+  useEffect(() => {
+    if (groupId === undefined) {
+      return;
+    }
+    reportAssistantBubbleText({ groupId, blockIndex, text: message });
+  }, [groupId, blockIndex, message]);
+
+  // One button per *visual* bubble, so it goes on the segment that ends the
+  // group: "default" is a standalone reply and "compactTop" is the last segment
+  // of a split one, while "compactBottom"/"compactBoth" still have a segment
+  // below them and would each add a redundant button mid-bubble.
+  const isLastSegment = spacing === "default" || spacing === "compactTop";
+  return {
+    showPlayback: canPlay && isLastSegment,
+    // Hover is web-only (docs/hover.md), so native and compact keep it visible.
+    visible: hovered || isNative || isCompact,
+    handlePointerEnter,
+    handlePointerLeave,
+  };
+}
+
+interface AssistantBubblePlaybackProps {
+  serverId: string;
+  agentId?: string;
+  groupId: string;
+  visible: boolean;
+}
+
+/**
+ * The per-bubble playback control: one button per visual message, reading that
+ * message and nothing else.
+ *
+ * It used to live in the turn footer, where `collectAssistantTurnContent` walked
+ * the whole turn and joined every assistant message in it — so one press read a
+ * turn's entire output aloud, which for a long turn is a lot of speech you did
+ * not ask for. A turn that writes, calls a tool, then writes again now offers
+ * two buttons, one per bubble.
+ *
+ * Absolutely positioned at the bubble's bottom-right rather than laid out in a
+ * row of its own: a row would add its height to every bubble forever, whereas
+ * this occupies no layout at all and only appears on hover. The circular chrome
+ * is what keeps it legible where it overlaps the tail of the last line.
+ */
+function AssistantBubblePlayback({
+  serverId,
+  agentId,
+  groupId,
+  visible,
+}: AssistantBubblePlaybackProps) {
+  const hasText = useAssistantBubbleHasText(groupId);
+  // A speaking bubble keeps its button on screen regardless of hover — the
+  // Stop control must never be the thing you have to hunt for.
+  const isSpeaking = useIsMessagePlaybackActive(groupId);
+  const getContent = useCallback(() => getAssistantBubbleText(groupId), [groupId]);
+
+  if (!hasText) {
+    return null;
+  }
+  const shown = visible || isSpeaking;
+  return (
+    <View
+      style={shown ? assistantBubblePlaybackStyles.slotVisible : assistantBubblePlaybackStyles.slot}
+      pointerEvents={shown ? "auto" : "none"}
+    >
+      <MessagePlaybackButton
+        serverId={serverId}
+        agentId={agentId}
+        turnKey={groupId}
+        getContent={getContent}
+        testID={`assistant-bubble-playback-${groupId}`}
+      />
+    </View>
+  );
+}
+
+const assistantBubblePlaybackStyles = StyleSheet.create((theme) => ({
+  slot: {
+    position: "absolute",
+    right: theme.spacing[1],
+    bottom: theme.spacing[1],
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface2,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    opacity: 0,
+  },
+  slotVisible: {
+    position: "absolute",
+    right: theme.spacing[1],
+    bottom: theme.spacing[1],
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface2,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    opacity: 1,
+  },
+}));
 
 interface SpeakMessageProps {
   message: string;

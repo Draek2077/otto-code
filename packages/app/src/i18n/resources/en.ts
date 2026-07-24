@@ -498,6 +498,7 @@ export const en = {
         size: "Size",
         modified: "Modified",
         copyPath: "Copy path",
+        copyRelativePath: "Copy relative path",
         download: "Download",
         edit: "Edit",
         findInFiles: "Find in files",
@@ -1910,8 +1911,10 @@ export const en = {
     cancel: "Cancel",
     wordWrap: "Word wrap",
     outOfProject: {
-      badge: "Out of project · {{project}}",
-      badgeNoProject: "Outside any project",
+      badge:
+        "Editing outside the project ({{project}}) — not part of the agent's context or this workspace's Git changes.",
+      badgeNoProject:
+        "Editing outside the project — not part of the agent's context or this workspace's Git changes.",
       editOutsideTitle: "Edit a file outside any project?",
       editOutsideMessage:
         "This file isn't part of any project. Editing it writes directly to the file on disk. This warning shows every time.",
@@ -2498,6 +2501,7 @@ export const en = {
         toggleBothSidebars: "Toggle both sidebars",
         openFilesSidebar: "Open files sidebar",
         openSearchSidebar: "Open search sidebar",
+        findInFiles: "Find in files",
         openChangesSidebar: "Open changes sidebar",
         toggleSettings: "Toggle settings",
         toggleFocusMode: "Toggle focus mode",

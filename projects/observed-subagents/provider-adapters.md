@@ -64,7 +64,7 @@ The Claude adapter keeps its observed bookkeeping inline (announce set, taskId�
 
 Per the repo convention (CLAUDE.md → Docs), once this ships the durable facts must be folded into **official architectural documentation** in `docs/` — this task is part of the project, not optional cleanup:
 
-1. **[docs/agent-lifecycle.md](../../docs/agent-lifecycle.md)** — add an "Observed subagents" section: the attended/observed split, the `attend` field, membership in the subagents track, why detach is hidden, stop semantics, ephemeral (non-persisted) lifecycle, cascade behavior with the parent.
+1. **[docs/chat-lifecycle.md](../../docs/chat-lifecycle.md)** — add an "Observed subagents" section: the attended/observed split, the `attend` field, membership in the subagents track, why detach is hidden, stop semantics, ephemeral (non-persisted) lifecycle, cascade behavior with the parent.
 2. **[docs/architecture.md](../../docs/architecture.md)** — data-flow addendum: provider observed events → `AgentManager` registry/projection → `observed_agent_state` → `forwardLiveAgentPayload` → client store; observed timeline ids (`${parentAgentId}::sub::${key}`) flowing through the normal timeline store and fetch path.
 3. **[docs/glossary.md](../../docs/glossary.md)** — add **"Observed subagent"** as the authoritative term (UI label wins; no synonyms like "watched"/"read-only subagent" in code or UI).
 4. **[docs/providers.md](../../docs/providers.md)** — extend the "adding a provider" guide with the adapter contract table above (the two events + `stopTask`), including the announce-before-timeline and history-inertness rules.

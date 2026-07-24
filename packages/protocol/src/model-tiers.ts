@@ -27,6 +27,8 @@ export const KNOWN_MODEL_TIERS: Readonly<Record<string, ModelTier>> = {
   // Opus variants are "deep", non-1M Opus and Sonnet are "standard", Haiku is
   // "fast". Fable (1M, most powerful) is "deep".
   "claude-fable-5": "deep",
+  "claude-opus-5[1m]": "deep",
+  "claude-opus-5": "standard",
   "claude-opus-4-8[1m]": "deep",
   "claude-opus-4-8": "standard",
   "claude-opus-4-7[1m]": "deep",

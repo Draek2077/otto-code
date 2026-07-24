@@ -19,7 +19,7 @@ Two design commitments fall straight out of that sentence and govern everything 
 1. **No forced mirroring.** Every participant keeps their own layout, tabs, scroll positions, and
    navigation. Multiplayer is _awareness plus optional convergence_ (a "follow" you opt into), never
    a shared screen. This is also the cheap path: Otto's tabs are already per-client layout state
-   ([docs/agent-lifecycle.md](../../docs/agent-lifecycle.md#tabs-vs-archive)), so independence is
+   ([docs/chat-lifecycle.md](../../docs/chat-lifecycle.md#tabs-vs-archive)), so independence is
    the default we get for free — mirroring would be the thing we'd have to build.
 2. **Presence is ephemeral.** Where someone is looking is a live signal, not a record. Nothing
    about presence is ever written to `$OTTO_HOME`. When you disconnect, you were never there.
