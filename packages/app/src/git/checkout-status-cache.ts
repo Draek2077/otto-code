@@ -43,12 +43,14 @@ export function applyCheckoutStatusUpdateFromEvent({
   message: CheckoutStatusUpdate;
 }): void {
   const { payload } = message;
-  queryClient.setQueryData(checkoutStatusQueryKey(serverId, payload.cwd), payload);
-  expireStaleDiffModeOverrides({
-    serverId,
-    cwd: payload.cwd,
-    isDirty: payload.isGit && payload.isDirty,
-  });
+  if (carriesFreshGitState(queryClient, serverId, payload)) {
+    queryClient.setQueryData(checkoutStatusQueryKey(serverId, payload.cwd), payload);
+    expireStaleDiffModeOverrides({
+      serverId,
+      cwd: payload.cwd,
+      isDirty: payload.isGit && payload.isDirty,
+    });
+  }
 
   const prStatus = payload.prStatus;
   if (!prStatus) {
@@ -65,6 +67,48 @@ export function applyCheckoutStatusUpdateFromEvent({
   if (hasPrStatusChanged(previous, prStatus)) {
     void invalidatePrPaneTimelineForCheckout(queryClient, { serverId, cwd: prStatus.cwd });
   }
+}
+
+/**
+ * Whether a pushed status update actually carries git-tracking news, or is an echo
+ * that would clobber fresher state already in the cache.
+ *
+ * Two producers write this cache entry: the workspace git refresh, which measures
+ * ahead/behind/dirty, and the hosting PR-status poll, which refreshes only PR and
+ * check state but has to re-send a whole status payload because
+ * `checkout_status_update` has no PR-only shape. Applying the poll's git block
+ * unconditionally is what mutes Push right after a commit — the poll re-broadcasts
+ * a pre-commit `aheadOfOrigin: 0` over the freshly fetched `aheadOfOrigin: 1`.
+ *
+ * Two independent gates:
+ *  - `prStatusOnly`, set by the daemon on exactly the poll path. Authoritative, and
+ *    the one the server-side fix relies on.
+ *  - `gitStateAt`, a monotonic stamp of when the daemon measured the git block.
+ *    Chosen over per-field freshness rules because the git-tracking fields move as
+ *    one unit written by one producer, so a single comparison is total and also
+ *    covers out-of-order delivery in general; a per-field rule would instead have to
+ *    guess which of aheadOfOrigin/behindOfOrigin/isDirty may legitimately regress
+ *    (all of them can — push, fetch, discard).
+ *
+ * Either signal missing means an older daemon, where the pre-existing
+ * apply-everything behavior is the only correct reading of the payload.
+ */
+function carriesFreshGitState(
+  queryClient: QueryClient,
+  serverId: string,
+  payload: CheckoutStatusUpdate["payload"],
+): boolean {
+  if (payload.prStatusOnly) {
+    return false;
+  }
+  const incomingAt = payload.gitStateAt;
+  if (incomingAt === undefined) {
+    return true;
+  }
+  const cachedAt = queryClient.getQueryData<CheckoutStatusPayload>(
+    checkoutStatusQueryKey(serverId, payload.cwd),
+  )?.gitStateAt;
+  return cachedAt === undefined || incomingAt >= cachedAt;
 }
 
 /**

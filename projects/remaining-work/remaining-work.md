@@ -52,13 +52,12 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation/decision · �
 
 ## Git / Changes / comments
 
-- 🔴 **"Push" disabled after commit — GitHub only (Bitbucket fine)** — batch-07-24 #2.
-  Root-caused: push policy is correct (`git/policy.ts:576`); the GitHub PR-status
-  poll re-broadcasts a full `checkout_status_update` from stale `target.latestGit`
-  (`workspace-git-service.ts:1776-1822` → `checkout-session.ts:401-422`) that wins
-  the post-commit race and ships `aheadOfOrigin: 0`; client overwrites
-  unconditionally (`checkout-status-cache.ts:36-51`). Fix server-side (poll must
-  not publish git-tracking state) + defense-in-depth client guard.
+- ~~🔴 **"Push" disabled after commit — GitHub only (Bitbucket fine)** — batch-07-24 #2.~~
+  **FIXED.** The PR-status poll now tags its emission `prStatusOnly`
+  all the way to the wire, and every status payload carries `gitStateAt` (when the
+  daemon measured the git block) so the client drops an out-of-order push instead of
+  clobbering fresher git-tracking state. See
+  [../bug-batch-2026-07-24/bug-batch-2026-07-24.md](../bug-batch-2026-07-24/bug-batch-2026-07-24.md).
 - 🟡 **Resolved vs unresolved PR comments** — batch-07-23. Approved counts,
   unresolved/total, mark-resolved, comment→task. GitHub resolution lives on review
   threads (GraphQL `isResolved`), absent from the REST comment list. Capability bit

@@ -26,6 +26,7 @@ import {
 import type {
   WorkspaceGitRuntimeSnapshot,
   WorkspaceGitService,
+  WorkspaceGitSnapshotMeta,
   WorkspaceGitSnapshotOptions,
 } from "../../workspace-git-service.js";
 import { assertSafeGitRef } from "../../worktree-session.js";
@@ -398,7 +399,11 @@ export class CheckoutSession {
     }
   }
 
-  emitStatusUpdate(cwd: string, snapshot: WorkspaceGitRuntimeSnapshot): void {
+  emitStatusUpdate(
+    cwd: string,
+    snapshot: WorkspaceGitRuntimeSnapshot,
+    meta?: WorkspaceGitSnapshotMeta,
+  ): void {
     try {
       const requestId = `subscription:${cwd}`;
       this.host.emit({
@@ -409,6 +414,9 @@ export class CheckoutSession {
             requestId,
             snapshot,
           }),
+          // The PR poll refreshed no git state; say so on the wire rather than
+          // passing off the last git measurement as a fresh checkout status.
+          prStatusOnly: meta?.prStatusOnly === true,
           prStatus: buildCheckoutPrStatusPayloadFromSnapshot({
             cwd,
             requestId,

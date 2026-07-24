@@ -64,11 +64,16 @@ function prStatus(overrides: Partial<CheckoutPrStatusPayload> = {}): CheckoutPrS
 function checkoutStatusUpdate(
   payload: CheckoutStatusPayload,
   extraPrStatus?: CheckoutPrStatusPayload,
+  meta: { prStatusOnly?: boolean } = {},
 ): CheckoutStatusUpdate {
   return {
     type: "checkout_status_update",
-    payload: extraPrStatus ? { ...payload, prStatus: extraPrStatus } : payload,
-  };
+    payload: {
+      ...payload,
+      prStatusOnly: meta.prStatusOnly ?? false,
+      ...(extraPrStatus ? { prStatus: extraPrStatus } : {}),
+    },
+  } as CheckoutStatusUpdate;
 }
 
 function setDiffModeOverride(isDirtyAtSelection: boolean): void {
@@ -118,7 +123,9 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
       message: checkoutStatusUpdate(pushed),
     });
 
-    expect(queryClient.getQueryData(checkoutStatusQueryKey(serverId, cwd))).toEqual(pushed);
+    expect(queryClient.getQueryData(checkoutStatusQueryKey(serverId, cwd))).toEqual(
+      expect.objectContaining(pushed),
+    );
   });
 
   it("writes the PR status cache when prStatus is present, and skips it otherwise", () => {
@@ -195,6 +202,85 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
       ),
     });
     expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+  });
+
+  // Regression: after a commit, GitHub's PR-status poll re-broadcast a whole status
+  // payload rebuilt from a pre-commit git snapshot. It landed on top of the fresh
+  // aheadOfOrigin, so the Push button went back to "nothing to push".
+  it("keeps freshly committed git state when a PR-status-only push echoes the old snapshot", () => {
+    const queryClient = createQueryClient();
+    const committed = checkoutStatus({ aheadOfOrigin: 1, isDirty: false, gitStateAt: 200 });
+    queryClient.setQueryData(checkoutStatusQueryKey(serverId, cwd), committed);
+
+    applyCheckoutStatusUpdateFromEvent({
+      queryClient,
+      serverId,
+      message: checkoutStatusUpdate(
+        checkoutStatus({ aheadOfOrigin: 0, isDirty: true, gitStateAt: 100 }),
+        prStatus({ requestId: "pr-poll" }),
+        { prStatusOnly: true },
+      ),
+    });
+
+    expect(queryClient.getQueryData(checkoutStatusQueryKey(serverId, cwd))).toEqual(committed);
+    // The PR half of the same push is still applied — that is the only thing it refreshed.
+    expect(queryClient.getQueryData(checkoutPrStatusQueryKey(serverId, cwd))).toEqual(
+      prStatus({ requestId: "pr-poll" }),
+    );
+  });
+
+  it("drops a full push whose git state was measured before the cached one", () => {
+    const queryClient = createQueryClient();
+    const newer = checkoutStatus({ aheadOfOrigin: 1, gitStateAt: 200 });
+    queryClient.setQueryData(checkoutStatusQueryKey(serverId, cwd), newer);
+
+    applyCheckoutStatusUpdateFromEvent({
+      queryClient,
+      serverId,
+      message: checkoutStatusUpdate(checkoutStatus({ aheadOfOrigin: 0, gitStateAt: 100 })),
+    });
+
+    expect(queryClient.getQueryData(checkoutStatusQueryKey(serverId, cwd))).toEqual(newer);
+  });
+
+  it("applies a full push whose git state is at least as new as the cached one", () => {
+    const queryClient = createQueryClient();
+    queryClient.setQueryData(
+      checkoutStatusQueryKey(serverId, cwd),
+      checkoutStatus({ aheadOfOrigin: 1, gitStateAt: 200 }),
+    );
+
+    applyCheckoutStatusUpdateFromEvent({
+      queryClient,
+      serverId,
+      message: checkoutStatusUpdate(checkoutStatus({ aheadOfOrigin: 0, gitStateAt: 300 })),
+    });
+
+    expect(
+      queryClient.getQueryData<CheckoutStatusPayload>(checkoutStatusQueryKey(serverId, cwd))
+        ?.aheadOfOrigin,
+    ).toBe(0);
+  });
+
+  // Old daemons send neither signal; the only correct reading of such a payload is
+  // the pre-existing apply-everything behavior.
+  it("applies an unstamped push from a daemon that predates the freshness fields", () => {
+    const queryClient = createQueryClient();
+    queryClient.setQueryData(
+      checkoutStatusQueryKey(serverId, cwd),
+      checkoutStatus({ aheadOfOrigin: 1, gitStateAt: 200 }),
+    );
+
+    applyCheckoutStatusUpdateFromEvent({
+      queryClient,
+      serverId,
+      message: checkoutStatusUpdate(checkoutStatus({ aheadOfOrigin: 0 })),
+    });
+
+    expect(
+      queryClient.getQueryData<CheckoutStatusPayload>(checkoutStatusQueryKey(serverId, cwd))
+        ?.aheadOfOrigin,
+    ).toBe(0);
   });
 
   it("invalidates the PR timeline on the first prStatus emission, scoped to its cwd", () => {

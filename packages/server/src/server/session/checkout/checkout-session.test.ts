@@ -170,10 +170,11 @@ function makeCheckoutSession(options?: {
 function createGitSnapshot(
   cwd: string,
   currentBranch: string,
-  overrides?: { isDirty?: boolean },
+  overrides?: { isDirty?: boolean; gitLoadedAtMs?: number; aheadOfOrigin?: number },
 ): WorkspaceGitRuntimeSnapshot {
   return {
     cwd,
+    ...(overrides?.gitLoadedAtMs === undefined ? {} : { gitLoadedAtMs: overrides.gitLoadedAtMs }),
     git: {
       isGit: true,
       repoRoot: cwd,
@@ -184,7 +185,7 @@ function createGitSnapshot(
       isDirty: overrides?.isDirty ?? false,
       baseRef: null,
       aheadBehind: null,
-      aheadOfOrigin: null,
+      aheadOfOrigin: overrides?.aheadOfOrigin ?? null,
       behindOfOrigin: null,
       hasRemote: false,
       diffStat: null,
@@ -550,9 +551,42 @@ describe("CheckoutSession", () => {
       expect(emitted).toEqual([
         {
           type: "checkout_status_update",
-          payload: expect.objectContaining({ cwd: "/repo", currentBranch: "main" }),
+          payload: expect.objectContaining({
+            cwd: "/repo",
+            currentBranch: "main",
+            prStatusOnly: false,
+          }),
         },
       ]);
+    });
+
+    it("stamps the update with when the git block was measured", () => {
+      const { checkout, emitted } = makeCheckoutSession();
+
+      checkout.emitStatusUpdate(
+        "/repo",
+        createGitSnapshot("/repo", "main", { gitLoadedAtMs: 1_700_000_000_000 }),
+      );
+
+      expect(emitted[0]).toMatchObject({
+        payload: { gitStateAt: 1_700_000_000_000 },
+      });
+    });
+
+    // The PR-status poll refreshes no git state. Tagging its re-broadcast is what
+    // stops a pre-commit aheadOfOrigin from landing on top of a fresh commit and
+    // muting Push (batch-07-24 #2).
+    it("marks a PR-status-only emission so clients keep their own git state", () => {
+      const { checkout, emitted } = makeCheckoutSession();
+
+      checkout.emitStatusUpdate("/repo", createGitSnapshot("/repo", "main", { aheadOfOrigin: 0 }), {
+        prStatusOnly: true,
+      });
+
+      expect(emitted[0]).toMatchObject({
+        type: "checkout_status_update",
+        payload: { prStatusOnly: true, aheadOfOrigin: 0 },
+      });
     });
   });
 

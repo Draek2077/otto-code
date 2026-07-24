@@ -5513,6 +5513,12 @@ const CheckoutStatusCommonSchema = z.object({
   cwd: z.string(),
   error: CheckoutErrorSchema.nullable(),
   requestId: z.string(),
+  // Daemon clock (epoch ms) at which the git-tracking fields below were measured.
+  // One writer stamps it, so clients can compare two payloads and drop an
+  // out-of-order push instead of clobbering newer git state.
+  // COMPAT(checkoutStatusGitStateAt): added in v0.6.8; absent from older daemons.
+  // Drop the optional marker when floor >= v0.6.8 (target 2027-01-24).
+  gitStateAt: z.number().optional(),
 });
 
 const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
@@ -5681,6 +5687,12 @@ const CheckoutPrStatusPayloadSchema = z.object({
 
 const CheckoutStatusUpdateMetadataSchema = z.object({
   prStatus: CheckoutPrStatusPayloadSchema.optional(),
+  // True when the push refreshed only PR/check state (the hosting PR-status poll).
+  // The git block on such a payload is an unrefreshed echo of the last snapshot,
+  // so clients must apply `prStatus` and leave their git-tracking state alone.
+  // COMPAT(checkoutStatusPrStatusOnly): added in v0.6.8; absent from older daemons.
+  // Drop the default when floor >= v0.6.8 (target 2027-01-24).
+  prStatusOnly: z.boolean().optional().default(false),
 });
 
 export const CheckoutStatusUpdateSchema = z.object({
