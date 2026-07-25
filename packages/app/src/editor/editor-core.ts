@@ -524,13 +524,16 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
     ".cm-otto-hover::-webkit-scrollbar-corner": {
       backgroundColor: "transparent",
     },
-    // The signature. Sits on the deepened code background so it reads as a quoted
-    // fragment of the buffer rather than as more tooltip chrome, and keeps the code
-    // font — it IS code. `pre` already preserves its own whitespace.
+    // The signature. Keeps the code font — it IS code — but NOT a background of its
+    // own: the tooltip is a single floating card on `tooltipBackground`, and painting
+    // the deepened code well (`spec.background`) in here punched a near-black slab out
+    // of that card on every dark theme. One surface per card; the mono font and the
+    // divider below are what separate the signature from the prose. `pre` already
+    // preserves its own whitespace.
     ".cm-otto-hover-code": {
       margin: "0",
       padding: "8px 10px",
-      backgroundColor: spec.background,
+      backgroundColor: "transparent",
       color: spec.foreground,
       fontFamily: spec.fontFamily,
       fontSize: `${spec.fontSize}px`,
@@ -926,6 +929,13 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
   const state = EditorState.create({
     doc: options.doc,
     extensions: [
+      // ORDER IS THE LAYOUT for gutters: CM6 renders them left to right in the order
+      // their extensions appear, and puts the `border-right` divider on the container
+      // around all of them. So the problem glyphs go FIRST — outermost — and the line
+      // numbers end up against the divider, directly beside the code they number.
+      // The other way round (glyphs between numbers and code) pushes the numbers a
+      // column away from the text, which is the one thing they exist to sit next to.
+      createDiagnosticsExtension({ readTheme: () => activeTheme }),
       lineNumbers({ domEventHandlers: { mousedown: handleLineNumberMouseDown } }),
       highlightActiveLineGutter(),
       highlightActiveLine(),
@@ -1001,12 +1011,12 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       ...(options.hoverProvider
         ? [buildHoverTooltip(options.hoverProvider, () => activeTheme)]
         : []),
-      // Unconditional: diagnostics are pushed, so unlike hover they need no pointer and
-      // work on every platform. With nothing pushed the gutter renders only its spacer.
-      createDiagnosticsExtension({ readTheme: () => activeTheme }),
-      // Also unconditional, and for the same reason: every mark it draws comes
-      // from state this editor already holds, and it needs no pointer to be
-      // useful — a thumb showing where you are is worth as much on a phone.
+      // Diagnostics are mounted up with the gutters, not here: their position in this
+      // array is what decides which side of the line numbers they draw on.
+      //
+      // The overview ruler is unconditional — every mark it draws comes from state this
+      // editor already holds, and it needs no pointer to be useful; a thumb showing
+      // where you are is worth as much on a phone.
       createOverviewRulerExtension({ readTheme: () => activeTheme }),
       EditorView.domEventHandlers({
         contextmenu: (event, v) => {
