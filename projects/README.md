@@ -356,9 +356,11 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
 
 ## Build order
 
-**Waves 0–2 are complete; Wave 3 is 3 of 4 done with FPS wrapping up. Wave 4 is unstarted and
-ready.** This section is the judgement layer over the inventory above: what to do next, and why that
-rather than the highest-scoring item.
+**Waves 0–4 are complete** (Wave 4 landed 2026-07-25 in `beb4b833a`, minus its delayed item 1). This
+section is the judgement layer over the inventory above: what to do next, and why that rather than
+the highest-scoring item.
+
+**Next up is not a wave — it is a release.** See [Toward 0.7.0](#toward-070) below.
 
 ### Four ordering traps that outrank raw scoring
 
@@ -414,10 +416,15 @@ the reasoning, and the charter has drained to `archive/`.
   Required, not a follow-up — accrued knowledge must not be silently destroyed.
 - **Injected context must be inspectable.** Memory is only trustworthy if you can see it.
 
-### Wave 4 — provider parity and continuity
+### ✅ Wave 4 — provider parity and continuity — COMPLETE (2026-07-25)
 
-**Dispatched 2026-07-25 without item 1**, which the product owner delayed. Items 2, 3 and 4 all
-went out in parallel; they touch different code and none of them waits on the FPS tail.
+**Dispatched without item 1**, which the product owner delayed; items 2, 3 and 4 ran in parallel and
+all landed in `beb4b833a`. Two project folders drained and left (history-management,
+total-token-accounting), which is rule 4 working as intended.
+
+The wave's own header said "provider parity", and with item 1 delayed **that is not what shipped** —
+what shipped was the Solution view, history delete, honest token totals and the context wiring. Worth
+naming: the parity thesis is now a wave behind, not discharged.
 
 **Standing note on item 1.** Its cost is monotonically increasing, and Wave 3 widened the gap on
 purpose — personality memory has no upstream counterpart to merge against, and the Wave 5 candidate
@@ -507,6 +514,56 @@ whatever the cutoff. The dangerous branch was never built, so it cannot be reach
 **The shape this implies.** Item 1 is the wave — it is the only item whose cost rises with delay, and
 its stated blocker just cleared. Items 3a and 3b are **done**; item 2 is half done. What remains of
 the wave is item 1, the usage log's View B, and item 4, all spawn-ready today.
+
+### Toward 0.7.0
+
+**27 commits are unreleased against `v0.6.7`** — Waves 2, 3 and 4 in their entirety. That is a
+genuinely larger product cut than a patch: Refine, the full LSP set, the steer queue, personality
+memory, the Solution view, history delete, honest token totals, AsciiDoc, mermaid, resource
+reporting. Note the release playbook's standing rule — **releases are always patch unless the product
+owner says "minor"** ([docs/release.md](../docs/release.md)). This section is the argument that this
+one is a minor; the call is not ours.
+
+Four things are worth taking **before** the cut, in this order.
+
+**1. The FPS fix — and it is blocked on one decision only.** This is the sharpest item on the board.
+The investigation is complete and honest: the instrument exists, four hypotheses were retired by
+measurement, and the cause is confirmed — **mounted workspace trees are never released**, costing
+~35% of the frame rate at three workspaces and never recovering. But **the fix is not built**, and it
+cannot start until someone answers: _evict cold workspace trees (LRU, remount on switch-back), or
+keep today's retain-everything trade?_ That is a product decision about a real trade-off — instant
+switch-back versus a frame rate that survives the day.
+
+Shipping 0.7.0 with a measured 35% degradation and no fix would be the weakest part of an otherwise
+strong release. Two cheaper sub-items can go with it and do not need the decision: navigation
+refetching state the client already holds (the cheapest concrete win), and per-agent eviction for
+`agentStreamTail`/`agentStreamHead`.
+
+**2. i18n — this is the translate moment.** The standing rule is _build first, translate last_, and
+the last three waves were built English-first by design. The debt is now six entries in
+[i18n](#i18n) and it is unusually well-characterised: the setup wizard, Refine and personality memory
+shipped English-only; the Solution view and history delete carry **English strings seeded into all
+seven non-English locales** because the resource types require key parity. A release is exactly the
+moment that debt is meant to be paid — after this, the seeded-English keys are indistinguishable from
+translated ones without reading the lag comments.
+
+One decision hides inside it: history delete's destructive confirm copy is not in i18n at all, and
+translating it means deciding whether that whole family of dialog resolvers moves into i18n. That is
+a bigger call than one feature — settle it deliberately or leave it out deliberately, not by default.
+
+**3. The six owed fold-ins.** Rule 4 says a shipped project cannot leave until its durable facts
+reach `docs/`, and six are outstanding — context-management, refine, site-demos, e2e-qa-coverage,
+workflow-decomposition, visualizer-node-richness. Cheap, and it is the difference between `projects/`
+being a ledger and being a graveyard. Cutting a release over an unreconciled tree is how the next
+assessment starts with "five charters disagree with the code".
+
+**4. A real pass over what shipped.** Three waves landed largely in parallel sessions against a
+shared tree. Nothing has exercised Refine, the Solution view, history delete and the steer queue
+_together_ under one user's hands. The e2e tiers exist for this; use them.
+
+**Explicitly not before 0.7.0:** the Wave 5 bets below, and the upstream merge chain. The merge is
+the one thing whose cost keeps rising — but starting it days before a release cut is how a release
+slips.
 
 ### Wave 5 candidate — agentic architectures for coding tasks
 
