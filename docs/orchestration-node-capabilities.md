@@ -2,7 +2,7 @@
 
 What a **Graph** node can declare beyond a prompt, and how the daemon enforces it.
 Everything here is opt-in: a node that declares none of it behaves exactly as it did
-before these fields existed. See [../projects/orchestration-graphs/enhancement-plan.md](../projects/orchestration-graphs/enhancement-plan.md)
+before these fields existed. See `archive/projects/orchestration-graphs/enhancement-plan.md` (archived)
 for the staged plan this implements, and `archdocs/pages/10-18` for the architecture.
 
 Engine: `packages/server/src/server/orchestration/graph-engine.ts`, with one module per

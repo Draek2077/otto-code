@@ -5,7 +5,7 @@ touched it, what each of those commits did to it, who wrote each line, and who
 created the file in the first place. JetBrains' "Show History / Annotate", from
 the file tab.
 
-Shipped 0.6.6. The point-in-time charter lived in `projects/git-file-history/`.
+Shipped 0.6.6. The point-in-time charter is archived at `archive/projects/git-file-history/`.
 
 ## This is local git, and it is not a provider feature
 
@@ -212,7 +212,7 @@ is noise.
 The file-tab button is limited to **in-project files**
 (`editGate.kind === "free"`). The queries run `git` in the workspace with a
 workspace-relative pathspec, so a linked-project or outside-project file
-([gated-multi-root](../projects/gated-multi-root/gated-multi-root.md)) would be
+([the edit gate](text-editor.md)) would be
 a question aimed at the wrong tree. Lifting that means resolving the file's own
 repo root first, not relaxing the gate.
 

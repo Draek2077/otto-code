@@ -137,8 +137,7 @@ and Discovery.
   first-class nodes (budget/ceiling, retry policy, Gate). Read them against
   [orchestration-node-capabilities.md](orchestration-node-capabilities.md) — this is the closest
   published treatment of the same design space.
-- **Ch. 16 Resource-Aware Optimization** is the missing prose for `projects/token-cost-audit` and
-  `projects/token-cost-fixes`: Otto has the measurements but no framework for reasoning about them.
+- **Ch. 16 Resource-Aware Optimization** is the missing prose for [token-economy.md](token-economy.md): Otto has the measurements but no framework for reasoning about them.
 - **Ch. 8 Memory Management** and **Ch. 9 Learning and Adaptation** are the direct input to
   `projects/personality-memory`, which is currently a charter with an open scoping question.
 - **Ch. 19 Evaluation and Monitoring** and **Ch. 20 Prioritization** bear on what an orchestration
@@ -153,7 +152,7 @@ and Discovery.
 - **Ch. 15 Inter-Agent Communication (A2A)** — Otto's agents communicate through the daemon and
   through the filesystem, deliberately. A peer-to-peer agent protocol is a different architecture,
   and adopting one would undo the daemon-owns-execution property that
-  `projects/orchestration-graphs` identifies as the differentiator.
+  the orchestration survey identifies as the differentiator.
 - **The LangChain/CrewAI/AutoGen example code** throughout. Framework-specific and irrelevant for
   the same reason as above.
 
@@ -245,10 +244,10 @@ data, not for design.
 
 ### 2.2 Orchestration engines and graph semantics
 
-Surveyed 2026-07-21 for `projects/orchestration-graphs`. The governing decision (Philippe): **learn
+Surveyed 2026-07-21 for the orchestration graph engine. The governing decision (Philippe): **learn
 the concepts, write them ourselves, in our vocabulary** — the same treatment the Visualizer got. The
 test applied to every borrowed concept: _does this exist because agents need it, or because graphs
-need it?_ Full working: `projects/orchestration-graphs/orchestration-design.md` Parts 6–9.
+need it?_ Full working: `archive/projects/orchestration-graphs/orchestration-design.md` Parts 6–9 (archived).
 
 | Source                                                                    | License                                                        | Status                      | What it contributed / why not                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ------------------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -357,7 +356,7 @@ and local alike.
 | ------------------------------------------------------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **CodeMirror 6 + Lezer**                                                              | **Dependency**                | The editor and the syntax layer (~14 language families in `packages/highlight`). [text-editor.md](text-editor.md).                                                                                                                                                                                                                                                                                                                                                         |
 | **ctags (the technique, not the binary)**                                             | **Implemented**               | The name-based code index — deliberately no type resolution, so multiple hits are a picker rather than a guess. Now the **designed fallback** beneath LSP, not a compat shim: it still honestly serves the outline and the fuzzy finder.                                                                                                                                                                                                                                   |
-| **[Language Server Protocol](https://microsoft.github.io/language-server-protocol/)** | **Implemented** (client)      | The daemon's LSP client. Empirically probed rather than trusted: `typescript-language-server` 5.3 sends no `serverInfo`, and the spec **forbids** a server sending `$/progress` unless the client advertised `window.workDoneProgress` — both recorded in `projects/lsp-code-intelligence/`.                                                                                                                                                                               |
+| **[Language Server Protocol](https://microsoft.github.io/language-server-protocol/)** | **Implemented** (client)      | The daemon's LSP client. Empirically probed rather than trusted: `typescript-language-server` 5.3 sends no `serverInfo`, and the spec **forbids** a server sending `$/progress` unless the client advertised `window.workDoneProgress` — both recorded in [code-intelligence.md](code-intelligence.md).                                                                                                                                                                    |
 | **`typescript-language-server` · `pyright-langserver` · `csharp-ls`**                 | **Dependency** (spawned)      | The three acceptance-criteria servers. Resolution order and memory footprints drive the indexing-cost policy (lazy / opt-in / idle-exit). `csharp-ls` installs as a dotnet global tool — **user-consented, never automatic**.                                                                                                                                                                                                                                              |
 | **[EditorConfig](https://editorconfig.org)** + the `editorconfig` npm package         | **Unevaluated**               | `projects/editor-repo-conventions` — honour the repo's own `.editorconfig` without configuring Otto. The npm package is the reference implementation; the open question is dependency vs. hand-rolled.                                                                                                                                                                                                                                                                     |
 | **`Microsoft.VisualStudio.SolutionPersistence`** (NuGet) — Microsoft, MIT             | **Adopted** (planned sidecar) | Reads **and writes** `.sln` and `.slnx`, with solution folders, nesting, configurations/platforms and project type GUIDs. The decisive property: **it is the same parser the toolchain uses** — MSBuild, the .NET CLI and Visual Studio all read solutions through it — so Otto's tree cannot disagree with `dotnet build` about what is in the solution. Spike proven cross-platform (including the Windows path-separator quirk). `projects/solution-view/`.             |
@@ -444,7 +443,7 @@ built rather than confirming it.
 ## 12. Reading list for the agentic-coding-templates initiative
 
 The planned initiative — **reusable coding pattern templates built on the orchestration system**
-(`projects/agent-orchestration/agent-orchestration.md`, `projects/orchestration-graphs/orchestration-graphs.md`)
+(`projects/agent-orchestration/agent-orchestration.md`, plus the built graph engine)
 — has its inputs scattered across the sections above. This is the ordered path through them.
 
 **First, the constraint that shapes everything.** Otto never calls a model. A "pattern template" is a

@@ -411,7 +411,7 @@ Settled since v2: the switch and its placement, out-of-workspace policy, sidecar
 call sites** — they exist only in tests. Idle language servers therefore never exit, the
 `backgroundIdleMinutes` setting is inert, and servers are not stopped on daemon shutdown. Only the
 LRU cap (`maxRunningServers: 6`) bounds the process count. The
-[LSP charter](../lsp-code-intelligence/lsp-code-intelligence.md) states the daemon calls `reapIdle()`
+[LSP charter](../../docs/code-intelligence.md) states the daemon calls `reapIdle()`
 on an interval; it does not.
 
 **This matters directly here:** the sidecar pool copies that lifecycle shape, so it must not copy

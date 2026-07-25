@@ -38,7 +38,7 @@ The tempting alternative — several lightweight workspaces over one checkout in
 
 **Still open — pre-guard duplicates are never reconciled.** `WorkspaceReconciliationService` merges duplicate _projects_ by root but has no workspace-level equivalent, and preserves every workspace during a project merge. Deliberately deferred: no standing duplicates have been observed since the reveal path was fixed, and a rule that migrates agents and archives workspace records is not worth building against zero data. Same-`cwd` siblings therefore still exist on disk, which is why per-`workspaceId` scoping stays load-bearing (see `workspace-same-cwd-isolation.e2e.test.ts`, whose seeded duplicates are now the only way to reach that state).
 
-Full reasoning and evidence: [projects/\_archive/duplicate-base-workspaces/](../projects/_archive/duplicate-base-workspaces/duplicate-base-workspaces.md).
+Full reasoning and evidence: `archive/projects/duplicate-base-workspaces/` — archived, closed, **do not re-open**.
 
 Gated behind `server_info.features.worktreeArchiveBranchCleanup` (`COMPAT(worktreeArchiveBranchCleanup)`, added in v0.6.7) and `features.worktreeReattach`. Without them the client archives exactly as before — risk warning only, branch untouched. Key files: `workspace-archive-branch.ts` (`detectWorktreeArchiveBranch`, `deleteLocalBranch`), `worktree-reattach.ts`, `workspace-archive-service.ts`, and on the client `git/worktree-archive-warning.ts` + `workspace/use-workspace-archive.ts`.
 

@@ -2,7 +2,7 @@
 
 Otto's pull-request and issue features — the PR panel, checks, issue/PR search and attachments, PR checkout, merge/auto-merge — sit behind a **provider-neutral git-hosting layer**. GitHub and **Bitbucket Cloud** are both first-class as of 0.5.0. This is the same leveling-up pattern as the rest of the fork: a capability isn't done when one provider has it; it's done when they all do.
 
-The build history and locked product decisions live in [projects/git-hosting-providers/git-hosting-providers.md](../projects/git-hosting-providers/git-hosting-providers.md); this doc is the durable architecture. User-facing setup is [public-docs/git-providers.md](../public-docs/git-providers.md).
+The build history and locked product decisions live in `archive/projects/git-hosting-providers/` (archived); this doc is the durable architecture. User-facing setup is [public-docs/git-providers.md](../public-docs/git-providers.md).
 
 ## The two contracts
 

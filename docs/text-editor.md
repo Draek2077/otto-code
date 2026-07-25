@@ -70,7 +70,9 @@ Client: `use-project-search-feature.ts`; a "Search" explorer-sidebar tab with re
 
 ## Navigation: code index, outline, fuzzy finder (`features.codeIndex`)
 
-Deliberately ctags-style, **no LSP** (LSP means per-language external server processes — ruled out). Name-based and honest: no type resolution, so multiple hits are a picker, not a guess. Lives in `packages/server/src/server/file-explorer/code-index.ts`:
+ctags-style and name-based: no type resolution, so multiple hits are a picker, not a guess. Lives in `packages/server/src/server/file-explorer/code-index.ts`.
+
+> **This index no longer answers definitions.** Go-to-definition, hover, references, rename and diagnostics resolve through a real language server — see [code-intelligence.md](code-intelligence.md). The index is the **designed fallback** (`unavailable`: no server for this language on this host), and it still owns the outline and the fuzzy finder, where name-matching is the honest answer. The "no LSP, ruled out" position this section used to state was reversed when the LSP client shipped.
 
 - **Fuzzy file finder** — `listWorkspaceFiles` returns the gitignore-aware workspace listing (cap 20,000 files); the client does the fuzzy match. Highest value-per-effort, and a top-bar action on mobile (faster than tree-walking on touch).
 - **Symbol index** — a name → `[{ path, line, kind }]` map built by walking the same Lezer parse trees the highlighter uses, via **`extractSymbols` from `@otto-code/highlight`** (`packages/highlight/src/symbols.ts`), which reuses the highlighter's trees. Built **lazily per workspace**, cached with a **30 s TTL** (`INDEX_TTL_MS`) and **invalidated on writes/replaces** (`invalidate(root)`); indexing caps at 5,000 files / 1 MB each. Exposed as `code.symbols` (lookup) and the pure lookup helper `findCodeSymbols`.
