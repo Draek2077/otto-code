@@ -4,10 +4,14 @@ Companion to [remaining-work.md](remaining-work.md). That file is the _inventory
 everything open; this file is the _judgement_ — what each initiative costs, what it is
 worth, and the order to build them in.
 
-**Assessed 2026-07-24** against the working tree, not against the charter headers. Every
-"unbuilt" claim below was checked by grepping `packages/*/src` for the feature's own
-identifiers; every "shipped" claim was checked with `git ls-files`. Re-run those checks
-before trusting this doc more than a month from now.
+**Assessed 2026-07-24, re-assessed 2026-07-25** against the working tree, not against the
+charter headers. Every "unbuilt" claim below was checked by grepping `packages/*/src` for
+the feature's own identifiers; every "shipped" claim was checked with `git ls-files`. Re-run
+those checks before trusting this doc more than a month from now.
+
+**Waves 0, 1 and 2 are complete.** Wave 3 was re-cut on 2026-07-25 — as originally written
+it was a single open-ended item whose own measuring instrument did not exist yet, which is
+not a runnable wave. See §5.
 
 ---
 
@@ -132,13 +136,14 @@ The fork's thesis — a capability isn't done when one provider has it.
 
 ### 3.4 Big new capability
 
-| Project                   | Scope | Diff | Impact | Enab | Why here                                                                                                                                                                                                                                                                                                                                         |
-| ------------------------- | :---: | :--: | :----: | :--: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **refine**                |   3   |  3   | **5**  |  2   | The AI rewrite is the operation people actually reach for, and Otto supports it worst. Also unlocks context-compaction + editor "explain" (trap 2)                                                                                                                                                                                               |
-| **personality-memory**    |   3   |  3   | **4**  |  1   | Every spawn starts from zero today, so the same corrections get re-taught forever. Compounding daily value                                                                                                                                                                                                                                       |
-| history-management        |   3   |  2   |   3    |  0   | Archive is a one-way door with no delete anywhere in the app. Annoying and untidy rather than blocking                                                                                                                                                                                                                                           |
-| **agent-orchestration**   |   5   |  5   | **5**  |  1   | Changes what a developer can do with Otto at all. But a quarter, not a sprint — see Wave 5                                                                                                                                                                                                                                                       |
-| **lsp-code-intelligence** |   5   |  4   | **4**  |  3   | Phase 1 daemon core built 2026-07-24. Impact 4 for the definition rewrite — today's ctags index is cold on nearly every press and structurally cannot resolve _which_ `foo` — rising to 5 once Phase 5 lands, since hover/references/rename/diagnostics are new capability on machinery already paid for. Enablement 3: it gates that entire set |
+| Project                   | Scope | Diff | Impact | Enab | Why here                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------- | :---: | :--: | :----: | :--: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **refine**                |   3   |  3   | **5**  |  2   | The AI rewrite is the operation people actually reach for, and Otto supports it worst. Also unlocks context-compaction + editor "explain" (trap 2)                                                                                                                                                                                                                                                                                                       |
+| **personality-memory**    |   3   |  3   | **4**  |  1   | Every spawn starts from zero today, so the same corrections get re-taught forever. Compounding daily value                                                                                                                                                                                                                                                                                                                                               |
+| history-management        |   3   |  2   |   3    |  0   | Archive is a one-way door with no delete anywhere in the app. Annoying and untidy rather than blocking                                                                                                                                                                                                                                                                                                                                                   |
+| **agent-orchestration**   |   5   |  5   | **5**  |  1   | Changes what a developer can do with Otto at all. But a quarter, not a sprint — see Wave 5                                                                                                                                                                                                                                                                                                                                                               |
+| **lsp-code-intelligence** |   5   |  4   | **4**  |  3   | **Phases 1–5 SHIPPED** 2026-07-25 — definition, hover, diagnostics, references, rename. Impact realised at 5 as predicted: hover/references/rename/diagnostics were new capability on machinery already paid for. Only Phase 4 (solution tie-in) remains, and it moved to `solution-view`                                                                                                                                                                |
+| **solution-view**         |   4   |  4   |  3\*   |  1   | _Scored 2026-07-25 — charter v3 approved, cross-platform proven by spike._ \*Impact is **provider-shaped, like the adapters**: a 5 if you work in .NET (the tree Otto shows is not the tree the build sees), a 1 otherwise. A portable 193 KB .NET sidecar owns the domain knowledge because **the LSP gives no project structure at all** — that correction is the charter's spine. Enablement 1: its Phase 2 (general file mutations) is not .NET work |
 
 ### 3.5 Long horizon
 
@@ -252,12 +257,12 @@ reflects what actually happened, and because at least one item would have earned
 Note the shortcut work in that entry was the _display_ half only (hints). The override
 half is Wave 2 item 3, **shipped 2026-07-25** — see below.
 
-### Wave 2 — supervision and editing feel — NEXT
+### ✅ Wave 2 — supervision and editing feel — COMPLETE (2026-07-25)
 
-The two things you do all day in Otto that currently feel worst. **Verified not started
-2026-07-25** (no `delivery: "queue"`, no wired Refine, no `toolUseCount`/`currentTool` in
-the protocol) — the editor work that landed during Wave 1 is the unplanned track above,
-not this. Items 1, 3 and 4 have since shipped; **refine** is what remains of this wave.
+The two things you do all day in Otto that currently felt worst. All five shipped, landing
+together in `a9714549b` because they shared `protocol/messages.ts`, `session.ts` and
+`file-tab-pane.tsx` — concurrent initiatives in one working tree, committed as one sweep
+rather than split apart after the fact.
 
 1. ✅ ~~**steer-queue** — stop clobbering a running turn to add a thought~~ —
    **SHIPPED 2026-07-25.** A `delivery: "interrupt" | "queue"` mode on every prompt
@@ -271,8 +276,23 @@ not this. Items 1, 3 and 4 have since shipped; **refine** is what remains of thi
    Settings → Default send labels, so no new vocabulary. Charter drained and folded into
    [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md#delivery--how-a-prompt-reaches-a-busy-agent)
    - [docs/glossary.md](../../docs/glossary.md)
-2. **refine** — the AI rewrite loop with review (trap 2: also unlocks context compaction
-   and the editor's "explain this" action, converting two backlog items into presets)
+2. ✅ ~~**refine** — the AI rewrite loop with review~~ — **SHIPPED 2026-07-25.** A session
+   pins a **set** of files: `documents` may be rewritten and are the request's whole blast
+   radius, `references` are read-only context. Diffed against the pinned originals, kept or
+   dropped per change, nothing written until Accept (a conditional write per file reporting
+   written/stale/failed). Ids not paths cross the wire, so an invented filename cannot
+   misroute a write. Provider-agnostic by construction — it resolves through
+   `resolveStructuredGenerationProviders({ role: "writer" })`, the chain commit messages and
+   chat titles already use. Three deviations from the charter, all deliberate: it is its own
+   **job tab** (not a fourth `FileViewMode`), the prompt is composed **daemon-side** (a client
+   cannot hand the daemon a prompt it runs verbatim), and `applyRefineDecisions(diff, keptIds)`
+   takes the diff rather than the base. Trap 2 discharged: context compaction shipped as two
+   rows in `refine-presets.ts`, not a feature.
+   **The scope restriction is the load-bearing decision — prose only, never code.** Refine has
+   no parser, no symbol table, no language server, so over source it would produce a
+   plausible-looking diff that silently breaks a call site — and a plausible diff is exactly
+   what gets rubber-stamped. `refine-scope.ts` is the single gate, extension-based on purpose.
+   If Refine ever grows symbol awareness, that is the one file that changes
 3. ✅ ~~**Keyboard shortcut overhaul** — editor scope that overrides Otto's globals~~ —
    **SHIPPED 2026-07-25.** A "File Editor" registry section, `bindingSpecificity` in the
    matcher (a binding that names the focused surface beats an unscoped one on the same
@@ -286,28 +306,89 @@ not this. Items 1, 3 and 4 have since shipped; **refine** is what remains of thi
    (native `create_agent` children, Workflow internal agents). Rendered on the row as
    `elapsed · tokens · N tools · Tool`. Charter drained and folded into
    [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md#the-subagents-track)
-5. **lsp-code-intelligence Phases 2–3** — Phase 1's daemon core is built and tested; Phase 2
-   (document sync off the existing buffer mirror) and Phase 3 (the `code.definition` RPC,
-   Daemon → Code settings, client rewiring from word to position) are what a user actually
-   sees. Belongs here rather than Wave 1 because Wave 1's go-to-definition already shipped —
-   this replaces its answer quality, it does not unblock a dead workflow
+5. ✅ ~~**lsp-code-intelligence Phases 2–3**~~ — **OVERSHOT: Phases 1–5 all shipped.**
+   Document sync, `code.definition` (LSP-first, ctags demoted to fallback), then hover,
+   diagnostics, Find references and Rename — the last two as auditable **job tabs** over a
+   shared code-results row vocabulary, with `code.rename.apply` carrying a `planId` rather
+   than the edits, so a client cannot rewrite the plan between preview and apply. Phase 4
+   (LSP tie-in for the solution model) is the only unbuilt phase, and it belongs to
+   `solution-view` now
 
-### Wave 3 — the performance floor
+### Tails Wave 2 left behind
 
-**App-wide FPS degradation.** Split out because it is measurement-first and open-ended:
-build the resource reporting, find the leak, fix it. Impact 4 — the app degrading over a
-long session is exactly the failure mode a leave-it-running monitoring tool cannot have.
-Pull earlier if it worsens.
+None of these blocks Wave 3. Recorded so they are not rediscovered as bugs.
+
+| Tail                                   | From              | Size | Note                                                                                                                                       |
+| -------------------------------------- | ----------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Refine Phase 4** — Context Mgmt call | refine §14.5      | S    | `openRefineTab({ path, presetId })` from the per-file action. The tab target already carries `presetId`; only the call site is missing     |
+| Refine conflict-path test              | refine §10        | S    | The `stale` phase writes nothing on conflict — written and typed, not covered                                                              |
+| Refine i18n                            | refine §14.5      | S    | Tab is literal English, like rename/references. Pre-release sweep                                                                          |
+| Reorder queued entries                 | steer-queue       | S    | Preview + per-item removal shipped; drag-to-reorder did not                                                                                |
+| Claude interrupt receipt               | steer-queue       | S    | SDK ≥ 0.3.212 resolves `query.interrupt()` to `{ still_queued }`, feature-detected via `interrupt_receipt_v1`, currently only debug-logged |
+| Keyboard §4 dispatch + §6 audit        | keyboard overhaul | S    | The remaining stage, now much smaller                                                                                                      |
+
+And one that is **not** a tail but a decision, called out separately below.
+
+### 🔵 The decision Wave 2 surfaced — system-injected prompts
+
+Chat @mentions, schedule fires and notify-on-finish still send `delivery: "interrupt"`, so
+they clobber a running turn. The steer-queue build identified this as _"arguably a bug and
+the strongest correctness argument for the queue"_ — and deliberately left it out of scope,
+correctly: flipping it changes behaviour on paths nobody asked to change, and system-injected
+entries are the ones that explicitly never merge.
+
+It is a product decision, not a task, and it is cheap once decided. **Take it at the head of
+Wave 3**, before the performance work makes the tree noisy.
+
+### Wave 3 — the performance floor, plus three ready things
+
+**Assessed 2026-07-25.** Wave 3 as originally cut was a single open-ended item, and that is
+not a runnable wave. Two reasons it needed re-cutting:
+
+- **Its own instrument does not exist.** "No resource reporting at all" is a separate open
+  item, and it is the thing that would find the leak. So Wave 3 is really a _chain_ — build
+  reporting → measure → find → fix — with an unknown tail, not a task with an end.
+- **One item with an unknown tail means the wave can produce nothing.** Every other wave so
+  far shipped because it held several independently-completable things.
+
+So the FPS work stays the spine, and three ready items with known ends run beside it. They
+were chosen to touch different code: nothing here collides with the profiling work.
+
+1. **System-injected delivery decision** (above). Small, and it is a correctness question
+   sitting on machinery that just shipped
+2. **App-wide FPS degradation** — the spine. Measurement-first: build the resource
+   reporting, then find the leak. Impact 4 — an app that degrades over a long session is
+   exactly the failure mode a leave-it-running monitoring tool cannot have. The Visualizer
+   staying smooth while the rest degrades points at the JS thread / a leak / daemon
+   backpressure, **not** the GPU — that narrows the first measurement
+3. **computer-use Phase 0** (openai-compat vision) — _pulled forward from Wave 4._ Scope 2,
+   difficulty 2, impact 4: paste a screenshot at a local model and have it see. Its own
+   charter says Phase 0 is independently valuable, and it is the cheapest impact-4 item left
+   on the board. Pure fork thesis — a capability Claude users have and local-model users
+   do not
+4. **personality-memory** — _pulled forward from Wave 4._ Impact 4 and compounding: every
+   spawn starts from zero today, so the same corrections get re-taught forever. Self-contained,
+   and now cheaper than when it was scored — Refine's structured-generation chain and the
+   observed-subagent accounting both landed under it
+
+Opportunistic, if the FPS measurement stalls: **Refine Phase 4** (a call site), the
+`projects/todos/` remainder, **preview-file-tabs**, **web-search-providers**.
 
 ### Wave 4 — provider parity and continuity
+
+Personality-memory and computer-use Phase 0 were pulled forward into Wave 3; what remains
+here is the parity block, which is the fork's whole thesis and also its most expensive
+sequencing constraint.
 
 1. **upstream merge → subagent convergence → provider adapters** (trap 1, non-negotiable
    order). Impact here is conditional: transformative for OpenCode/Codex/Pi users,
    invisible to Claude users. Sequence it by who your users actually are
-2. **personality-memory** — stop re-teaching the same corrections every spawn
-3. **computer-use Phase 0** (openai-compat vision) — cheap, self-contained, high ceiling
-4. Shared context instrumentation → visualizer ring + usage-log View B (trap 3)
-5. **total-token-accounting** · **history-management** — trust and tidiness
+2. Shared context instrumentation → visualizer ring + usage-log View B (trap 3)
+3. **total-token-accounting** · **history-management** — trust and tidiness
+4. **solution-view Phase 1** — the read-only Solution lens (see §3.4). Sits here rather
+   than Wave 3 because its impact is provider-shaped in the same way the adapters are:
+   a 5 for .NET developers, a 1 for everyone else. Phase 2 (general file mutations) is
+   **not** .NET work and enables mutation paths beyond it
 
 ### Wave 5 — the big bet
 

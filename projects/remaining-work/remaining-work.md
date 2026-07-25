@@ -234,7 +234,19 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation/decision · �
   `delivery: "interrupt"`, so they clobber a running turn. That is arguably a bug and the
   strongest correctness argument for the queue — but flipping it changes existing behavior
   on paths nobody asked to change, so it was left explicitly out of scope. Decide it on
-  its own. See `projects/steer-queue/`.
+  its own. See `projects/steer-queue/`. **Scheduled at the head of Wave 3** —
+  [prioritization.md](prioritization.md) §5.
+- 🟡 **Reorder queued entries** — steer-queue shipped the queue preview and per-item
+  removal, but not drag-to-reorder. Small.
+- 🟡 **Consume the Claude interrupt receipt** — SDK ≥ 0.3.212 resolves `query.interrupt()`
+  to `{ still_queued: string[] }`, feature-detected via `interrupt_receipt_v1` in
+  `system/init`. Captured and debug-logged today; nothing reconciles against it. Small,
+  Claude-only.
+- 🟡 **Refine Phase 4 — Context Management call site.** The one unbuilt phase of the Refine
+  plan: the per-file action calling `openRefineTab({ path, presetId })`. The tab target
+  already carries `presetId` and the panel already seeds from it, so this is a call site,
+  not a feature. Also open: the conflict-path integration test (the `stale` phase writes
+  nothing on conflict — written and typed, untested) and i18n. See `projects/refine/` §14.5.
 
 ---
 
@@ -248,8 +260,7 @@ session-decomposition · mobile-daemon ·
 file-rendering · web-search-providers · site-demos · personality-memory ·
 preview-file-tabs · total-token-accounting · workflow-decomposition ·
 visualizer-node-richness (context ring) · history-management · context-management ·
-refine · visualizer-pip · upstream-subagent-convergence ·
-lsp-code-intelligence (Phase 1 core built 2026-07-24, Phases 2–5 open) ·
+visualizer-pip · upstream-subagent-convergence · solution-view (charter v3 approved) ·
 git-hosting-providers (GitLab+) ·
 git-file-history (presentation) · e2e-qa-coverage (build-out) ·
 marketing-strategy · outreach _(non-product)_.
