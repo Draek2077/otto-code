@@ -322,29 +322,26 @@ item whose whole point is reducing divergence cost, so every wave it waits, it b
 4. **solution-view Phase 1** — the read-only Solution lens. Impact is provider-shaped in the same way
    the adapters are: a 5 for .NET developers, a 1 for everyone else. Phase 2 (general file mutations)
    is not .NET work and enables mutation paths beyond it.
-5. **claude-extensions** — new charter, scope approved 2026-07-25, unstarted. Full management of the
-   Claude Code extension surface (plugins, marketplaces, skills, MCP) from Otto's Claude settings
-   panel. Placed here with a caveat, below.
+   `claude-extensions` belongs to **Wave 5**, not here — product owner's call, 2026-07-25. It is
+   deliberately Claude-only, which would have blurred the meaning of a wave whose whole theme is
+   provider parity, and it would have competed for the same hours as item 1 without item 1's compounding
+   cost. See its treatment under Wave 5 below.
 
-#### The tension in putting claude-extensions in a parity wave
+#### Readiness, item by item (checked 2026-07-25)
 
-`claude-extensions` is **deliberately Claude-only**, consciously setting aside the fork's standing
-rule that a capability is not done until every provider has it. Its charter argues the exception
-holds: plugins and marketplaces are a Claude Code _product_ concept, not a general agent one — Codex
-has `~/.codex/prompts/`, OpenCode has npm plugins, Copilot and Pi have no installable-extension model
-at all — so there is no shared abstraction to build against, and a provider-neutral version would be
-an invention rather than a generalization. That reasoning is sound.
+| Item                              | Ready?                 | What actually gates it                                                                                                                                                                                                                                                          |
+| --------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. upstream merge → convergence   | ✅ **now unblocked**   | The convergence charter records "blocked on the Phase 1 merge landing (upstream `v0.2.0`, currently untagged)". **That blocker is stale** — upstream has tagged `v0.2.0` and `v0.2.1`. Setup step first: this checkout has no `upstream` remote (only `origin` and `agentflow`) |
+| 1b. provider adapters             | ✅ ready, cheap        | The contract is two events plus one optional method, and nothing in the protocol, daemon projection or client says "claude". Per-provider sub-agent accounting rides the same stream. The risk is all in convergence, not here                                                  |
+| 2. shared context instrumentation | ✅ ready               | Needs the 5-way `contextBreakdown` the adapter omits. Trap 3: the Visualizer ring and usage-log View B take the same accounting, so build it once                                                                                                                               |
+| 3a. total-token-accounting        | ✅ ready               | The 2026-07-17 audit already established the numbers are wrong and why, against a real daemon snapshot rather than the display                                                                                                                                                  |
+| 3b. history-management            | ⚠️ **needs your call** | Charter only, and **four decisions marked `[PROPOSED]` require a product-owner answer before Phase 1** — chiefly whether deleting a chat also removes the provider's own transcript, and whether that is opt-in                                                                 |
+| 4. solution-view Phase 1          | ✅ ready               | Charter v3 approved, cross-platform proven by spike, sidecar builds to a portable 193 KB payload                                                                                                                                                                                |
 
-But it sits in the wave whose entire theme is the opposite, so **name the exception rather than let
-it blur the wave's meaning.** Two consequences worth deciding deliberately:
-
-- It competes for the same hours as item 1, which is the wave's actual justification. If both cannot
-  run, item 1 wins — divergence cost compounds and this does not.
-- Its real case is not management-parity with the CLI (that saves an SSH session). It is the four
-  things Otto can do that the CLI cannot: total always-on token cost across everything installed,
-  distinguish installed from actually-loaded, turn MCP failures into a cause and a next action, and
-  host the plugin authoring loop next to an editor. **Sequence its phases so one of those lands
-  early**, or the wave slot is buying a settings mirror.
+**The shape this implies.** Item 1 is the wave — it is the only item whose cost rises with delay, and
+its stated blocker just cleared. Items 2, 3a and 4 are independent of it and of each other, so they
+can run alongside. Item 3b cannot be dispatched until the `[PROPOSED]` set is answered; everything
+else is spawn-ready today.
 
 ### Wave 5 candidate — agentic architectures for coding tasks
 
