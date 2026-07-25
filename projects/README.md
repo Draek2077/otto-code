@@ -59,6 +59,7 @@ Everything currently in this tree. Status vocabulary: **Charter** (nothing built
 | ----------------------------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [agent-orchestration](agent-orchestration/agent-orchestration.md)                               | Charter            | The **control layer** — Teams as the way work is invoked, typed tasks, recognize → plan → delegate → synthesize. Quarter-scale. Companion: [invocation.md](agent-orchestration/invocation.md)                                       |
 | [bug-reporting](bug-reporting/bug-reporting.md)                                                 | Charter            | In-app bug/suggestion reporting; the daemon files the GitHub issue so reporters need no account                                                                                                                                     |
+| [claude-extensions](claude-extensions/claude-extensions.md)                                     | Charter            | Full plugin, marketplace, skill and MCP management from the Claude provider settings panel. **Deliberately Claude-only** — plugins are a Claude Code product concept, not a general agent one                                       |
 | [computer-use](computer-use/computer-use.md)                                                    | Charter            | Agents see and control the desktop via a shared computer-control library; layered safety. Companion: [computer-control-library.md](computer-use/computer-control-library.md)                                                        |
 | [context-management](context-management/context-management.md)                                  | Partial            | Everything sent before you type, plus the 3-pane tab. Built and committed. Open: demote-to-subdirectory, skills/MCP toggles, the §11 calibration                                                                                    |
 | [dictation-refine](dictation-refine/dictation-refine.md)                                        | Charter            | AI cleanup over dictated text via a latency-ordered ladder (lexical → ONNX → optional LLM)                                                                                                                                          |
@@ -72,7 +73,6 @@ Everything currently in this tree. Status vocabulary: **Charter** (nothing built
 | [multiplayer](multiplayer/multiplayer.md)                                                       | Charter            | Presence, entering each other's workspaces, opt-in follow — never forced mirroring                                                                                                                                                  |
 | [observed-subagents](observed-subagents/observed-subagents.md)                                  | Partial            | Provider subagents promoted to read-only track rows. Claude proof shipped; generalizing is adapter-only work. **[provider-adapters.md](observed-subagents/provider-adapters.md) is the adapter contract** and is cited from `docs/` |
 | [outreach](outreach/outreach.md)                                                                | Charter            | Awareness strategy, website-scoped. Sells nothing. Companions: channels, content, pipeline, runbook                                                                                                                                 |
-| [personality-memory](personality-memory/personality-memory.md)                                  | In build           | Per-personality persistent memory. See the settled design in [Build order](#build-order) — it supersedes the charter sketch                                                                                                         |
 | [preview-file-tabs](preview-file-tabs/preview-file-tabs.md)                                     | Charter            | VSCode-style preview tabs (transient vs pinned); web-only idiom                                                                                                                                                                     |
 | [refine](refine/refine.md)                                                                      | Partial            | AI rewrite loop with review, as its own job tab. Prose only, never code. Built. Open: the Context Management call site, a conflict test, i18n                                                                                       |
 | [sidebar-reveal](sidebar-reveal/sidebar-reveal.md)                                              | Partial            | Increment 1 (reveal primitive) shipped. Increment 2 (tutorial create-workspace step) unbuilt — this folder holds the only plan for it                                                                                               |
@@ -208,6 +208,14 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
   catalog / personality / team / `CLAUDE.md` contribution. Needs exact-injected instrumentation that
   does not exist yet, shared with the Visualizer's context ring. Also deferred: cursor pagination
   beyond "load more", and provider/kind filters.
+- 🔵 **Personality memory: calibrate the injection budget.** `MEMORY_BRIEF_TOKEN_BUDGET` is 1,500 — a
+  judgement call against a 200K default window, and ~4.7% of a 32K local model's. Context Management
+  now _measures_ the figure per personality, so it can be tuned with evidence instead of argued.
+  Architecture: [docs/agent-personalities.md § Memory](../docs/agent-personalities.md#memory-accrued-lessons).
+- 🟡 **Personality memory: a smarter merge on transfer.** Transfer-on-delete merges near-duplicates
+  lexically, like every other dedup in the subsystem. Asking the destination personality to reconcile
+  two overlapping lessons is the natural extension of the `review_lessons` loop — the one place in
+  this feature where a model is the right tool.
 
 ### Testing & tooling
 
@@ -232,7 +240,7 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
   `suppressOutOfProjectWarning` in `editor-prefs-store.ts`. Non-blocking sweep.
 - ⚪ **i18n lag: worktree branch-cleanup and re-attach strings.** Only `en.ts` has these keys; the 7
   non-English locales lag. Batch translate pass.
-- ⚪ **i18n: the setup wizard and Refine.** Both shipped English-only.
+- ⚪ **i18n: the setup wizard, Refine and personality memory.** All shipped English-only.
 
 ---
 
@@ -257,8 +265,9 @@ next, and why that rather than the highest-scoring item.
 
 Cut 2026-07-25. The four items touch different code on purpose.
 
-1. **personality-memory** — pulled forward from Wave 4 and expanded. Impact is compounding: every
-   spawn starts from zero today, so the same corrections get re-taught forever.
+1. ✅ **personality-memory** — done 2026-07-25. Pulled forward from Wave 4 and expanded. Impact is
+   compounding: every spawn used to start from zero, so the same corrections got re-taught forever.
+   Shipped design: [docs/agent-personalities.md § Memory](../docs/agent-personalities.md#memory-accrued-lessons).
 2. **App-wide FPS degradation** — the spine. Measurement-first: build the resource reporting, _then_
    find the leak.
 3. ✅ **System-injected delivery decision** — done. Mentions and notify-on-finish queue; the schedule
@@ -270,9 +279,12 @@ Cut 2026-07-25. The four items touch different code on purpose.
 **Dropped from this wave:** computer-use Phase 0, deferred by the product owner — the vision
 capability is not the current focus.
 
-#### personality-memory — the settled design
+#### personality-memory — the settled design (shipped)
 
-These decisions supersede the charter sketch.
+These seven decisions were the spec, and all seven are built. The architecture they produced is
+[docs/agent-personalities.md § Memory](../docs/agent-personalities.md#memory-accrued-lessons),
+which also records what was considered and rejected. Kept here because the decisions themselves are
+the reasoning, and the charter has drained to `archive/`.
 
 - **Underneath, these are just stored memories.** No exotic representation.
 - **Recording is fire-and-forget.** The agent states what it learned; the system handles storage,
@@ -322,6 +334,21 @@ Agent-orchestration is the substrate this stands on, so if this is the direction
 Pick **one** of agent-orchestration or (session-decomposition → mobile-daemon). Both are
 quarter-scale and both are strategically defensible; running them concurrently in one shared working
 tree is not.
+
+**Alongside the big bet: [claude-extensions](claude-extensions/claude-extensions.md).** Added
+2026-07-25 at the product owner's direction. Full plugin, marketplace, skill and MCP management in
+the Claude provider settings panel — the most-asked-for capability Otto does not have, and today the
+one thing you still have to leave the app and SSH into the host to do.
+
+It does **not** consume the pick-one slot. That rule exists because two quarter-scale bets cannot
+share one working tree; this is roughly six sessions across five independently shippable phases, and
+it touches disjoint code — the Claude provider adapter and one settings sheet, neither of which the
+orchestration or mobile-daemon work goes near.
+
+Two things to settle before Phase 4 rather than during it: whether v1 shows user-scope only (the
+provider settings sheet is host-level, but plugins and MCP servers can be project-scoped), and how
+this reconciles with context-management's open "skills/MCP toggles" tail — two surfaces will describe
+the same installed set and must not each grow their own read path.
 
 ### ⚠️ Divergence from upstream Paseo
 

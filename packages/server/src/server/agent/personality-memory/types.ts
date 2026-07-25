@@ -2,7 +2,7 @@
  * Domain types for Personality Memory — the lessons a named personality accrues
  * across sessions and carries into every later spawn.
  *
- * See `projects/personality-memory/personality-memory.md`. The two ideas that
+ * See `docs/agent-personalities.md` § Memory. The two ideas that
  * everything else follows from:
  *
  * 1. **These are just stored memories.** A flat list of text entries keyed to a
