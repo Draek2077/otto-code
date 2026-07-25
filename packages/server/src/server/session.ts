@@ -94,6 +94,7 @@ import {
   resolveProjectRootForCwd,
 } from "./agent/context-management/context-management-service.js";
 import { convertEdge } from "./agent/context-management/edge-convert.js";
+import type { PersonalityMemoryService } from "./agent/personality-memory/personality-memory-service.js";
 import { composeSystemPromptParts } from "./agent/system-prompt.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import type {
@@ -342,6 +343,17 @@ function errorToFriendlyMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
   return "Unknown error";
+}
+
+/**
+ * A personality-memory scope arrives as a plain string (forward compat, like
+ * roles and effort levels), so an unrecognized value is dropped here rather than
+ * coerced — "project" and "global" are different claims, and guessing between
+ * them would silently widen or narrow a lesson's reach.
+ */
+function readPersonalityMemoryScope(value: string | undefined): "project" | "global" | undefined {
+  if (value === "project" || value === "global") return value;
+  return undefined;
 }
 
 function resolveSubscriptionId(
@@ -617,6 +629,12 @@ export interface SessionOptions {
     voice?: { name: string; model?: string };
   }) => Promise<{ audio: string; format: string } | null>;
   getPersonalityStats?: () => Record<string, number> | Promise<Record<string, number>>;
+  /**
+   * Per-personality accrued lessons. Absent on hosts that don't wire it, in
+   * which case the daemon doesn't advertise `features.personalityMemory` and the
+   * memory RPCs answer with a plain "not available on this host".
+   */
+  personalityMemory?: PersonalityMemoryService | null;
   serverId?: string;
   daemonVersion?: string;
   daemonRuntimeConfig?: DaemonRuntimeConfig;
@@ -726,6 +744,10 @@ export class Session {
   private readonly getPersonalityStats:
     | (() => Record<string, number> | Promise<Record<string, number>>)
     | null;
+  // Left as the option's own `| null | undefined` rather than coalesced to null:
+  // every read is a truthiness check, and normalizing would add a branch to a
+  // constructor already at the complexity ceiling.
+  private readonly personalityMemory: PersonalityMemoryService | null | undefined;
   // Generates the Visualizer's short spoken cue lines for a personality (join /
   // thinking / done), via the Writer mini-task chain. Cached per personality.
   private readonly voiceCueGenerator: VoiceCueGenerator;
@@ -841,6 +863,7 @@ export class Session {
       getSpeechSettingsOptions,
       previewTts,
       getPersonalityStats,
+      personalityMemory,
       serverId,
       daemonVersion,
       daemonRuntimeConfig,
@@ -850,6 +873,7 @@ export class Session {
     this.getSpeechSettingsOptions = getSpeechSettingsOptions ?? null;
     this.previewTts = previewTts;
     this.getPersonalityStats = getPersonalityStats ?? null;
+    this.personalityMemory = personalityMemory;
     this.appVersion = appVersion ?? null;
     this.clientCapabilities = parseClientCapabilities(clientCapabilities);
     this.sessionId = uuidv4();
@@ -988,6 +1012,12 @@ export class Session {
             agentId,
             prompt: formatSystemNotificationPrompt(text),
             unarchive: false,
+            // A room mention is a message, not an emergency. Interrupting threw
+            // away whatever the mentioned agent was doing on behalf of someone
+            // who only meant to say something to it — and `@everyone` did that
+            // to a roomful at once. See docs/chat-lifecycle.md (Delivery).
+            delivery: "queue",
+            source: "system",
             logger: this.sessionLogger,
           });
         },
@@ -1169,6 +1199,14 @@ export class Session {
     // the same workspace can host agents on different providers.
     this.contextManagement = new ContextManagementService({
       logger: this.sessionLogger,
+      // A personality's injected lessons are fixed weight like any other prompt
+      // text, so the report has to count them or its percentages understate what
+      // a personality-backed chat actually carries.
+      resolvePersonalityMemoryTokens: async ({ personalityId, projectRoot }) => {
+        if (!this.personalityMemory) return 0;
+        const view = await this.personalityMemory.view({ personalityId, projectRoot });
+        return view.brief.estTokens;
+      },
       resolveLocation: async (workspaceId) => {
         const workspace = await this.workspaceRegistry.get(workspaceId);
         if (!workspace) return null;
@@ -2177,6 +2215,8 @@ export class Session {
         return this.handleAgentForkContextRequest(msg);
       case "agent.queue.remove.request":
         return this.handleAgentQueueRemoveRequest(msg);
+      case "agent.queue.reorder.request":
+        return this.handleAgentQueueReorderRequest(msg);
       case "agent.queue.clear.request":
         return this.handleAgentQueueClearRequest(msg);
       default:
@@ -2966,9 +3006,195 @@ export class Session {
         return this.handleContextReportGetRequest(msg);
       case "context.edge.convert.request":
         return this.handleContextEdgeConvertRequest(msg);
+      case "personality.memory.list.request":
+        return this.handlePersonalityMemoryListRequest(msg);
+      case "personality.memory.update.request":
+        return this.handlePersonalityMemoryUpdateRequest(msg);
+      case "personality.memory.transfer.request":
+        return this.handlePersonalityMemoryTransferRequest(msg);
+      case "personality.memory.stats.request":
+        return this.handlePersonalityMemoryStatsRequest(msg);
       default:
         return undefined;
     }
+  }
+
+  private async handlePersonalityMemoryListRequest(
+    msg: Extract<SessionInboundMessage, { type: "personality.memory.list.request" }>,
+  ): Promise<void> {
+    const emitEmpty = (): void => {
+      this.emit({
+        type: "personality.memory.list.response",
+        payload: {
+          requestId: msg.requestId,
+          personalityId: msg.personalityId,
+          personalityName: msg.personalityId,
+          enabled: false,
+          entries: [],
+          brief: "",
+          briefTokens: 0,
+        },
+      });
+    };
+    if (!this.personalityMemory) {
+      emitEmpty();
+      return;
+    }
+    try {
+      const view = await this.personalityMemory.view({
+        personalityId: msg.personalityId,
+        ...(msg.projectRoot ? { projectRoot: msg.projectRoot } : {}),
+      });
+      this.emit({
+        type: "personality.memory.list.response",
+        payload: {
+          requestId: msg.requestId,
+          personalityId: view.personalityId,
+          personalityName: view.personalityName,
+          enabled: view.enabled,
+          // Mapped field-by-field rather than spread: the wire schema is
+          // `.passthrough()`, so its inferred type carries an index signature the
+          // domain type does not, and a spread would also leak any future
+          // internal field onto the wire by accident.
+          entries: view.entries.map((entry) => ({
+            id: entry.id,
+            text: entry.text,
+            scope: entry.scope,
+            ...(entry.projectRoot ? { projectRoot: entry.projectRoot } : {}),
+            createdAt: entry.createdAt,
+            updatedAt: entry.updatedAt,
+            source: entry.source,
+            ...(entry.reinforcedCount !== undefined
+              ? { reinforcedCount: entry.reinforcedCount }
+              : {}),
+            ...(entry.transferredFrom ? { transferredFrom: entry.transferredFrom } : {}),
+          })),
+          // The exact injected text, never a reconstruction — the whole point of
+          // the visibility requirement is that these two cannot differ.
+          brief: view.brief.text,
+          briefTokens: view.brief.estTokens,
+          briefOmittedCount: view.brief.omittedCount,
+        },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.sessionLogger.error({ err }, "Failed to list personality memory");
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: `Failed to read personality memory: ${err.message}`,
+          code: "personality_memory_list_failed",
+        },
+      });
+    }
+  }
+
+  private async handlePersonalityMemoryUpdateRequest(
+    msg: Extract<SessionInboundMessage, { type: "personality.memory.update.request" }>,
+  ): Promise<void> {
+    const respond = (ok: boolean, error?: string): void => {
+      this.emit({
+        type: "personality.memory.update.response",
+        payload: { requestId: msg.requestId, ok, ...(error ? { error } : {}) },
+      });
+    };
+    if (!this.personalityMemory) {
+      respond(false, "This host does not support personality memory.");
+      return;
+    }
+    // Scope rides the wire as a plain string for forward compat, so an
+    // unrecognized value is dropped here rather than trusted downstream.
+    const scope = readPersonalityMemoryScope(msg.scope);
+    try {
+      if (!msg.entryId) {
+        const text = msg.text?.trim();
+        if (!text) {
+          respond(false, "A lesson needs some text.");
+          return;
+        }
+        await this.personalityMemory.addUserEntry({
+          personalityId: msg.personalityId,
+          text,
+          scope: scope ?? "global",
+          ...(msg.projectRoot ? { projectRoot: msg.projectRoot } : {}),
+        });
+        respond(true);
+        return;
+      }
+      const applied = await this.personalityMemory.revise({
+        personalityId: msg.personalityId,
+        entryId: msg.entryId,
+        ...(msg.text !== undefined ? { text: msg.text } : {}),
+        ...(scope ? { scope } : {}),
+        ...(msg.projectRoot ? { projectRoot: msg.projectRoot } : {}),
+        ...(msg.drop ? { drop: true } : {}),
+      });
+      respond(applied, applied ? undefined : "That lesson no longer exists.");
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.sessionLogger.error({ err }, "Failed to update personality memory");
+      respond(false, err.message);
+    }
+  }
+
+  private async handlePersonalityMemoryTransferRequest(
+    msg: Extract<SessionInboundMessage, { type: "personality.memory.transfer.request" }>,
+  ): Promise<void> {
+    const respond = (payload: {
+      ok: boolean;
+      transferred?: number;
+      merged?: number;
+      error?: string;
+    }): void => {
+      this.emit({
+        type: "personality.memory.transfer.response",
+        payload: { requestId: msg.requestId, ...payload },
+      });
+    };
+    if (!this.personalityMemory) {
+      respond({ ok: false, error: "This host does not support personality memory." });
+      return;
+    }
+    try {
+      if (msg.mode === "delete") {
+        await this.personalityMemory.clear(msg.fromPersonalityId);
+        respond({ ok: true, transferred: 0, merged: 0 });
+        return;
+      }
+      if (msg.mode !== "transfer") {
+        respond({ ok: false, error: `Unknown transfer mode "${msg.mode}".` });
+        return;
+      }
+      if (!msg.toPersonalityId) {
+        respond({ ok: false, error: "A transfer needs a destination personality." });
+        return;
+      }
+      if (msg.toPersonalityId === msg.fromPersonalityId) {
+        respond({ ok: false, error: "A personality cannot receive its own lessons." });
+        return;
+      }
+      const result = await this.personalityMemory.transfer({
+        fromPersonalityId: msg.fromPersonalityId,
+        toPersonalityId: msg.toPersonalityId,
+      });
+      respond({ ok: true, ...result });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.sessionLogger.error({ err }, "Failed to transfer personality memory");
+      respond({ ok: false, error: err.message });
+    }
+  }
+
+  private async handlePersonalityMemoryStatsRequest(
+    msg: Extract<SessionInboundMessage, { type: "personality.memory.stats.request" }>,
+  ): Promise<void> {
+    const counts = this.personalityMemory ? await this.personalityMemory.counts() : {};
+    this.emit({
+      type: "personality.memory.stats.response",
+      payload: { requestId: msg.requestId, counts },
+    });
   }
 
   private async handleContextReportGetRequest(
@@ -2979,6 +3205,7 @@ export class Session {
         workspaceId: msg.workspaceId,
         ...(msg.provider ? { provider: msg.provider } : {}),
         ...(typeof msg.windowTokens === "number" ? { windowTokens: msg.windowTokens } : {}),
+        ...(msg.personalityId ? { personalityId: msg.personalityId } : {}),
       });
       this.emit({
         type: "context.report.get.response",
@@ -7685,6 +7912,41 @@ export class Session {
         requestId: msg.requestId,
         agentId: resolved.agentId,
         removed: entry ? { id: entry.id, text: steerQueuePromptText(entry.prompt) } : null,
+        error: null,
+      },
+    });
+  }
+
+  private async handleAgentQueueReorderRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.queue.reorder.request" }>,
+  ): Promise<void> {
+    const resolved = await this.resolveAgentIdentifier(msg.agentId);
+    if (!resolved.ok) {
+      this.emit({
+        type: "agent.queue.reorder.response",
+        payload: {
+          requestId: msg.requestId,
+          agentId: msg.agentId,
+          moved: false,
+          error: resolved.error,
+        },
+      });
+      return;
+    }
+
+    // `moved: false` is not an error, for the same reason `removed: null` isn't:
+    // the turn can drain the entry between the client rendering the row and the
+    // tap landing. The new order reaches every client on the agent snapshot.
+    this.emit({
+      type: "agent.queue.reorder.response",
+      payload: {
+        requestId: msg.requestId,
+        agentId: resolved.agentId,
+        moved: this.agentManager.reorderSteerQueueEntry(
+          resolved.agentId,
+          msg.messageId,
+          msg.toIndex,
+        ),
         error: null,
       },
     });

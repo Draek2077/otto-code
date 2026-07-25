@@ -96,6 +96,7 @@ import { ForegroundRunState, type ForegroundTurnWaiter } from "./foreground-run-
 import {
   createSteerQueueEntry,
   mergeSteerQueueBatch,
+  moveSteerQueueEntry,
   takeNextSteerQueueBatch,
   type SteerQueueEntry,
 } from "./steer-queue-state.js";
@@ -328,6 +329,19 @@ export interface AgentManagerOptions {
    * create_agent, and schedule spawns all count.
    */
   onPersonalitySpawn?: (personalityId: string) => void;
+  /**
+   * Resolves a personality's accrued lessons into the brief injected at spawn,
+   * or null when there is nothing to inject (no lessons, switch off, feature
+   * unwired). Called from prepareSessionConfig — the one point every spawn,
+   * resume and refresh path already funnels through — so memory is re-read on
+   * every resume and no caller has to thread it.
+   * See projects/personality-memory/personality-memory.md §5.
+   */
+  resolvePersonalityMemoryBrief?: (params: {
+    personalityId: string;
+    personalityName: string;
+    cwd: string | undefined;
+  }) => Promise<string | null>;
   /** Fun-stats counters — see packages/server/src/server/activity-stats. */
   onActivity?: ActivityIncrementFn;
   /**
@@ -1236,6 +1250,7 @@ export class AgentManager {
   private onAgentArchived?: AgentArchivedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
   private onPersonalitySpawn?: (personalityId: string) => void;
+  private resolvePersonalityMemoryBrief?: AgentManagerOptions["resolvePersonalityMemoryBrief"];
   private onActivity?: ActivityIncrementFn;
   private onUsageEvent?: (event: UsageEvent) => void;
   private logger: Logger;
@@ -1250,6 +1265,7 @@ export class AgentManager {
     this.onAgentAttention = options?.onAgentAttention;
     this.onWorkspaceStateMayHaveChanged = options?.onWorkspaceStateMayHaveChanged;
     this.onPersonalitySpawn = options?.onPersonalitySpawn;
+    this.resolvePersonalityMemoryBrief = options.resolvePersonalityMemoryBrief;
     this.onActivity = options.onActivity;
     this.onUsageEvent = options.onUsageEvent;
     this.mcpBaseUrl = options?.mcpBaseUrl ?? null;
@@ -2514,10 +2530,19 @@ export class AgentManager {
       ? composeTeamAndPersonalityPrompt(teamSnapshot, snapshot?.systemPrompt, snapshot?.roles)
       : agent.config.systemPrompt;
 
+    // The incoming personality brings its own lessons, so a live switch has to
+    // re-resolve the brief exactly as a spawn would — otherwise switching to a
+    // personality mid-chat gives you its prompt and its brain but not what it
+    // has learned. The augmented prompt goes to the provider; `nextSystemPrompt`
+    // (memory-free) is what persists, keeping the ownership check above valid.
+    const providerSystemPrompt = promptIsPersonalityOwned
+      ? await this.withPersonalityMemory(nextSystemPrompt, snapshot, agent.config.cwd)
+      : nextSystemPrompt;
+
     const daemonAppendSystemPrompt = this.appendSystemPrompt.trim();
     const personalityUpdate: AgentPersonalityUpdate = {
       personalitySnapshot: snapshot ?? undefined,
-      systemPrompt: nextSystemPrompt,
+      systemPrompt: providerSystemPrompt,
       // Same rule as applyDaemonAppendSystemPrompt: a personality with
       // respectGlobalAppendPrompt === false owns its whole prompt.
       daemonAppendSystemPrompt:
@@ -3160,13 +3185,22 @@ export class AgentManager {
    * dispatches immediately, because "queue" means "don't interrupt", not "wait".
    * The busy check and the push happen in one synchronous block, so the answer
    * cannot go stale between them.
+   *
+   * An agent with no live session cannot be busy, so it reports "not queued"
+   * rather than throwing: `delivery: "queue"` must never be the reason a prompt
+   * fails to reach an agent that would have accepted it as `interrupt`. This
+   * matters for the system-injected senders (chat mentions, notify-on-finish),
+   * whose target may be closed or not yet revived.
    */
   enqueueSteerMessage(
     agentId: string,
     prompt: AgentPromptInput,
     options?: { runOptions?: AgentRunOptions; source?: "user" | "system" },
   ): { queued: boolean; entry?: SteerQueueEntry } {
-    const agent = this.requireSessionAgent(agentId);
+    const agent = this.agents.get(agentId);
+    if (!agent || agent.session === null) {
+      return { queued: false };
+    }
     if (!this.hasInFlightRun(agentId) && !agent.pendingSteerDrain) {
       return { queued: false };
     }
@@ -3188,6 +3222,32 @@ export class AgentManager {
 
   getSteerQueue(agentId: string): SteerQueueEntry[] {
     return this.agents.get(agentId)?.steerQueue ?? [];
+  }
+
+  /**
+   * Re-order the queue (Queue-track move up / move down).
+   *
+   * Order is the whole point of a FIFO, so this is the one edit that changes
+   * what the next turn says without changing what is in the queue. Returns
+   * false when the entry is already gone or the move is a no-op.
+   */
+  reorderSteerQueueEntry(agentId: string, entryId: string, toIndex: number): boolean {
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      return false;
+    }
+    const reordered = moveSteerQueueEntry(agent.steerQueue, entryId, toIndex);
+    if (!reordered) {
+      return false;
+    }
+    agent.steerQueue = reordered;
+    this.logger.debug(
+      { agentId, provider: agent.provider, entryId, toIndex },
+      "agent.manager.steer_queue.reorder",
+    );
+    this.touchUpdatedAt(agent);
+    this.emitState(agent);
+    return true;
   }
 
   /** Pull one entry back out of the queue (Queue-track edit / send now). */
@@ -6123,15 +6183,68 @@ export class AgentManager {
     agentId: string,
   ): Promise<PreparedSessionConfig> {
     const storedConfig = await this.normalizeConfig(stripInternalOttoMcpServer(config));
-    const launchConfig = this.applyDaemonAppendSystemPrompt(
-      withRuntimeOttoMcpServer({
-        config: storedConfig,
-        agentId,
-        mcpBaseUrl: this.mcpBaseUrl,
-        mcpAuthToken: this.mcpAuthToken,
-      }),
+    const launchConfig = await this.applyPersonalityMemory(
+      this.applyDaemonAppendSystemPrompt(
+        withRuntimeOttoMcpServer({
+          config: storedConfig,
+          agentId,
+          mcpBaseUrl: this.mcpBaseUrl,
+          mcpAuthToken: this.mcpAuthToken,
+        }),
+      ),
     );
     return { storedConfig, launchConfig };
+  }
+
+  /**
+   * Append the personality's accrued lessons to the LAUNCH config's system
+   * prompt. Deliberately runtime-only — never written to `storedConfig` — for
+   * two reasons that both matter:
+   *
+   * 1. Memory is re-read on every resume, so a lesson recorded yesterday is
+   *    present today without rewriting any agent record.
+   * 2. The live-personality-switch ownership check compares the stored
+   *    `systemPrompt` against the recomposed personality prompt; baking memory
+   *    into the stored prompt would make that comparison start failing the
+   *    moment a personality learned anything.
+   *
+   * Unlike the daemon-global append prompt this is NOT suppressed by
+   * `respectGlobalAppendPrompt`: that toggle governs the daemon's prompt, and
+   * these lessons are the personality's own.
+   */
+  private async applyPersonalityMemory(config: AgentSessionConfig): Promise<AgentSessionConfig> {
+    const systemPrompt = await this.withPersonalityMemory(
+      config.systemPrompt,
+      config.personalitySnapshot,
+      config.cwd,
+    );
+    return systemPrompt === config.systemPrompt ? config : { ...config, systemPrompt };
+  }
+
+  /**
+   * Stack a personality's accrued lessons under a system prompt, or hand the
+   * prompt back untouched. Shared by the spawn path and the live switch so both
+   * compose memory identically — a personality that behaved differently
+   * depending on how you attached it would be two personalities.
+   */
+  private async withPersonalityMemory(
+    systemPrompt: string | undefined,
+    snapshot: ResolvedPersonalitySnapshot | null | undefined,
+    cwd: string | undefined,
+  ): Promise<string | undefined> {
+    if (!snapshot || !this.resolvePersonalityMemoryBrief) {
+      return systemPrompt;
+    }
+    const brief = await this.resolvePersonalityMemoryBrief({
+      personalityId: snapshot.personalityId,
+      personalityName: snapshot.name,
+      cwd,
+    });
+    if (!brief) {
+      return systemPrompt;
+    }
+    const existing = systemPrompt?.trim();
+    return existing ? `${existing}\n\n${brief}` : brief;
   }
 
   private applyDaemonAppendSystemPrompt(config: AgentSessionConfig): AgentSessionConfig {

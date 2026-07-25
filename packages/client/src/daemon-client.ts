@@ -96,6 +96,10 @@ import type {
   ProjectIconResponse,
   ContextReportGetResponseMessage,
   ContextEdgeConvertResponseMessage,
+  PersonalityMemoryListResponseMessage,
+  PersonalityMemoryUpdateResponseMessage,
+  PersonalityMemoryTransferResponseMessage,
+  PersonalityMemoryStatsResponseMessage,
   ProjectAddResponse,
   ProjectScaffoldGit,
   ProjectScaffoldProgress,
@@ -3337,6 +3341,45 @@ export class DaemonClient {
     return payload.removed;
   }
 
+  /**
+   * Move one queued message to a new position. Resolves false when the entry
+   * was already drained or was already there — the authoritative order arrives
+   * on the agent snapshot either way. Requires
+   * `server_info.features.steerQueueReorder`.
+   */
+  async reorderQueuedAgentMessage(
+    agentId: string,
+    messageId: string,
+    toIndex: number,
+  ): Promise<boolean> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "agent.queue.reorder.request",
+      requestId,
+      agentId,
+      messageId,
+      toIndex,
+    });
+    const payload = await this.sendRequest({
+      requestId,
+      message,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "agent.queue.reorder.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.moved;
+  }
+
   /** Drop every message queued behind an agent's current turn. */
   async clearAgentQueue(agentId: string): Promise<number> {
     const requestId = this.createRequestId();
@@ -5288,7 +5331,12 @@ export class DaemonClient {
    * pickers; omit both to evaluate the active agent's real setup.
    */
   async requestContextReport(
-    input: { workspaceId: string; provider?: string; windowTokens?: number },
+    input: {
+      workspaceId: string;
+      provider?: string;
+      windowTokens?: number;
+      personalityId?: string;
+    },
     requestId?: string,
   ): Promise<ContextReportGetResponseMessage["payload"]> {
     return this.sendCorrelatedSessionRequest({
@@ -5298,8 +5346,88 @@ export class DaemonClient {
         workspaceId: input.workspaceId,
         ...(input.provider ? { provider: input.provider } : {}),
         ...(typeof input.windowTokens === "number" ? { windowTokens: input.windowTokens } : {}),
+        ...(input.personalityId ? { personalityId: input.personalityId } : {}),
       },
       responseType: "context.report.get.response",
+    });
+  }
+
+  // ============================================================================
+  // Personality memory
+  // ============================================================================
+
+  /**
+   * A personality's accrued lessons plus the EXACT brief the daemon would inject
+   * for `projectRoot`. The brief is returned rather than rebuilt client-side
+   * because memory is only trustworthy if what you are shown is what is sent.
+   */
+  async listPersonalityMemory(
+    input: { personalityId: string; projectRoot?: string },
+    requestId?: string,
+  ): Promise<PersonalityMemoryListResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "personality.memory.list.request",
+        personalityId: input.personalityId,
+        ...(input.projectRoot ? { projectRoot: input.projectRoot } : {}),
+      },
+    });
+  }
+
+  /** Add (no `entryId`), edit, or forget (`drop`) one lesson. */
+  async updatePersonalityMemory(
+    input: {
+      personalityId: string;
+      entryId?: string;
+      text?: string;
+      scope?: string;
+      projectRoot?: string;
+      drop?: boolean;
+    },
+    requestId?: string,
+  ): Promise<PersonalityMemoryUpdateResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "personality.memory.update.request",
+        personalityId: input.personalityId,
+        ...(input.entryId ? { entryId: input.entryId } : {}),
+        ...(input.text !== undefined ? { text: input.text } : {}),
+        ...(input.scope ? { scope: input.scope } : {}),
+        ...(input.projectRoot ? { projectRoot: input.projectRoot } : {}),
+        ...(input.drop ? { drop: true } : {}),
+      },
+    });
+  }
+
+  /**
+   * Resolve a deleted personality's lessons: move them to another personality or
+   * discard them. Called BEFORE the roster write, so a failure leaves both the
+   * personality and its memory intact.
+   */
+  async transferPersonalityMemory(
+    input: { fromPersonalityId: string; toPersonalityId?: string; mode: "transfer" | "delete" },
+    requestId?: string,
+  ): Promise<PersonalityMemoryTransferResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "personality.memory.transfer.request",
+        fromPersonalityId: input.fromPersonalityId,
+        ...(input.toPersonalityId ? { toPersonalityId: input.toPersonalityId } : {}),
+        mode: input.mode,
+      },
+    });
+  }
+
+  /** Per-personality lesson counts, for the accrual indicator and the selector. */
+  async getPersonalityMemoryStats(
+    requestId?: string,
+  ): Promise<PersonalityMemoryStatsResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: { type: "personality.memory.stats.request" },
     });
   }
 
