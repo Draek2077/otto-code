@@ -37,9 +37,15 @@ export function contextQueryKey(params: {
   workspaceId: string;
   provider: string | undefined;
   windowTokens: number | undefined;
+  /**
+   * Part of the key because a personality's injected memory joins the fixed
+   * weight: two personalities in one workspace are two different reports, and
+   * sharing a key would show one personality's numbers under another's name.
+   */
+  personalityId?: string | undefined;
 }): string {
-  const { serverId, workspaceId, provider, windowTokens } = params;
-  return `${serverId}:${workspaceId}:${provider ?? ""}:${windowTokens ?? ""}`;
+  const { serverId, workspaceId, provider, windowTokens, personalityId } = params;
+  return `${serverId}:${workspaceId}:${provider ?? ""}:${windowTokens ?? ""}:${personalityId ?? ""}`;
 }
 
 /**

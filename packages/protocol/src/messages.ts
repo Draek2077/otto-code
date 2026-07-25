@@ -2619,8 +2619,12 @@ export const PersonalityMemoryListRequestMessageSchema = z.object({
   type: z.literal("personality.memory.list.request"),
   requestId: z.string(),
   personalityId: z.string(),
-  // Which project's lessons count as in-scope for the returned brief. Omitted
-  // means global-only.
+  // Which project's lessons count as in-scope for the returned brief. Prefer
+  // `workspaceId` and let the daemon resolve the root: a client computing repo
+  // roots would disagree with the daemon the moment a worktree is involved.
+  workspaceId: z.string().optional(),
+  // Explicit root, for callers with no workspace. Ignored when `workspaceId`
+  // resolves. Omitted (with no workspace) means global lessons only.
   projectRoot: z.string().optional(),
 });
 
