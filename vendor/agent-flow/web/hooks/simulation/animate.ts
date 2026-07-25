@@ -83,13 +83,14 @@ function cleanupFaded(
   edges: SimulationState['edges'],
   originalAgents: SimulationState['agents'],
   originalToolCalls: SimulationState['toolCalls'],
-): { agents: SimulationState['agents']; toolCalls: SimulationState['toolCalls']; edges: SimulationState['edges']; retiredTokensDelta: number } {
+): { agents: SimulationState['agents']; toolCalls: SimulationState['toolCalls']; edges: SimulationState['edges']; retiredTokensDelta: number; retiredCostUsdDelta: number } {
   let newAgents = agents
   let newToolCalls = toolCalls
   let filteredEdges = edges
   // OTTO PATCH (OTTO-PATCHES.md): deleted agents leave the token sum — bank
   // their totals so the top-bar token/cost readout stays honest.
   let retiredTokensDelta = 0
+  let retiredCostUsdDelta = 0
 
   // Cleanup faded agents (completed sub-agents) and their edges
   const fadedAgentIds: string[] = []
@@ -97,6 +98,9 @@ function cleanupFaded(
     if (!agent.isMain && agent.state === 'complete' && agent.opacity <= 0) {
       fadedAgentIds.push(id)
       retiredTokensDelta += agent.cumulativeTokens ?? agent.tokensUsed
+      if (typeof agent.costUsd === 'number' && agent.costUsd > 0) {
+        retiredCostUsdDelta += agent.costUsd
+      }
     }
   }
   if (fadedAgentIds.length > 0) {
@@ -126,7 +130,7 @@ function cleanupFaded(
     const toExists = newAgents.has(e.to) || newToolCalls.has(e.to)
     return toExists
   })
-  return { agents: newAgents, toolCalls: newToolCalls, edges: filteredEdges, retiredTokensDelta }
+  return { agents: newAgents, toolCalls: newToolCalls, edges: filteredEdges, retiredTokensDelta, retiredCostUsdDelta }
 }
 
 function animateDiscoveries(discoveries: SimulationState['discoveries'], deltaTime: number, newTime: number): SimulationState['discoveries'] {
@@ -163,9 +167,10 @@ export function computeNextFrame(prev: SimulationState, deltaTime: number, newTi
       const newEdgesRaw = animateEdges(currentState.edges, deltaTime)
       const newToolCallsRaw = animateToolCalls(currentState.toolCalls, deltaTime, newTime)
 
-      const { agents: newAgents, toolCalls: newToolCalls, edges: filteredEdges, retiredTokensDelta } =
+      const { agents: newAgents, toolCalls: newToolCalls, edges: filteredEdges, retiredTokensDelta, retiredCostUsdDelta } =
         cleanupFaded(newAgentsRaw, newToolCallsRaw, newEdgesRaw, currentState.agents, currentState.toolCalls)
       const newRetiredTokens = (currentState.retiredTokens ?? 0) + retiredTokensDelta
+      const newRetiredCostUsd = (currentState.retiredCostUsd ?? 0) + retiredCostUsdDelta
 
       const newDiscoveries = animateDiscoveries(currentState.discoveries, deltaTime, newTime)
       const newParticles = animateParticles(currentState.particles, deltaTime, currentState.speed)
@@ -179,6 +184,8 @@ export function computeNextFrame(prev: SimulationState, deltaTime: number, newTi
           discoveries: newDiscoveries,
           maxTimeReached: maxT,
           retiredTokens: newRetiredTokens,
+        retiredCostUsd: newRetiredCostUsd,
+          retiredCostUsd: newRetiredCostUsd,
           isPlaying: false,
         }
       }
@@ -190,5 +197,6 @@ export function computeNextFrame(prev: SimulationState, deltaTime: number, newTi
         discoveries: newDiscoveries,
         maxTimeReached: maxT,
         retiredTokens: newRetiredTokens,
+        retiredCostUsd: newRetiredCostUsd,
       }
 }

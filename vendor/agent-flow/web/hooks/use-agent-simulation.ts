@@ -442,6 +442,7 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
     currentTime: state.currentTime, isPlaying: state.isPlaying, speed: state.speed,
     maxTimeReached: state.maxTimeReached,
     retiredTokens: state.retiredTokens,
+    retiredCostUsd: state.retiredCostUsd,
     conversations: state.conversations,
     play, pause, restart, setSpeed, seekToTime,
     updateAgentPosition,

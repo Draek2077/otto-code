@@ -407,6 +407,53 @@ describe("toAgentPayload", () => {
     });
   });
 
+  it("carries the provider's context categories through verbatim", () => {
+    const agent = createManagedAgent({
+      lastUsage: {
+        contextWindowUsedTokens: 42_000,
+        // The category list is open-ended by design: a provider inventing a
+        // label the daemon has never heard of must reach the client intact.
+        contextCategories: [
+          { name: "System prompt", tokens: 1_200 },
+          { name: "Memory files", tokens: 800 },
+          { name: "Deferred tool schemas", tokens: 9_000, isDeferred: true },
+        ],
+      },
+    });
+
+    const payload = toAgentPayload(agent);
+
+    expect(payload.lastUsage).toEqual({
+      contextWindowUsedTokens: 42_000,
+      contextCategories: [
+        { name: "System prompt", tokens: 1_200 },
+        { name: "Memory files", tokens: 800 },
+        { name: "Deferred tool schemas", tokens: 9_000, isDeferred: true },
+      ],
+    });
+  });
+
+  it("drops malformed context categories without discarding the good ones", () => {
+    const agent = createManagedAgent({
+      lastUsage: {
+        contextWindowUsedTokens: 42_000,
+        contextCategories: [
+          { name: "Messages", tokens: 500 },
+          { name: "", tokens: 10 },
+          { name: "Broken", tokens: Number.NaN },
+          { name: "Tools", tokens: "300" as unknown as number },
+        ],
+      },
+    });
+
+    const payload = toAgentPayload(agent);
+
+    expect(payload.lastUsage).toEqual({
+      contextWindowUsedTokens: 42_000,
+      contextCategories: [{ name: "Messages", tokens: 500 }],
+    });
+  });
+
   it("omits lastUsage when context window usage fields are invalid", () => {
     const agent = createManagedAgent({
       lastUsage: {

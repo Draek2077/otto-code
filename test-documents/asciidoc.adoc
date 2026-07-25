@@ -1,0 +1,162 @@
+= AsciiDoc Preview Test
+:description: Exercises every construct the .adoc preview converter handles.
+:component: Otto
+:version: 1
+
+This file is a scratch fixture for the `.adoc` preview. Open it in the file
+viewer — it should default to *Preview* mode. The header attributes above appear
+in the metadata block, and this sentence resolves an attribute: this is
+{component} version {version}.
+
+Switch to *Editor* with the mode bar to see the raw source, or *Split* to see
+both at once.
+
+NOTE: This is the single-paragraph admonition form.
+
+[TIP]
+====
+This is the *block* admonition form. It can hold multiple paragraphs.
+
+Like this one.
+====
+
+== Diagrams
+
+The whole point: a `[mermaid]` block renders through the same `MermaidBlock`
+that a fenced diagram in a `.md` file uses, so both look identical.
+
+[mermaid]
+----
+flowchart LR
+  A[".adoc source"] --> B["asciiDocToMarkdown()"]
+  B --> C["markdown"]
+  C --> D["MarkdownRenderer"]
+  D --> E["MermaidBlock"]
+----
+
+A second diagram, to prove more than one renders per document:
+
+[mermaid]
+----
+sequenceDiagram
+  participant V as File viewer
+  participant C as Converter
+  participant M as MermaidBlock
+  V->>C: .adoc source
+  C-->>V: markdown
+  V->>M: mermaid fence
+  M-->>V: rendered diagram
+----
+
+== Text formatting
+
+*Constrained bold* and **unconstrained bold**. _Italic_ and __also italic__.
+`Monospace` and `+literal {monospace}+` — the second must not resolve the
+attribute reference. A snake_case_identifier must stay intact.
+
+This line ends with an explicit break +
+and this text should sit directly underneath it.
+
+Links: link:https://asciidoc.org[the AsciiDoc site], a bare macro
+https://github.com[GitHub], and a cross reference to <<lists,the list section>>.
+
+Keyboard: press kbd:[Ctrl+S] to save. Menu: menu:File[Save As]. A
+footnote:[Footnotes render inline, in parentheses.] appears here.
+
+== Source blocks
+
+[source,typescript]
+----
+export function asciiDocToMarkdown(source: string): AsciiDocDocument {
+  const lines = source.replace(/\r\n?/g, "\n").split("\n"); // <1>
+  const header = parseDocumentHeader(lines); // <2>
+  return { frontmatter: formatFrontmatter(header.entries), body: "" };
+}
+----
+<1> Newlines are normalized first.
+<2> The header is parsed before the body.
+
+An untagged listing block:
+
+----
+plain, unhighlighted text
+----
+
+A literal block:
+
+....
+  whitespace    is    preserved
+....
+
+[#lists]
+== Lists
+
+Unordered, nested three deep:
+
+* Top level
+** Second level
+*** Third level
+* Back to the top
+
+Ordered:
+
+. First step
+. Second step
+.. A sub-step
+. Third step
+
+A description list:
+
+Preview mode:: Renders the document.
+Editor mode:: Shows the raw AsciiDoc source.
+Split mode:: Shows both, side by side.
+
+== Tables
+
+[cols="1,2",options="header"]
+|===
+|Construct |Rendered as
+
+|`[mermaid]`
+|A mermaid fence, routed to MermaidBlock
+
+|`[source,lang]`
+|A fenced code block with syntax highlighting
+
+|`NOTE:`
+|A blockquote with a bold label
+
+|`include::`
+|A visible "not resolved" note, never a silent gap
+|===
+
+A table with no explicit header:
+
+|===
+|a |b
+|c |d
+|===
+
+== Quotes and sidebars
+
+[quote, Otto CLAUDE.md]
+____
+A capability isn't done when one provider has it; it's done when they all do.
+____
+
+****
+This is a sidebar block. It renders as a quote, because markdown has no
+sidebar of its own.
+****
+
+== Deliberate degradation
+
+The next line is an unresolved include. It should render as a visible note
+rather than disappearing:
+
+include::some/shared/fragment.adoc[]
+
+'''
+
+Everything above this rule should have rendered. If something didn't, that's
+the bug.

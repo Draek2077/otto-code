@@ -30,6 +30,11 @@ export interface SimulationState {
    * nodes were already cleaned up — keeps the top-bar token/cost sum honest
    * after child nodes fade out and are deleted. */
   retiredTokens: number
+  /** OTTO PATCH (OTTO-PATCHES.md): the same banking for the REAL reported cost
+   * of cleaned-up agents, so the top-bar dollar figure doesn't shrink as child
+   * nodes fade. Only ever sums provider-reported costs — an unpriced agent adds
+   * nothing here and is instead counted as making the total a floor. */
+  retiredCostUsd: number
 }
 
 /** Create an empty simulation state, optionally preserving specific fields */
@@ -50,6 +55,7 @@ export function createEmptyState(overrides?: Partial<SimulationState>): Simulati
     eventLog: [],
     maxTimeReached: 0,
     retiredTokens: 0,
+    retiredCostUsd: 0,
     ...overrides,
   }
 }

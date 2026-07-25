@@ -122,6 +122,15 @@ export interface AppSettings {
   // plan windows) as a strip above the composer. Device-local presentation
   // only — the daemon keeps emitting events either way. Default on.
   rateLimitWarningsEnabled: boolean;
+  // Run the in-app resource monitor: frame timing, retained-state census and
+  // daemon-traffic accounting, feeding the Client resources section of the app
+  // diagnostic report. Device-local and entirely internal — nothing leaves the
+  // machine. Default on while performance work is in flight; off stops the
+  // frame loop and the census interval so an untroubled app pays nothing. The
+  // timer counters stay patched either way (they are installed before this
+  // setting is readable, and unpatching mid-session would corrupt the counts).
+  // See docs/client-performance.md.
+  resourceMonitorEnabled: boolean;
   // Show the fixed-context warning above the composer when this workspace's
   // context takes a large share of the model's window. Device-local
   // presentation only — the daemon keeps scanning either way, and the Context
@@ -202,6 +211,10 @@ export interface AppSettings {
   // Fold runs of 3+ consecutive actions in agent chat into one collapsed,
   // expandable group; the most recent action of a run stays outside it.
   groupConsecutiveActions: boolean;
+  // Slim metrics row at the top of the chat pane: this chat's total spend and
+  // everything spawned under it (see subagents/chat-totals.ts). Off by default —
+  // it earns its height only for people who watch cost. Device-local.
+  chatMetricsBar: boolean;
   // Keep the pinned tab-bar and diff-toolbar options hidden until the pointer
   // is over their toolbar area (web only — hover). When false (default), pinned
   // options are always visible.
@@ -415,6 +428,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   sendBehavior: "interrupt",
   promptSuggestionsEnabled: true,
   rateLimitWarningsEnabled: true,
+  resourceMonitorEnabled: true,
   contextWarningsEnabled: true,
   // Claude's standard window. Deliberately not the largest option: defaulting
   // to 1M would report "you're fine" to everyone.
@@ -445,6 +459,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   chatWidth: "default",
   blackTabBackground: false,
   groupConsecutiveActions: true,
+  chatMetricsBar: false,
   hidePinnedToolbarOptions: false,
   hideChatMessageDetails: true,
   chatTimestampDisplay: "absolute",
@@ -749,6 +764,7 @@ const WORKSPACE_LAYOUT_BOOLEAN_KEYS = [
   "compactSidebarTopSpacing",
   "blackTabBackground",
   "groupConsecutiveActions",
+  "chatMetricsBar",
   "hidePinnedToolbarOptions",
   "hideChatMessageDetails",
   "hasCompletedTutorial",
@@ -902,6 +918,9 @@ function pickChatCodeSettings(stored: Partial<AppSettings>): Partial<AppSettings
   }
   if (typeof stored.rateLimitWarningsEnabled === "boolean") {
     result.rateLimitWarningsEnabled = stored.rateLimitWarningsEnabled;
+  }
+  if (typeof stored.resourceMonitorEnabled === "boolean") {
+    result.resourceMonitorEnabled = stored.resourceMonitorEnabled;
   }
   if (typeof stored.contextWarningsEnabled === "boolean") {
     result.contextWarningsEnabled = stored.contextWarningsEnabled;

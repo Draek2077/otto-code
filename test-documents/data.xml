@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A self-contained lighthouse register.
+  Exercises attributes, namespaces, CDATA, entities and comments.
+-->
+<!DOCTYPE register [
+  <!ENTITY nm "nautical miles">
+]>
+<register xmlns="urn:example:lighthouses" xmlns:geo="urn:example:geo" version="2">
+
+  <lighthouse id="LH-001" active="true">
+    <name>Eddystone</name>
+    <geo:position latitude="50.1789" longitude="-4.2586"/>
+    <established>1698</established>
+    <height unit="m">49</height>
+    <range unit="nm">22</range>
+    <character>Fl (2) W 10s</character>
+    <remarks><![CDATA[
+      The fourth tower on this rock. The first three were destroyed by,
+      in order: a storm, a fire, and the erosion of the rock itself.
+      Range is quoted in &nm; and <should not> be parsed as markup.
+    ]]></remarks>
+  </lighthouse>
+
+  <lighthouse id="LH-002" active="true">
+    <name>Fastnet</name>
+    <geo:position latitude="51.3936" longitude="-9.6033"/>
+    <established>1904</established>
+    <height unit="m">54</height>
+    <range unit="nm">27</range>
+    <character>Fl W 5s</character>
+    <remarks>Known as &quot;Ireland&apos;s Teardrop&quot; &#8212; the last sight of home.</remarks>
+  </lighthouse>
+
+  <lighthouse id="LH-003" active="false">
+    <name>Rubjerg Knude</name>
+    <geo:position latitude="57.4489" longitude="9.7753"/>
+    <established>1900</established>
+    <height unit="m">23</height>
+    <range unit="nm">0</range>
+    <character>extinguished 1968</character>
+    <remarks>Moved 70 m inland in 2019 to outrun the sea. Temporarily.</remarks>
+  </lighthouse>
+
+</register>

@@ -88,6 +88,35 @@ jobs:
           npm pack --dry-run --ignore-scripts --workspace=@otto-code/client
           npm pack --dry-run --ignore-scripts --workspace=@otto-code/server
 
+  # One step, one payload. The sidecar is framework-dependent IL, so there is no per-RID matrix
+  # and no runtime restore — building on Linux produces the artifact that runs on all three
+  # platforms. The job asserts that, rather than trusting it: it publishes, then drives the real
+  # NDJSON protocol against a fixture solution.
+  dotnet-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build the solution sidecar
+        run: npm run build:dotnet-probe:required
+
+      - name: Verify the payload answers the protocol
+        run: node scripts/verify-dotnet-probe.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-probe
+          path: packages/dotnet-probe/dist/
+          retention-days: 7
+
   server-tests:
     strategy:
       fail-fast: false

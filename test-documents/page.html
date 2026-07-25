@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tide Table &mdash; a self-contained page</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --ink: #14202e;
+        --paper: #fbf8f1;
+        --accent: #0f7b8a;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --ink: #e8eef6;
+          --paper: #0f1620;
+        }
+      }
+      body {
+        margin: 0;
+        padding: 2rem clamp(1rem, 5vw, 4rem);
+        background: var(--paper);
+        color: var(--ink);
+        font: 16px/1.6 system-ui, sans-serif;
+      }
+      h1 {
+        font-size: clamp(1.6rem, 4vw, 2.4rem);
+        border-bottom: 3px solid var(--accent);
+        padding-bottom: 0.3em;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.5em 0.75em;
+        border-bottom: 1px solid color-mix(in srgb, var(--ink) 15%, transparent);
+      }
+      .high {
+        color: var(--accent);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Tide Table</h1>
+    <p>
+      No external stylesheet, no external script, no remote image &mdash; this page is
+      entirely self-contained, which is what makes it a fair preview test.
+    </p>
+
+    <table>
+      <caption>
+        Predicted tides, 25 July
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Time</th>
+          <th scope="col">State</th>
+          <th scope="col">Height</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>03:12</td>
+          <td class="high">High</td>
+          <td>5.8 m</td>
+        </tr>
+        <tr>
+          <td>09:34</td>
+          <td>Low</td>
+          <td>0.9 m</td>
+        </tr>
+        <tr>
+          <td>15:41</td>
+          <td class="high">High</td>
+          <td>6.1 m</td>
+        </tr>
+        <tr>
+          <td>21:58</td>
+          <td>Low</td>
+          <td>0.7 m</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      <small
+        >Heights are above chart datum. Do not plan anything important around a file
+        called <code>page.html</code>.</small
+      >
+    </p>
+
+    <script>
+      // Inline script: marks the next high tide once the page loads.
+      const rows = [...document.querySelectorAll("tbody tr")];
+      const next = rows.find((row) => row.querySelector(".high"));
+      if (next) {
+        next.title = "Next high water";
+      }
+    </script>
+  </body>
+</html>

@@ -268,6 +268,36 @@ export function editQueuedComposerMessage(
   };
 }
 
+export interface MoveQueuedComposerMessageInput {
+  agentId: string;
+  messageId: string;
+  toIndex: number;
+  queue: QueueWriter;
+}
+
+/**
+ * Re-order the client-held queue. Mirrors the daemon's
+ * `reorderSteerQueueEntry` — same clamp, same "already gone or already there
+ * ⇒ no-op" answer — so the composer's move control behaves the same whichever
+ * queue is backing it.
+ */
+export function moveQueuedComposerMessage(input: MoveQueuedComposerMessageInput): boolean {
+  const items = input.queue.read(input.agentId);
+  const fromIndex = items.findIndex((item) => item.id === input.messageId);
+  if (fromIndex === -1) return false;
+  const target = Math.min(Math.max(input.toIndex, 0), items.length - 1);
+  if (target === fromIndex) return false;
+  const reordered = [...items];
+  const [moved] = reordered.splice(fromIndex, 1);
+  reordered.splice(target, 0, moved!);
+  input.queue.write((prev) => {
+    const next = new Map(prev);
+    next.set(input.agentId, reordered);
+    return next;
+  });
+  return true;
+}
+
 export interface OpenComposerAttachmentInput {
   attachment: ComposerAttachment;
   setLightboxMetadata: (metadata: AttachmentMetadata) => void;

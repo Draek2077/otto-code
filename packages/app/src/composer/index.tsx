@@ -23,6 +23,8 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useShallow } from "zustand/shallow";
 import {
   ArrowUp,
+  ChevronDown,
+  ChevronUp,
   Stop,
   Pencil,
   AudioLines,
@@ -340,24 +342,43 @@ interface RenderQueueTrackArgs {
   queuedMessages: readonly QueuedMessage[];
   handleEditQueuedMessage: (id: string) => void;
   handleSendQueuedNow: (id: string) => Promise<void>;
+  handleMoveQueuedMessage: ((id: string, direction: "up" | "down") => void) | null;
   editLabel: string;
   sendNowLabel: string;
+  moveUpLabel: string;
+  moveDownLabel: string;
 }
 
 function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
-  const { queuedMessages, handleEditQueuedMessage, handleSendQueuedNow, editLabel, sendNowLabel } =
-    args;
+  const {
+    queuedMessages,
+    handleEditQueuedMessage,
+    handleSendQueuedNow,
+    handleMoveQueuedMessage,
+    editLabel,
+    sendNowLabel,
+    moveUpLabel,
+    moveDownLabel,
+  } = args;
   if (queuedMessages.length === 0) return null;
+  // One row cannot be re-ordered, so the controls only appear once there is
+  // somewhere to move to.
+  const onMove = queuedMessages.length > 1 ? handleMoveQueuedMessage : null;
   return (
     <View style={styles.queueTrack}>
-      {queuedMessages.map((item) => (
+      {queuedMessages.map((item, index) => (
         <QueuedMessageRow
           key={item.id}
           item={item}
           onEdit={handleEditQueuedMessage}
           onSendNow={handleSendQueuedNow}
+          onMove={onMove}
+          canMoveUp={index > 0}
+          canMoveDown={index < queuedMessages.length - 1}
           editLabel={editLabel}
           sendNowLabel={sendNowLabel}
+          moveUpLabel={moveUpLabel}
+          moveDownLabel={moveDownLabel}
         />
       ))}
     </View>
@@ -550,16 +571,27 @@ interface QueuedMessageRowProps {
   item: QueuedMessage;
   onEdit: (id: string) => void;
   onSendNow: (id: string) => void;
+  /** Null when the host cannot re-order — the move controls are then absent. */
+  onMove: ((id: string, direction: "up" | "down") => void) | null;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
   editLabel: string;
   sendNowLabel: string;
+  moveUpLabel: string;
+  moveDownLabel: string;
 }
 
 function QueuedMessageRow({
   item,
   onEdit,
   onSendNow,
+  onMove,
+  canMoveUp,
+  canMoveDown,
   editLabel,
   sendNowLabel,
+  moveUpLabel,
+  moveDownLabel,
 }: QueuedMessageRowProps) {
   const iconSize = useIconSize();
   const handleEdit = useCallback(() => {
@@ -568,12 +600,48 @@ function QueuedMessageRow({
   const handleSendNow = useCallback(() => {
     onSendNow(item.id);
   }, [onSendNow, item.id]);
+  const handleMoveUp = useCallback(() => {
+    onMove?.(item.id, "up");
+  }, [onMove, item.id]);
+  const handleMoveDown = useCallback(() => {
+    onMove?.(item.id, "down");
+  }, [onMove, item.id]);
   return (
     <View style={styles.queueItem}>
       <Text style={styles.queueText} numberOfLines={2} ellipsizeMode="tail">
         {item.text}
       </Text>
       <View style={styles.queueActions}>
+        {onMove ? (
+          <>
+            <Pressable
+              onPress={handleMoveUp}
+              disabled={!canMoveUp}
+              style={styles.queueActionButton}
+              accessibilityLabel={moveUpLabel}
+              accessibilityRole="button"
+              accessibilityState={canMoveUp ? undefined : QUEUE_MOVE_DISABLED_STATE}
+            >
+              <ThemedChevronUp
+                size={iconSize.sm}
+                uniProps={canMoveUp ? iconForegroundMapping : iconForegroundMutedMapping}
+              />
+            </Pressable>
+            <Pressable
+              onPress={handleMoveDown}
+              disabled={!canMoveDown}
+              style={styles.queueActionButton}
+              accessibilityLabel={moveDownLabel}
+              accessibilityRole="button"
+              accessibilityState={canMoveDown ? undefined : QUEUE_MOVE_DISABLED_STATE}
+            >
+              <ThemedChevronDown
+                size={iconSize.sm}
+                uniProps={canMoveDown ? iconForegroundMapping : iconForegroundMutedMapping}
+              />
+            </Pressable>
+          </>
+        ) : null}
         <Pressable
           onPress={handleEdit}
           style={styles.queueActionButton}
@@ -1649,6 +1717,23 @@ export function Composer({
     [messageQueue, setSelectedAttachments, setUserInput, t],
   );
 
+  // Null when this host has no way to re-order, which is what hides the
+  // controls — the capability check lives in useComposerQueue, not here.
+  const queueMove = messageQueue.move;
+  const handleMoveQueuedMessage = useMemo(
+    () =>
+      queueMove
+        ? (id: string, direction: "up" | "down") => {
+            void queueMove(id, direction).catch((error: unknown) => {
+              setSendError(
+                error instanceof Error ? error.message : t("composer.errors.failedToSend"),
+              );
+            });
+          }
+        : null,
+    [queueMove, t],
+  );
+
   const handleSendQueuedNow = useCallback(
     async (id: string) => {
       if (!sendAgentMessageRef.current && !onSubmitMessageRef.current) return;
@@ -2150,10 +2235,13 @@ export function Composer({
         queuedMessages,
         handleEditQueuedMessage,
         handleSendQueuedNow,
+        handleMoveQueuedMessage,
         editLabel: t("composer.attachments.editQueuedMessage"),
         sendNowLabel: t("composer.attachments.sendQueuedMessageNow"),
+        moveUpLabel: t("composer.attachments.moveQueuedMessageUp"),
+        moveDownLabel: t("composer.attachments.moveQueuedMessageDown"),
       }),
-    [handleEditQueuedMessage, handleSendQueuedNow, queuedMessages, t],
+    [handleEditQueuedMessage, handleMoveQueuedMessage, handleSendQueuedNow, queuedMessages, t],
   );
 
   const messageInputContainerRef = useRef<View>(null);
@@ -2458,9 +2546,12 @@ const styles = StyleSheet.create((theme: Theme) => ({
 })) as unknown as Record<string, object>;
 
 const QUEUE_SEND_BUTTON_STYLE = [styles.queueActionButton, styles.queueSendButton];
+const QUEUE_MOVE_DISABLED_STATE = { disabled: true } as const;
 
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedArrowUp = withUnistyles(ArrowUp);
+const ThemedChevronUp = withUnistyles(ChevronUp);
+const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedCircleDot = withUnistyles(CircleDot);
 const ThemedAudioLines = withUnistyles(AudioLines);

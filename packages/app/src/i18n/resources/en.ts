@@ -62,6 +62,21 @@ export const en = {
       home: "Home",
     },
   },
+  // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
+  // context-window occupancy — see docs/glossary.md; the two must not be
+  // described with each other's words anywhere in this block.
+  chatMetrics: {
+    tokensIn: "Tokens in, including cache reads",
+    tokensOut: "Tokens out",
+    totalTokensLabel: "total",
+    totalTokensHint:
+      "Total tokens spent by this chat and everything it spawned. Not context usage.",
+    costHint: "Cost reported by the provider for this chat and everything under it.",
+    costPartialHint:
+      "At least this much. Part of this chat ran on a provider that reports no cost, so the real total is higher.",
+    subagentsHint: "Sub-agents in this chat (running / total).",
+    toolCallsHint: "Tool calls made by this chat's sub-agents.",
+  },
   composer: {
     rateLimit: {
       approaching: "Approaching your {{provider}} {{window}} limit",
@@ -124,6 +139,8 @@ export const en = {
       dropFilesHere: "Drop files here",
       editQueuedMessage: "Edit queued message",
       sendQueuedMessageNow: "Send queued message now",
+      moveQueuedMessageUp: "Move queued message earlier",
+      moveQueuedMessageDown: "Move queued message later",
       openImage: "Open image attachment",
       removeImage: "Remove image attachment",
       removeFile: "Remove file attachment",
@@ -342,8 +359,18 @@ export const en = {
   sessions: {
     title: "History",
     empty: "No sessions yet",
+    emptyForHost: "No sessions for this host",
+    emptyActive: "No active chats",
+    emptyArchived: "No archived chats",
+    filters: {
+      all: "All",
+      active: "Active",
+      archived: "Archived",
+    },
     actions: {
       loadMore: "Load more",
+      clearArchived: "Clear archived",
+      clearingArchived: "Clearing…",
     },
   },
   agentList: {
@@ -487,6 +514,17 @@ export const en = {
       copyPath: "Copy path",
       copyBranchName: "Copy branch name",
       copied: "Copied",
+    },
+    // The Solution view. "Solution", never "Project" — Project is already an Otto noun, and both
+    // appear on screen at once. See docs/glossary.md.
+    solution: {
+      lens: {
+        files: "Files",
+      },
+      loading: "Reading the solution…",
+      empty: "This solution has no projects.",
+      outsideWorkspace: "outside workspace",
+      projectFailed: "This project could not be evaluated.",
     },
     fileExplorer: {
       sort: {
@@ -2482,6 +2520,11 @@ export const en = {
           hint: "Collapse runs of three or more consecutive actions into one expandable group; the most recent action always stays visible below it",
           accessibilityLabel: "Group consecutive actions together",
         },
+        chatMetricsBar: {
+          title: "Show chat metrics",
+          hint: "A slim row above the transcript with this chat's total tokens, cost and sub-agent activity — including everything it spawned. Cost appears only where the provider reports one",
+          accessibilityLabel: "Show chat metrics",
+        },
         autoExpandReasoning: {
           title: "Always expand reasoning",
           hint: "Show agent thinking and chain-of-thought blocks fully expanded by default",
@@ -2827,6 +2870,9 @@ export const en = {
         enabled: "Enable code intelligence",
         enabledHint:
           "Runs a language server per project so Go to definition resolves the symbol under the caret. Nothing starts until you use it; off stops every server and falls back to the name-based index.",
+        solution: "Microsoft .NET Solution Management",
+        solutionHint:
+          "Adds a Solution view to the Files tab, showing your .sln or .slnx as the build system sees it. Independent of code intelligence above. Off by default: it runs a .NET helper process and evaluates MSBuild, and it needs the .NET SDK on this host.",
         languages: "Languages",
         installed: "{{bin}} — found ({{rung}})",
         notInstalled: "{{bin}} — not installed on this host",

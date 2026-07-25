@@ -82,6 +82,11 @@ import { I18nProvider } from "@/i18n/provider";
 import { keyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher";
 import { polyfillCrypto } from "@/polyfills/crypto";
 import { queryClient } from "@/data/query-client";
+import { ResourceMonitorHost } from "@/diagnostics/resource-report/resource-monitor-host";
+import {
+  installResourceMonitorBridge,
+  startResourceMonitor,
+} from "@/diagnostics/resource-report/start-resource-monitor";
 import {
   getHostRuntimeStore,
   hasConfiguredLocalDaemonOverride,
@@ -110,6 +115,12 @@ import {
 import { AgentVoiceCuesHost } from "@/voice/agent-voice-cues-host";
 
 polyfillCrypto();
+
+// Start the resource monitor before the React tree mounts: it patches the timer
+// globals to count live intervals, so it has to run ahead of the feature code
+// that schedules them. See docs/client-performance.md.
+startResourceMonitor();
+installResourceMonitorBridge();
 
 // Keep the native splash up until Otto's bundled fonts (Inter, JetBrains Mono)
 // are registered, so the app never flashes system fonts before swapping to the
@@ -674,6 +685,9 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
           app-global, above the router — and is independent of the Visualizer
           entirely. Headless: it fires the cue audio and renders nothing. */}
       <AgentVoiceCuesHost />
+      {/* Headless: binds the resource monitor started above the router to the
+          `resourceMonitorEnabled` setting, so the telemetry can be turned off. */}
+      <ResourceMonitorHost />
       {children}
     </VoiceProvider>
   );

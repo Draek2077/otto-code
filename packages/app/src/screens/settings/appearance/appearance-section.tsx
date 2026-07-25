@@ -781,6 +781,13 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleChatMetricsBarChange = useCallback(
+    (chatMetricsBar: boolean) => {
+      void updateSettings({ chatMetricsBar });
+    },
+    [updateSettings],
+  );
+
   const handleAutoExpandReasoningChange = useCallback(
     (autoExpandReasoning: boolean) => {
       void updateSettings({ autoExpandReasoning });
@@ -1084,6 +1091,15 @@ export function AppearanceSection() {
             withBorder
             onValueChange={handleGroupConsecutiveActionsChange}
             testID="settings-group-consecutive-actions-switch"
+          />
+          <LayoutToggleRow
+            title={t("settings.appearance.agents.chatMetricsBar.title")}
+            hint={t("settings.appearance.agents.chatMetricsBar.hint")}
+            accessibilityLabel={t("settings.appearance.agents.chatMetricsBar.accessibilityLabel")}
+            value={settings.chatMetricsBar}
+            withBorder
+            onValueChange={handleChatMetricsBarChange}
+            testID="settings-chat-metrics-bar-switch"
           />
           <LayoutToggleRow
             title={t("settings.appearance.agents.autoExpandReasoning.title")}

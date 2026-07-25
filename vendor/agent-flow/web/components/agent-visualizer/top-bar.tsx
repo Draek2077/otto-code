@@ -4,7 +4,7 @@ import { memo } from "react"
 import { Z } from "@/lib/agent-types"
 import { COLORS } from "@/lib/colors"
 import { formatTokens } from "@/lib/utils"
-import { agentCost } from "./canvas/draw-cost"
+import { formatCost } from "./canvas/draw-cost"
 
 // ─── Top Bar ────────────────────────────────────────────────────────────────
 
@@ -16,19 +16,37 @@ import { agentCost } from "./canvas/draw-cost"
 export interface TopBarProps {
   agentCount: number
   totalTokens: number
+  /** OTTO PATCH (OTTO-PATCHES.md): the graph's REAL cost — Σ of the per-agent
+   * costs the host's provider reported — or null when nothing here can be
+   * priced, in which case no dollar figure is shown at all. `partial` when only
+   * some agents were priced, so the number renders as a floor. This replaced
+   * `~$` = totalTokens × a hardcoded blended rate, which was wrong by three
+   * compounding multipliers (stale rate, no cache discount, wrong provider). */
+  totalCostUsd?: number | null
+  costIsPartial?: boolean
   /** OTTO PATCH (OTTO-PATCHES.md): compact ("mini") layout for the PIP surface
    * — see the split-corner note below. */
   compact?: boolean
 }
 
-export const TopBar = memo(function TopBar({ agentCount, totalTokens, compact }: TopBarProps) {
+export const TopBar = memo(function TopBar({
+  agentCount,
+  totalTokens,
+  totalCostUsd,
+  costIsPartial,
+  compact,
+}: TopBarProps) {
   const rowStyle = { zIndex: Z.info, color: COLORS.textMuted, maxWidth: 'calc(100% - 6rem)' }
+  const hasCost = typeof totalCostUsd === 'number' && totalCostUsd > 0
   const tokens = (
     <span className="whitespace-nowrap">
       {formatTokens(totalTokens)} tokens
-      <span style={{ color: COLORS.complete + '65', marginLeft: 4 }}>
-        ~${agentCost(totalTokens).toFixed(2)}
-      </span>
+      {hasCost && (
+        <span style={{ color: COLORS.complete + '65', marginLeft: 4 }}>
+          {costIsPartial ? '≥ ' : ''}
+          {formatCost(totalCostUsd)}
+        </span>
+      )}
     </span>
   )
 

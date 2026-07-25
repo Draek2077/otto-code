@@ -481,6 +481,12 @@ function mergeMutableConfigIntoPersistedConfig(params: {
       },
       autoArchiveAfterMerge: mutable.autoArchiveAfterMerge,
       hideMergeIntoBaseAction: mutable.hideMergeIntoBaseAction,
+      // Only `enabled` persists. The caps are daemon policy, not a user preference, and writing
+      // them to disk would freeze today's defaults into every existing install.
+      dotnetSolutionManagement: {
+        ...persisted.daemon?.dotnetSolutionManagement,
+        enabled: mutable.dotnetSolutionManagement.enabled,
+      },
       enableTerminalAgentHooks: mutable.enableTerminalAgentHooks,
       appendSystemPrompt: mutable.appendSystemPrompt,
       ...(mutable.terminalProfiles !== undefined

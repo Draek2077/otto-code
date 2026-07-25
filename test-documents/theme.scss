@@ -1,0 +1,79 @@
+// A tiny SCSS theme for the same fictional notebook.
+// Exercises variables, maps, nesting, mixins, functions, @each and @use-free math.
+
+@use "sass:math";
+@use "sass:color";
+
+$base-font: "Iosevka", ui-monospace, monospace;
+$rhythm: 8px;
+
+$palette: (
+  "ink": #10161f,
+  "muted": #4a5a6e,
+  "paper": #fdfaf3,
+  "accent": #0f7b8a,
+  "danger": #c0392b,
+);
+
+@function tone($name, $shift: 0%) {
+  $value: map-get($palette, $name);
+  @if $shift == 0% {
+    @return $value;
+  }
+  @return color.adjust($value, $lightness: $shift);
+}
+
+@mixin surface($level: 1) {
+  background: tone("paper");
+  border-radius: $rhythm + 2px;
+  box-shadow: 0 math.div($level, 2) * 4px $level * 12px rgba(0, 0, 0, 0.08);
+}
+
+@mixin at-least($width) {
+  @media (min-width: $width) {
+    @content;
+  }
+}
+
+.notebook {
+  @include surface(2);
+
+  font-family: $base-font;
+  color: tone("ink");
+  padding: $rhythm * 2;
+
+  &__title {
+    font-size: 1.75rem;
+    margin-block-end: $rhythm;
+
+    &--quiet {
+      color: tone("muted");
+      font-weight: 400;
+    }
+  }
+
+  &__entry {
+    padding-block: math.div($rhythm, 2);
+
+    &:not(:last-child) {
+      border-block-end: 1px solid tone("muted", 45%);
+    }
+
+    &:hover {
+      background: tone("accent", 58%);
+    }
+  }
+
+  @include at-least(48rem) {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: $rhythm * 3;
+  }
+}
+
+@each $name, $value in $palette {
+  .swatch--#{$name} {
+    background: $value;
+    outline: 1px solid color.adjust($value, $lightness: -12%);
+  }
+}

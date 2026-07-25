@@ -217,6 +217,25 @@ export interface ContextComposition {
   subagentResults?: number;
 }
 
+/**
+ * One provider-reported context-window category. `name` is a provider-supplied
+ * *display label* ("Messages", "System prompt", "MCP tools") — deliberately an
+ * OPEN-ENDED string and not an enum, so each provider reports the split it
+ * actually has instead of being squeezed into categories it can't populate.
+ *
+ * Structurally identical to `AgentContextUsageCategory` on the pull path
+ * (`agent.context.get_usage`, see messages.ts) *by design*: the two carry the
+ * same accounting, one pushed on the agent snapshot and one pulled on demand.
+ * Keep them in sync — a divergence here is how the context meter and the
+ * visualizer would start disagreeing about the same agent.
+ */
+export interface AgentContextCategory {
+  name: string;
+  tokens: number;
+  /** Deferred content (e.g. on-demand tool schemas) is not counted in the total. */
+  isDeferred?: boolean;
+}
+
 export interface AgentUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
@@ -237,6 +256,18 @@ export interface AgentUsage {
    * shows occupancy only. Added for the visualizer context ring/bar.
    */
   contextComposition?: ContextComposition;
+  /**
+   * The provider's OWN context-window split, with its own labels — the same
+   * accounting the `agent.context.get_usage` RPC returns, pushed here on the
+   * agent snapshot so stream/backfill consumers (the visualizer) read the very
+   * numbers the context meter shows rather than a parallel estimate.
+   *
+   * Preferred over {@link ContextComposition} wherever present. The estimate
+   * remains the coarse tier for providers that can't report a real split;
+   * absence of both ⇒ occupancy only. Optional/additive: absence is the
+   * graceful-degrade signal, so no capability flag is needed.
+   */
+  contextCategories?: AgentContextCategory[];
 }
 
 export const TOOL_CALL_ICON_NAMES = [

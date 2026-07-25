@@ -1465,3 +1465,114 @@ wants. Patched so the host can ask for a layout tuned to a small viewport
 Otto-side counterpart: `VisualizerChromeProfile.hudCompact` in
 `packages/app/src/visualizer/visualizer-chrome-profile.ts` — true for the `pip`
 surface, false for `tab` — sent as `config.hudCompact` by `visualizer-surface.tsx`.
+
+## 2026-07-25 — context breakdown is an open-ended labeled list
+
+Upstream models the context composition as a fixed five-key struct
+(`systemPrompt · userMessages · toolResults · reasoning · subagentResults`) and
+colors each slice by its position in that struct. Otto's authoritative source is
+the **provider's own** context accounting (`AgentSession.getContextUsage()`,
+surfaced on the agent snapshot as `AgentUsage.contextCategories` and by the
+`agent.context.get_usage` RPC), whose categories are open-ended display labels
+that differ per provider — Claude reports things like "System prompt", "Tools",
+"Memory files", "MCP tools"; the OpenAI-compatible provider reports "Messages",
+"Tools", "System prompt". A fixed enum can only render that by discarding
+categories or relabeling them into buckets they don't belong in, and it would
+have kept the graph showing a *different* answer than the context meter in the
+chat footer.
+
+- `web/lib/agent-types.ts` — `ContextBreakdown` becomes `{ segments: ContextSegment[] }`
+  where `ContextSegment` is `{ label, tokens }`; new exported `ContextSegment`.
+  `emptyContextBreakdown()` returns `{ segments: [] }`.
+- `web/lib/colors.ts` — `contextSegments` maps the list, adding `label` to each
+  returned segment (the canvas paths still read `{ value, color }`, so
+  `drawContextComposition` / `drawContextRing` are untouched). New
+  `contextSegmentColor(label, index)`: **ordered** well-known-label rules keep a
+  slice's semantic color stable across providers ("Tool results" stays amber
+  wherever it came from) — 'system' is tested before 'prompt' so "System prompt"
+  can't be claimed by the message rule — and an index-cycled palette gives
+  unrecognized provider categories a distinct, stable color instead of dropping
+  them.
+- `web/hooks/simulation/handle-message-events.ts` — ingest accepts
+  `payload.breakdown.segments`, validating each entry individually so one
+  malformed slice can't blank the readout. An empty result is treated as "no
+  breakdown" and leaves the previous one in place (the old shape-sniff was
+  `'systemPrompt' in raw`).
+- `web/components/agent-visualizer/agent-detail-card.tsx` — the composition
+  legend takes its labels from the DATA; the index-aligned `SEGMENT_LABELS`
+  constant is gone.
+- `web/lib/mock-scenario.ts`, `web/lib/stress-test-scenario.ts` — the page's own
+  demo/stress events emit the segment form.
+
+Known divergence: `extension/` and `scripts/relay.ts` (the upstream VS Code
+extension and its relay) declare their **own** `contextBreakdown` shape in
+`extension/src/protocol.ts` and are not part of the `@otto-code/visualizer`
+build, so they still emit the legacy five-key form. Otto never runs them — its
+host is `packages/app/src/visualizer/use-visualizer-event-adapter.ts` — so they
+are left alone rather than migrated.
+
+Otto-side counterpart: `buildContextBreakdown` in
+`packages/app/src/visualizer/visualizer-event-adapter.ts`, which resolves ONE
+breakdown per agent — provider categories first, the daemon's coarse
+`contextComposition` estimate second — scaled to the authoritative occupancy,
+with deferred categories excluded (they are not counted in the window total).
+
+## 2026-07-25 — cost is REPORTED, never estimated
+
+Every cost surface on the page derived dollars from `tokens × a hardcoded
+blended $/M rate` (`modelCostRate` over `MODEL_FAMILY_COST`, falling back to a
+Sonnet-class `COST_RATE = 6`). That figure was wrong three ways at once and the
+errors multiplied:
+
+1. the rate table drifted from list pricing (Sonnet's intro discount was never
+   reflected),
+2. a cache read — billed at roughly a tenth of fresh input — was charged as
+   fresh input, which for the cache-heavy sessions prompt caching exists to
+   serve overstated the bill several-fold, and
+3. a `claude-*` model served by an OpenAI-compatible gateway at that gateway's
+   own prices was charged Anthropic's.
+
+Otto's daemon already computes the real thing: the provider's own reported
+cost, cache-aware, and de-inflated so a parent never carries what its
+sub-agents reported (`docs/subagent-accounting.md`). So the page stops
+computing and starts reporting — and where a provider genuinely cannot price
+its work (a local model, most OpenAI-compatible endpoints), it shows **nothing**
+rather than a confident wrong number:
+
+- `web/lib/agent-types.ts` — `Agent.costUsd?: number`, the host-reported real
+  cost for that agent's whole run. Absent ⇒ unpriceable.
+- `web/hooks/simulation/handle-message-events.ts` — `context_update` accepts an
+  optional `costUsd`. Absent leaves the previous value alone rather than zeroing
+  it, so an occupancy-only update can't erase an established cost.
+- `web/components/agent-visualizer/canvas/draw-cost.ts` — `modelCostRate` and
+  the token-multiplying `agentCost(tokens, model)` are **gone**. `agentCost
+  (agent)` now returns the reported cost or `null`; new `formatCost` is the one
+  money formatter every surface shares. On-node cost pills draw only for a
+  priced agent.
+- `web/components/agent-visualizer/top-bar.tsx` — takes `totalCostUsd` /
+  `costIsPartial` props instead of calling `agentCost(totalTokens)`. Renders
+  `≥ $X` when only part of the graph was priceable, and no dollar figure at all
+  when none of it was.
+- `web/components/agent-visualizer/index.tsx` — computes that Σ from each
+  agent's reported `costUsd` plus banked `retiredCostUsd`, marking the result
+  partial when any token-spending agent went unpriced.
+- `web/hooks/simulation/types.ts`, `animate.ts`, `settle-visual-state.ts` —
+  `SimulationState.retiredCostUsd` banks the reported cost of cleaned-up nodes,
+  exactly as `retiredTokens` already did for tokens.
+- `web/components/agent-visualizer/cost-panel.tsx` — per-agent rows show the
+  real cost or an em dash (with a "this provider reports no cost" title), and
+  sort by TOKENS so an unpriced agent still ranks by the work it did instead of
+  sinking as a phantom $0. The summary shows `≥` for a partial total. The
+  by-tool section drops dollars entirely and shows estimated tokens: `tokenCost`
+  is a ~4-chars/token estimate over the serialized payload and no provider bills
+  per tool call, so pricing it would be a guess on top of a guess.
+- `web/components/agent-visualizer/agent-detail-card.tsx` — the cost stat is
+  omitted rather than estimated when the provider reports none.
+
+`MODEL_FAMILY_COST` / `COST_RATE` remain in `web/lib/canvas-constants.ts` for
+the upstream demo scenarios; nothing in the Otto build reads them any more.
+
+Otto-side counterpart: `buildContextUpdateEvent` in
+`packages/app/src/visualizer/visualizer-event-adapter.ts` sends `costUsd` from
+the daemon's per-agent `cumulativeUsage.costUsd`; see
+`projects/total-token-accounting/` and `docs/subagent-accounting.md`.

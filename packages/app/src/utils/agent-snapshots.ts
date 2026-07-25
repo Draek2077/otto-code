@@ -45,6 +45,7 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     runtimeInfo: snapshot.runtimeInfo,
     lastUsage: snapshot.lastUsage,
     cumulativeTokens: snapshot.cumulativeTokens,
+    cumulativeUsage: snapshot.cumulativeUsage,
     toolUseCount: snapshot.toolUseCount,
     currentTool: snapshot.currentTool,
     queuedMessages: snapshot.queuedMessages,

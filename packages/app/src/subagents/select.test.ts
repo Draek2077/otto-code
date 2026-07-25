@@ -241,6 +241,7 @@ describe("selectSubagentsForParent", () => {
       "attend",
       "createdAt",
       "cumulativeTokens",
+      "cumulativeUsage",
       "currentTool",
       "id",
       "personalityName",

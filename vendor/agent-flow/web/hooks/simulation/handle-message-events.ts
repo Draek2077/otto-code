@@ -66,8 +66,30 @@ export function handleContextUpdate(
   const cumulativeTokens = typeof payload.cumulativeTokens === 'number'
     ? payload.cumulativeTokens
     : undefined
+  // OTTO PATCH (OTTO-PATCHES.md): the host's REAL reported cost for this agent.
+  // Absent leaves the previous value alone rather than zeroing it — an update
+  // that carries only occupancy must not erase a cost already established.
+  const costUsd = typeof payload.costUsd === 'number' ? payload.costUsd : undefined
+  // OTTO PATCH (OTTO-PATCHES.md): the breakdown is a labeled segment list now —
+  // `{ segments: [{ label, tokens }] }` — because the authoritative source is the
+  // provider's own open-ended category list. Entries are validated individually
+  // so one malformed slice can't blank the whole readout; an empty result is
+  // treated as "no breakdown" and leaves the previous one in place.
   const raw = payload.breakdown
-  const breakdown = (raw && typeof raw === 'object' && 'systemPrompt' in raw) ? raw as ContextBreakdown : undefined
+  const rawSegments =
+    raw && typeof raw === 'object' && Array.isArray((raw as { segments?: unknown }).segments)
+      ? (raw as { segments: unknown[] }).segments
+      : undefined
+  const segments = rawSegments
+    ?.filter((segment): segment is { label: string; tokens: number } =>
+      !!segment &&
+      typeof segment === 'object' &&
+      typeof (segment as { label?: unknown }).label === 'string' &&
+      typeof (segment as { tokens?: unknown }).tokens === 'number',
+    )
+    .map((segment) => ({ label: segment.label, tokens: segment.tokens }))
+  const breakdown: ContextBreakdown | undefined =
+    segments && segments.length > 0 ? { segments } : undefined
   // Optional override from runtimes that report an authoritative context window
   // (e.g. Codex's event_msg.token_count.info.model_context_window).
   const tokensMaxOverride = typeof payload.tokensMax === 'number' && payload.tokensMax > 0
@@ -88,6 +110,7 @@ export function handleContextUpdate(
       ...agent,
       tokensUsed: tokens ?? agent.tokensUsed,
       ...(cumulativeTokens !== undefined ? { cumulativeTokens } : {}),
+      ...(costUsd !== undefined ? { costUsd } : {}),
       tokensMax: tokensMaxOverride ?? agent.tokensMax,
       contextBreakdown: breakdown || agent.contextBreakdown,
     })

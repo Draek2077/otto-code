@@ -14,13 +14,22 @@ export type NodeShape = 'square' | 'hexagon' | 'octagon' | 'circle'
  *  moves up into the bar's slot; in `bar` mode the ring is dropped. */
 export type ContextDisplay = 'ring' | 'bar'
 
-// Context window composition — the key insight
+// Context window composition — the key insight.
+//
+// OTTO PATCH (OTTO-PATCHES.md): was a fixed five-key struct
+// (systemPrompt/userMessages/toolResults/reasoning/subagentResults). Otto's
+// authoritative source is the PROVIDER's own context accounting, whose category
+// list is open-ended display labels ("Messages", "MCP tools", "Memory files") and
+// differs per provider — a fixed enum could only render it by discarding or
+// mislabeling categories. So the breakdown is now a labeled segment list, and
+// colors are assigned from the label (see `contextSegments`).
+export interface ContextSegment {
+  label: string
+  tokens: number
+}
+
 export interface ContextBreakdown {
-  systemPrompt: number   // fixed cost, always there
-  userMessages: number   // user input
-  toolResults: number    // the expensive ones — file contents, search results
-  reasoning: number      // the agent's own thinking
-  subagentResults: number // results from child agents
+  segments: ContextSegment[]
 }
 
 export interface Agent {
@@ -33,6 +42,12 @@ export interface Agent {
   // whole run, when the host reports one via context_update. tokensUsed is
   // context OCCUPANCY (drives the ring); totals/cost prefer this when present.
   cumulativeTokens?: number
+  // OTTO PATCH (OTTO-PATCHES.md): the REAL cost the host's provider reported
+  // for this agent's whole run, in USD. Absent means genuinely unpriceable (a
+  // local model, an OpenAI-compatible endpoint with no pricing) — in which case
+  // every cost surface shows nothing rather than deriving a figure from a $/M
+  // rate table, which is what used to make the numbers untrustworthy.
+  costUsd?: number
   tokensMax: number
   contextBreakdown: ContextBreakdown
   toolCalls: number
@@ -315,7 +330,7 @@ export const POPUP = {
   controlBarMaxWidth: 680,
 } as const
 
-// Default empty context breakdown
+// Default empty context breakdown — no segments until a host reports one.
 export function emptyContextBreakdown(): ContextBreakdown {
-  return { systemPrompt: 0, userMessages: 0, toolResults: 0, reasoning: 0, subagentResults: 0 }
+  return { segments: [] }
 }

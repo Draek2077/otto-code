@@ -35,6 +35,15 @@ import type {
   CodeRenameFilePlan,
   LspLanguageState,
   LspRunningServer,
+  CodeSolutionGetTreeResponse,
+  CodeSolutionLoadProjectResponse,
+  SolutionFormat,
+  SolutionRef,
+  SolutionTreeFolder,
+  SolutionTreeProject,
+  SolutionProjectNode,
+  SolutionProjectStatus,
+  SolutionPackageReference,
   FileDownloadTokenResponse,
   FileEol,
   FileReplaceFileResult,
@@ -136,6 +145,7 @@ import type {
   SubscribeTerminalResponse,
   SubscribeTerminalRequest,
   CloseItemsResponse,
+  HistoryAgentsClearArchivedResponse,
   KillTerminalResponse,
   CaptureTerminalResponse,
   TerminalInput,
@@ -190,7 +200,11 @@ import {
   type DaemonTransportFactory,
   type WebSocketFactory,
 } from "./daemon-client-transport.js";
-import { DaemonClientRuntimeMetrics } from "./daemon-client-runtime-metrics.js";
+import {
+  DaemonClientRuntimeMetrics,
+  type DaemonClientTrafficHotspot,
+  type DaemonClientTrafficTotals,
+} from "./daemon-client-runtime-metrics.js";
 import {
   normalizeListProviderModelsPayload,
   normalizeProviderSnapshotUpdateMessage,
@@ -536,6 +550,27 @@ export interface LspServersSnapshot {
   languages: LspLanguageState[];
   running: LspRunningServer[];
 }
+
+/** The Solution view (projects/solution-view). Independent of the LSP family above. */
+export type {
+  SolutionFormat,
+  SolutionRef,
+  SolutionTreeFolder,
+  SolutionTreeProject,
+  SolutionProjectNode,
+  SolutionProjectStatus,
+  SolutionPackageReference,
+};
+
+export type SolutionTree = Omit<
+  CodeSolutionGetTreeResponse["payload"],
+  "cwd" | "error" | "requestId"
+>;
+
+export type SolutionProjectContents = Omit<
+  CodeSolutionLoadProjectResponse["payload"],
+  "cwd" | "solutionPath" | "requestId"
+>;
 
 export interface CodeHoverResult {
   status: CodeDefinitionStatus;
@@ -1345,20 +1380,28 @@ export class DaemonClient {
       typeof config.runtimeMetricsIntervalMs === "number" && config.runtimeMetricsIntervalMs > 0
         ? config.runtimeMetricsIntervalMs
         : 0;
+    // The metrics object is always constructed — it is a handful of Maps keyed
+    // by message type, and its per-message cost is dwarfed by the JSON.parse it
+    // is measuring. What `runtimeMetricsIntervalMs` gates is the *periodic log*,
+    // which is the part that is actually noisy. Keeping the counters on
+    // unconditionally is what lets the app read cumulative traffic (see
+    // getTrafficTotals) without every embedder having to opt in; before this
+    // split, nothing in the app package passed the interval, so client-side wire
+    // accounting existed but never ran.
+    const runtimeMetricsWindowMs =
+      typeof config.runtimeMetricsWindowMs === "number" && config.runtimeMetricsWindowMs > 0
+        ? Math.max(config.runtimeMetricsWindowMs, runtimeMetricsIntervalMs)
+        : undefined;
+    this.runtimeMetrics = new DaemonClientRuntimeMetrics(
+      this.logger,
+      {
+        connectionPath: this.logConnectionPath,
+        serverId: this.logServerId,
+        getConnectionStatus: () => this.connectionState.status,
+      },
+      runtimeMetricsWindowMs ? { windowMs: runtimeMetricsWindowMs } : undefined,
+    );
     if (runtimeMetricsIntervalMs > 0) {
-      const runtimeMetricsWindowMs =
-        typeof config.runtimeMetricsWindowMs === "number" && config.runtimeMetricsWindowMs > 0
-          ? Math.max(config.runtimeMetricsWindowMs, runtimeMetricsIntervalMs)
-          : undefined;
-      this.runtimeMetrics = new DaemonClientRuntimeMetrics(
-        this.logger,
-        {
-          connectionPath: this.logConnectionPath,
-          serverId: this.logServerId,
-          getConnectionStatus: () => this.connectionState.status,
-        },
-        runtimeMetricsWindowMs ? { windowMs: runtimeMetricsWindowMs } : undefined,
-      );
       this.runtimeMetricsInterval = setInterval(() => {
         this.runtimeMetrics?.flush();
       }, runtimeMetricsIntervalMs);
@@ -1585,9 +1628,11 @@ export class DaemonClient {
     if (this.runtimeMetricsInterval) {
       clearInterval(this.runtimeMetricsInterval);
       this.runtimeMetricsInterval = null;
+      // Only the interval-logging clients emit the closing window; a
+      // counters-only client has nothing to log.
       this.runtimeMetrics?.flush({ final: true });
-      this.runtimeMetrics = null;
     }
+    this.runtimeMetrics = null;
     this.updateConnectionState(
       { status: "disposed" },
       { event: "DISPOSE", reason: "Client closed", reasonCode: "disposed" },
@@ -2631,6 +2676,31 @@ export class DaemonClient {
           return null;
         }
         return msg.payload;
+      },
+    });
+  }
+
+  /**
+   * Bulk-delete archived chat records on this host. Server-side by necessity:
+   * the client's history list is cursor-paginated across hosts and never holds
+   * the whole archived set. Pass `dryRun: true` first to get the count the
+   * confirm dialog quotes, then the same call with `dryRun: false` to delete.
+   *
+   * Removes Otto's records only — provider transcripts are left on disk. Gated
+   * by `server_info.features.historyDelete`; there is no fallback path, so check
+   * the flag before offering the action.
+   */
+  async clearArchivedAgents(options: {
+    dryRun: boolean;
+    olderThanDays?: number;
+    requestId?: string;
+  }): Promise<HistoryAgentsClearArchivedResponse["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"history.agents.clear_archived.response">({
+      requestId: options.requestId,
+      message: {
+        type: "history.agents.clear_archived.request",
+        dryRun: options.dryRun,
+        olderThanDays: options.olderThanDays ?? 0,
       },
     });
   }
@@ -5149,6 +5219,84 @@ export class DaemonClient {
     }
   }
 
+  /**
+   * Solutions in a workspace, which is what decides whether the Files tab shows a view switcher
+   * at all.
+   *
+   * Never throws and never carries an error the caller has to render. A workspace with no
+   * solution, a host with no .NET SDK, and a host with the feature switched off all answer with an
+   * empty list, so the caller has one silent case — "no switcher" — rather than four states.
+   */
+  async listSolutions(cwd: string, requestId?: string): Promise<SolutionRef[]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "code.solution.list.request", cwd },
+      responseType: "code.solution.list.response",
+    });
+    return payload.solutions;
+  }
+
+  /** One solution's organisation: folders, the projects inside them, configurations. */
+  async getSolutionTree(
+    input: { cwd: string; solutionPath: string },
+    requestId?: string,
+  ): Promise<SolutionTree> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "code.solution.get_tree.request",
+        cwd: input.cwd,
+        solutionPath: input.solutionPath,
+      },
+      responseType: "code.solution.get_tree.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return {
+      solutionPath: payload.solutionPath,
+      name: payload.name,
+      format: payload.format,
+      folders: payload.folders,
+      projects: payload.projects,
+      buildTypes: payload.buildTypes,
+      platforms: payload.platforms,
+    };
+  }
+
+  /**
+   * One project's evaluated file membership, fetched on expand.
+   *
+   * A `failed` status is a normal answer, not an exception: the daemon carries MSBuild's own
+   * message for a project it refused, and one bad project must not blank the tree.
+   */
+  async loadSolutionProject(
+    input: { cwd: string; solutionPath: string; projectPath: string },
+    requestId?: string,
+  ): Promise<SolutionProjectContents> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "code.solution.load_project.request",
+        cwd: input.cwd,
+        solutionPath: input.solutionPath,
+        projectPath: input.projectPath,
+      },
+      responseType: "code.solution.load_project.response",
+    });
+    return {
+      projectPath: payload.projectPath,
+      status: payload.status,
+      nodes: payload.nodes,
+      projectReferences: payload.projectReferences,
+      packageReferences: payload.packageReferences,
+      targetFrameworks: payload.targetFrameworks,
+      outputType: payload.outputType,
+      isSdkStyle: payload.isSdkStyle,
+      error: payload.error,
+    };
+  }
+
   /** Definition symbols for a single file (document outline). */
   async getCodeOutline(
     cwd: string,
@@ -6668,6 +6816,20 @@ export class DaemonClient {
 
   getLastServerInfoMessage(): ServerInfoStatusPayload | null {
     return this.lastServerInfoMessage;
+  }
+
+  /**
+   * Session totals for inbound daemon traffic, including the main-thread time
+   * spent handling it. Null when runtime metrics are disabled for this client.
+   * Read by the app's resource monitor — the wire is a first-class suspect when
+   * the UI thread degrades, so it has to be measurable rather than inferred.
+   */
+  getTrafficTotals(): DaemonClientTrafficTotals | null {
+    return this.runtimeMetrics?.getTrafficTotals() ?? null;
+  }
+
+  getTrafficHotspots(limit?: number): DaemonClientTrafficHotspot[] {
+    return this.runtimeMetrics?.getTrafficHotspots(limit) ?? [];
   }
 
   private resolveTransportUrlForAttempt(): string {

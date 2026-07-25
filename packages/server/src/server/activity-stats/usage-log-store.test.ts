@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -74,6 +74,35 @@ describe("UsageLogStore", () => {
 
     const page = await store.getPage();
     expect(page.events.map((e) => e.id)).toEqual(["fresh"]);
+  });
+
+  it("drops rows older than the age window at load, with no append to trigger it", async () => {
+    // Retention used to run only inside append(), so a daemon that booted and
+    // recorded nothing served rows arbitrarily older than the window.
+    const seeding = new UsageLogStore(filePath);
+    await seeding.append(evt("stale", now - 40 * 24 * 60 * 60 * 1000));
+    await seeding.append(evt("fresh", now - 1000));
+    await seeding.flush();
+
+    // Rewrite the file so the stale row is on disk (append() would have trimmed
+    // it), then read it back through a cold store without appending anything.
+    await writeFile(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        events: [evt("stale", now - 40 * 24 * 60 * 60 * 1000), evt("fresh", now - 1000)],
+      }),
+      "utf8",
+    );
+
+    const cold = new UsageLogStore(filePath);
+    const page = await cold.getPage();
+    expect(page.events.map((e) => e.id)).toEqual(["fresh"]);
+
+    // The trim is persisted, so the row does not come back on the next boot.
+    await cold.flush();
+    const next = new UsageLogStore(filePath);
+    expect((await next.getPage()).events.map((e) => e.id)).toEqual(["fresh"]);
   });
 
   it("keeps every row within the 30-day window (no row cap)", async () => {

@@ -10,6 +10,7 @@ import type { LoopService } from "./loop-service.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import type { LspService } from "./lsp/service.js";
+import type { SolutionService } from "./solution-model/service.js";
 import { asInternals, createStub } from "./test-utils/class-mocks.js";
 import {
   createDaemonConfigStoreStub,
@@ -66,6 +67,21 @@ function createLspServiceSpy() {
     setSettings: vi.fn(),
     onActivityChange: vi.fn(),
     onDiagnosticsChange: vi.fn(),
+  };
+}
+
+/**
+ * The same stand-in for the solution sidecar pool. The Solution view's charter singles this out:
+ * its lifecycle deliberately copies the language-server pool's shape, so it is exactly the place
+ * where the "methods exist, nothing calls them" defect would be copied along with it.
+ */
+function createSolutionServiceSpy() {
+  return {
+    reapIdle: vi.fn(async () => {}),
+    stopAll: vi.fn(async () => {}),
+    applySettings: vi.fn(async () => {}),
+    stopWorkspace: vi.fn(async () => {}),
+    invalidatePath: vi.fn(() => []),
   };
 }
 
@@ -134,8 +150,11 @@ function createServer() {
   // field when they fire, so the real pool never has to spawn anything here.
   const lspService = createLspServiceSpy();
   asInternals<{ lspService: LspService }>(server).lspService = lspService as unknown as LspService;
+  const solutionService = createSolutionServiceSpy();
+  asInternals<{ solutionService: SolutionService }>(server).solutionService =
+    solutionService as unknown as SolutionService;
 
-  return { server, lspService };
+  return { server, lspService, solutionService };
 }
 
 // The pool deliberately holds no timers so its clock can be injected in unit tests. That
@@ -169,5 +188,39 @@ describe("the daemon's language-server lifecycle", () => {
     lspService.reapIdle.mockClear();
     await vi.advanceTimersByTimeAsync(90_000);
     expect(lspService.reapIdle).not.toHaveBeenCalled();
+  });
+});
+
+// The Solution view's sidecar pool copies the language-server pool's lifecycle shape on purpose,
+// which makes it the one place where the defect above would be copied along with it. These are
+// deliberately the same two assertions.
+describe("the daemon's solution-sidecar lifecycle", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("reaps idle solution sidecars on the same interval", async () => {
+    const { server, solutionService } = createServer();
+
+    await vi.advanceTimersByTimeAsync(90_000);
+
+    expect(solutionService.reapIdle.mock.calls.length).toBeGreaterThanOrEqual(3);
+    await server.close();
+  });
+
+  it("stops every solution sidecar on shutdown, and stops ticking", async () => {
+    const { server, solutionService } = createServer();
+
+    await server.close();
+
+    expect(solutionService.stopAll).toHaveBeenCalledTimes(1);
+
+    solutionService.reapIdle.mockClear();
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(solutionService.reapIdle).not.toHaveBeenCalled();
   });
 });

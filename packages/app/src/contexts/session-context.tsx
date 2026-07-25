@@ -8,6 +8,7 @@ import { useGitLogStore } from "@/git/log-store";
 import { useContextManagementStore } from "@/context-management/store";
 import { usePushTokenRegistration } from "@/hooks/use-push-token-registration";
 import { clearArchiveAgentPending } from "@/hooks/use-archive-agent";
+import { applyDeletedAgentResults } from "@/history/use-delete-agent";
 import { activityStatsQueryKey } from "@/hooks/use-activity-stats";
 import { usageLogQueryKey } from "@/hooks/use-usage-log";
 import { refreshAgentInitializationTimeout } from "@/hooks/use-agent-initialization";
@@ -1668,6 +1669,13 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       const { agentId } = message.payload;
       deletePendingAgentUpdate(serverId, agentId);
       clearArchiveAgentPending({ queryClient, serverId, agentId });
+
+      // The Zustand cleanup below has always been thorough; the react-query
+      // caches were never touched, so a deleted chat lingered in the history list
+      // and the sidebar until a manual refresh. Archive's equivalent
+      // (`applyArchivedAgentCloseResults`) has patched all four caches for a
+      // while — this is the delete-side counterpart.
+      applyDeletedAgentResults({ queryClient, serverId, agentIds: [agentId] });
 
       setAgents(serverId, (prev) => {
         if (!prev.has(agentId)) {

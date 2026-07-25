@@ -14,6 +14,12 @@ import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personaliti
 import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
 import { composeTeamAndPersonalityPrompt } from "./agent-teams.js";
 import { deltaAgentUsage } from "./subagent-usage.js";
+import {
+  accumulateLifetimeUsage,
+  toTurnSpend,
+  type AgentLifetimeUsage,
+  type TurnUsageWatermark,
+} from "./turn-usage.js";
 import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
 import type { Logger } from "pino";
 import { z } from "zod";
@@ -707,23 +713,20 @@ function sumTurnUsageTokens(usage: AgentUsage | undefined): number | undefined {
  * subagents (resolveObservedSubagentDerivedState above) both feed into the
  * identical wire field, so the subagent track shows every row the same way.
  *
- * Most providers report `usage` as just-this-turn spend (Claude, Codex, ACP,
- * OpenCode, openai-compat), so each turn adds on top of the running total.
- * Pi's own session stats are already a lifetime total, so for Pi we take the
- * reported number directly (monotonic max, same idiom used for observed
- * subagents) instead of adding it a second time.
+ * Plain addition, with no per-provider branch: `usage` here is always THIS
+ * TURN's spend because `recordTurnUsage` runs a cumulative reporter (Pi's whole
+ * stat block, OpenCode's cost) through `toTurnSpend` first. Normalizing once at
+ * the boundary is what keeps every downstream sink — this total, the activity
+ * counters, the itemized ledger — from having to know which providers report a
+ * running total. See turn-usage.ts.
  */
 function accumulateAgentTokens(
   existing: number | undefined,
   usage: AgentUsage | undefined,
-  provider: AgentProvider,
 ): number | undefined {
   const turnTokens = sumTurnUsageTokens(usage);
   if (turnTokens === undefined) {
     return existing;
-  }
-  if (provider === "pi") {
-    return Math.max(existing ?? 0, turnTokens);
   }
   return (existing ?? 0) + turnTokens;
 }
@@ -834,6 +837,22 @@ interface ManagedAgentBase {
    * `lastUsage` — not persisted, resets on daemon restart.
    */
   cumulativeTokens?: number;
+  /**
+   * The same lifetime spend as `cumulativeTokens`, kept as the REAL in / cached
+   * / cache-write / out split plus the provider's own booked cost, so a cache
+   * read is never priced as fresh input and no surface has to guess a rate.
+   * `costUsd` is the cost actually booked (residual-adjusted for a parent), so
+   * parent + Σ descendants is exact by construction. Ephemeral like
+   * `cumulativeTokens`. See turn-usage.ts.
+   */
+  cumulativeUsage?: AgentLifetimeUsage;
+  /**
+   * Watermark for providers that report a running session total instead of
+   * this turn's spend (Pi's whole stat block, OpenCode's cost). Lets
+   * `recordTurnUsage` difference them once so every downstream total is plain
+   * addition. Unused for per-turn providers. See turn-usage.ts.
+   */
+  usageWatermark?: TurnUsageWatermark;
   /**
    * Sub-agents-track liveness for a NATIVE child agent (create_agent and the
    * other spawn paths): cumulative tool invocations and the tool it is running
@@ -1711,10 +1730,56 @@ export class AgentManager {
    * refreshes at the next turn boundary via `withContextComposition`.
    */
   private carryContextComposition(previous: AgentUsage | undefined, usage: AgentUsage): AgentUsage {
-    if (usage.contextComposition || !previous?.contextComposition) {
-      return usage;
+    let carried = usage;
+    if (!carried.contextComposition && previous?.contextComposition) {
+      carried = { ...carried, contextComposition: previous.contextComposition };
     }
-    return { ...usage, contextComposition: previous.contextComposition };
+    // The authoritative split is refreshed asynchronously at turn boundaries
+    // (see `refreshContextCategories`), so a mid-turn `usage_updated` would
+    // otherwise drop it and blink the ring's real labels back to the estimate.
+    if (!carried.contextCategories && previous?.contextCategories) {
+      carried = { ...carried, contextCategories: previous.contextCategories };
+    }
+    return carried;
+  }
+
+  /**
+   * Refresh the agent's context split from the PROVIDER's own accounting — the
+   * same `getContextUsage()` the `agent.context.get_usage` RPC serves, so the
+   * context meter and the visualizer never show two different answers for one
+   * agent. Providers that don't implement it keep the coarse timeline estimate
+   * (`withContextComposition`); this simply doesn't fire for them.
+   *
+   * Deliberately fire-and-forget: a turn must never be held up (or failed) by a
+   * display read. It re-emits state when the reading actually lands, so the
+   * snapshot carries it to stream and backfill consumers alike.
+   */
+  private refreshContextCategories(agent: ManagedAgent): void {
+    const session = agent.session;
+    if (!session?.getContextUsage) {
+      return;
+    }
+    void (async () => {
+      try {
+        const usage = await session.getContextUsage?.();
+        // A live handle is required to answer; null just means "can't report
+        // right now", which must not clobber a previous good reading.
+        if (!usage || usage.categories.length === 0) {
+          return;
+        }
+        // The agent may have been closed/replaced while the read was in flight.
+        if (this.agents.get(agent.id) !== agent) {
+          return;
+        }
+        agent.lastUsage = { ...agent.lastUsage, contextCategories: usage.categories };
+        this.emitState(agent);
+      } catch (error) {
+        this.logger.debug(
+          { err: error, agentId: agent.id },
+          "agent.manager.context_categories.refresh_failed",
+        );
+      }
+    })();
   }
 
   async getTimelineRows(id: string): Promise<AgentTimelineRow[]> {
@@ -4844,13 +4909,21 @@ export class AgentManager {
    * The category is derived from the agent's kind: a turn on a child agent (one
    * with a parent-agent label) is attributed to `subagent`, everything else to
    * `mainChat`. Compaction spend is broken out within recordUsageActivity. (WP-G)
+   *
+   * Everything here books THIS TURN's spend, which for a provider that reports
+   * a running session total (Pi, and OpenCode's cost) is not what it reported —
+   * so the usage is normalized once, up front, and every sink below it is plain
+   * addition. Without that step turn 3 re-books turns 1 and 2 and the error
+   * grows with the chat. See turn-usage.ts.
    */
   private recordTurnUsage(
     agent: ActiveManagedAgent,
-    usage: AgentUsage | undefined,
+    reported: AgentUsage | undefined,
     provider: AgentProvider,
   ): void {
-    agent.cumulativeTokens = accumulateAgentTokens(agent.cumulativeTokens, usage, provider);
+    const { usage, watermark } = toTurnSpend(reported, provider, agent.usageWatermark);
+    agent.usageWatermark = watermark;
+    agent.cumulativeTokens = accumulateAgentTokens(agent.cumulativeTokens, usage);
     const category = agent.labels[PARENT_AGENT_ID_LABEL] ? "subagent" : "mainChat";
     const model = agent.config.model ?? agent.runtimeInfo?.model ?? undefined;
     // De-inflate a parent chat: its Claude `total_cost_usd` is the WHOLE tree,
@@ -4859,13 +4932,17 @@ export class AgentManager {
     // the next turn starts clean; clamps at 0 if the sub-agent table over-priced.
     const costOverrideMicroUsd =
       category === "mainChat" ? this.residualParentCostMicroUsd(agent.id, usage) : undefined;
-    this.recordUsageActivity(usage, {
+    const costMicroUsd = this.recordUsageActivity(usage, {
       category,
       provider,
       agentId: agent.id,
       model,
       ...(costOverrideMicroUsd !== undefined ? { costOverrideMicroUsd } : {}),
     });
+    // Accumulate the cost that was ACTUALLY BOOKED (the residual for a parent),
+    // never the raw whole-tree figure — that is what makes a chat's total equal
+    // the sum of its own ledger rows instead of double-counting its sub-agents.
+    agent.cumulativeUsage = accumulateLifetimeUsage(agent.cumulativeUsage, usage, costMicroUsd);
   }
 
   /**
@@ -4904,6 +4981,10 @@ export class AgentManager {
    *   leave their cost leaf at 0.
    * - Provider split: Claude (the real-cost provider) gets its own in/out
    *   counters; "other" is derived in the UI as the grand total minus Claude.
+   *
+   * Returns the cost actually booked (integer micro-USD), so the caller can fold
+   * the identical figure into the agent's lifetime total and the two can never
+   * drift apart. `undefined` when nothing was recorded at all.
    */
   private recordUsageActivity(
     usage: AgentUsage | undefined,
@@ -4928,9 +5009,9 @@ export class AgentManager {
       subagentKey?: string;
       parentSubagentKey?: string;
     },
-  ): void {
+  ): number | undefined {
     if (!usage) {
-      return;
+      return undefined;
     }
     const bump = (field: ActivityCounterField, by: number): void => {
       if (by > 0) {
@@ -4981,6 +5062,7 @@ export class AgentManager {
         }),
       );
     }
+    return costMicroUsd;
   }
 
   private onStreamTurnCompleted(params: {
@@ -5002,6 +5084,9 @@ export class AgentManager {
       "agent.manager.turn.completed",
     );
     agent.lastUsage = this.withContextComposition(agent.id, event.usage);
+    // Then upgrade the estimate to the provider's own split where it can report
+    // one (async, non-blocking — see `refreshContextCategories`).
+    this.refreshContextCategories(agent);
     this.recordTurnUsage(agent, event.usage, event.provider);
     agent.lastError = undefined;
     if (

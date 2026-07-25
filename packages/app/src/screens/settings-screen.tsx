@@ -913,7 +913,14 @@ function DiagnosticsSection({
   isDesktopApp,
 }: DiagnosticsSectionProps) {
   const { t } = useTranslation();
+  const { settings, updateSettings } = useSettings();
   const [diagnosticSheetOpen, setDiagnosticSheetOpen] = useState(false);
+  const handleResourceMonitorEnabledChange = useCallback(
+    (resourceMonitorEnabled: boolean) => {
+      void updateSettings({ resourceMonitorEnabled });
+    },
+    [updateSettings],
+  );
   const handlePlayPress = useCallback(() => {
     void handlePlaybackTest();
   }, [handlePlaybackTest]);
@@ -930,6 +937,22 @@ function DiagnosticsSection({
           <Button variant="secondary" size="sm" onPress={handleOpenDiagnostic}>
             {t("settings.diagnostics.app.run")}
           </Button>
+        </View>
+        <View style={settingsStyles.rowResponsive}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>Performance monitoring</Text>
+            <Text style={settingsStyles.rowHint}>
+              Record frame timing, retained state and daemon traffic so the app diagnostic can show
+              what grows over a long session. Local only — nothing is sent anywhere. Turn it off to
+              stop the sampling.
+            </Text>
+          </View>
+          <Switch
+            value={settings.resourceMonitorEnabled}
+            onValueChange={handleResourceMonitorEnabledChange}
+            accessibilityLabel="Performance monitoring"
+            testID="settings-resource-monitor-switch"
+          />
         </View>
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>

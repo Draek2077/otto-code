@@ -29,12 +29,16 @@ export function settleVisualState(state: SimulationState): SimulationState {
   // into retiredTokens so the top-bar token/cost readout stays honest, exactly
   // as animate.ts `cleanupFaded` does when a faded node is deleted.
   let retiredTokensDelta = 0
+  let retiredCostUsdDelta = 0
   for (const [id, agent] of newAgents) {
     // Completed sub-agents are already cleaned up in the live view — drop them
     // here too so the settled graph matches (the main/root agent survives even
     // when complete, at the dimmed 0.5 opacity, mirroring snapVisualState).
     if (agent.state === 'complete' && !agent.isMain) {
       retiredTokensDelta += agent.cumulativeTokens ?? agent.tokensUsed
+      if (typeof agent.costUsd === 'number' && agent.costUsd > 0) {
+        retiredCostUsdDelta += agent.costUsd
+      }
       newAgents.delete(id)
       continue
     }
@@ -78,5 +82,6 @@ export function settleVisualState(state: SimulationState): SimulationState {
     particles: [],
     discoveries: [],
     retiredTokens: (state.retiredTokens ?? 0) + retiredTokensDelta,
+    retiredCostUsd: (state.retiredCostUsd ?? 0) + retiredCostUsdDelta,
   }
 }

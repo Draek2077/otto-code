@@ -14,8 +14,13 @@ describe("shortenPath", () => {
     expect(shortenPath("/var/www/app")).toBe("/var/www/app");
   });
 
-  it("leaves Windows paths unchanged", () => {
-    expect(shortenPath("C:\\Users\\devuser\\dev\\otto")).toBe("C:\\Users\\devuser\\dev\\otto");
+  it("shortens a Windows home directory path", () => {
+    expect(shortenPath("C:\\Users\\devuser\\dev\\otto")).toBe("~\\dev\\otto");
+    expect(shortenPath("D:/Users/devuser/dev/otto")).toBe("~/dev/otto");
+  });
+
+  it("leaves a Windows path outside the user profile unchanged", () => {
+    expect(shortenPath("C:\\Program Files\\otto")).toBe("C:\\Program Files\\otto");
   });
 
   it("returns an empty string for null or undefined", () => {

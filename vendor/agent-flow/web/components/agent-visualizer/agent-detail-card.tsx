@@ -3,7 +3,7 @@
 import { CARD, Z, type AgentState, type ContextBreakdown } from '@/lib/agent-types'
 import { COLORS, contextSegments, getStateColor } from '@/lib/colors'
 import { formatTokens, formatModelName } from '@/lib/utils'
-import { agentCost } from './canvas/draw-cost'
+import { agentCost, formatCost } from './canvas/draw-cost'
 import { GlassCard } from './glass-card'
 import { PanelHeader, ProgressBar } from './shared-ui'
 
@@ -17,6 +17,8 @@ interface AgentDetailCardProps {
     // OTTO PATCH: honest lifetime token total (context_update), distinct from
     // tokensUsed context occupancy — drives the cost estimate and a lifetime row.
     cumulativeTokens?: number
+    // OTTO PATCH: the provider's own reported cost; absent ⇒ unpriceable.
+    costUsd?: number
     tokensMax: number
     contextBreakdown: ContextBreakdown
     toolCalls: number
@@ -27,11 +29,10 @@ interface AgentDetailCardProps {
   onClose: () => void
 }
 
-// OTTO PATCH (OTTO-PATCHES.md): labels for the five context-composition segments,
-// index-aligned with `contextSegments` (system / user / tool results / reasoning /
-// subagent results). The node's context ring shows these as proportions only; the
-// card spells them out with token counts.
-const SEGMENT_LABELS = ['System', 'User', 'Tools', 'Reasoning', 'Subagents'] as const
+// OTTO PATCH (OTTO-PATCHES.md): segment labels come from the DATA now, not a
+// fixed index-aligned list — the host forwards the provider's own context
+// categories, whose names vary per provider. The node's context ring shows these
+// as proportions only; the card spells them out with token counts.
 
 export function AgentDetailCard({
   agent,
@@ -40,11 +41,11 @@ export function AgentDetailCard({
   const contextPercent = Math.round((agent.tokensUsed / agent.tokensMax) * 100)
   const stateColor = getStateColor(agent.state)
 
-  // OTTO PATCH: enriched fields the node graph doesn't spell out — dollar cost
-  // (from the honest lifetime total), the lifetime token count itself, and the
-  // labeled context composition.
-  const cost = agentCost(agent.cumulativeTokens ?? agent.tokensUsed, agent.model)
-  const costLabel = `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}`
+  // OTTO PATCH: enriched fields the node graph doesn't spell out — the real
+  // reported cost, the lifetime token count itself, and the labeled context
+  // composition. `cost` is null when the provider reports none (a local model),
+  // in which case the stat is omitted rather than estimated from a rate table.
+  const cost = agentCost(agent)
   const hasLifetime = typeof agent.cumulativeTokens === 'number' && agent.cumulativeTokens > agent.tokensUsed
 
   const segments = contextSegments(agent.contextBreakdown)
@@ -119,21 +120,21 @@ export function AgentDetailCard({
         <div className="mb-3">
           <div className="text-[10px] mb-1" style={{ color: COLORS.textMuted }}>Composition</div>
           <div className="flex h-1.5 rounded-full overflow-hidden mb-1.5" style={{ background: COLORS.holoBg10 }}>
-            {segments.map((s, i) => (
+            {segments.map((s) => (
               s.value > 0 ? (
                 <div
-                  key={SEGMENT_LABELS[i]}
+                  key={s.label}
                   style={{ width: `${(s.value / compositionTotal) * 100}%`, background: s.color }}
                 />
               ) : null
             ))}
           </div>
           <div className="flex flex-wrap gap-x-2 gap-y-0.5">
-            {segments.map((s, i) => (
+            {segments.map((s) => (
               s.value > 0 ? (
-                <span key={SEGMENT_LABELS[i]} className="flex items-center gap-1 text-[9px] font-mono" style={{ color: COLORS.textDim }}>
+                <span key={s.label} className="flex items-center gap-1 text-[9px] font-mono" style={{ color: COLORS.textDim }}>
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: s.color }} />
-                  {SEGMENT_LABELS[i]} {formatTokens(s.value)}
+                  {s.label} {formatTokens(s.value)}
                 </span>
               ) : null
             ))}
@@ -143,7 +144,7 @@ export function AgentDetailCard({
 
       {/* Stats row */}
       <div className="flex flex-wrap gap-x-3 gap-y-1 mb-3 text-[10px] font-mono" style={{ color: COLORS.textDim }}>
-        <span style={{ color: COLORS.complete }}>{costLabel}</span>
+        {cost !== null && <span style={{ color: COLORS.complete }}>{formatCost(cost)}</span>}
         <span>{agent.toolCalls} tools</span>
         <span>{agent.timeAlive.toFixed(1)}s alive</span>
         {hasLifetime && <span>{formatTokens(agent.cumulativeTokens!)} total</span>}

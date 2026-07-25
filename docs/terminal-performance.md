@@ -2,6 +2,8 @@
 
 How terminal output stays low-latency, what the invariants are, and how to measure before/after any change to the pipeline. Read this before touching anything under `packages/server/src/terminal/` or `packages/app/src/terminal/runtime/`.
 
+For app-wide client performance — frame timing, retained-state census, daemon-traffic accounting and the soak harness — see [client-performance.md](client-performance.md).
+
 ## The pipeline
 
 ```

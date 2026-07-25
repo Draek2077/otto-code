@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!--
+      net8.0, not net9/net10, on purpose: 8 is the current LTS and the lowest floor we can
+      target while still getting an MSBuild package with net8.0 assets (17.11.48 is the last
+      one; 17.12+ ship net472 + net9.0 only). Raising this raises the runtime floor for every
+      user of the feature.
+    -->
+    <TargetFramework>net8.0</TargetFramework>
+    <!--
+      Load-bearing. A framework-dependent app pins its major version: without this, a payload
+      built for net8.0 refuses to start on a machine that has only .NET 9 or 10 installed —
+      verified during the Phase 0 spike on a host with runtimes 7/9/10 and no 8. "One portable
+      payload runs everywhere" is only true with a roll-forward policy set.
+    -->
+    <RollForward>LatestMajor</RollForward>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>OttoDotnetProbe</AssemblyName>
+    <RootNamespace>Otto.DotnetProbe</RootNamespace>
+    <!-- No RuntimeIdentifier anywhere: the output is IL, so one build serves every OS. -->
+    <UseAppHost>false</UseAppHost>
+    <DebugType>none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!--
+      Microsoft.Build resolves to its net472 assets for reference purposes, which makes the SDK
+      emit a .NET Framework binding-redirect config the payload will never read. Suppressing it
+      keeps the shipped file list to what actually runs.
+    -->
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>false</GenerateBindingRedirectsOutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      `fixtures/` holds real, buildable projects on purpose — they are what the CI smoke test and
+      the daemon's tests drive the protocol against. The SDK's default globs would otherwise
+      compile them into this assembly, which fails on the second `Main`.
+    -->
+    <Compile Remove="fixtures/**" />
+    <None Remove="fixtures/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The same parser MSBuild, the .NET CLI and Visual Studio read solutions through. -->
+    <PackageReference Include="Microsoft.VisualStudio.SolutionPersistence" Version="1.0.52" />
+    <!--
+      Compile-time reference only. ExcludeAssets="runtime" keeps MSBuild's assemblies out of the
+      payload; Microsoft.Build.Locator points the runtime at the assemblies of the .NET SDK that
+      is actually installed, which is the only way evaluation can agree with `dotnet build`.
+    -->
+    <PackageReference Include="Microsoft.Build" Version="17.11.48" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.Build.Locator" Version="1.9.1" />
+  </ItemGroup>
+
+</Project>

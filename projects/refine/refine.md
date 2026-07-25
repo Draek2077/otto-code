@@ -540,3 +540,113 @@ loop, exactly as intended.
    follow-up, and it is what would make the editor entry as useful as the Context one.
 4. **Selection-scoped refine** (§11), the cost estimate (§11), streaming (§11), round history (§12) —
    unchanged.
+
+---
+
+## 16. The chrome pass (2026-07-25)
+
+The first build's tab was the right shape wearing the wrong clothes. Three separate faults, all
+worth writing down because the first is not a Refine bug at all.
+
+### 16.1 The instruction field rendered black 16px text on a dark panel
+
+`withUnistyles(TextArea)` — a **composite** component. On web `withUnistyles` applies a wrapped
+component's style through a `.hash > *` child selector, so the style landed on `TextAreaScrollFrame`'s
+outer `View` (which is why the box had its border and background) while the real `<textarea>` two
+levels down kept the browser's defaults. Nothing warns; it just paints wrong from first frame.
+
+The rule this is an instance of: **`withUnistyles` wraps leaves, not composites.** The field is now
+`withUnistyles(TextInput)` rendered inside `TextAreaScrollFrame` — the same shape
+`AdaptiveTextInput` already uses. Anywhere else in the app that wraps a composite and passes it a
+themed `style` has the same latent bug.
+
+### 16.2 The tab did not look like the tabs it is a sibling of
+
+Rename and Find references had already settled the idiom and this tab predated none of it: one row
+at `PANE_TOOLBAR_HEIGHT`, `ToolbarIconButton`s with their labels in tooltips, exactly one
+accent-tinted action, `fontSize.sm` on the UI ramp. Refine had text buttons (`Abandon`, `Accept`) that
+stood taller than the bar next to it in a split, a hand-rolled icon button, and `fontSize.xs`
+throughout — a size smaller than every other panel.
+
+It now shares the actual components rather than agreeing with them by hand: `CodeResultGroupHeader`
+for the per-file heading (given a `trailing` slot for the keep/drop switch), `CodeResultExpandToggle`
+for folding, the references tab's chip metrics for the working-set and preset chips.
+
+Two things went away in the process. **Abandon** — abandoning is free and the tab already has a close
+control, so a second way to do nothing was spending toolbar width that the decisions needed. And the
+**error line** wedged under the impact text became a full-width strip: a failed round is the one
+message here that has to survive being read at a glance.
+
+### 16.3 Refine and Compact wore the same wand, in two different groups
+
+In Context Management both actions are in the _same_ toolbar — Refine among the git tools, "Compact
+with AI" in the host slot — with the same glyph. That reads as one button rendered twice.
+
+The toolbar now has an **AI group** of its own (`FileAiToolbarGroup`, fenced by a separator), and
+`FileTabPane` takes a `toolbarAiSlot` beside the existing `toolbarLeadingSlot` so a host's
+model-facing action lands _in_ that group instead of after it. Context Management passes its
+compaction action there and keeps `LoadModeControl` — which is about loading, not rewriting — in the
+leading slot.
+
+Compact takes `compress` (arrows squeezing toward a line): it says what the preset asks for — the
+same document, smaller. Refine keeps `wand_stars`. Material Symbols has no wand-plus-document glyph,
+so the wand alone stays the generic "a model rewrites this" mark and the group fences it.
+
+### 16.4 What remains
+
+§15.5 is unchanged — none of it was chrome.
+
+### 16.5 Compact is a graph action, not a file action (same day)
+
+The two AI buttons were grouped together in §16.3 on the assumption they were the same kind of
+thing. They are not, and the working set is what says so: **Refine** in the file toolbar opens the
+file on screen and nothing else, while **Compact with AI** opens a job carrying the _whole context
+graph_ — the selected file rewritable, every other node a budgeted read-only reference. One is
+scoped to a document, the other to the graph.
+
+So Compact moved out of the file toolbar and now sits left of the Context/Issues segments, with the
+graph it acts on (`ContextSidebarTabs` grew a `leading` slot). It renders **disabled** rather than
+absent when nothing is selected — that row is chrome the eye returns to, and a control that vanishes
+reflows the segments beside it. `FileTabPane`'s `toolbarAiSlot` went away with it: an unused seam
+plumbed through three components is rot, and the file toolbar's AI group is now honestly one action
+about one file.
+
+**The tab also names itself after the job it was opened for.** A user who pressed "Compact with AI"
+and got a tab titled _Refine_ has to work out that those are the same thing. `RefinePreset` carries a
+`job: "refine" | "compact"`, and the tab's title, icon and run verb follow it — "Compact: CLAUDE.md"
+under the compress glyph, with a **Compact** / **Compact again** button. Fixed at open, like the
+rename tab's symbol: editing the instruction afterwards does not rename the job you started.
+
+### 16.6 Paths, "All", and link discovery (same day)
+
+Four fixes, one of which was not a Refine bug.
+
+**Paths were printing the drive and the account name.** `shortenPath` handled `/Users/name` and
+`/home/name` and had a test asserting it _left Windows paths unchanged_ — so on a Windows host every
+label kept its `C:\Users\<name>\` prefix, nine characters repeated down a list, pushing the part that
+identifies the file off the end of the row. It now shortens `C:\Users\name` to `~` as well. That is a
+shared helper, so this improves the sidebar, schedules, artifacts and the orchestration sheet at the
+same time. In-workspace files were already workspace-relative and stay so; the tab switcher's
+fallback label also stopped printing the absolute primary path.
+
+**An "All" chip.** A compaction seeded from the context graph arrives with a dozen references, and
+"rewrite all of these" cost a dozen taps. `setAllWritable` widens the blast radius in one press;
+pressing again narrows to the primary rather than emptying the set, because a set with nothing
+rewritable is a round the daemon cannot answer.
+
+**Refine now discovers what its document links to.** Compaction gets its context handed to it by
+Context Management, which already holds a graph. A file opened from the editor has no graph, so the
+session reads its own links after pinning — markdown links and `@imports`, resolved against the
+file's directory, prose only, capped at 8 (`refine-links.ts`). They arrive **read-only**; widening
+stays the user's decision in the strip. That is what makes a plain Refine as project-aware as a
+compaction with a different objective.
+
+This forced a distinction that should have been there from the start: **documents fail the session,
+references are dropped.** A stale graph entry or a link into a file that has since moved should cost
+that one file's worth of context, not the whole job. Documents are the opposite — the job is about
+them. References are also budgeted by total content on the way in, since the daemon caps documents
+and references together and the user cannot see which reference was the expensive one.
+
+**One tab, one set of controls.** The working-set strip used to hide itself below two files, so
+Refine and Compact presented different chrome and taught the user they were two tools. A single-file
+rewrite is this feature with nothing added, so the strip is always there.

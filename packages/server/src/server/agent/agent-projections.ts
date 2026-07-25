@@ -15,6 +15,7 @@ import type {
   AgentSessionConfig,
   AgentRuntimeInfo,
   AgentUsage,
+  AgentContextCategory,
   ContextComposition,
   ImportableProviderSession,
   ObservedSubagentUpdate,
@@ -24,6 +25,7 @@ import type { JsonValue } from "../json-utils.js";
 import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
 import { isStoredAgentProviderAvailable, toAgentPersistenceHandle } from "../persistence-hooks.js";
 import { steerQueuePreview, type SteerQueueEntry } from "./steer-queue-state.js";
+import { costCoverageOf, observedLifetimeUsage, type AgentLifetimeUsage } from "./turn-usage.js";
 export type { ManagedAgent };
 
 interface ProjectionOptions {
@@ -201,6 +203,8 @@ export function toAgentPayload(
   if (typeof agent.cumulativeTokens === "number" && Number.isFinite(agent.cumulativeTokens)) {
     payload.cumulativeTokens = agent.cumulativeTokens;
   }
+
+  applyCumulativeUsage(payload, agent.cumulativeUsage);
 
   // Same liveness signals observed rows carry, so a native (create_agent) child
   // reads identically in the track. Sourced from its own timeline rather than a
@@ -436,6 +440,13 @@ export function toObservedSubagentPayload(input: {
     payload.cumulativeTokens = input.cumulativeTokens;
   }
 
+  // An observed sub-agent's carried-forward usage is ALREADY its own running
+  // total (its accumulator sums across its messages), so this is a projection,
+  // not an accumulation. Its `totalCostUsd` is priced on the sub-agent's OWN
+  // model and is exactly what the parent's residual backs out, which is what
+  // keeps parent + Σ children from double-counting.
+  applyCumulativeUsage(payload, observedLifetimeUsage(input.lastUsage ?? update.usage));
+
   applySubagentLiveness(payload, {
     toolUseCount: input.toolUseCount,
     currentTool: input.currentTool,
@@ -466,6 +477,35 @@ function applySubagentLiveness(
   if (isLive && input.currentTool) {
     payload.currentTool = input.currentTool;
   }
+}
+
+/**
+ * Attach the lifetime spend split + cost to a snapshot. Shared by both
+ * projections so a native child and an observed sub-agent expose the same
+ * shape, and a chat total can sum them without caring which it is.
+ *
+ * Omitted entirely when there is nothing to report, and `costUsd` is omitted
+ * unless the provider genuinely priced something — an absent cost is the honest
+ * answer for a local model, and it is what makes the client show a blank
+ * instead of an estimate. `costCoverage` travels with it so a partially-priced
+ * total is never read as complete.
+ */
+function applyCumulativeUsage(
+  payload: AgentSnapshotPayload,
+  usage: AgentLifetimeUsage | undefined,
+): void {
+  if (!usage) {
+    return;
+  }
+  const costUsd = usage.costUsd;
+  payload.cumulativeUsage = {
+    inputTokens: usage.inputTokens,
+    cachedInputTokens: usage.cachedInputTokens,
+    cacheCreationInputTokens: usage.cacheCreationInputTokens,
+    outputTokens: usage.outputTokens,
+    ...(typeof costUsd === "number" && Number.isFinite(costUsd) && costUsd > 0 ? { costUsd } : {}),
+    costCoverage: costCoverageOf(usage),
+  };
 }
 
 export function toAgentListItemPayload(agent: AgentSnapshotPayload): AgentListItemPayload {
@@ -659,7 +699,7 @@ function sanitizeMetadataArray(value: unknown): AgentMetadata[] | undefined {
   return sanitized.length > 0 ? sanitized : undefined;
 }
 
-type UsageNumericField = Exclude<keyof AgentUsage, "contextComposition">;
+type UsageNumericField = Exclude<keyof AgentUsage, "contextComposition" | "contextCategories">;
 
 function assignFiniteNumber(
   source: { [key: string]: JsonValue },
@@ -696,6 +736,40 @@ function sanitizeContextComposition(value: JsonValue | undefined): ContextCompos
   return Object.keys(result).length ? result : undefined;
 }
 
+/**
+ * The provider's own labelled split. Unlike the fixed-key composition this is an
+ * open-ended list, so entries are validated structurally (label + finite count)
+ * rather than against a known field set — a provider inventing a new category
+ * must reach the client intact, not be silently dropped.
+ */
+function sanitizeContextCategories(
+  value: JsonValue | undefined,
+): AgentContextCategory[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const result: AgentContextCategory[] = [];
+  for (const entry of value) {
+    if (!isJsonObject(entry)) {
+      continue;
+    }
+    const name = entry["name"];
+    const tokens = entry["tokens"];
+    if (typeof name !== "string" || !name || typeof tokens !== "number") {
+      continue;
+    }
+    if (!Number.isFinite(tokens)) {
+      continue;
+    }
+    result.push({
+      name,
+      tokens,
+      ...(entry["isDeferred"] === true ? { isDeferred: true } : {}),
+    });
+  }
+  return result.length ? result : undefined;
+}
+
 function sanitizeUsage(value: unknown): AgentUsage | undefined {
   const sanitized = sanitizeOptionalJson(value);
   if (!sanitized || !isJsonObject(sanitized)) {
@@ -719,6 +793,10 @@ function sanitizeUsage(value: unknown): AgentUsage | undefined {
   const composition = sanitizeContextComposition(sanitized["contextComposition"]);
   if (composition) {
     result.contextComposition = composition;
+  }
+  const categories = sanitizeContextCategories(sanitized["contextCategories"]);
+  if (categories) {
+    result.contextCategories = categories;
   }
   return Object.keys(result).length ? result : undefined;
 }

@@ -47,6 +47,7 @@ export function AgentVisualizer() {
     speed,
     maxTimeReached,
     retiredTokens,
+    retiredCostUsd,
     conversations,
     play,
     pause,
@@ -322,6 +323,30 @@ export function AgentVisualizer() {
     return sum
   }, [agents, retiredTokens])
 
+  // OTTO PATCH (OTTO-PATCHES.md): the graph's REAL cost — Σ of the per-agent
+  // figures the host's provider reported, plus the banked cost of nodes already
+  // cleaned up. Agents the provider could not price contribute nothing and mark
+  // the sum PARTIAL, so it renders as a floor instead of a total. Never derived
+  // from tokens × a rate; see draw-cost.ts.
+  const cost = useMemo(() => {
+    let sum = retiredCostUsd ?? 0
+    let priced = retiredCostUsd ? 1 : 0
+    let unpriced = 0
+    for (const a of agents.values()) {
+      const value = a.costUsd
+      if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+        sum += value
+        priced += 1
+      } else if ((a.cumulativeTokens ?? a.tokensUsed) > 0) {
+        unpriced += 1
+      }
+    }
+    return {
+      totalCostUsd: priced > 0 ? sum : null,
+      costIsPartial: priced > 0 && unpriced > 0,
+    }
+  }, [agents, retiredCostUsd])
+
   const selectedAgent = selection.selectedAgentId ? agents.get(selection.selectedAgentId) : null
 
   // OTTO PATCH (OTTO-PATCHES.md): the in-canvas right-click context menu was
@@ -534,7 +559,13 @@ export function AgentVisualizer() {
           the Timeline toggle) were pulled OUT into the native Otto toolbar above
           the tab; only the stats readout remains in the HUD. */}
       {!hudHidden && (
-        <TopBar agentCount={agents.size} totalTokens={totalTokens} compact={hudCompact} />
+        <TopBar
+          agentCount={agents.size}
+          totalTokens={totalTokens}
+          totalCostUsd={cost.totalCostUsd}
+          costIsPartial={cost.costIsPartial}
+          compact={hudCompact}
+        />
       )}
 
       {/* OTTO PATCH (OTTO-PATCHES.md): host-toggleable FPS meter

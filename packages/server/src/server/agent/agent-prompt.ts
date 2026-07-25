@@ -372,6 +372,12 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
       agentId: callerAgentId,
       prompt: formatSystemNotificationPrompt(body),
       unarchive: false,
+      // "Your child finished" is a report, not a correction. Interrupting the
+      // parent destroyed the turn it was running while the child worked, and a
+      // fan-out of N children interrupted it N times in a row — it could never
+      // finish a turn. Queued, each report still lands as its own turn (system
+      // entries never merge), in completion order. See docs/chat-lifecycle.md.
+      delivery: "queue",
       source: "system",
       logger,
     });

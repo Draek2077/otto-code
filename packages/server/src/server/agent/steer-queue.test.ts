@@ -381,6 +381,45 @@ describe("queued delivery", () => {
     expect(manager.removeSteerQueueEntry(agentId, "no-such-id")).toBeNull();
   });
 
+  test("reordering changes which queued message runs next", async () => {
+    const { manager, agentId, session } = await createRunningAgent();
+    startAgentRun(manager, agentId, "first queued", logger, {
+      delivery: "queue",
+      source: "system",
+    });
+    startAgentRun(manager, agentId, "second queued", logger, {
+      delivery: "queue",
+      source: "system",
+    });
+
+    const [, second] = manager.getSteerQueue(agentId);
+    expect(manager.reorderSteerQueueEntry(agentId, second!.id, 0)).toBe(true);
+    expect(manager.getSteerQueue(agentId).map((entry) => entry.prompt)).toEqual([
+      "second queued",
+      "first queued",
+    ]);
+
+    session.completeTurn();
+    await settle();
+    expect(session.prompts).toEqual(["first turn", "second queued"]);
+  });
+
+  test("reordering clamps out-of-range targets and no-ops on a stale id", async () => {
+    const { manager, agentId } = await createRunningAgent();
+    startAgentRun(manager, agentId, "a", logger, { delivery: "queue", source: "system" });
+    startAgentRun(manager, agentId, "b", logger, { delivery: "queue", source: "system" });
+
+    const [first] = manager.getSteerQueue(agentId);
+    // Past the end of a queue that drained under the client's feet: clamp to
+    // last rather than reject, which is what the user meant.
+    expect(manager.reorderSteerQueueEntry(agentId, first!.id, 99)).toBe(true);
+    expect(manager.getSteerQueue(agentId).map((entry) => entry.prompt)).toEqual(["b", "a"]);
+
+    // Already there, and never there at all: both report "nothing moved".
+    expect(manager.reorderSteerQueueEntry(agentId, first!.id, 1)).toBe(false);
+    expect(manager.reorderSteerQueueEntry(agentId, "no-such-id", 0)).toBe(false);
+  });
+
   test("clearing empties the queue and reports how many were dropped", async () => {
     const { manager, agentId, session } = await createRunningAgent();
     startAgentRun(manager, agentId, "a", logger, { delivery: "queue" });

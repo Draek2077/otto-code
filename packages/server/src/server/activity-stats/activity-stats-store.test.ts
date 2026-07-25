@@ -71,6 +71,60 @@ describe("ActivityStatsStore", () => {
     expect(rollups.allTime.messagesSent).toBe(0);
   });
 
+  it("drops day buckets older than the window while keeping all-time totals", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    // A daemon idle for a year: few enough buckets to survive the old
+    // count-only trim (35), but every one of them long outside the window.
+    const stale = ["2025-01-01", "2025-02-01", "2025-03-01"];
+    const daily: Record<string, Record<string, number>> = {};
+    for (const key of stale) {
+      daily[key] = { messagesSent: 7 };
+    }
+    await writeFile(
+      filePath,
+      JSON.stringify({ version: 1, allTime: { messagesSent: 21 }, daily }),
+      "utf8",
+    );
+
+    const store = new ActivityStatsStore(filePath);
+    // One increment persists the trimmed map.
+    await store.increment("messagesSent");
+
+    const persisted = JSON.parse(
+      await (await import("node:fs/promises")).readFile(filePath, "utf8"),
+    ) as { allTime: { messagesSent: number }; daily: Record<string, unknown> };
+
+    for (const key of stale) {
+      expect(persisted.daily[key]).toBeUndefined();
+    }
+    // Cumulative totals outlive trimmed buckets, by design.
+    expect(persisted.allTime.messagesSent).toBe(22);
+    expect((await store.getRollups()).allTime.messagesSent).toBe(22);
+  });
+
+  it("keeps a bucket that is inside the window", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    const key = [
+      twoDaysAgo.getFullYear(),
+      String(twoDaysAgo.getMonth() + 1).padStart(2, "0"),
+      String(twoDaysAgo.getDate()).padStart(2, "0"),
+    ].join("-");
+    await writeFile(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        allTime: { messagesSent: 3 },
+        daily: { [key]: { messagesSent: 3 } },
+      }),
+      "utf8",
+    );
+
+    const store = new ActivityStatsStore(filePath);
+    const rollups = await store.getRollups();
+    expect(rollups.last7Days.messagesSent).toBe(3);
+  });
+
   it("coalesces a burst of increments into a single change notification", async () => {
     vi.useFakeTimers();
     try {

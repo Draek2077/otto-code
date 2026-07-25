@@ -21,6 +21,41 @@ export interface DesktopSidebarState {
 
 export type SortOption = "name" | "modified" | "size";
 
+/**
+ * The Files tab's two lenses: the filesystem as it lays itself out, or the tree as the build
+ * system sees it.
+ *
+ * **"Solution", never "Project"** — Project is already an Otto noun (a grouping of workspaces
+ * sharing a git remote), and a .NET project is a completely different thing that appears on
+ * screen at the same time. See docs/glossary.md.
+ */
+export type ExplorerViewMode = "files" | "solution";
+
+export function isExplorerViewMode(value: unknown): value is ExplorerViewMode {
+  return value === "files" || value === "solution";
+}
+
+/**
+ * Per-checkout, like the explorer tab itself: which lens makes sense is a fact about *this*
+ * repository, not a global preference. A user with one .NET repo and five TypeScript ones should
+ * not have the .NET choice follow them everywhere.
+ */
+export function resolveExplorerViewMode(input: {
+  serverId: string;
+  cwd: string;
+  hasSolutions: boolean;
+  explorerViewModeByCheckout: Record<string, ExplorerViewMode>;
+}): ExplorerViewMode {
+  // No solutions means no switcher, so any remembered choice is unreachable and must not strand
+  // the tab on an empty lens — the same coercion `resolveExplorerTabForCheckout` does for `isGit`.
+  if (!input.hasSolutions) {
+    return "files";
+  }
+  const key = buildExplorerCheckoutKey(input.serverId, input.cwd);
+  const remembered = key === null ? undefined : input.explorerViewModeByCheckout[key];
+  return isExplorerViewMode(remembered) ? remembered : "files";
+}
+
 export const DEFAULT_SIDEBAR_WIDTH = 320;
 export const MIN_SIDEBAR_WIDTH = 225;
 export const MAX_SIDEBAR_WIDTH = 600;
@@ -215,6 +250,22 @@ function migratePanelExplorerTabByCheckout(state: MigratablePanelState, version:
   state.explorerTabByCheckout = next;
 }
 
+/** Same shape as `explorerTabByCheckout`: drop anything that is not a known mode. */
+function migrateExplorerViewModeByCheckout(state: MigratablePanelState): void {
+  const stored = state.explorerViewModeByCheckout;
+  if (typeof stored !== "object" || stored === null) {
+    state.explorerViewModeByCheckout = {};
+    return;
+  }
+  const next: Record<string, ExplorerViewMode> = {};
+  for (const [key, value] of Object.entries(stored as Record<string, unknown>)) {
+    if (isExplorerViewMode(value)) {
+      next[key] = value;
+    }
+  }
+  state.explorerViewModeByCheckout = next;
+}
+
 function migratePanelDesktopFocusMode(state: MigratablePanelState): void {
   const desktop = state.desktop as Record<string, unknown> | undefined;
   if (!desktop) {
@@ -286,6 +337,7 @@ export function migratePanelState(
   if (typeof state.explorerShowHiddenFiles !== "boolean") {
     state.explorerShowHiddenFiles = true;
   }
+  migrateExplorerViewModeByCheckout(state);
   if (version < 12) {
     // Compact panel position is transient UI state. Cold starts always begin
     // at content, regardless of what an older version persisted.

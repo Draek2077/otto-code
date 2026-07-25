@@ -269,13 +269,48 @@ export function withAlpha(rgbaBase: string, alpha: number): string {
   return `${rgbaBase} ${alpha})`
 }
 
-/** Build the context-breakdown color segments for a given breakdown. */
+// OTTO PATCH (OTTO-PATCHES.md): the breakdown is an open-ended labeled list now
+// (providers report their own category names), so a segment's color is derived
+// from its label instead of its position in a fixed struct.
+//
+// Well-known labels keep their original semantic color so the same slice reads
+// the same across providers — "Tool results" stays amber whether it came from
+// Claude's own accounting or Otto's estimate. Matching is on a normalized label
+// and ORDERED: 'System prompt' must hit the system rule before the prompt/
+// message rule, so the first match wins by design.
+const CONTEXT_LABEL_COLOR_RULES: { test: (label: string) => boolean; color: string }[] = [
+  { test: (l) => l.includes('system'), color: COLORS.contextSystem },
+  { test: (l) => l.includes('subagent') || l.includes('sub-agent'), color: COLORS.contextSubagent },
+  { test: (l) => l.includes('reason') || l.includes('think'), color: COLORS.contextReasoning },
+  { test: (l) => l.includes('tool') || l.includes('mcp'), color: COLORS.contextToolResults },
+  { test: (l) => l.includes('message') || l.includes('prompt'), color: COLORS.contextUser },
+]
+
+// Cycled for labels no rule claims, so an unrecognized provider category still
+// gets a stable, distinct color rather than vanishing into the background.
+const CONTEXT_FALLBACK_PALETTE = [
+  COLORS.contextUser,
+  COLORS.contextToolResults,
+  COLORS.contextReasoning,
+  COLORS.contextSubagent,
+  COLORS.contextSystem,
+]
+
+export function contextSegmentColor(label: string, index: number): string {
+  const normalized = label.toLowerCase()
+  for (const rule of CONTEXT_LABEL_COLOR_RULES) {
+    if (rule.test(normalized)) return rule.color
+  }
+  return CONTEXT_FALLBACK_PALETTE[index % CONTEXT_FALLBACK_PALETTE.length]
+}
+
+/** Build the context-breakdown color segments for a given breakdown. Shape is
+ * unchanged for the canvas draw paths (`{ value, color }`); `label` is added for
+ * the detail card, which spells the categories out. */
 export function contextSegments(bd: ContextBreakdown) {
-  return [
-    { value: bd.systemPrompt, color: COLORS.contextSystem },
-    { value: bd.userMessages, color: COLORS.contextUser },
-    { value: bd.toolResults, color: COLORS.contextToolResults },
-    { value: bd.reasoning, color: COLORS.contextReasoning },
-    { value: bd.subagentResults, color: COLORS.contextSubagent },
-  ]
+  return bd.segments.map((segment, index) => ({
+    label: segment.label,
+    value: segment.tokens,
+    color: contextSegmentColor(segment.label, index),
+  }))
 }

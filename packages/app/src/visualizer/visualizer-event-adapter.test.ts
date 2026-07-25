@@ -293,7 +293,33 @@ describe("buildContextUpdateEvent", () => {
     });
   });
 
-  test("scales a context composition into a full 5-key breakdown summing to occupancy", () => {
+  test("carries the provider's REAL cost so the page never has to price tokens", () => {
+    const event = buildContextUpdateEvent({
+      ctx: CTX,
+      cumulativeTokens: 55000,
+      costUsd: 0.042,
+      time: 1,
+    });
+    expect(event?.payload).toEqual({
+      agent: "Main Agent",
+      cumulativeTokens: 55000,
+      costUsd: 0.042,
+    });
+  });
+
+  test("omits costUsd entirely for a provider that cannot price its own work", () => {
+    // A local model: real tokens, no knowable cost. The page must show a blank,
+    // not a rate-table estimate — that is the whole point of the field.
+    const event = buildContextUpdateEvent({ ctx: CTX, cumulativeTokens: 40000, time: 1 });
+    expect(event?.payload).not.toHaveProperty("costUsd");
+  });
+
+  test("a cost alone is worth emitting — a settled sub-agent may report only that", () => {
+    const event = buildContextUpdateEvent({ ctx: CTX, costUsd: 0.01, time: 1 });
+    expect(event?.payload).toEqual({ agent: "Main Agent", costUsd: 0.01 });
+  });
+
+  test("scales the composition estimate into labeled segments summing to occupancy", () => {
     const event = buildContextUpdateEvent({
       ctx: CTX,
       usage: {
@@ -303,23 +329,78 @@ describe("buildContextUpdateEvent", () => {
       },
       time: 1,
     });
-    // sum 400 scaled to occupancy 1000 (×2.5); every key present (the page only
-    // accepts a breakdown object that literally carries `systemPrompt`).
+    // sum 400 scaled to occupancy 1000 (×2.5); zero-token categories drop out
+    // rather than padding the list with empty slices.
     expect(event?.payload).toEqual({
       agent: "Main Agent",
       tokens: 1000,
       tokensMax: 200000,
       breakdown: {
-        systemPrompt: 0,
-        userMessages: 250,
-        toolResults: 750,
-        reasoning: 0,
-        subagentResults: 0,
+        segments: [
+          { label: "Messages", tokens: 250 },
+          { label: "Tool results", tokens: 750 },
+        ],
       },
     });
   });
 
-  test("emits the raw composition (padded to 5 keys) when occupancy is unknown", () => {
+  test("prefers the provider's own categories over the daemon estimate", () => {
+    const event = buildContextUpdateEvent({
+      ctx: CTX,
+      usage: {
+        contextWindowUsedTokens: 1000,
+        contextWindowMaxTokens: 200000,
+        // Both present: the provider's real split must win, so the ring agrees
+        // with the context meter instead of showing a parallel estimate.
+        contextComposition: { userMessages: 100, toolResults: 300 },
+        contextCategories: [
+          { name: "System prompt", tokens: 200 },
+          { name: "Messages", tokens: 800 },
+        ],
+      },
+      time: 1,
+    });
+    expect(event?.payload).toEqual({
+      agent: "Main Agent",
+      tokens: 1000,
+      tokensMax: 200000,
+      breakdown: {
+        segments: [
+          { label: "System prompt", tokens: 200 },
+          { label: "Messages", tokens: 800 },
+        ],
+      },
+    });
+  });
+
+  test("excludes deferred categories from the ring", () => {
+    const event = buildContextUpdateEvent({
+      ctx: CTX,
+      usage: {
+        contextWindowUsedTokens: 600,
+        contextCategories: [
+          { name: "Messages", tokens: 400 },
+          { name: "Tools", tokens: 200 },
+          // Deferred content is not counted in the window total, so folding it
+          // in would over-fill the ring.
+          { name: "Deferred tool schemas", tokens: 5000, isDeferred: true },
+        ],
+      },
+      time: 1,
+    });
+    expect(event?.payload).toEqual({
+      agent: "Main Agent",
+      tokens: 600,
+      breakdown: {
+        segments: [
+          { label: "Messages", tokens: 400 },
+          { label: "Tools", tokens: 200 },
+        ],
+      },
+    });
+  });
+
+  test("emits unscaled segments when occupancy is unknown", () => {
     const event = buildContextUpdateEvent({
       ctx: CTX,
       cumulativeTokens: 5000,
@@ -329,13 +410,7 @@ describe("buildContextUpdateEvent", () => {
     expect(event?.payload).toEqual({
       agent: "Main Agent",
       cumulativeTokens: 5000,
-      breakdown: {
-        systemPrompt: 0,
-        userMessages: 0,
-        toolResults: 0,
-        reasoning: 42,
-        subagentResults: 0,
-      },
+      breakdown: { segments: [{ label: "Reasoning", tokens: 42 }] },
     });
   });
 
@@ -343,6 +418,18 @@ describe("buildContextUpdateEvent", () => {
     const event = buildContextUpdateEvent({
       ctx: CTX,
       usage: { contextWindowUsedTokens: 1000, contextComposition: {} },
+      time: 1,
+    });
+    expect(event?.payload).toEqual({ agent: "Main Agent", tokens: 1000 });
+  });
+
+  test("an all-deferred category list produces no breakdown", () => {
+    const event = buildContextUpdateEvent({
+      ctx: CTX,
+      usage: {
+        contextWindowUsedTokens: 1000,
+        contextCategories: [{ name: "Deferred", tokens: 900, isDeferred: true }],
+      },
       time: 1,
     });
     expect(event?.payload).toEqual({ agent: "Main Agent", tokens: 1000 });
