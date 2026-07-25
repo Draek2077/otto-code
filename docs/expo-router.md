@@ -89,6 +89,28 @@ export` warnings and pollutes the route tree.
 Put shared route policy in `src/navigation`, `src/utils`, stores, or another
 non-route directory.
 
+## A New Top-Level Route Is Registered in TWO Places
+
+Dropping a file into `src/app` is not enough for a top-level screen. `_layout.tsx`
+gates two separate things, and missing either one fails quietly:
+
+1. **`RootStack`** — add a `<Stack.Screen name="your-route" />`. Most go inside
+   the `<Stack.Protected guard={storeReady}>` block.
+2. **`AppWithSidebar.shouldShowAppChrome`** — an explicit pathname allow-list
+   (`/open-project`, `/new`, `/new-project`, `/sessions`, …). It drives
+   `chromeEnabled`, which decides whether the **left sidebar renders at all** and
+   whether **keyboard shortcuts are live**.
+
+Miss #2 and the screen still mounts and works — it just has no sidebar and no
+shortcuts. On desktop that means a page the user **cannot navigate away from**,
+with a stranded sidebar-toggle button in the header that toggles nothing. It
+looks like a styling bug and is actually a routing one, so check the allow-list
+before you go hunting in the screen.
+
+The allow-list is a known wart (there is already a TODO on `chromeEnabled` about
+conflating workspace chrome with global concerns). Until it is split, adding a
+route means editing both places.
+
 ## Scene Background Is the Navigation Theme, Not contentStyle
 
 Every stack scene wraps its content in `@react-navigation/elements`'
@@ -152,6 +174,8 @@ Before landing route changes:
 - [ ] Did you touch remembered workspace restore? Keep root on `/h/[serverId]`.
 - [ ] Did any route return to a workspace? Use `navigateToWorkspace()`.
 - [ ] Did you add a route? Register it in the layout that directly owns it.
+- [ ] Did you add a **top-level** route? Also add it to `RootStack` AND to
+      `shouldShowAppChrome` — or it renders with no sidebar and no way out.
 - [ ] Did `useLocalSearchParams()` lose a required param? Fix the route tree.
 - [ ] Did native show a blank screen without a crash? Suspect route ownership
       before stores, themes, or rendering.

@@ -19,6 +19,16 @@ const THEME: EditorThemeSpec = {
   gutterBorder: "#26262e",
   rulerColumn: null,
   rulerColor: "#26262e",
+  overviewRulerWidth: 14,
+  overviewRulerBackground: "#16161c",
+  overviewRulerBorder: "#26262e",
+  overviewRulerThumb: "rgba(230, 230, 230, 0.18)",
+  overviewRulerCursor: "#e6e6e6",
+  overviewRulerSelection: "rgba(80, 130, 200, 0.20)",
+  overviewRulerMatch: "#e0a030",
+  scrollbarHandle: "#8a8a8a",
+  tooltipBackground: "#2a2a2a",
+  tooltipBorder: "#3a3a3a",
   selectionBackground: "#2b3a55",
   cursor: "#e6e6e6",
   cursorWidth: 2,
@@ -31,6 +41,7 @@ const THEME: EditorThemeSpec = {
   fontSize: 13,
   lineHeight: 20,
   syntax: resolveSyntaxColors("default", "dark"),
+  diagnostic: { error: "#dc2626", warning: "#f59e0b", info: "#38bdf8", hint: "#94a3b8" },
 };
 
 const SAVED = "const a = 1;\nconst b = 2;\n";

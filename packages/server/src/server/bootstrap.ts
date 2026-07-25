@@ -686,6 +686,15 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
   const initialConfig: MutableDaemonConfig = {
     mcp: buildInitialMcpSection(config),
     browserTools: { enabled: config.browserToolsEnabled ?? false },
+    // On by default and safe: nothing spawns until a code-intelligence action needs
+    // a language in a workspace, so an unused language costs nothing.
+    lsp: {
+      enabled: true,
+      languages: {},
+      maxRunningServers: 6,
+      idleMinutes: 10,
+      backgroundIdleMinutes: 2,
+    },
     agentBehaviors: buildInitialAgentBehaviors(config),
     providers,
     metadataGeneration: buildInitialMetadataGeneration(config),

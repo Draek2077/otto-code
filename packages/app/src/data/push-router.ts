@@ -1,5 +1,6 @@
 import type { Query, QueryCacheNotifyEvent, QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
+  CodeDiagnostic,
   ListTerminalsResponse,
   MutableDaemonConfig,
   SessionOutboundMessage,
@@ -12,6 +13,8 @@ import { providersSnapshotQueryKey, providersSnapshotQueryRoot } from "@/data/pr
 import { applyRunUpdate, applyRunsCleared } from "@/data/runs";
 import { applyOrchestrationGraphsChanged } from "@/data/orchestration-graphs";
 import { applyPromptTemplatesChanged } from "@/data/prompt-templates";
+import { useLspActivityStore } from "@/stores/lsp-activity-store";
+import { useLspDiagnosticsStore } from "@/stores/lsp-diagnostics-store";
 
 type ProvidersSnapshotUpdateMessage = Extract<
   SessionOutboundMessage,
@@ -276,6 +279,8 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
   });
   const unsubscribeDaemonConfig = input.client.on("status", (message) => {
     applyDaemonConfigStatus({ queryClient: input.queryClient, serverId: input.serverId, message });
+    applyLspActivityStatus({ serverId: input.serverId, message });
+    applyLspDiagnosticsStatus({ serverId: input.serverId, message });
   });
   const unsubscribeCheckoutDiffUpdate = input.client.on("checkout_diff_update", (message) => {
     applyCheckoutDiffUpdate({
@@ -837,6 +842,47 @@ function isQueryForServer(queryKey: QueryKey, kind: string, serverId: string): b
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isLspActivityChangedPayload(
+  payload: unknown,
+): payload is { status: "lsp_activity_changed"; busyRoots: string[] } {
+  return (
+    isRecord(payload) &&
+    payload.status === "lsp_activity_changed" &&
+    Array.isArray(payload.busyRoots) &&
+    payload.busyRoots.every((root) => typeof root === "string")
+  );
+}
+
+function applyLspActivityStatus(input: { serverId: string; message: StatusMessage }): void {
+  if (!isLspActivityChangedPayload(input.message.payload)) {
+    return;
+  }
+  useLspActivityStore.getState().setBusyRoots(input.serverId, input.message.payload.busyRoots);
+}
+
+function isLspDiagnosticsChangedPayload(
+  payload: unknown,
+): payload is { status: "lsp_diagnostics_changed"; path: string; diagnostics: CodeDiagnostic[] } {
+  return (
+    isRecord(payload) &&
+    payload.status === "lsp_diagnostics_changed" &&
+    typeof payload.path === "string" &&
+    Array.isArray(payload.diagnostics)
+  );
+}
+
+function applyLspDiagnosticsStatus(input: { serverId: string; message: StatusMessage }): void {
+  const payload = input.message.payload;
+  if (!isLspDiagnosticsChangedPayload(payload)) {
+    return;
+  }
+  useLspDiagnosticsStore.getState().setDocument({
+    serverId: input.serverId,
+    path: payload.path,
+    diagnostics: payload.diagnostics,
+  });
 }
 
 function isDaemonConfigChangedPayload(

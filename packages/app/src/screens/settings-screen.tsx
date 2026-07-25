@@ -27,6 +27,7 @@ import {
   Network,
   Bot,
   Boxes,
+  DataObject,
   Gauge,
   Groups,
   Keyboard,
@@ -122,6 +123,7 @@ import {
   HostConnectionsPage,
   HostAgentsPage,
   HostTeamsPage,
+  HostCodePage,
   HostToolsPage,
   HostSettingsPage,
   HostProvidersPage,
@@ -241,6 +243,7 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
   { id: "teams", labelKey: "settings.hostSections.teams", icon: Groups },
   { id: "tools", labelKey: "settings.hostSections.tools", icon: Wrench },
+  { id: "code", labelKey: "settings.hostSections.code", icon: DataObject },
   // Git-provider settings are collapsed into "Workspaces" as a "Git" panel — too
   // few options to warrant its own sidebar category. See HostWorkspacesPage.
   // Everything in that page (PR auto-archive, Git providers) is developer-only,
@@ -275,6 +278,8 @@ function renderHostSettingsContent(
       return <HostTeamsPage serverId={view.serverId} />;
     case "tools":
       return <HostToolsPage serverId={view.serverId} />;
+    case "code":
+      return <HostCodePage serverId={view.serverId} />;
     case "workspaces":
       return isDeveloperMode ? <HostWorkspacesPage serverId={view.serverId} /> : null;
     case "providers":

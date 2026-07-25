@@ -21,24 +21,43 @@ import {
 import { Annotation, Compartment, EditorState, Text, type Extension } from "@codemirror/state";
 import {
   type BlockInfo,
+  closeHoverTooltips,
   drawSelection,
   EditorView,
   highlightActiveLine,
   highlightActiveLineGutter,
   highlightSpecialChars,
   keymap,
+  hoverTooltip,
   lineNumbers,
+  type TooltipView,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
-import { getParserForFile } from "@otto-code/highlight";
+import { getParserForFile, highlightCode } from "@otto-code/highlight";
 import type {
   EditorCursorPosition,
+  EditorDiagnostic,
   EditorFindState,
+  EditorHoverAnswer,
   EditorMatchInfo,
   EditorPointerSelect,
   EditorScrollMetrics,
   EditorThemeSpec,
 } from "./editor-contract";
+import {
+  createDiagnosticsExtension,
+  diagnosticsAtPos,
+  renderDiagnosticList,
+  setEditorDiagnostics,
+} from "./editor-diagnostics";
+import { createOverviewRulerExtension } from "./editor-overview-ruler";
+import {
+  filenameForHoverLanguage,
+  parseHoverMarkdown,
+  plainProse,
+  type HoverCodeSegment,
+  type HoverProseSegment,
+} from "./hover-markdown";
 import { findWordAtCursor } from "./word-at-cursor";
 
 // The CM6 assembly shared by the web host (direct DOM mount) and the native
@@ -62,6 +81,12 @@ export interface EditorCoreOptions {
   onCursorMoved?: (position: EditorCursorPosition) => void;
   onSaveShortcut?: () => void;
   onFindShortcut?: () => void;
+  /**
+   * Escape pressed with find active. Only fires while a query is running, so
+   * Escape keeps its editing meaning (collapse multiple selections) the rest of
+   * the time.
+   */
+  onCloseFindShortcut?: () => void;
   onGoToLineShortcut?: () => void;
   onGoToDefinitionShortcut?: () => void;
   /** Fires on every doc change without content; callers pull getDoc as needed. */
@@ -77,6 +102,14 @@ export interface EditorCoreOptions {
    * file-tab-pane's editor context menu).
    */
   onContextMenu?: (point: { x: number; y: number }) => void;
+  /**
+   * Resolve the language server's explanation for a 1-based position. Absent means no
+   * hover at all — which is the correct state on touch platforms, where there is no
+   * pointer to rest and CM6's hover events never fire.
+   */
+  hoverProvider?: (position: { line: number; column: number }) => Promise<EditorHoverAnswer>;
+  /** Problems to mark at mount, before the first push arrives. */
+  diagnostics?: readonly EditorDiagnostic[];
   /**
    * Hide the platform's own scrollbar on the editor's scroller. Set by hosts
    * that draw the app's auto-hiding overlay bar instead (web/desktop). It is a
@@ -118,6 +151,8 @@ export interface EditorCore {
   scrollToLineAtOffset(line: number, viewportOffsetY: number): void;
   setTheme(theme: EditorThemeSpec): void;
   setWordWrap(enabled: boolean): void;
+  /** Replace the whole problem set; see the contract's note on why it is never a delta. */
+  setDiagnostics(diagnostics: readonly EditorDiagnostic[]): void;
   destroy(): void;
 }
 
@@ -130,6 +165,60 @@ const MAX_COUNTED_MATCHES = 999;
 const FOCUS_RETRY_FRAMES = 4;
 
 const setDocAnnotation = Annotation.define<boolean>();
+
+// Hover-tooltip scrollbar, derived from the app's own desktop scrollbar
+// (web-desktop-scrollbar.tsx: 6px idle, 9px active, 220ms fade). The track is wider
+// than the thumb because the difference is drawn as a transparent border — that inset
+// is what makes it read as an overlay bar. Restated here rather than imported: this
+// module is bundled into the native webview and must not reach into app components.
+const HOVER_SCROLLBAR_IDLE_PX = 6;
+const HOVER_SCROLLBAR_ACTIVE_PX = 9;
+const HOVER_SCROLLBAR_TRACK_PX = 12;
+const HOVER_SCROLLBAR_FADE_MS = 220;
+const HOVER_SCROLLBAR_INSET_PX = (HOVER_SCROLLBAR_TRACK_PX - HOVER_SCROLLBAR_IDLE_PX) / 2;
+const HOVER_SCROLLBAR_ACTIVE_INSET_PX = (HOVER_SCROLLBAR_TRACK_PX - HOVER_SCROLLBAR_ACTIVE_PX) / 2;
+
+// How long the hover source waits for a real answer before falling back to a tooltip
+// that fills itself in. Deliberately short: it is pure added latency on the cold path,
+// and its only job is to keep a warm server — which answers well inside it — from ever
+// rendering the pending state. It is NOT the pointer-rest delay; CM6's `hoverTime`
+// still owns that and is untouched.
+const HOVER_GRACE_MS = 120;
+// Re-ask cadence while a server reports itself still indexing.
+const HOVER_RETRY_MS = 400;
+// Stop re-asking eventually. A server that has been "indexing" this long is not going
+// to answer this hover, and a tooltip that spins forever is worse than one that leaves.
+const HOVER_RETRY_CEILING_MS = 15_000;
+const HOVER_SPINNER_PX = 11;
+
+// The glyph column between the line numbers and the code. Narrow on purpose: it is a
+// marker channel, not a toolbar, and every pixel here is one the code does not get.
+const DIAGNOSTIC_GUTTER_PX = 14;
+const DIAGNOSTIC_DOT_PX = 6;
+
+// The overview ruler splits into two bands: problem marks on the left, search
+// hits on the right. Two bands rather than one shared one, because overlapping
+// them would let a hit hide an error — and not hiding errors is the lane's job.
+const PROBLEM_LANE_WIDTH = "62%";
+const MATCH_LANE_WIDTH = "calc(38% - 2px)";
+
+/**
+ * One severity's underline, complete. Kept as a function so a severity can never end up
+ * carrying the line style without the colour — see the note at the call site.
+ */
+function diagnosticUnderline(color: string, style: "wavy" | "dotted"): Record<string, string> {
+  return {
+    textDecorationLine: "underline",
+    textDecorationStyle: style,
+    textDecorationColor: color,
+    textDecorationSkipInk: "none",
+    textUnderlineOffset: "3px",
+    // Thinner than the browser default, which at this font size looks like a
+    // strikethrough on a narrow glyph.
+    textDecorationThickness: style === "wavy" ? "1px" : "2px",
+  };
+}
+const HOVER_SPINNER_SPIN_MS = 700;
 
 // `.cm-line`'s left padding, restated below as a hard requirement because the
 // ruler stripe is positioned from the line box's origin and has to land on the
@@ -159,6 +248,111 @@ function rulerBackground(spec: EditorThemeSpec): Record<string, string> {
 // for offsets, so it always agrees with what the editor itself considers a
 // position. (An astral emoji therefore advances the column by 2; matching CM6
 // beats matching an abstract notion of "character" the editor doesn't share.)
+/**
+ * The overview ruler's own CSS. Lives here with the rest of the editor's styling
+ * because the lane's colours come from the spec, and the extension that draws it
+ * must stay free of anything that cannot cross into the native webview.
+ *
+ * The lane is RESERVED, not overlaid: `.cm-scroller` carries a matching
+ * padding-right (below), so wrapped text wraps before the lane rather than
+ * disappearing under it.
+ */
+function overviewRulerRules(spec: EditorThemeSpec): Record<string, Record<string, string>> {
+  if (spec.overviewRulerWidth <= 0) {
+    return {};
+  }
+  return {
+    ".cm-otto-overview": {
+      position: "absolute",
+      top: "0",
+      right: "0",
+      bottom: "0",
+      width: `${spec.overviewRulerWidth}px`,
+      backgroundColor: spec.overviewRulerBackground,
+      borderLeft: `1px solid ${spec.overviewRulerBorder}`,
+      // Above the content, below CM6's tooltips (z-index 100 in its base theme).
+      zIndex: "5",
+      cursor: "pointer",
+      // Without this the drag gesture is claimed by the webview's own scrolling
+      // on touch, and the lane can be tapped but never scrubbed.
+      touchAction: "none",
+      userSelect: "none",
+      WebkitUserSelect: "none",
+    },
+    ".cm-otto-overview-marks": {
+      position: "absolute",
+      inset: "0",
+      // The marks are painted, not pressed: every pointer event belongs to the
+      // track, which turns any position into a scroll.
+      pointerEvents: "none",
+    },
+    ".cm-otto-overview-mark": {
+      position: "absolute",
+      top: "0",
+      borderRadius: "1px",
+    },
+    ".cm-otto-overview-mark-problem": { left: "1px", width: PROBLEM_LANE_WIDTH },
+    ".cm-otto-overview-mark-error": { backgroundColor: spec.diagnostic.error },
+    ".cm-otto-overview-mark-warning": { backgroundColor: spec.diagnostic.warning },
+    ".cm-otto-overview-mark-info": { backgroundColor: spec.diagnostic.info },
+    ".cm-otto-overview-mark-hint": { backgroundColor: spec.diagnostic.hint },
+    ".cm-otto-overview-mark-match": {
+      right: "1px",
+      width: MATCH_LANE_WIDTH,
+      backgroundColor: spec.overviewRulerMatch,
+    },
+    // The hit find is currently on: the whole lane, not the right band, so
+    // stepping through results moves something you can follow without hunting.
+    // Same amber — see the note on `active` in editor-overview-ruler.ts for why
+    // this is size rather than a second colour.
+    ".cm-otto-overview-mark-match-active": {
+      left: "1px",
+      right: "1px",
+      width: "auto",
+    },
+    // Selected ranges, behind everything else in the lane.
+    ".cm-otto-overview-selections": {
+      position: "absolute",
+      inset: "0",
+      pointerEvents: "none",
+    },
+    ".cm-otto-overview-band": {
+      position: "absolute",
+      top: "0",
+      left: "0",
+      right: "0",
+      backgroundColor: spec.overviewRulerSelection,
+    },
+    // Full width and thinner than a mark: the caret is a position, not a range,
+    // and spanning the lane is what distinguishes it from the things it sits among.
+    ".cm-otto-overview-cursor": {
+      position: "absolute",
+      top: "0",
+      left: "0",
+      right: "0",
+      height: "2px",
+      backgroundColor: spec.overviewRulerCursor,
+      pointerEvents: "none",
+    },
+    ".cm-otto-overview-thumb": {
+      position: "absolute",
+      top: "0",
+      left: "0",
+      right: "0",
+      backgroundColor: spec.overviewRulerThumb,
+      pointerEvents: "none",
+    },
+    // The lane IS the vertical scrollbar, so the platform's must not draw a
+    // second one inside it. Axis-scoped, because the horizontal indicator is
+    // still the only thing telling a touch user a line runs off the right.
+    // Web hosts hide both through `hideNativeScrollbar` instead.
+    ".cm-scroller::-webkit-scrollbar:vertical": {
+      display: "none",
+      width: "0",
+    },
+  };
+}
+
 function readCursorPosition(state: EditorState): EditorCursorPosition {
   const range = state.selection.main;
   const line = state.doc.lineAt(range.head);
@@ -184,6 +378,11 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
       fontFamily: spec.fontFamily,
       lineHeight: `${spec.lineHeight}px`,
       overflow: "auto",
+      // Reserves the overview ruler's lane (0px when it is off). Padding on the
+      // scroller rather than a margin on the editor: it narrows the content box,
+      // which is what `lineWrapping` measures, so a wrapped line breaks at the
+      // lane's edge instead of running under it.
+      paddingRight: `${Math.max(0, spec.overviewRulerWidth)}px`,
     },
     // Both are CM6 base-theme defaults, restated here as hard requirements:
     // the content must never end above the pane bottom (short files still
@@ -265,6 +464,223 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
     ".cm-panels": {
       display: "none",
     },
+    // Hover explanations. Themed here rather than in the app's stylesheet because
+    // CM6 mounts tooltips in its own DOM, which on native lives inside the webview
+    // where the app's styles do not reach.
+    ".cm-tooltip": {
+      backgroundColor: spec.tooltipBackground,
+      color: spec.foreground,
+      border: `1px solid ${spec.tooltipBorder}`,
+      borderRadius: "6px",
+      // The app's `md` elevation, translated: its shadow tokens are React Native
+      // objects (shadowColor/Offset/Radius), which do not cross into CSS, and this
+      // module cannot import them anyway.
+      boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
+    },
+    ".cm-otto-hover": {
+      maxWidth: "560px",
+      maxHeight: "280px",
+      overflow: "auto",
+      // Reserve the track so revealing the thumb never reflows the text.
+      scrollbarGutter: "stable",
+      // Firefox has no pseudo-elements to style: `thin` plus a transparent thumb
+      // is the whole auto-hide there, revealed by the `:hover` rule below.
+      scrollbarWidth: "thin",
+      scrollbarColor: "transparent transparent",
+    },
+    ".cm-otto-hover:hover": {
+      scrollbarColor: `${spec.scrollbarHandle} transparent`,
+    },
+    // Chromium/WebKit. The thumb is drawn inside a transparent border with
+    // `background-clip: content-box`, which is what makes a native scrollbar read
+    // as a slim overlay bar rather than a chrome gutter — matching the app's own
+    // desktop scrollbar (6px idle, 9px active, fully rounded).
+    ".cm-otto-hover::-webkit-scrollbar": {
+      width: `${HOVER_SCROLLBAR_TRACK_PX}px`,
+      height: `${HOVER_SCROLLBAR_TRACK_PX}px`,
+    },
+    ".cm-otto-hover::-webkit-scrollbar-track": {
+      backgroundColor: "transparent",
+    },
+    ".cm-otto-hover::-webkit-scrollbar-thumb": {
+      backgroundColor: "transparent",
+      borderRadius: "999px",
+      border: `${HOVER_SCROLLBAR_INSET_PX}px solid transparent`,
+      backgroundClip: "content-box",
+      // Only the colour transitions: animating width would make the thumb wobble
+      // as the pointer crosses it.
+      transition: `background-color ${HOVER_SCROLLBAR_FADE_MS}ms`,
+    },
+    // Auto-hide means "visible while the pointer is on the tooltip". For a hover
+    // tooltip that is the whole of it — the surface only exists while pointed at,
+    // so there is no idle state to time out of the way the app's scroll views have.
+    ".cm-otto-hover:hover::-webkit-scrollbar-thumb": {
+      backgroundColor: spec.scrollbarHandle,
+    },
+    ".cm-otto-hover::-webkit-scrollbar-thumb:hover": {
+      backgroundColor: spec.scrollbarHandle,
+      borderWidth: `${HOVER_SCROLLBAR_ACTIVE_INSET_PX}px`,
+    },
+    ".cm-otto-hover::-webkit-scrollbar-corner": {
+      backgroundColor: "transparent",
+    },
+    // The signature. Sits on the deepened code background so it reads as a quoted
+    // fragment of the buffer rather than as more tooltip chrome, and keeps the code
+    // font — it IS code. `pre` already preserves its own whitespace.
+    ".cm-otto-hover-code": {
+      margin: "0",
+      padding: "8px 10px",
+      backgroundColor: spec.background,
+      color: spec.foreground,
+      fontFamily: spec.fontFamily,
+      fontSize: `${spec.fontSize}px`,
+      lineHeight: "1.5",
+      // Wrap rather than scroll horizontally: a long generic signature is the common
+      // case, and a hover you have to scroll sideways to read is unreadable.
+      whiteSpace: "pre-wrap",
+      overflowWrap: "anywhere",
+    },
+    // Documentation. Proportional and muted, so prose stops competing with the
+    // signature above it — this is the difference between a blob and a card.
+    ".cm-otto-hover-prose": {
+      padding: "8px 10px",
+      color: spec.gutterForeground,
+      fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif",
+      fontSize: `${Math.max(11, spec.fontSize - 1)}px`,
+      lineHeight: "1.5",
+      whiteSpace: "pre-wrap",
+    },
+    ".cm-otto-hover-divider": {
+      height: "1px",
+      backgroundColor: spec.tooltipBorder,
+    },
+    // The waiting state, shown only when the server missed the grace period. Padded to
+    // roughly one line of signature so the swap to real content is a fill rather than a
+    // jump, and muted like the prose because it is chrome, not an answer.
+    ".cm-otto-hover-pending": {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      padding: "8px 10px",
+      color: spec.gutterForeground,
+      fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif",
+      lineHeight: "1.5",
+    },
+    ".cm-otto-hover-spinner": {
+      display: "inline-block",
+      flex: "0 0 auto",
+      width: `${HOVER_SPINNER_PX}px`,
+      height: `${HOVER_SPINNER_PX}px`,
+      borderRadius: "999px",
+      // One lit arc on a dim ring: the same read as the app's own spinners, expressible
+      // in plain CSS, which is all this module can use inside the webview.
+      border: `1.5px solid ${spec.tooltipBorder}`,
+      borderTopColor: spec.gutterForeground,
+      animation: `cm-otto-hover-spin ${HOVER_SPINNER_SPIN_MS}ms linear infinite`,
+    },
+    "@keyframes cm-otto-hover-spin": {
+      to: { transform: "rotate(360deg)" },
+    },
+    // Problem markers. A wavy underline rather than a background wash: the wash would
+    // fight the active-line stripe and the selection, both of which are already
+    // translucent fills on the same text, and three overlapping washes read as mud.
+    // `skip-ink: none` keeps the wave continuous through descenders.
+    // Each severity carries the WHOLE decoration, including its colour. Split across a
+    // shared base rule plus a colour-only override, the colour silently lost and every
+    // squiggle fell back to `currentColor` — the editor foreground — which reads as "this
+    // is fine" on the one thing that is not. One rule per severity cannot do that.
+    ".cm-otto-diagnostic-error": diagnosticUnderline(spec.diagnostic.error, "wavy"),
+    ".cm-otto-diagnostic-warning": diagnosticUnderline(spec.diagnostic.warning, "wavy"),
+    ".cm-otto-diagnostic-info": diagnosticUnderline(spec.diagnostic.info, "wavy"),
+    // Dotted, not wavy. A hint is the server being helpful — tsserver emits them by the
+    // dozen on plain JavaScript — and a wavy underline is the visual language of "this is
+    // broken". Giving hints their own line style means severity is legible before you
+    // read a single colour.
+    ".cm-otto-diagnostic-hint": diagnosticUnderline(spec.diagnostic.hint, "dotted"),
+    // The glyph column, between the line numbers and the code. Its width is held by an
+    // invisible spacer so the code does not shift sideways the first time an error lands.
+    //
+    // NOTHING here may touch layout. CM6 sets `.cm-gutter { display:flex !important;
+    // flex-direction:column }` and positions the lines it skipped with `marginTop` — a
+    // `justify-content` of ours centred the whole stack along that vertical main axis and
+    // parked every marker hundreds of pixels from its line. Centering belongs on the
+    // per-line element below, which has a real height to centre within.
+    ".cm-otto-diagnostic-gutter": {
+      minWidth: `${DIAGNOSTIC_GUTTER_PX}px`,
+      cursor: "default",
+    },
+    ".cm-otto-diagnostic-gutter .cm-gutterElement": {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    ".cm-otto-diagnostic-dot": {
+      flex: "0 0 auto",
+      width: `${DIAGNOSTIC_DOT_PX}px`,
+      height: `${DIAGNOSTIC_DOT_PX}px`,
+      borderRadius: "999px",
+      // The spacer shares this class and gets no colour, so it occupies the width
+      // without drawing anything.
+      backgroundColor: "transparent",
+    },
+    ".cm-otto-diagnostic-dot-error": { backgroundColor: spec.diagnostic.error },
+    ".cm-otto-diagnostic-dot-warning": { backgroundColor: spec.diagnostic.warning },
+    ".cm-otto-diagnostic-dot-info": { backgroundColor: spec.diagnostic.info },
+    ".cm-otto-diagnostic-dot-hint": { backgroundColor: spec.diagnostic.hint },
+    // The explanation card. Proportional, because a compiler message is prose — the
+    // same call as the hover documentation, and for the same reason.
+    ".cm-otto-diagnostic-card": {
+      fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif",
+    },
+    ".cm-otto-diagnostic-entry": {
+      padding: "8px 10px",
+      display: "flex",
+      flexDirection: "column",
+      gap: "4px",
+    },
+    ".cm-otto-diagnostic-headline": {
+      display: "flex",
+      alignItems: "flex-start",
+      gap: "7px",
+      color: spec.foreground,
+      fontSize: `${Math.max(11, spec.fontSize - 1)}px`,
+      lineHeight: "1.45",
+    },
+    // A severity dot on the message, so which kind of problem this is survives being
+    // read out of the gutter's context.
+    ".cm-otto-diagnostic-badge": {
+      flex: "0 0 auto",
+      width: `${DIAGNOSTIC_DOT_PX}px`,
+      height: `${DIAGNOSTIC_DOT_PX}px`,
+      borderRadius: "999px",
+      // Nudged down to sit on the first line's optical centre rather than its top.
+      marginTop: "5px",
+    },
+    // The server's suggested fix, indented under the message it belongs to.
+    ".cm-otto-diagnostic-help": {
+      paddingLeft: `${DIAGNOSTIC_DOT_PX + 7}px`,
+      color: spec.gutterForeground,
+      fontSize: `${Math.max(10, spec.fontSize - 2)}px`,
+      lineHeight: "1.45",
+    },
+    // Which tool and which rule. Monospace and quiet: it is an identifier, not prose.
+    ".cm-otto-diagnostic-source": {
+      display: "block",
+      paddingLeft: `${DIAGNOSTIC_DOT_PX + 7}px`,
+      color: spec.gutterForeground,
+      fontFamily: spec.fontFamily,
+      fontSize: `${Math.max(10, spec.fontSize - 3)}px`,
+      textDecoration: "none",
+    },
+    ".cm-otto-diagnostic-link": {
+      cursor: "pointer",
+      textDecoration: "underline",
+      textDecorationStyle: "dotted",
+    },
+    ".cm-otto-diagnostic-link:hover": {
+      color: spec.foreground,
+    },
+    ...overviewRulerRules(spec),
   });
 }
 
@@ -380,6 +796,10 @@ function handleLineNumberMouseDown(view: EditorView, block: BlockInfo, event: Ev
 export function createEditorCore(options: EditorCoreOptions): EditorCore {
   const themeCompartment = new Compartment();
   const wrapCompartment = new Compartment();
+  // The hover tooltip builds its own DOM with inline syntax colours, so it needs the
+  // spec at render time rather than at mount: a theme switch reconfigures the
+  // compartment, and a tooltip opened afterwards must use the new colours.
+  let activeTheme = options.theme;
   let findActive = false;
 
   // Dirty is a COMPARISON against the saved text, not a latch on "an edit
@@ -531,6 +951,21 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
             return true;
           },
         },
+        // Escape belongs to find while find is running: dismissing the strip
+        // (and with it every match highlight) has to work from the file
+        // contents, not only from the find box, because stepping through
+        // results is done with focus back in the text. Returning false when no
+        // query is active leaves Escape to defaultKeymap's simplifySelection.
+        {
+          key: "Escape",
+          run: () => {
+            if (!findActive) {
+              return false;
+            }
+            options.onCloseFindShortcut?.();
+            return true;
+          },
+        },
         {
           key: "Mod-g",
           run: () => {
@@ -563,6 +998,16 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       // inside an existing selection, which the user is pointing at on purpose.
       // Without this, "Go to Definition" would run on wherever the caret
       // happened to be, not on the word under the pointer.
+      ...(options.hoverProvider
+        ? [buildHoverTooltip(options.hoverProvider, () => activeTheme)]
+        : []),
+      // Unconditional: diagnostics are pushed, so unlike hover they need no pointer and
+      // work on every platform. With nothing pushed the gutter renders only its spacer.
+      createDiagnosticsExtension({ readTheme: () => activeTheme }),
+      // Also unconditional, and for the same reason: every mark it draws comes
+      // from state this editor already holds, and it needs no pointer to be
+      // useful — a thumb showing where you are is worth as much on a phone.
+      createOverviewRulerExtension({ readTheme: () => activeTheme }),
       EditorView.domEventHandlers({
         contextmenu: (event, v) => {
           if (!options.onContextMenu) {
@@ -633,6 +1078,13 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
   // The listener only fires on change, so the status bar would read blank until
   // the first keystroke without this.
   options.onCursorMoved?.(readCursorPosition(view.state));
+
+  // Diagnostics already known at mount. A reopened tab has them in the client store
+  // before the editor exists, and waiting for the server to republish would leave a
+  // known-broken file looking clean for as long as the server felt like taking.
+  if (options.diagnostics !== undefined && options.diagnostics.length > 0) {
+    view.dispatch({ effects: setEditorDiagnostics.of(options.diagnostics) });
+  }
 
   /**
    * Focus, and keep asking for a few frames.
@@ -838,6 +1290,7 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       setScrollTopSuppressed(block.top - viewportOffsetY);
     },
     setTheme: (spec) => {
+      activeTheme = spec;
       view.dispatch({
         effects: themeCompartment.reconfigure([
           buildThemeExtension(spec),
@@ -849,6 +1302,9 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       view.dispatch({
         effects: wrapCompartment.reconfigure(enabled ? EditorView.lineWrapping : []),
       });
+    },
+    setDiagnostics: (diagnostics) => {
+      view.dispatch({ effects: setEditorDiagnostics.of(diagnostics) });
     },
     destroy: () => {
       destroyed = true;
@@ -864,4 +1320,285 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       view.destroy();
     },
   };
+}
+
+/**
+ * The language server's explanation, on pointer rest. Markdown is rendered as plain
+ * text with the fences stripped rather than through the app's markdown pipeline: this
+ * module is bundled into the webview and must stay free of React and app imports, and
+ * a hover is a glance rather than a document.
+ *
+ * `hoverTooltip` is pointer-driven, so this contributes nothing on touch platforms —
+ * which is correct, not a gap. A long-press affordance would be a different feature.
+ *
+ * ## Why this is not just `await provider(...)`
+ *
+ * A cold language server answers in seconds, not milliseconds, and awaiting the source
+ * means CM6 has nothing to show for all of it. Worse, `HoverPlugin.update` drops a
+ * pending source promise on ANY view update and restarts the hover 20ms later, so on a
+ * cold server the answer was routinely thrown away and re-asked forever — which is why
+ * hovering early showed nothing at all rather than showing up late.
+ *
+ * So: race the provider against a short grace period. Answer inside the grace and the
+ * tooltip is built from the finished content, exactly as before — the warm path never
+ * flashes a placeholder and never renders an extra frame. Miss it and we return the
+ * tooltip SYNCHRONOUSLY with a pending body and fill it in when the answer lands. A
+ * synchronous return also has no pending promise for `update` to cancel, which is what
+ * makes the cold case converge at all.
+ */
+function buildHoverTooltip(
+  provider: (position: { line: number; column: number }) => Promise<EditorHoverAnswer>,
+  readTheme: () => EditorThemeSpec,
+): Extension {
+  return hoverTooltip(async (view, pos) => {
+    // Problems come first, and from local state — they are already here, so they never
+    // wait on a request. This is also the only tooltip that can appear on punctuation:
+    // a stray brace or a missing semicolon is not an identifier, and "identifiers only"
+    // is a rule about the *server's* hover, not about errors.
+    const diagnostics = diagnosticsAtPos(view.state, pos);
+    const word = view.state.wordAt(pos);
+
+    if (word === null) {
+      return diagnostics.length === 0
+        ? null
+        : {
+            pos,
+            end: Math.min(pos + 1, view.state.doc.length),
+            above: true,
+            create: () => ({ dom: renderDiagnosticList(diagnostics, readTheme()) }),
+          };
+    }
+
+    const line = view.state.doc.lineAt(pos);
+    const position = { line: line.number, column: pos - line.from + 1 };
+
+    const pending = provider(position);
+    const first = await Promise.race([pending, delay(HOVER_GRACE_MS).then((): null => null)]);
+
+    if (first !== null) {
+      if (first.kind === "content") {
+        return hoverTooltipAt(word, () => {
+          const spec = readTheme();
+          return {
+            dom: withDiagnostics(diagnostics, renderHoverContent(first.markdown, spec), spec),
+          };
+        });
+      }
+      return diagnostics.length === 0
+        ? null
+        : hoverTooltipAt(word, () => ({
+            dom: renderDiagnosticList(diagnostics, readTheme()),
+          }));
+    }
+
+    // Slow server. When there is a problem here, that is what the user is asking about —
+    // show it now rather than making them wait behind a type signature they did not ask for.
+    if (diagnostics.length > 0) {
+      return hoverTooltipAt(word, () => ({
+        dom: renderDiagnosticList(diagnostics, readTheme()),
+      }));
+    }
+
+    return hoverTooltipAt(word, () =>
+      createFillingHoverView({ view, provider, position, pending, readTheme }),
+    );
+  });
+}
+
+/**
+ * Problems above the explanation, in one card. Two stacked tooltips for one pointer rest
+ * is the thing `@codemirror/lint` would have given us; this is why we render our own.
+ */
+function withDiagnostics(
+  diagnostics: readonly EditorDiagnostic[],
+  content: HTMLElement,
+  spec: EditorThemeSpec,
+): HTMLElement {
+  if (diagnostics.length === 0) {
+    return content;
+  }
+
+  const card = renderDiagnosticList(diagnostics, spec);
+  const divider = document.createElement("div");
+  divider.className = "cm-otto-hover-divider";
+  card.appendChild(divider);
+  card.append(...content.childNodes);
+  return card;
+}
+
+interface FillingHoverInput {
+  view: EditorView;
+  provider: (position: { line: number; column: number }) => Promise<EditorHoverAnswer>;
+  position: { line: number; column: number };
+  /** The ask already in flight, so missing the grace period costs no extra request. */
+  pending: Promise<EditorHoverAnswer>;
+  readTheme: () => EditorThemeSpec;
+}
+
+/**
+ * A tooltip that exists before its content does. Shows the pending state, swaps in the
+ * explanation when it lands, re-asks while the server reports itself still indexing, and
+ * retracts itself if the answer turns out to be "nothing" — an empty frame left sitting
+ * over the code is the one outcome worse than no tooltip.
+ */
+function createFillingHoverView(input: FillingHoverInput): TooltipView {
+  const { view, provider, position, pending, readTheme } = input;
+  const host = createPendingHover(readTheme());
+  const giveUpAt = Date.now() + HOVER_RETRY_CEILING_MS;
+  let disposed = false;
+
+  function fail(): void {
+    settle({ kind: "unavailable" });
+  }
+
+  function askAgain(): void {
+    if (!disposed) {
+      provider(position).then(settle, fail);
+    }
+  }
+
+  function settle(answer: EditorHoverAnswer): void {
+    if (disposed) {
+      return;
+    }
+    if (answer.kind === "content") {
+      host.replaceWith(renderHoverContent(answer.markdown, readTheme()));
+      return;
+    }
+    if (answer.kind === "warming" && Date.now() < giveUpAt) {
+      // Still booting or indexing. Hold the tooltip and ask again — the pointer is
+      // resting on the same word, so the user's question has not changed.
+      window.setTimeout(askAgain, HOVER_RETRY_MS);
+      return;
+    }
+    view.dispatch({ effects: closeHoverTooltips });
+  }
+
+  pending.then(settle, fail);
+
+  return {
+    dom: host.dom,
+    destroy: () => {
+      disposed = true;
+    },
+  };
+}
+
+/**
+ * Anchored to the whole word, not the character under the pointer, so CM6's
+ * `isOverRange` check keeps the tooltip up while the pointer drifts across the
+ * identifier — which matters far more once the tooltip can outlive the request.
+ */
+function hoverTooltipAt(
+  word: { from: number; to: number },
+  create: () => { dom: HTMLElement; destroy?: () => void },
+): { pos: number; end: number; above: boolean; create: () => TooltipView } {
+  return { pos: word.from, end: word.to, above: true, create };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+/**
+ * The waiting state: a spinner and a word, sized close enough to a one-line signature
+ * that filling it in reads as content arriving rather than as the tooltip jumping.
+ * The tooltip plugin keeps a ResizeObserver on each tooltip's DOM, so the swap
+ * repositions itself — nothing here has to re-measure.
+ */
+function createPendingHover(spec: EditorThemeSpec): {
+  dom: HTMLElement;
+  replaceWith: (content: HTMLElement) => void;
+} {
+  const dom = document.createElement("div");
+  dom.className = "cm-otto-hover cm-otto-hover-pending";
+
+  const spinner = document.createElement("span");
+  spinner.className = "cm-otto-hover-spinner";
+  dom.appendChild(spinner);
+
+  const label = document.createElement("span");
+  label.textContent = "Loading…";
+  label.style.fontSize = `${Math.max(11, spec.fontSize - 1)}px`;
+  dom.appendChild(label);
+
+  return {
+    dom,
+    replaceWith: (content) => {
+      dom.className = content.className;
+      dom.replaceChildren(...content.childNodes);
+    },
+  };
+}
+
+/**
+ * Hover content as sections rather than one run of text. A signature and a paragraph of
+ * documentation are different things and now look like it: the fenced block is real
+ * highlighted code in the editor's own syntax colours, the prose is proportional and
+ * muted, and a rule separates them.
+ *
+ * Built as DOM by hand because this module is bundled into the native webview: no React,
+ * no app markdown pipeline, and no stylesheet from outside CM6.
+ */
+function renderHoverContent(markdown: string, spec: EditorThemeSpec): HTMLElement {
+  const root = document.createElement("div");
+  root.className = "cm-otto-hover";
+
+  const segments = parseHoverMarkdown(markdown);
+  segments.forEach((segment, index) => {
+    if (index > 0) {
+      const divider = document.createElement("div");
+      divider.className = "cm-otto-hover-divider";
+      root.appendChild(divider);
+    }
+    root.appendChild(
+      segment.kind === "code" ? renderHoverCode(segment, spec) : renderHoverProse(segment),
+    );
+  });
+
+  return root;
+}
+
+/**
+ * The signature, highlighted with the same tokenizer and the same colours as the buffer
+ * behind it — so a type in a hover is the colour that type is in the code.
+ */
+function renderHoverCode(segment: HoverCodeSegment, spec: EditorThemeSpec): HTMLElement {
+  const pre = document.createElement("pre");
+  pre.className = "cm-otto-hover-code";
+
+  const filename = filenameForHoverLanguage(segment.language);
+  if (filename === null) {
+    // An untagged or unsupported fence is still code: keep it mono, just uncoloured.
+    pre.textContent = segment.text;
+    return pre;
+  }
+
+  const lines = highlightCode(segment.text, filename);
+  lines.forEach((tokens, index) => {
+    if (index > 0) {
+      pre.appendChild(document.createTextNode("\n"));
+    }
+    for (const token of tokens) {
+      if (token.style === null) {
+        pre.appendChild(document.createTextNode(token.text));
+        continue;
+      }
+      const span = document.createElement("span");
+      span.textContent = token.text;
+      span.style.color = spec.syntax[token.style];
+      pre.appendChild(span);
+    }
+  });
+
+  return pre;
+}
+
+function renderHoverProse(segment: HoverProseSegment): HTMLElement {
+  const block = document.createElement("div");
+  block.className = "cm-otto-hover-prose";
+  block.textContent = plainProse(segment.text);
+  return block;
 }

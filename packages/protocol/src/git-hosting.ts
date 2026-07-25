@@ -25,6 +25,12 @@ export const GitHostingCapabilitiesSchema = z.object({
   draftPrs: z.boolean().optional().default(false),
   reviewDecisions: z.boolean().optional().default(false),
   issues: z.boolean().optional().default(false),
+  // COMPAT(projectScaffold): added in v0.6.9. Repository-level operations used
+  // by the New project page — enumerate the repos/owners you can reach, and
+  // create a brand-new remote repository. Absent on older daemons, which is
+  // read as "can't", so the page hides those choices rather than emulating them.
+  listRepositories: z.boolean().optional().default(false),
+  createRepository: z.boolean().optional().default(false),
 });
 
 export type GitHostingProviderId = z.infer<typeof GitHostingProviderIdSchema>;

@@ -1,6 +1,7 @@
 import { chmod, readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test as base, type Page } from "./fixtures";
+import { openExistingProjectFolder, openNewProjectPage } from "./helpers/project-picker-ui";
 import { connectSeedClient, seedWorkspace } from "./helpers/seed-client";
 import {
   blockOttoConfigWrites,
@@ -134,12 +135,8 @@ async function readProjectConfigFile(project: ProjectsSettingsProject): Promise<
 }
 
 async function addProjectFromSidebar(page: Page, projectPath: string): Promise<string> {
-  await page.getByTestId("sidebar-add-project").click();
-
-  const input = page.getByTestId("project-picker-input");
-  await expect(input).toBeVisible({ timeout: 30_000 });
-  await input.fill(projectPath);
-  await page.keyboard.press("Enter");
+  await openNewProjectPage(page, "sidebar-add-project");
+  await openExistingProjectFolder(page, projectPath);
 
   const projectRow = page
     .locator('[data-testid^="sidebar-project-row-"]')

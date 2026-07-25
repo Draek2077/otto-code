@@ -25,6 +25,7 @@ import {
   WrapText,
   X,
 } from "@/components/icons/material-icons";
+import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -51,6 +52,7 @@ import type {
   EditorThemeSpec,
 } from "@/editor/editor-contract";
 import { buildEditorThemeSpec } from "@/editor/editor-theme";
+import { resolveFindSeed } from "@/editor/find-seed";
 import type { EditorBufferState } from "@/editor/editor-buffer-state";
 import { buildEditorBufferKey, useEditorBufferStore } from "@/editor/editor-buffer-store";
 import { useEditorBuffer } from "@/editor/use-editor-buffer";
@@ -62,8 +64,13 @@ import { EditorStatusBar, useBufferByteSize } from "@/editor/editor-status-bar";
 import { useEditorPrefsStore } from "@/editor/editor-prefs-store";
 import { GoToLineDialog } from "@/editor/go-to-line-dialog";
 import { useCodeIndexFeature } from "@/editor/use-code-index-feature";
+import { useDefinitionSources } from "@/editor/use-definition-sources";
+import { useCodeHover } from "@/editor/use-code-hover";
+import { mirrorableText, useCodeDocument } from "@/editor/use-code-document";
+import { EditorDiagnosticsPanel, useDismissibleProblems } from "@/editor/editor-diagnostics-panel";
 import { useGoToDefinition, type GoToDefinitionTarget } from "@/editor/use-go-to-definition";
 import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
+import { revealFileInChanges, useChangedFilePaths } from "@/git/changes-reveal";
 import { openFileHistoryTab } from "@/git/file-history/open-file-history-tab";
 import type { FileHistoryRange } from "@/git/file-history/use-file-history-data";
 import { useGitFileHistoryFeature } from "@/git/use-git-file-history-feature";
@@ -91,6 +98,7 @@ import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import type { EditGate } from "@/projects/cross-project-open";
+import { isAbsolutePath } from "@/utils/path";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import type { Theme } from "@/styles/theme";
 
@@ -117,6 +125,7 @@ const warningIconColorMapping = (theme: Theme) => ({
 const ThemedSearch = withUnistyles(Search);
 const ThemedList = withUnistyles(List);
 const ThemedHistory = withUnistyles(History);
+const ThemedSourceControl = withUnistyles(SourceControlPanelIcon);
 const ThemedSave = withUnistyles(Save);
 const ThemedUndo2 = withUnistyles(Undo2);
 const ThemedWrapText = withUnistyles(WrapText);
@@ -457,6 +466,7 @@ function PreviewOnlyView({
   fileInfo,
   onFileInfo,
   onOpenHistory,
+  onViewChanges,
 }: {
   serverId: string;
   workspaceId: string;
@@ -467,11 +477,15 @@ function PreviewOnlyView({
   fileInfo: FilePreviewFileInfo | null;
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
   onOpenHistory: ((range: FileHistoryRange | null) => void) | null;
+  onViewChanges: (() => void) | null;
 }) {
   const { t } = useTranslation();
   const draftOverride = useDraftOverride({ serverId, workspaceId, path: location.path });
   // Preview has no selection to scope by, so it always investigates the file.
-  const handleOpenHistory = useCallback(() => onOpenHistory?.(null), [onOpenHistory]);
+  const handleOpenHistory = useMemo(
+    () => (onOpenHistory ? () => onOpenHistory(null) : null),
+    [onOpenHistory],
+  );
 
   // Wrap is one preference, shared with the editor: a user who wraps long lines
   // wants that in whichever view they are reading in.
@@ -573,7 +587,11 @@ function PreviewOnlyView({
           navigate-within-the-file tools — so the two views don't move the
           buttons around under the user when they switch mode. */}
       <View style={styles.previewToolbar}>
-        <FileHistoryToolbarButton supported={onOpenHistory !== null} onPress={handleOpenHistory} />
+        <FileGitToolbarGroup
+          onOpenHistory={handleOpenHistory}
+          onViewChanges={onViewChanges}
+          showLeadingSeparator={false}
+        />
         <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
         <ToolbarSeparator />
         {hasCodeIndex ? (
@@ -649,28 +667,50 @@ function PreviewOnlyView({
 }
 
 /**
- * The git-investigation entry point, shown once the host serves the local-git
- * file RPCs. A component rather than an inline conditional so both toolbars
- * (editor and preview) spell it the same way.
+ * The git-investigation cluster: this file's history, and its diff in the
+ * Changes tab. Shown once the host serves the local-git file RPCs; "view
+ * changes" additionally requires the file to be in the current diff, since it
+ * would otherwise send the user to a tab that does not list it.
+ *
+ * A component rather than an inline conditional so both toolbars (editor and
+ * preview) spell it the same way. `showLeadingSeparator` fences the cluster off
+ * from the buffer actions before it — save and revert act on what you typed,
+ * these ask what git knows. The preview toolbar opens with this cluster, so it
+ * passes false: a separator with nothing on its left divides nothing.
  */
-function FileHistoryToolbarButton({
-  supported,
-  onPress,
+function FileGitToolbarGroup({
+  onOpenHistory,
+  onViewChanges,
+  showLeadingSeparator,
 }: {
-  supported: boolean;
-  onPress: () => void;
+  onOpenHistory: (() => void) | null;
+  onViewChanges: (() => void) | null;
+  showLeadingSeparator: boolean;
 }) {
   const { t } = useTranslation();
-  if (!supported) {
+  if (!onOpenHistory && !onViewChanges) {
     return null;
   }
   return (
-    <ToolbarIconButton
-      label={t("gitFileHistory.open")}
-      testID="file-history-open"
-      Icon={ThemedHistory}
-      onPress={onPress}
-    />
+    <>
+      {showLeadingSeparator ? <ToolbarSeparator /> : null}
+      {onOpenHistory ? (
+        <ToolbarIconButton
+          label={t("gitFileHistory.open")}
+          testID="file-history-open"
+          Icon={ThemedHistory}
+          onPress={onOpenHistory}
+        />
+      ) : null}
+      {onViewChanges ? (
+        <ToolbarIconButton
+          label={t("workspace.git.diff.viewChanges")}
+          testID="file-view-changes"
+          Icon={ThemedSourceControl}
+          onPress={onViewChanges}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -803,17 +843,55 @@ interface EditorFindStripHandlers {
   onClose: () => void;
 }
 
+/**
+ * Put the caret in the find box and select what is already there, so the next
+ * keystroke replaces the term rather than appending to it. Runs on every open
+ * (and again once a selection seeds the term), which is why it is imperative:
+ * the input may already be mounted and even already focused.
+ */
+function focusAndSelectFindInput(input: TextInput | null, termLength: number): void {
+  if (!input) {
+    return;
+  }
+  input.focus();
+  if (isWeb) {
+    // The web ref is the host <input> (sometimes behind getNativeRef), which
+    // selects itself — same reach-through the composer and the browser URL bar
+    // use. `setSelection` is native-only.
+    const handle = input as TextInput & { getNativeRef?: () => unknown };
+    const native = handle.getNativeRef?.() ?? input;
+    if (native instanceof HTMLInputElement) {
+      native.select();
+    }
+    return;
+  }
+  input.setSelection(0, termLength);
+}
+
 function EditorFindStrip({
   find,
   matchInfo,
   handlers,
+  focusSignal,
 }: {
   find: FindStripState;
   matchInfo: EditorMatchInfo | null;
   handlers: EditorFindStripHandlers;
+  /** Changes whenever the host wants the find box focused; see openFind. */
+  focusSignal: number;
 }) {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
+
+  const searchInputRef = useRef<TextInput | null>(null);
+  const searchLengthRef = useRef(find.search.length);
+  searchLengthRef.current = find.search.length;
+  useEffect(() => {
+    focusAndSelectFindInput(searchInputRef.current, searchLengthRef.current);
+    // Only the signal, never the term: re-selecting on every keystroke would
+    // make the box impossible to type in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusSignal]);
 
   const matchCountLabel = (() => {
     if (!matchInfo || !find.search) {
@@ -843,14 +921,16 @@ function EditorFindStrip({
             <ThemedChevronRight size={14} uniProps={foregroundMutedIconColorMapping} />
           )}
         </Pressable>
+        {/* No autoFocus: the focusSignal effect owns focus, and it has to run on
+            every open anyway — two mechanisms would just race on mount. */}
         <ThemedFindInput
+          ref={searchInputRef}
           style={styles.findInput}
           value={find.search}
           onChangeText={handlers.onSearchChange}
           placeholder={t("editor.find.placeholder")}
           autoCapitalize="none"
           autoCorrect={false}
-          autoFocus
           blurOnSubmit={false}
           onSubmitEditing={handlers.onFindNext}
           onKeyPress={handlers.onKeyPress}
@@ -963,6 +1043,7 @@ function EditorModeView({
   controllerRef,
   onFileInfo,
   onOpenHistory,
+  onViewChanges,
 }: {
   serverId: string;
   workspaceId: string;
@@ -974,6 +1055,7 @@ function EditorModeView({
   controllerRef: RefObject<EditorController | null>;
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
   onOpenHistory: ((range: FileHistoryRange | null) => void) | null;
+  onViewChanges: (() => void) | null;
 }) {
   const { t } = useTranslation();
   const path = location.path;
@@ -1031,9 +1113,34 @@ function EditorModeView({
   const findRef = useRef(find);
   findRef.current = find;
 
+  // Bumped on every open so the strip re-focuses and selects its term even when
+  // it was already on screen — Mod-F is "take me to the find box", not just
+  // "show it".
+  const [findFocusSignal, setFindFocusSignal] = useState(0);
+
   const openFind = useCallback(() => {
     applyFind({ ...findRef.current, open: true });
-  }, [applyFind]);
+    setFindFocusSignal((value) => value + 1);
+    const controller = controllerRef.current;
+    if (!controller) {
+      return;
+    }
+    // Seed the term from the selection, the way every IDE does. The read is a
+    // promise (the native host round-trips the webview), so the strip opens
+    // first and the term lands a tick later rather than the open waiting on a
+    // bridge that may be gone.
+    void (async () => {
+      // A dead or closed editor cannot answer; that is not a failure, the strip
+      // is already open with whatever it had.
+      const selection = await controller.getSelection().catch(() => null);
+      const seed = selection ? resolveFindSeed(selection) : null;
+      if (seed === null || seed === findRef.current.search) {
+        return;
+      }
+      applyFind({ ...findRef.current, open: true, search: seed });
+      setFindFocusSignal((value) => value + 1);
+    })();
+  }, [applyFind, controllerRef]);
 
   const closeFind = useCallback(() => {
     applyFind({ ...findRef.current, open: false });
@@ -1161,7 +1268,7 @@ function EditorModeView({
 
   // The outline and go-to-definition both ride on `code.*`, so they share the
   // code-index gate. Absent capability hides both outright — no fallback path.
-  const hasCodeIndex = useCodeIndexFeature(serverId);
+  const { hasCodeIndex, hasLsp, canGoToDefinition } = useDefinitionSources(serverId);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const openOutline = useCallback(() => setOutlineOpen(true), []);
   const closeOutline = useCallback(() => setOutlineOpen(false), []);
@@ -1179,16 +1286,18 @@ function EditorModeView({
   // "main", not "side": following a definition is continuing to read the same
   // thread of code, so it belongs in the pane you are already reading in.
   //
-  // The symbol index answers relative to the workspace it indexed, and
-  // `openFileInWorkspace` anchors a relative path to the PANE's workspace. Those
-  // are the same root for an ordinary tab, and different ones for a linked
-  // project's file (gated-multi-root), where a relative path would resolve
-  // against the wrong tree. Send an absolute path in that case and let the
-  // cross-project open gate re-derive the owning workspace.
+  // The target arrives relative to THIS tab's workspace (or absolute when the
+  // definition lives outside it), and `openFileInWorkspace` anchors a relative
+  // path to the PANE's workspace. Those are the same root for an ordinary tab,
+  // and different ones for a linked project's file (gated-multi-root), where a
+  // relative path would resolve against the wrong tree. Send an absolute path in
+  // that case and let the cross-project open gate re-derive the owning workspace.
   const handleOpenDefinitionTarget = useCallback(
     (target: GoToDefinitionTarget) => {
       const targetPath =
-        paneWorkspaceRoot === workspaceRoot ? target.path : `${workspaceRoot}/${target.path}`;
+        paneWorkspaceRoot === workspaceRoot || isAbsolutePath(target.path)
+          ? target.path
+          : `${workspaceRoot}/${target.path}`;
       openFileInWorkspace({
         location: { path: targetPath, lineStart: target.line },
         disposition: "main",
@@ -1209,23 +1318,47 @@ function EditorModeView({
     controllerRef,
     onJumpInFile: jumpToLineInBuffer,
     onOpenTarget: handleOpenDefinitionTarget,
+    lspEnabled: hasLsp,
+    cursor,
   });
+  const resolveHover = useCodeHover({
+    serverId,
+    workspaceRoot,
+    path,
+    controllerRef,
+    enabled: hasLsp,
+  });
+  // Mirrors the buffer to the daemon so the servers re-lint as you type, and reads back
+  // what they found. `buffer.draft` is already the editor's debounced doc-sync, which is
+  // why nothing here re-debounces.
+  const diagnostics = useCodeDocument({
+    serverId,
+    workspaceRoot,
+    path,
+    text: mirrorableText(buffer),
+    enabled: hasLsp,
+  });
+  const problems = useDismissibleProblems(diagnostics);
+
   // The keystroke reaches the editor even when the menu item is hidden, so the
   // capability gate has to be re-applied here rather than only on the item.
   const handleGoToDefinition = useCallback(() => {
-    if (!hasCodeIndex) {
+    if (!canGoToDefinition) {
       return;
     }
     void goToDefinition();
-  }, [goToDefinition, hasCodeIndex]);
+  }, [canGoToDefinition, goToDefinition]);
 
   // Git investigation stays selection-aware from the toolbar rather than moving
   // into the right-click menu: selecting lines and pressing History is the same
   // gesture in one fewer step, and the sheet shows the scope with a way out.
-  const handleOpenHistory = useCallback(() => {
-    if (onOpenHistory) {
-      void openHistoryForSelection(controllerRef.current, onOpenHistory);
+  const handleOpenHistory = useMemo(() => {
+    if (!onOpenHistory) {
+      return null;
     }
+    return () => {
+      void openHistoryForSelection(controllerRef.current, onOpenHistory);
+    };
   }, [controllerRef, onOpenHistory]);
 
   // The editor's right-click menu. The anchor doubles as the open flag; the
@@ -1414,11 +1547,14 @@ function EditorModeView({
       onCursorMoved={setCursor}
       onSaveShortcut={handleSavePress}
       onFindShortcut={openFind}
+      onCloseFindShortcut={closeFind}
       onGoToLineShortcut={openGoToLine}
       onGoToDefinitionShortcut={handleGoToDefinition}
       onScrolled={split ? handleEditorScrolled : undefined}
       onPointerSelect={split ? handleEditorPointerSelect : undefined}
       onContextMenu={handleEditorContextMenu}
+      hoverProvider={resolveHover}
+      diagnostics={diagnostics}
       onReady={handleReady}
     />
   );
@@ -1442,7 +1578,11 @@ function EditorModeView({
           onPress={handleRevertPress}
           disabled={!buffer.dirty || buffer.saving}
         />
-        <FileHistoryToolbarButton supported={onOpenHistory !== null} onPress={handleOpenHistory} />
+        <FileGitToolbarGroup
+          onOpenHistory={handleOpenHistory}
+          onViewChanges={onViewChanges}
+          showLeadingSeparator
+        />
         <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
         {/* Save/revert/history act on the FILE; outline and find navigate WITHIN
             it. The separator is the line between those two jobs, and both groups
@@ -1477,7 +1617,12 @@ function EditorModeView({
       </View>
 
       {find.open ? (
-        <EditorFindStrip find={find} matchInfo={matchInfo} handlers={findHandlers} />
+        <EditorFindStrip
+          find={find}
+          matchInfo={matchInfo}
+          handlers={findHandlers}
+          focusSignal={findFocusSignal}
+        />
       ) : null}
 
       <EditorSyncBanners
@@ -1521,12 +1666,20 @@ function EditorModeView({
         <View style={styles.editorHost}>{editorNode}</View>
       )}
 
+      <EditorDiagnosticsPanel
+        visible={problems.visible}
+        diagnostics={diagnostics}
+        onSelectLine={jumpToLineInBuffer}
+        onDismiss={problems.dismiss}
+      />
+
       <EditorStatusBar
         path={path}
         byteSize={byteSize}
         eol={buffer.baseline.eol}
         isText
         cursor={cursor}
+        diagnostics={diagnostics}
       />
 
       {hasCodeIndex ? (
@@ -1552,7 +1705,7 @@ function EditorModeView({
         anchor={editorMenuAnchor}
         onClose={closeEditorMenu}
         cursor={cursor}
-        canGoToDefinition={hasCodeIndex}
+        canGoToDefinition={canGoToDefinition}
         onGoToDefinition={handleGoToDefinitionFromMenu}
         onCut={handleEditorCut}
         onCopy={handleEditorCopy}
@@ -1723,6 +1876,26 @@ export function FileTabPane({
   );
   const onOpenHistory = gitFileHistorySupported ? openHistory : null;
 
+  // "View changes" sits beside history because it answers the neighbouring
+  // question — not what this file has been, but what it is right now against the
+  // base. Same in-project restriction: an outside file's diff belongs to another
+  // repo. Offered only while the file is actually in the diff, so the button
+  // never sends the user to a Changes tab that does not list it.
+  const changedPaths = useChangedFilePaths({
+    serverId,
+    workspaceId,
+    cwd: workspaceRoot,
+    enabled: editGate.kind === "free",
+  });
+  const onViewChanges = useMemo(() => {
+    if (editGate.kind !== "free" || !changedPaths.has(location.path)) {
+      return null;
+    }
+    return () => {
+      revealFileInChanges({ serverId, cwd: workspaceRoot, path: location.path });
+    };
+  }, [changedPaths, editGate.kind, location.path, serverId, workspaceRoot]);
+
   const content =
     effectiveMode === "preview" ? (
       <PreviewOnlyView
@@ -1735,6 +1908,7 @@ export function FileTabPane({
         fileInfo={fileInfo}
         onFileInfo={setFileInfo}
         onOpenHistory={onOpenHistory}
+        onViewChanges={onViewChanges}
       />
     ) : (
       <EditorModeView
@@ -1748,6 +1922,7 @@ export function FileTabPane({
         controllerRef={controllerRef}
         onFileInfo={setFileInfo}
         onOpenHistory={onOpenHistory}
+        onViewChanges={onViewChanges}
       />
     );
 

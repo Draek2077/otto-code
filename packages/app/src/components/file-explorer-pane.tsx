@@ -38,6 +38,7 @@ import {
   Search,
   SquarePen,
 } from "@/components/icons/material-icons";
+import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
 import { getFileIconSvg } from "@/components/material-file-icons";
 import { compactUp, useIconSize } from "@/styles/theme";
 import { TreeChevron, TreeIndentGuides, TREE_INDENT_PER_LEVEL } from "@/components/tree-primitives";
@@ -78,6 +79,7 @@ import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
 import { filterVisibleExplorerEntries, isHiddenExplorerPath } from "@/file-explorer/visibility";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
+import { revealFileInChanges, useChangedFilePaths } from "@/git/changes-reveal";
 import { openFileHistoryTab } from "@/git/file-history/open-file-history-tab";
 import { isNative, isWeb } from "@/constants/platform";
 
@@ -101,8 +103,11 @@ interface TreeRowItemProps {
   onToggleContextEntry?: (entry: ExplorerEntry) => void;
   /** Undefined outside a git repo, or on a host that cannot answer. */
   onShowHistory?: (entry: ExplorerEntry) => void;
+  onViewChanges?: (entry: ExplorerEntry) => void;
   onShowContextMenu?: (request: EntryContextMenuRequest) => void;
   isInContext: boolean;
+  /** This file is in the workspace's current diff, so it has changes to view. */
+  isChanged: boolean;
 }
 
 /** Right-click target for the pane-level context menu (web only). */
@@ -155,8 +160,10 @@ function TreeRowItem({
   onEditEntry,
   onToggleContextEntry,
   onShowHistory,
+  onViewChanges,
   onShowContextMenu,
   isInContext,
+  isChanged,
 }: TreeRowItemProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -228,6 +235,10 @@ function TreeRowItem({
     onShowHistory?.(entry);
   }, [onShowHistory, entry]);
 
+  const handleViewChanges = useCallback(() => {
+    onViewChanges?.(entry);
+  }, [onViewChanges, entry]);
+
   const copyLeading = useMemo(
     () => <Copy size={iconSize.sm} color={theme.colors.foregroundMuted} />,
     [iconSize.sm, theme.colors.foregroundMuted],
@@ -246,6 +257,11 @@ function TreeRowItem({
   );
   const historyLeading = useMemo(
     () => <History size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
+  );
+  // The Changes tab's own +/- glyph — the destination named by its icon.
+  const changesLeading = useMemo(
+    () => <SourceControlPanelIcon size={iconSize.sm} color={theme.colors.foregroundMuted} />,
     [iconSize.sm, theme.colors.foregroundMuted],
   );
 
@@ -323,6 +339,15 @@ function TreeRowItem({
                   {t("gitFileHistory.open")}
                 </DropdownMenuItem>
               ) : null}
+              {entry.kind === "file" && isChanged && onViewChanges ? (
+                <DropdownMenuItem
+                  leading={changesLeading}
+                  onSelect={handleViewChanges}
+                  testID="file-explorer-view-changes"
+                >
+                  {t("workspace.git.diff.viewChanges")}
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem leading={copyLeading} onSelect={handleCopy}>
                 {t("workspace.fileExplorer.context.copyPath")}
               </DropdownMenuItem>
@@ -379,7 +404,9 @@ function EntryContextMenu({
   onEditEntry,
   onToggleContextEntry,
   onShowHistory,
+  onViewChanges,
   isInContext,
+  isChanged,
 }: {
   request: EntryContextMenuRequest | null;
   onOpenChange: (open: boolean) => void;
@@ -389,7 +416,9 @@ function EntryContextMenu({
   onEditEntry?: (entry: ExplorerEntry) => void;
   onToggleContextEntry?: (entry: ExplorerEntry) => void;
   onShowHistory?: (entry: ExplorerEntry) => void;
+  onViewChanges?: (entry: ExplorerEntry) => void;
   isInContext: boolean;
+  isChanged: boolean;
 }) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -405,6 +434,9 @@ function EntryContextMenu({
   const handleShowHistory = useCallback(() => {
     if (entry) onShowHistory?.(entry);
   }, [entry, onShowHistory]);
+  const handleViewChanges = useCallback(() => {
+    if (entry) onViewChanges?.(entry);
+  }, [entry, onViewChanges]);
   const handleCopy = useCallback(() => {
     if (entry) onCopyPath(entry.path);
   }, [entry, onCopyPath]);
@@ -433,6 +465,10 @@ function EntryContextMenu({
   );
   const historyLeading = useMemo(
     () => <History size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
+  );
+  const changesLeading = useMemo(
+    () => <SourceControlPanelIcon size={iconSize.sm} color={theme.colors.foregroundMuted} />,
     [iconSize.sm, theme.colors.foregroundMuted],
   );
 
@@ -470,6 +506,15 @@ function EntryContextMenu({
                 testID="file-explorer-context-menu-git-history"
               >
                 {t("gitFileHistory.open")}
+              </ContextMenuItem>
+            ) : null}
+            {entry.kind === "file" && isChanged && onViewChanges ? (
+              <ContextMenuItem
+                leading={changesLeading}
+                onSelect={handleViewChanges}
+                testID="file-explorer-context-menu-view-changes"
+              >
+                {t("workspace.git.diff.viewChanges")}
               </ContextMenuItem>
             ) : null}
             <ContextMenuItem leading={copyLeading} onSelect={handleCopy}>
@@ -652,6 +697,23 @@ export function FileExplorerPane({
     };
   }, [checkoutStatus, fileHistorySupported, serverId, workspaceId]);
 
+  // "View changes" is offered per row, only for files the Changes tab actually
+  // lists — an entry that would land on an empty tab is a broken promise, so the
+  // item is absent rather than disabled. `workspaceRoot` (untrimmed) is passed
+  // through so this shares the Changes pane's diff subscription.
+  const changedPaths = useChangedFilePaths({
+    serverId,
+    workspaceId,
+    cwd: workspaceRoot,
+    enabled: hasWorkspaceScope,
+  });
+  const handleViewChangesEntry = useCallback(
+    (entry: ExplorerEntry) => {
+      revealFileInChanges({ serverId, cwd: workspaceRoot, path: entry.path });
+    },
+    [serverId, workspaceRoot],
+  );
+
   // "Add to chat" mirrors the diff pane's review comments: the file lands
   // in the workspace-scoped attachment store, shows as a composer pill, and
   // can be removed from either side. Offered only while an agent tab is the
@@ -827,11 +889,14 @@ export function FileExplorerPane({
         onEditEntry={handleEditEntry}
         onToggleContextEntry={handleToggleContextEntry}
         onShowHistory={handleShowHistoryEntry}
+        onViewChanges={handleViewChangesEntry}
         onShowContextMenu={handleShowContextMenu}
         contextFilePaths={contextFilePaths}
+        changedPaths={changedPaths}
       />
     ),
     [
+      changedPaths,
       contextFilePaths,
       expandedPaths,
       handleEntryPress,
@@ -841,6 +906,7 @@ export function FileExplorerPane({
       handleEditEntry,
       handleToggleContextEntry,
       handleShowHistoryEntry,
+      handleViewChangesEntry,
       handleShowContextMenu,
       isDirectoryLoading,
       selectedEntryPath,
@@ -1022,9 +1088,11 @@ export function FileExplorerPane({
         onEditEntry={handleEditEntry}
         onToggleContextEntry={handleToggleContextEntry}
         onShowHistory={handleShowHistoryEntry}
+        onViewChanges={handleViewChangesEntry}
         isInContext={Boolean(
           contextMenuRequest && contextFilePaths.has(contextMenuRequest.entry.path),
         )}
+        isChanged={Boolean(contextMenuRequest && changedPaths.has(contextMenuRequest.entry.path))}
       />
     </View>
   );
@@ -1448,8 +1516,10 @@ function TreeRowDispatcher({
   onEditEntry,
   onToggleContextEntry,
   onShowHistory,
+  onViewChanges,
   onShowContextMenu,
   contextFilePaths,
+  changedPaths,
 }: {
   info: ListRenderItemInfo<TreeRow>;
   expandedPaths: Set<string>;
@@ -1462,8 +1532,10 @@ function TreeRowDispatcher({
   onEditEntry?: (entry: ExplorerEntry) => void;
   onToggleContextEntry?: (entry: ExplorerEntry) => void;
   onShowHistory?: (entry: ExplorerEntry) => void;
+  onViewChanges?: (entry: ExplorerEntry) => void;
   onShowContextMenu?: (request: EntryContextMenuRequest) => void;
   contextFilePaths: ReadonlySet<string>;
+  changedPaths: ReadonlySet<string>;
 }) {
   const entry = info.item.entry;
   const depth = info.item.depth;
@@ -1486,8 +1558,10 @@ function TreeRowDispatcher({
       onEditEntry={onEditEntry}
       onToggleContextEntry={onToggleContextEntry}
       onShowHistory={onShowHistory}
+      onViewChanges={onViewChanges}
       onShowContextMenu={onShowContextMenu}
       isInContext={contextFilePaths.has(entry.path)}
+      isChanged={changedPaths.has(entry.path)}
     />
   );
 }

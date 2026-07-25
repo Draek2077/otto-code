@@ -91,6 +91,7 @@ import {
   type BrowserAutomationHostCapability,
 } from "@otto-code/protocol/browser-automation/capabilities";
 import type { BrowserToolsBroker } from "./browser-tools/broker.js";
+import { LspService } from "./lsp/service.js";
 
 const WS_CLOSE_DAEMON_AUTH_FAILED = 4401;
 
@@ -464,6 +465,7 @@ export class VoiceAssistantWebSocketServer {
   // in test harnesses that predate the parameter.
   private readonly agentAutoTitle: AgentAutoTitle | null;
   private readonly downloadTokenStore: DownloadTokenStore;
+  private readonly lspService: LspService;
   private readonly ottoHome: string;
   private readonly worktreesRoot: string | undefined;
   private readonly daemonConfigStore: DaemonConfigStore;
@@ -614,6 +616,36 @@ export class VoiceAssistantWebSocketServer {
     this.workspaceAutoName = workspaceAutoName;
     this.agentAutoTitle = agentAutoTitle ?? null;
     this.downloadTokenStore = downloadTokenStore;
+    // Daemon-scoped on purpose: language servers are expensive processes keyed by
+    // workspace, so every client session shares one pool rather than spawning its own.
+    this.lspService = LspService.create({ logger: this.logger });
+    this.lspService.setSettings(daemonConfigStore.get().lsp);
+    // Language-server startup and indexing are the slow, invisible part on a large
+    // project. Broadcasting the busy set lets the sidebar show that it is live.
+    this.lspService.onActivityChange((busyRoots) => {
+      this.broadcast(
+        wrapSessionMessage({
+          type: "status",
+          payload: { status: "lsp_activity_changed", busyRoots },
+        }),
+      );
+    });
+    // Diagnostics are the one push in this subsystem: servers publish them unsolicited,
+    // so there is no request to answer. Broadcast rather than routed to one session
+    // because more than one client may have the same file open.
+    this.lspService.onDiagnosticsChange((snapshot) => {
+      this.broadcast(
+        wrapSessionMessage({
+          type: "status",
+          payload: {
+            status: "lsp_diagnostics_changed",
+            cwd: snapshot.rootPath,
+            path: snapshot.filePath,
+            diagnostics: snapshot.diagnostics,
+          },
+        }),
+      );
+    });
     this.ottoHome = ottoHome;
     this.worktreesRoot = daemonRuntimeConfig?.worktreesRoot;
     this.daemonConfigStore = daemonConfigStore;
@@ -649,6 +681,11 @@ export class VoiceAssistantWebSocketServer {
       );
       this.agentManager.updateProviderRegistry(nextAgentManagerState);
       this.providerSnapshotManager.setModelTierOverrides(config.modelTierOverrides);
+      // Applied, not merely recorded: turning code intelligence off has to stop the
+      // servers that are already running, or the switch is decoration.
+      void this.lspService.applySettings(config.lsp).catch((err: unknown) => {
+        this.logger.warn({ err }, "Failed to apply language-server settings");
+      });
       this.broadcastDaemonConfigChanged(config);
     });
 
@@ -1091,6 +1128,11 @@ export class VoiceAssistantWebSocketServer {
         }
         this.sendToConnection(connection, wrapSessionMessage(msg));
       },
+      broadcastToAllSessions: (msg) => {
+        for (const target of this.listActiveSessions()) {
+          target.emitServerMessage(msg);
+        }
+      },
       onBinaryMessage: (frame) => {
         if (!connection) {
           return;
@@ -1118,6 +1160,7 @@ export class VoiceAssistantWebSocketServer {
       },
       logger: connectionLogger.child({ module: "session" }),
       downloadTokenStore: this.downloadTokenStore,
+      lspService: this.lspService,
       pushTokenStore: this.pushTokenStore,
       ottoHome: this.ottoHome,
       worktreesRoot: this.worktreesRoot,
@@ -1351,6 +1394,8 @@ export class VoiceAssistantWebSocketServer {
         projectRemove: true,
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectAdd: true,
+        // COMPAT(projectScaffold): added in v0.6.9, drop the gate when floor >= v0.6.9.
+        projectScaffold: true,
         // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97
         worktreeRestore: true,
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
@@ -1379,6 +1424,8 @@ export class VoiceAssistantWebSocketServer {
         projectSearch: true,
         // COMPAT(codeIndex): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         codeIndex: true,
+        // COMPAT(lsp): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+        lsp: true,
         // COMPAT(artifactsToolGroup): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
         artifactsToolGroup: true,
         // COMPAT(speechSettings): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.

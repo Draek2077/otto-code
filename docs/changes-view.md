@@ -80,3 +80,30 @@ since only the daemon can write the worktree's metadata.
 `packages/app/src/git/diff-base-switcher.tsx` renders the `vs <base>` chip beside the diff-mode
 dropdown in the Changes toolbar, visible only in Committed mode. Naming the base is half the
 value on its own: before this existed, the view never said what it was comparing against.
+
+## Crossing between Files and Changes
+
+The two directions are symmetric, and both go through ephemeral request slots on the panel store
+rather than through props — the destination pane is usually not mounted when the request is made,
+since the explorer shows one tab at a time.
+
+| Direction       | Producer                                                        | Slot                   | Consumer                            |
+| --------------- | --------------------------------------------------------------- | ---------------------- | ----------------------------------- |
+| Changes → Files | "Find in files" in the diff row's context menu                  | `filesRevealRequest`   | `components/file-explorer-pane.tsx` |
+| Files → Changes | "View changes" in the Files tree menus and the file tab toolbar | `changesRevealRequest` | `git/diff-pane.tsx`                 |
+
+Each producer stashes the path, then switches the explorer tab; the consumer clears the slot on
+mount and works toward the target. Revealing in Changes is a small state machine, not one shot:
+the diff is usually still loading, so each pass un-collapses a blocking ancestor folder, expands
+the file's body, or scrolls to its header, writing store state and re-running until the header is
+reachable. The scroll then re-asserts once after 100ms, because rows above the target are
+estimated heights until they render and measure themselves.
+
+**"View changes" is offered only for files actually in the diff**, so it can never land on a tab
+that does not list the file. There is no lightweight "which paths changed" RPC — the daemon serves
+the whole diff or nothing — so `git/changes-reveal.ts` mounts the _same_ `useCheckoutDiffQuery`
+the Changes pane mounts, deriving mode/baseRef/ignoreWhitespace identically so both resolve to one
+query key: one cache entry, one daemon subscription however many surfaces ask. The cost is that an
+open file tab or the Files tab now keeps that subscription alive, where before only the Changes
+tab did. If you change how `GitDiffPane` derives those three parameters, change `changes-reveal.ts`
+to match or the sharing silently becomes a second subscription.

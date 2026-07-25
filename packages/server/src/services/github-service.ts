@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { z } from "zod";
 import { parseBitbucketCloudRemoteUrl } from "@otto-code/protocol/git-remote";
 import type { GitHubSearchKind } from "@otto-code/protocol/messages";
@@ -21,8 +22,47 @@ const GITHUB_ENV = {
   GIT_TERMINAL_PROMPT: "0",
 } as const;
 
+// Host-level gh calls (repo listing/creation) address the authenticated account,
+// not a checkout, but `gh` still needs a working directory to spawn in. The home
+// directory is the one path guaranteed to exist and guaranteed *not* to be a git
+// repo, so gh can't silently infer a repo context we didn't ask for.
+const HOST_LEVEL_GH_CWD = homedir();
+
+const GITHUB_REPO_LIST_DEFAULT_LIMIT = 30;
+const GITHUB_REPO_LIST_MAX_LIMIT = 100;
+
 const LabelSchema = z.object({
   name: z.string().optional(),
+});
+
+// Shape of a repository as returned by the GitHub REST API. Only the fields the
+// New project page renders; `.catch()` keeps one odd repo from failing the list.
+const GitHubApiRepositorySchema = z.object({
+  name: z.string(),
+  full_name: z.string(),
+  clone_url: z.string().catch(""),
+  private: z.boolean().catch(false),
+  description: z.string().nullish().catch(null),
+  updated_at: z.string().nullish().catch(null),
+  owner: z
+    .object({ login: z.string().catch("") })
+    .nullish()
+    .catch(null),
+});
+
+const GitHubApiRepositoryCreateSchema = z.object({
+  full_name: z.string(),
+  clone_url: z.string().catch(""),
+  html_url: z.string().nullish().catch(null),
+  default_branch: z.string().nullish().catch(null),
+});
+
+const GitHubApiUserSchema = z.object({
+  login: z.string(),
+});
+
+const GitHubApiOrganizationSchema = z.object({
+  login: z.string(),
 });
 
 const GitHubIssueSummarySchema = z.object({
@@ -802,6 +842,50 @@ export interface CreateGitHubPullRequestOptions {
   body?: string;
 }
 
+// ── Host-level repository operations ─────────────────────────────────────
+// These address a provider account rather than a checkout: the New project
+// page uses them before any repository exists on disk, so unlike every other
+// method on this interface they take no cwd. Providers that can't do them
+// leave the method undefined and report the capability as false.
+
+export interface ListHostingRepositoriesOptions {
+  query?: string;
+  limit?: number;
+}
+
+export interface HostingRepositorySummary {
+  fullName: string;
+  name: string;
+  owner: string;
+  cloneUrl: string;
+  isPrivate: boolean;
+  description: string | null;
+  updatedAt: string | null;
+}
+
+export interface HostingOwnerSummary {
+  id: string;
+  label: string;
+  kind: string;
+}
+
+export interface CreateHostingRepositoryOptions {
+  // Null means "the authenticated identity's default namespace".
+  owner: string | null;
+  name: string;
+  description?: string;
+  visibility: "private" | "public";
+}
+
+export interface HostingRepositoryCreateResult {
+  fullName: string;
+  // HTTPS remote URL to wire as `origin`.
+  cloneUrl: string;
+  webUrl: string | null;
+  // Branch the provider initialized the remote with, when it created one.
+  defaultBranch: string | null;
+}
+
 export interface GitHubService {
   listPullRequests(options: ListHostingPullRequestsOptions): Promise<HostingPullRequestSummary[]>;
   listIssues(options: ListGitHubIssuesOptions): Promise<GitHubIssueSummary[]>;
@@ -833,6 +917,13 @@ export interface GitHubService {
     options: DisableGitHubPullRequestAutoMergeOptions,
   ): Promise<GitHubPullRequestAutoMergeResult>;
   isAuthenticated(options: { cwd: string } & GitHubReadOptions): Promise<boolean>;
+  // Host-level, cwd-free. Optional: a provider without the matching capability
+  // omits them entirely rather than throwing at call time.
+  listRepositories?(options: ListHostingRepositoriesOptions): Promise<HostingRepositorySummary[]>;
+  listOwners?(): Promise<HostingOwnerSummary[]>;
+  createRepository?(
+    options: CreateHostingRepositoryOptions,
+  ): Promise<HostingRepositoryCreateResult>;
   retainCurrentPullRequestStatusPoll?(options: {
     cwd: string;
     headRef: string;
@@ -1479,6 +1570,76 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       return parsed;
     },
 
+    async listRepositories(input) {
+      const limit = clampRepositoryListLimit(input.limit);
+      // `gh api` over /user/repos rather than `gh repo list`: the same call
+      // shape works for the search path below and needs no per-owner argument.
+      const stdout = await run(
+        [
+          "api",
+          "--paginate",
+          `/user/repos?per_page=${limit}&sort=updated&affiliation=owner,collaborator,organization_member`,
+        ],
+        { cwd: HOST_LEVEL_GH_CWD },
+      );
+      const repositories = z
+        .array(GitHubApiRepositorySchema)
+        .catch([])
+        .parse(JSON.parse(stdout || "[]"))
+        .map(toHostingRepositorySummaryFromGitHub);
+      return filterRepositoriesByQuery(repositories, input.query).slice(0, limit);
+    },
+
+    async listOwners() {
+      const [userStdout, orgsStdout] = await Promise.all([
+        run(["api", "/user"], { cwd: HOST_LEVEL_GH_CWD }),
+        // A token without the `read:org` scope still lists repos fine, so a
+        // failure here must not take the personal account down with it.
+        run(["api", "/user/orgs?per_page=100"], { cwd: HOST_LEVEL_GH_CWD }).catch(() => "[]"),
+      ]);
+      const user = GitHubApiUserSchema.parse(JSON.parse(userStdout || "{}"));
+      const organizations = z
+        .array(GitHubApiOrganizationSchema)
+        .catch([])
+        .parse(JSON.parse(orgsStdout || "[]"));
+      return [
+        { id: user.login, label: user.login, kind: "user" },
+        ...organizations.map((org) => ({ id: org.login, label: org.login, kind: "organization" })),
+      ];
+    },
+
+    async createRepository(input) {
+      // Personal repos go to /user/repos; an explicit owner that isn't the
+      // authenticated user is an org, which has its own endpoint.
+      const owner = input.owner?.trim() ?? "";
+      const endpoint = owner ? `/orgs/${owner}/repos` : "/user/repos";
+      const args = ["api", "-X", "POST", endpoint, "-f", `name=${input.name}`];
+      if (input.description) {
+        args.push("-f", `description=${input.description}`);
+      }
+      args.push("-F", `private=${input.visibility === "private" ? "true" : "false"}`);
+      let stdout: string;
+      try {
+        stdout = await run(args, { cwd: HOST_LEVEL_GH_CWD });
+      } catch (error) {
+        // A personal-account owner reaches /orgs/<user>/repos and 404s. Retry
+        // on the user endpoint rather than making the caller know which is which.
+        if (!owner) {
+          throw error;
+        }
+        stdout = await run(["api", "-X", "POST", "/user/repos", ...args.slice(4)], {
+          cwd: HOST_LEVEL_GH_CWD,
+        });
+      }
+      const created = GitHubApiRepositoryCreateSchema.parse(JSON.parse(stdout || "{}"));
+      return {
+        fullName: created.full_name,
+        cloneUrl: created.clone_url,
+        webUrl: created.html_url ?? null,
+        defaultBranch: created.default_branch ?? null,
+      };
+    },
+
     async mergePullRequest(input) {
       assertDirectPullRequestMergeReady(input);
       await run(["pr", "merge", String(input.prNumber), `--${input.mergeMethod}`], {
@@ -1719,6 +1880,43 @@ function isGitHubStatusPending(status: HostingCurrentPullRequestStatus | null): 
 
 async function resolveGhPath(): Promise<string | null> {
   return findExecutable("gh");
+}
+
+function clampRepositoryListLimit(limit: number | undefined): number {
+  if (!limit || !Number.isFinite(limit)) {
+    return GITHUB_REPO_LIST_DEFAULT_LIMIT;
+  }
+  return Math.min(Math.max(Math.trunc(limit), 1), GITHUB_REPO_LIST_MAX_LIMIT);
+}
+
+function toHostingRepositorySummaryFromGitHub(
+  repository: z.infer<typeof GitHubApiRepositorySchema>,
+): HostingRepositorySummary {
+  // full_name is "owner/name"; fall back to it when the owner object is absent.
+  const owner = repository.owner?.login || repository.full_name.split("/")[0] || "";
+  return {
+    fullName: repository.full_name,
+    name: repository.name,
+    owner,
+    cloneUrl: repository.clone_url,
+    isPrivate: repository.private,
+    description: repository.description ?? null,
+    updatedAt: repository.updated_at ?? null,
+  };
+}
+
+// Client-side filter. The listing endpoints these back onto return the caller's
+// own repositories rather than a search index, so a substring match over the
+// already-fetched page is both sufficient and consistent across providers.
+export function filterRepositoriesByQuery(
+  repositories: HostingRepositorySummary[],
+  query: string | undefined,
+): HostingRepositorySummary[] {
+  const needle = query?.trim().toLowerCase() ?? "";
+  if (!needle) {
+    return repositories;
+  }
+  return repositories.filter((repository) => repository.fullName.toLowerCase().includes(needle));
 }
 
 async function runGhCommand(

@@ -74,6 +74,7 @@ const mount = (message: Extract<EditorWebViewInbound, { type: "mount" }>): void 
     onCursorMoved: (position) => sendToNative({ type: "cursorMoved", position }),
     onSaveShortcut: () => sendToNative({ type: "saveShortcut" }),
     onFindShortcut: () => sendToNative({ type: "findShortcut" }),
+    onCloseFindShortcut: () => sendToNative({ type: "closeFindShortcut" }),
     onGoToLineShortcut: () => sendToNative({ type: "goToLineShortcut" }),
     onGoToDefinitionShortcut: () => sendToNative({ type: "goToDefinitionShortcut" }),
     onDocChanged: scheduleDocSync,
@@ -95,6 +96,9 @@ const applyCommand = (target: EditorCore, message: EditorCommand): void => {
       break;
     case "setWordWrap":
       target.setWordWrap(message.enabled);
+      break;
+    case "setDiagnostics":
+      target.setDiagnostics(message.diagnostics);
       break;
     case "setFind":
       target.setFind(message.find);

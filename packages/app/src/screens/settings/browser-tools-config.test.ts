@@ -11,6 +11,13 @@ function makeConfig(browserToolsEnabled = false): MutableDaemonConfig {
   return {
     mcp: { injectIntoAgents: false },
     browserTools: { enabled: browserToolsEnabled },
+    lsp: {
+      enabled: true,
+      languages: {},
+      maxRunningServers: 6,
+      idleMinutes: 10,
+      backgroundIdleMinutes: 2,
+    },
     providers: {},
     metadataGeneration: { providers: [], enabled: true, preferWriterPersonalities: false },
     savedProviderEndpoints: [],

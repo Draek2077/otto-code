@@ -538,6 +538,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const setEmptyProjects = useSessionStore((state) => state.setEmptyProjects);
   const addEmptyProject = useSessionStore((state) => state.addEmptyProject);
   const removeEmptyProject = useSessionStore((state) => state.removeEmptyProject);
+  const applyProjectDescriptor = useSessionStore((state) => state.applyProjectDescriptor);
   const mergeWorkspaces = useSessionStore((state) => state.mergeWorkspaces);
   const removeWorkspace = useSessionStore((state) => state.removeWorkspace);
   const setAgentLastActivity = useSessionStore((state) => state.setAgentLastActivity);
@@ -1391,6 +1392,14 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       mergeWorkspaces(serverId, [workspace]);
     });
 
+    const unsubProjectUpdated = client.on("project.updated.notification", (message) => {
+      if (message.type !== "project.updated.notification") return;
+      applyProjectDescriptor(serverId, {
+        project: normalizeEmptyProjectDescriptor(message.payload.project),
+        hasActiveWorkspaces: message.payload.hasActiveWorkspaces,
+      });
+    });
+
     const unsubScriptStatusUpdate = client.on("script_status_update", (message) => {
       if (message.type !== "script_status_update") return;
       setWorkspaces(serverId, (prev) => patchWorkspaceScripts(prev, message.payload));
@@ -1820,6 +1829,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubContextReportChanged();
       unsubActivityStatsChanged();
       unsubWorkspaceUpdate();
+      unsubProjectUpdated();
       unsubScriptStatusUpdate();
       unsubCheckoutStatusUpdate();
       unsubGitLogAppended();
@@ -1860,6 +1870,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     removeWorkspaceSetup,
     addEmptyProject,
     removeEmptyProject,
+    applyProjectDescriptor,
     setAgentLastActivity,
     setPendingPermissions,
     setHasHydratedAgents,

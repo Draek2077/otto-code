@@ -28,6 +28,17 @@ function toMonoCssStack(family: string): string {
 // front of it.
 const RULER_ALPHA = 0.5;
 
+// The overview ruler's lane. 14px is the width at which a 3px mark reads as a
+// mark and the whole track is still a plausible pointer target — and it is what
+// the lane costs the code, so it does not get to be wider "to be safe".
+const OVERVIEW_RULER_WIDTH_PX = 14;
+
+// The viewport indicator sits ON TOP of the marks, so its alpha is the whole
+// design: heavy enough to locate without looking for it, light enough that an
+// error inside the visible region still shows through. Derived from the
+// foreground so it darkens light themes and lightens dark ones.
+const OVERVIEW_RULER_THUMB_ALPHA = 0.18;
+
 // CM6's default caret is a 1.2px border, which disappears into a wall of
 // monospace glyph stems. Two solid pixels is the smallest width that reads as
 // "the caret is here" without becoming a block cursor.
@@ -116,6 +127,26 @@ export function buildEditorThemeSpec(theme: Theme): EditorThemeSpec {
     gutterBorder: theme.colors.border,
     rulerColumn: null,
     rulerColor: withAlpha(theme.colors.border, RULER_ALPHA),
+    overviewRulerWidth: OVERVIEW_RULER_WIDTH_PX,
+    // The gutter's colour, not the deepened code well: the lane is a margin on the
+    // other side of the text, and giving it the same fill as the line numbers is
+    // what makes the code read as sitting *between* two margins.
+    overviewRulerBackground: theme.colors.surface0,
+    overviewRulerBorder: withAlpha(theme.colors.border, RULER_ALPHA),
+    overviewRulerThumb: withAlpha(theme.colors.foreground, OVERVIEW_RULER_THUMB_ALPHA),
+    overviewRulerCursor: theme.colors.foreground,
+    // The same fill the text selection uses, at full strength for the lane. It is
+    // already translucent (0.15 light / 0.20 dark), which is what lets the marks
+    // inside a selected range show through the band drawn behind them.
+    overviewRulerSelection: theme.colors.terminal.selectionBackground,
+    // The outline tone rather than the fill: a 3px mark has no room for a fill plus
+    // an outline, and the fill alone is too pale to find at that size.
+    overviewRulerMatch: theme.colors.statusWarningStrong,
+    scrollbarHandle: theme.colors.scrollbarHandle,
+    // surface2 is the app's "elevated: badges, inputs, sheets" step — a floating
+    // panel, and lighter than the deepened code well the tooltip floats over.
+    tooltipBackground: theme.colors.surface2,
+    tooltipBorder: theme.colors.border,
     selectionBackground: theme.colors.terminal.selectionBackground,
     cursor: theme.colors.foreground,
     cursorWidth: CURSOR_WIDTH_PX,
@@ -140,5 +171,15 @@ export function buildEditorThemeSpec(theme: Theme): EditorThemeSpec {
     fontSize: theme.fontSize.code,
     lineHeight: theme.lineHeight.diff,
     syntax: theme.colors.syntax,
+    // The status tones, not new colours: an error in the editor has to be the same red
+    // as an error anywhere else in Otto. `hint` is deliberately the muted foreground
+    // rather than a fifth hue — a hint is the server being helpful, and giving it a
+    // colour of its own would make suggestions compete with real problems.
+    diagnostic: {
+      error: theme.colors.statusDanger,
+      warning: theme.colors.statusWarning,
+      info: theme.colors.statusInfo,
+      hint: theme.colors.foregroundMuted,
+    },
   };
 }

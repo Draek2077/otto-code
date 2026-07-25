@@ -2,7 +2,11 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { test, expect, type Page } from "./fixtures";
 import { gotoAppShell } from "./helpers/app";
-import { expectOpenedProject } from "./helpers/project-picker-ui";
+import {
+  expectOpenedProject,
+  openExistingProjectFolder,
+  openNewProjectPage,
+} from "./helpers/project-picker-ui";
 import { connectSeedClient, seedWorkspace } from "./helpers/seed-client";
 import { getServerId } from "./helpers/server-id";
 import { createTempGitRepo } from "./helpers/workspace";
@@ -48,12 +52,8 @@ async function removeProjectFromSidebar(page: Page, projectId: string): Promise<
 }
 
 async function addProjectFromPicker(page: Page, projectPath: string): Promise<string> {
-  await page.getByTestId("sidebar-add-project").click();
-
-  const input = page.getByTestId("project-picker-input");
-  await expect(input).toBeVisible({ timeout: 30_000 });
-  await input.fill(projectPath);
-  await page.keyboard.press("Enter");
+  await openNewProjectPage(page, "sidebar-add-project");
+  await openExistingProjectFolder(page, projectPath);
 
   const projectRow = page
     .locator('[data-testid^="sidebar-project-row-"]')
@@ -73,40 +73,43 @@ async function waitForSidebarProjectListReady(page: Page): Promise<void> {
     .waitFor({ state: "visible", timeout: 60_000 });
 }
 
-test.describe("Project picker search", () => {
+test.describe("New project folder search", () => {
   test("opens a project from a fuzzy directory-name search", async ({
     page,
     projectPickerFixture,
   }) => {
     await gotoAppShell(page);
     await waitForSidebarProjectListReady(page);
-    await page.getByTestId("sidebar-add-project").click();
+    await openNewProjectPage(page, "sidebar-add-project");
 
-    const input = page.getByTestId("project-picker-input");
-    await expect(input).toBeVisible({ timeout: 30_000 });
+    const input = page.getByTestId("new-project-directory-input");
     await input.fill(projectPickerFixture.fuzzyQuery);
 
-    const suggestion = page.getByText(projectPickerFixture.projectName, { exact: false }).first();
+    const suggestions = page.getByTestId("new-project-directory-suggestions");
+    const suggestion = suggestions
+      .getByText(projectPickerFixture.projectName, { exact: false })
+      .first();
     await expect(suggestion).toBeVisible({ timeout: 30_000 });
     await suggestion.click();
+
+    // Picking a suggestion fills the field; the page still needs its explicit
+    // Open action, because a folder is only one of the fields on it.
+    await page.getByTestId("new-project-submit").click();
 
     const projectId = await expectOpenedProject(page, projectPickerFixture.projectName);
     projectPickerFixture.rememberProjectId(projectId);
   });
 
-  test("shows a loading state after typing while directory suggestions are pending", async ({
-    page,
-  }) => {
+  test("blocks the action until a folder is chosen, and says why", async ({ page }) => {
     await gotoAppShell(page);
     await waitForSidebarProjectListReady(page);
-    await page.getByTestId("sidebar-add-project").click();
+    await openNewProjectPage(page, "sidebar-add-project");
 
-    const input = page.getByTestId("project-picker-input");
-    await expect(input).toBeVisible({ timeout: 30_000 });
-    await input.fill("otto-loading-state-no-match");
+    await expect(page.getByTestId("new-project-submit")).toBeDisabled();
+    await expect(page.getByTestId("new-project-blocker")).toHaveText("Choose a folder.");
 
-    await expect(page.getByText("Start typing a path", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("Searching...", { exact: true })).toBeVisible();
+    await page.getByTestId("new-project-directory-input").fill("/tmp");
+    await expect(page.getByTestId("new-project-submit")).toBeEnabled();
   });
 });
 

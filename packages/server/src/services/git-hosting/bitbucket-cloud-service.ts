@@ -14,6 +14,8 @@ import type {
   GitHubPullRequestTimeline,
   GitHubPullRequestTimelineError,
   GitHubSearchResult,
+  HostingOwnerSummary,
+  HostingRepositorySummary,
   ListGitHubIssuesOptions,
   ListHostingPullRequestsOptions,
   PullRequestCheck,
@@ -44,6 +46,62 @@ export const BITBUCKET_POLL_FAST_INTERVAL_MS = 30_000;
 export const BITBUCKET_POLL_SLOW_INTERVAL_MS = 180_000;
 export const BITBUCKET_POLL_ERROR_BACKOFF_CAP_MS = 300_000;
 const MAX_TIMELINE_COMMENT_PAGES = 2;
+const REPO_LIST_DEFAULT_LIMIT = 30;
+const REPO_LIST_MAX_LIMIT = 100;
+
+function clampRepositoryListLimit(limit: number | undefined): number {
+  if (!limit || !Number.isFinite(limit)) {
+    return REPO_LIST_DEFAULT_LIMIT;
+  }
+  return Math.min(Math.max(Math.trunc(limit), 1), REPO_LIST_MAX_LIMIT);
+}
+
+// Bitbucket's list endpoint takes a BBQL filter rather than a free-text query.
+// Escaping matters: an unescaped quote would terminate the literal and change
+// the predicate. Returns undefined so the caller can omit the param entirely.
+function buildRepositoryQuery(query: string | undefined): string | undefined {
+  const trimmed = query?.trim() ?? "";
+  if (!trimmed) {
+    return undefined;
+  }
+  const escaped = trimmed.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+  return `name~"${escaped}"`;
+}
+
+function pickBitbucketHttpsCloneUrl(repository: z.infer<typeof BitbucketRepositorySchema>): string {
+  const links = repository.links?.clone ?? [];
+  const https = links.find((link) => link.name === "https");
+  return https?.href || links[0]?.href || "";
+}
+
+function toHostingRepositorySummaryFromBitbucket(
+  repository: z.infer<typeof BitbucketRepositorySchema>,
+): HostingRepositorySummary {
+  // full_name is "workspace/slug".
+  const owner = repository.full_name.split("/")[0] ?? "";
+  return {
+    fullName: repository.full_name,
+    name: repository.name || repository.slug,
+    owner,
+    cloneUrl: pickBitbucketHttpsCloneUrl(repository),
+    isPrivate: repository.is_private,
+    description: repository.description ?? null,
+    updatedAt: repository.updated_on ?? null,
+  };
+}
+
+// Bitbucket derives a repo's URL from its slug, and rejects slugs with
+// characters it would have to escape. Mirror its own normalization so a name
+// like "My New App" creates "my-new-app" instead of erroring.
+export function toBitbucketRepositorySlug(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9._-]+/g, "-")
+    .replaceAll(/-{2,}/g, "-")
+    .replace(/^[-.]+/, "")
+    .replace(/[-.]+$/, "");
+}
 
 export interface BitbucketCloudCredentials {
   email: string;
@@ -136,6 +194,63 @@ const BitbucketPullRequestSchema = z.object({
 const BitbucketPullRequestPageSchema = z.object({
   values: z.array(z.unknown()).catch([]),
   next: z.string().optional().catch(undefined),
+});
+
+// Repository shapes for the host-level New project operations. Bitbucket returns
+// clone URLs as a `links.clone` array of {name, href} — "https" is the entry we
+// want, since that is what the daemon can push to with the stored API token.
+const BitbucketRepositorySchema = z.object({
+  name: z.string().catch(""),
+  full_name: z.string(),
+  slug: z.string().catch(""),
+  is_private: z.boolean().catch(true),
+  description: z.string().nullish().catch(null),
+  updated_on: z.string().nullish().catch(null),
+  mainbranch: z
+    .object({ name: z.string().catch("") })
+    .nullish()
+    .catch(null),
+  links: z
+    .object({
+      clone: z
+        .array(z.object({ name: z.string().catch(""), href: z.string().catch("") }))
+        .catch([]),
+      html: z
+        .object({ href: z.string().catch("") })
+        .nullish()
+        .catch(null),
+    })
+    .nullish()
+    .catch(null),
+});
+
+const BitbucketRepositoryPageSchema = z.object({
+  values: z.array(z.unknown()).catch([]),
+});
+
+// The authenticated account as /user returns it. Distinct from BitbucketUserSchema
+// (the actor embedded in PR payloads): this one only needs the fields that name
+// the personal workspace a repository can be created in.
+const BitbucketAuthenticatedAccountSchema = z.object({
+  username: z.string().nullish().catch(null),
+  nickname: z.string().nullish().catch(null),
+  display_name: z.string().nullish().catch(null),
+});
+
+const BitbucketWorkspacePermissionPageSchema = z.object({
+  values: z
+    .array(
+      z.object({
+        workspace: z
+          .object({
+            slug: z.string().catch(""),
+            name: z.string().nullish().catch(null),
+          })
+          .nullish()
+          .catch(null),
+      }),
+    )
+    .catch([]),
 });
 
 const BitbucketCommitStatusSchema = z.object({
@@ -884,6 +999,96 @@ export function createBitbucketCloudService(
           return true;
         },
       });
+    },
+
+    async listRepositories(input) {
+      const limit = clampRepositoryListLimit(input.limit);
+      const raw = await http.request({
+        method: "GET",
+        path: "/repositories",
+        // `role=member` is the widest role that still means "repos I can reach";
+        // without it the endpoint returns every public repo on Bitbucket.
+        query: {
+          role: "member",
+          sort: "-updated_on",
+          pagelen: limit,
+          q: buildRepositoryQuery(input.query),
+        },
+      });
+      const page = BitbucketRepositoryPageSchema.parse(raw);
+      const repositories: HostingRepositorySummary[] = [];
+      for (const value of page.values) {
+        const parsed = BitbucketRepositorySchema.safeParse(value);
+        if (parsed.success) {
+          repositories.push(toHostingRepositorySummaryFromBitbucket(parsed.data));
+        }
+      }
+      return repositories.slice(0, limit);
+    },
+
+    async listOwners() {
+      const [userRaw, workspacesRaw] = await Promise.all([
+        http.request({ method: "GET", path: "/user" }),
+        // A token scoped to a single repo can read /user but not the workspace
+        // list; a personal namespace is still usable, so don't fail the call.
+        http
+          .request({ method: "GET", path: "/user/permissions/workspaces", query: { pagelen: 100 } })
+          .catch(() => ({ values: [] })),
+      ]);
+      const user = BitbucketAuthenticatedAccountSchema.parse(userRaw);
+      const page = BitbucketWorkspacePermissionPageSchema.parse(workspacesRaw);
+      const owners: HostingOwnerSummary[] = [];
+      const seen = new Set<string>();
+      for (const entry of page.values) {
+        const slug = entry.workspace?.slug ?? "";
+        if (!slug || seen.has(slug)) {
+          continue;
+        }
+        seen.add(slug);
+        owners.push({ id: slug, label: entry.workspace?.name || slug, kind: "workspace" });
+      }
+      // The personal workspace slug equals the account's username/nickname; add
+      // it only when the permissions call didn't already surface it.
+      const personalSlug = user.username ?? user.nickname ?? "";
+      if (personalSlug && !seen.has(personalSlug)) {
+        owners.unshift({
+          id: personalSlug,
+          label: user.display_name || personalSlug,
+          kind: "workspace",
+        });
+      }
+      return owners;
+    },
+
+    async createRepository(input) {
+      // Unlike GitHub, Bitbucket has no "authenticated user's namespace"
+      // endpoint — the workspace is part of the path and cannot be inferred.
+      const workspace = input.owner?.trim() ?? "";
+      if (!workspace) {
+        throw new GitHostingRequestError({
+          method: "POST",
+          path: "/repositories",
+          status: null,
+          detail: "Bitbucket Cloud requires a workspace to create a repository in",
+        });
+      }
+      const slug = toBitbucketRepositorySlug(input.name);
+      const raw = await http.request({
+        method: "POST",
+        path: `/repositories/${encodeURIComponent(workspace)}/${encodeURIComponent(slug)}`,
+        body: {
+          scm: "git",
+          is_private: input.visibility === "private",
+          ...(input.description ? { description: input.description } : {}),
+        },
+      });
+      const created = BitbucketRepositorySchema.parse(raw);
+      return {
+        fullName: created.full_name,
+        cloneUrl: pickBitbucketHttpsCloneUrl(created),
+        webUrl: created.links?.html?.href ?? null,
+        defaultBranch: created.mainbranch?.name || null,
+      };
     },
 
     retainCurrentPullRequestStatusPoll(input) {

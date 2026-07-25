@@ -24,6 +24,13 @@ import type {
   CreateOttoWorktreeRequest,
   CodeListFilesResponse,
   CodeSymbolLocation,
+  CodeDefinitionLocation,
+  CodeDefinitionStatus,
+  CodeHoverRange,
+  CodeRenameEdit,
+  CodeRenameFilePlan,
+  LspLanguageState,
+  LspRunningServer,
   FileDownloadTokenResponse,
   FileEol,
   FileReplaceFileResult,
@@ -83,6 +90,11 @@ import type {
   ContextReportGetResponseMessage,
   ContextEdgeConvertResponseMessage,
   ProjectAddResponse,
+  ProjectScaffoldGit,
+  ProjectScaffoldProgress,
+  ProjectScaffoldResponse,
+  HostingListRepositoriesResponse,
+  HostingListOwnersResponse,
   OpenProjectResponseMessage,
   ArchiveWorkspaceResponseMessage,
   WorkspaceArchivePreflightResponse,
@@ -459,8 +471,62 @@ export interface FileSearchOptions {
 
 export type FileReplaceFilesInput = FileReplaceRequest["files"];
 export type FileReplaceResultPayload = FileReplaceResponse["payload"];
-export type { CodeSymbolLocation };
+export type {
+  CodeSymbolLocation,
+  CodeHoverRange,
+  CodeRenameEdit,
+  CodeRenameFilePlan,
+  LspLanguageState,
+  LspRunningServer,
+};
 export type CodeListFilesResultPayload = CodeListFilesResponse["payload"];
+
+/** 1-based, matching the wire and `CodeSymbolLocation`. */
+export interface CodeDefinitionQuery {
+  cwd: string;
+  path: string;
+  line: number;
+  column: number;
+}
+
+export interface LspServersSnapshot {
+  languages: LspLanguageState[];
+  running: LspRunningServer[];
+}
+
+export interface CodeHoverResult {
+  status: CodeDefinitionStatus;
+  /** Markdown, or null when the server had nothing to say here. */
+  markdown: string | null;
+  range: CodeHoverRange | null;
+  serverId: string | null;
+  error: string | null;
+}
+
+export interface CodeReferencesResult {
+  status: CodeDefinitionStatus;
+  locations: CodeDefinitionLocation[];
+  error: string | null;
+}
+
+export interface CodeRenamePreviewQuery extends CodeDefinitionQuery {
+  newName: string;
+}
+
+export interface CodeRenamePlan {
+  status: CodeDefinitionStatus;
+  files: CodeRenameFilePlan[];
+  /** Blast radius, so a dry-run surface can lead with it. */
+  fileCount: number;
+  editCount: number;
+  error: string | null;
+}
+
+export interface CodeDefinitionResult {
+  status: CodeDefinitionStatus;
+  locations: CodeDefinitionLocation[];
+  error: string | null;
+}
 export interface FileUploadInput {
   fileName: string;
   mimeType: string;
@@ -896,6 +962,9 @@ export interface RenameTerminalInput {
 }
 type OpenProjectPayload = OpenProjectResponseMessage["payload"];
 type ProjectAddPayload = ProjectAddResponse["payload"];
+export type ProjectScaffoldPayload = ProjectScaffoldResponse["payload"];
+export type HostingListRepositoriesPayload = HostingListRepositoriesResponse["payload"];
+export type HostingListOwnersPayload = HostingListOwnersResponse["payload"];
 type ArchiveWorkspacePayload = ArchiveWorkspaceResponseMessage["payload"];
 type WorkspaceArchivePreflightPayload = WorkspaceArchivePreflightResponse["payload"];
 type WorktreeBaseRefSetPayload = WorktreeBaseRefSetResponse["payload"];
@@ -1151,6 +1220,12 @@ export class DaemonClient {
   >();
   private terminalDirectorySubscriptions = new Map<string, { cwd: string; workspaceId?: string }>();
   private readonly terminalStreams = new TerminalStreamRouter();
+  // requestId -> progress listener for an in-flight project.scaffold.request.
+  // Entries are always removed in scaffoldProject's finally block.
+  private readonly scaffoldProgressListeners = new Map<
+    string,
+    (payload: ProjectScaffoldProgress["payload"]) => void
+  >();
   private pendingBinaryFileReads = new Map<string, PendingBinaryFileRead>();
   private activeBinaryFileTransfers = new Map<string, BinaryFileTransferState>();
   private completedBinaryFileReads = new Map<string, FileReadResult>();
@@ -2132,6 +2207,70 @@ export class DaemonClient {
         cwd,
       },
       responseType: "project.add.response",
+    });
+  }
+
+  // Creates a project directory from scratch and registers it. Requires
+  // server_info features.projectScaffold. `onProgress` is optional: the
+  // resolved payload carries the authoritative step list either way.
+  async scaffoldProject(
+    options: {
+      parentDirectory: string;
+      folderName?: string;
+      git: ProjectScaffoldGit;
+      onProgress?: (payload: ProjectScaffoldProgress["payload"]) => void;
+    },
+    requestId?: string,
+  ): Promise<ProjectScaffoldPayload> {
+    // Resolved here rather than inside sendCorrelatedSessionRequest so the
+    // progress listener is registered under the same id before the send.
+    const resolvedRequestId = this.createRequestId(requestId);
+    if (options.onProgress) {
+      this.scaffoldProgressListeners.set(resolvedRequestId, options.onProgress);
+    }
+    try {
+      return await this.sendCorrelatedSessionRequest({
+        requestId: resolvedRequestId,
+        message: {
+          type: "project.scaffold.request",
+          parentDirectory: options.parentDirectory,
+          folderName: options.folderName,
+          git: options.git,
+        },
+        responseType: "project.scaffold.response",
+      });
+    } finally {
+      this.scaffoldProgressListeners.delete(resolvedRequestId);
+    }
+  }
+
+  async listHostingRepositories(
+    options: { provider: GitHostingProviderId; query?: string; limit?: number },
+    requestId?: string,
+  ): Promise<HostingListRepositoriesPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "hosting.list_repositories.request",
+        provider: options.provider,
+        query: options.query,
+        limit: options.limit,
+      },
+      responseType: "hosting.list_repositories.response",
+    });
+  }
+
+  async listHostingOwners(
+    options: { provider: GitHostingProviderId },
+    requestId?: string,
+  ): Promise<HostingListOwnersPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "hosting.list_owners.request",
+        provider: options.provider,
+      },
+      responseType: "hosting.list_owners.response",
     });
   }
 
@@ -4594,6 +4733,168 @@ export class DaemonClient {
     return payload.locations;
   }
 
+  /**
+   * Language-server-backed go-to-definition. Unlike `findCodeSymbols` this resolves the
+   * reference *at a position*, so multiple results mean real overloads or
+   * implementations rather than "two files happen to use this name".
+   *
+   * Line and column are 1-based. Returns the whole payload, not just the locations,
+   * because `indexing` and `unavailable` are answers the caller must show differently
+   * from an empty result.
+   */
+  async findCodeDefinition(
+    input: CodeDefinitionQuery,
+    requestId?: string,
+  ): Promise<CodeDefinitionResult> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "code.definition.request",
+        cwd: input.cwd,
+        path: input.path,
+        line: input.line,
+        column: input.column,
+      },
+      responseType: "code.definition.response",
+    });
+    return { status: payload.status, locations: payload.locations, error: payload.error };
+  }
+
+  /**
+   * Mirror the editor's current buffer to the daemon so definitions resolve against
+   * unsaved edits. Debounced by the caller — this is not a per-keystroke RPC.
+   */
+  async syncCodeDocument(
+    cwd: string,
+    path: string,
+    text: string,
+    requestId?: string,
+  ): Promise<void> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "code.document.sync.request", cwd, path, text },
+      responseType: "code.document.sync.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+  }
+
+  /** Release the daemon-side mirror when a file tab closes. */
+  async closeCodeDocument(cwd: string, path: string, requestId?: string): Promise<void> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "code.document.close.request", cwd, path },
+      responseType: "code.document.close.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+  }
+
+  /**
+   * The language server's own explanation of the symbol at a position. Returns the
+   * whole payload: `indexing` and `unavailable` read differently to a user than "the
+   * server had nothing to say", which is `ok` with a null `markdown`.
+   */
+  async getCodeHover(input: CodeDefinitionQuery, requestId?: string): Promise<CodeHoverResult> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "code.hover.request",
+        cwd: input.cwd,
+        path: input.path,
+        line: input.line,
+        column: input.column,
+      },
+      responseType: "code.hover.response",
+    });
+    return {
+      status: payload.status,
+      markdown: payload.markdown,
+      range: payload.range,
+      serverId: payload.serverId,
+      error: payload.error,
+    };
+  }
+
+  /** Every reference to the symbol at a position, for the references results tab. */
+  async findCodeReferences(
+    input: CodeDefinitionQuery,
+    requestId?: string,
+  ): Promise<CodeReferencesResult> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "code.references.request",
+        cwd: input.cwd,
+        path: input.path,
+        line: input.line,
+        column: input.column,
+      },
+      responseType: "code.references.response",
+    });
+    return { status: payload.status, locations: payload.locations, error: payload.error };
+  }
+
+  /**
+   * A rename **dry run** — every edit it would make, and nothing written. The client
+   * puts this in front of the user as a job to audit before applying.
+   */
+  async previewCodeRename(
+    input: CodeRenamePreviewQuery,
+    requestId?: string,
+  ): Promise<CodeRenamePlan> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "code.rename.preview.request",
+        cwd: input.cwd,
+        path: input.path,
+        line: input.line,
+        column: input.column,
+        newName: input.newName,
+      },
+      responseType: "code.rename.preview.response",
+    });
+    return {
+      status: payload.status,
+      files: payload.files,
+      fileCount: payload.fileCount,
+      editCount: payload.editCount,
+      error: payload.error,
+    };
+  }
+
+  /**
+   * Live language-server state for the Daemon → Code screen: what this host can
+   * supply, and what is running now. `cwd` scopes availability, since a server can
+   * be present in one workspace's `node_modules` and absent in another's.
+   */
+  async listLspServers(cwd: string, requestId?: string): Promise<LspServersSnapshot> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "lsp.servers.list.request", cwd },
+      responseType: "lsp.servers.list.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return { languages: payload.languages, running: payload.running };
+  }
+
+  /** Stop one running language server. */
+  async stopLspServer(rootPath: string, serverId: string, requestId?: string): Promise<void> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "lsp.server.stop.request", rootPath, serverId },
+      responseType: "lsp.server.stop.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+  }
+
   /** Definition symbols for a single file (document outline). */
   async getCodeOutline(
     cwd: string,
@@ -6434,6 +6735,15 @@ export class DaemonClient {
 
     if (consumerMessage.type === "terminal_stream_exit") {
       this.terminalStreams.removeTerminal(consumerMessage.payload.terminalId);
+    }
+
+    // Scaffold progress is advisory and scoped to one in-flight request, so it
+    // is delivered to that request's own listener rather than the global
+    // DaemonEvent stream every consumer would then have to ignore.
+    if (consumerMessage.type === "project.scaffold.progress") {
+      this.scaffoldProgressListeners.get(consumerMessage.payload.requestId)?.(
+        consumerMessage.payload,
+      );
     }
 
     if (this.rawMessageListeners.size > 0) {

@@ -30,6 +30,8 @@ export const GITHUB_CAPABILITIES: GitHostingCapabilities = {
   draftPrs: true,
   reviewDecisions: true,
   issues: true,
+  listRepositories: true,
+  createRepository: true,
 };
 
 export const BITBUCKET_CLOUD_CAPABILITIES: GitHostingCapabilities = {
@@ -42,6 +44,8 @@ export const BITBUCKET_CLOUD_CAPABILITIES: GitHostingCapabilities = {
   // Most Bitbucket Cloud teams track issues in Jira; the native tracker is
   // deprecated and off by default, so v1 exposes PR search only.
   issues: false,
+  listRepositories: true,
+  createRepository: true,
 };
 
 // Provider credentials are absent (not an auth failure): features off, no

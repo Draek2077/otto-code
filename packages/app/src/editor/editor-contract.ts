@@ -22,6 +22,51 @@ export interface EditorThemeSpec {
   rulerColumn: number | null;
   /** Ruler stripe color — the gutter divider at half strength. */
   rulerColor: string;
+  /**
+   * Width of the overview ruler — the annotation lane down the right edge — in px.
+   * `0` removes it entirely, lane reservation included, which is the off switch:
+   * the same idiom as `rulerColumn: null`.
+   *
+   * A dimension in the theme rather than a constant in the extension because it is
+   * the one value a host has a reason to change: a touch host wants a wider target
+   * than a pointer host does.
+   */
+  overviewRulerWidth: number;
+  /** Lane fill. The gutter colour, so the lane reads as the margin's continuation. */
+  overviewRulerBackground: string;
+  /** Hairline on the lane's inner edge — the gutter divider, mirrored. */
+  overviewRulerBorder: string;
+  /**
+   * Viewport indicator fill. MUST stay translucent: it is painted over the marks,
+   * and an opaque thumb hides exactly the problems that are on screen.
+   */
+  overviewRulerThumb: string;
+  /** Caret position mark. The cursor colour, so the lane's "you are here" matches the caret's. */
+  overviewRulerCursor: string;
+  /**
+   * Selected-range bands in the lane. The editor's own selection fill, so the band
+   * is recognisably the selection rather than a fifth kind of mark — and translucent
+   * for the same reason as the thumb: it is painted behind the marks, and a problem
+   * inside the selection has to stay visible.
+   */
+  overviewRulerSelection: string;
+  /** Search-hit marks in the lane. The match outline, which is solid enough to survive 3px. */
+  overviewRulerMatch: string;
+  /**
+   * Scrollbar thumb for surfaces CM6 owns, chiefly the hover tooltip. Threaded
+   * through the theme rather than read from the app store because this module is
+   * bundled into the native webview, where the app's styles and theme do not reach.
+   */
+  scrollbarHandle: string;
+  /**
+   * Fill for CM6-owned floating surfaces (the hover tooltip). Deliberately NOT
+   * `background`: the code area sits in a deepened well, so a tooltip painted the
+   * same colour reads as a hole in the text with a hairline around it. This is the
+   * app's elevated-surface token, which is lighter than the well.
+   */
+  tooltipBackground: string;
+  /** Border for those surfaces — the real border colour, not the ruler half-strength. */
+  tooltipBorder: string;
   selectionBackground: string;
   cursor: string;
   /**
@@ -48,6 +93,30 @@ export interface EditorThemeSpec {
   fontSize: number;
   lineHeight: number;
   syntax: SyntaxColors;
+  /** Squiggle and gutter-glyph colours per problem severity. */
+  diagnostic: Record<EditorDiagnosticSeverity, string>;
+}
+
+export type EditorDiagnosticSeverity = "error" | "warning" | "info" | "hint";
+
+/**
+ * One problem a language server reported, 1-based — the editor's mirror of the protocol's
+ * `CodeDiagnostic`, restated here because this module is the webview's contract and may not
+ * import from the protocol package.
+ */
+export interface EditorDiagnostic {
+  line: number;
+  column: number;
+  endLine: number;
+  endColumn: number;
+  severity: EditorDiagnosticSeverity;
+  message: string;
+  /** Which tool says so — `ts`, `oxc`. */
+  source?: string;
+  /** That tool's rule or error code. */
+  code?: string;
+  /** Documentation for the rule, when the server offered one. */
+  codeHref?: string;
 }
 
 export interface EditorFindState {
@@ -117,6 +186,22 @@ export interface EditorPointerSelect {
   viewportOffsetY: number;
 }
 
+/**
+ * What the language server had to say about a hovered position. Four cases rather
+ * than "markdown or nothing", because the tooltip treats them differently: only
+ * `warming` is worth waiting on, and only `none`/`unavailable` mean "take the tooltip
+ * away". Collapsing them is what made a cold editor silently show nothing.
+ */
+export type EditorHoverAnswer =
+  /** The server explained the symbol. */
+  | { kind: "content"; markdown: string }
+  /** The server answered and had nothing to say about this position. */
+  | { kind: "none" }
+  /** A server is bound but still starting or indexing — the same ask will work later. */
+  | { kind: "warming" }
+  /** No server covers this file, or the request failed. Asking again will not help. */
+  | { kind: "unavailable" };
+
 export interface EditorController {
   getDoc(): Promise<string>;
   /** Current primary selection (for AI Refactor scoping). */
@@ -164,6 +249,11 @@ export interface EditorController {
   scrollToFraction?(fraction: number): void;
   /** Scroll so the given 1-based line sits `viewportOffsetY` px below the viewport top. */
   scrollToLineAtOffset?(line: number, viewportOffsetY: number): void;
+  /**
+   * Replace the problem markers. Always the document's whole current set — the daemon
+   * pushes snapshots, not deltas, so there is nothing to merge and nothing to retract.
+   */
+  setDiagnostics(diagnostics: readonly EditorDiagnostic[]): void;
 }
 
 export interface CodeEditorProps {
@@ -192,6 +282,12 @@ export interface CodeEditorProps {
   onSaveShortcut?: () => void;
   /** Mod-F inside the editor; the host opens the find strip. */
   onFindShortcut?: () => void;
+  /**
+   * Escape inside the editor while find is running; the host closes the find
+   * strip. Never fires when find is idle — Escape keeps its editing meaning
+   * then.
+   */
+  onCloseFindShortcut?: () => void;
   /** Mod-G inside the editor; the host opens the go-to-line dialog. */
   onGoToLineShortcut?: () => void;
   /** Mod-B / F12 inside the editor; the host runs go-to-definition. */
@@ -214,6 +310,18 @@ export interface CodeEditorProps {
    * selection menu is what a phone user expects there.
    */
   onContextMenu?: (point: { x: number; y: number }) => void;
+  /**
+   * Resolve the language server's explanation for a 1-based position.
+   * **Web/desktop only by construction** — CM6 drives this from pointer rest, and
+   * pointer events do not fire on native (see CLAUDE.md); a touch equivalent would be
+   * a long-press affordance, which is a different feature.
+   */
+  hoverProvider?: (position: { line: number; column: number }) => Promise<EditorHoverAnswer>;
+  /**
+   * Problems for this document. Unlike `hoverProvider` this works on every platform —
+   * diagnostics are pushed, so they need no pointer.
+   */
+  diagnostics?: readonly EditorDiagnostic[];
   onReady?: (controller: EditorController) => void;
 }
 
@@ -242,6 +350,7 @@ export type EditorWebViewInbound =
   | { type: "selectLines"; startLine: number; endLine: number; reveal?: boolean }
   | { type: "selectAll" }
   | { type: "replaceSelection"; text: string }
+  | { type: "setDiagnostics"; diagnostics: readonly EditorDiagnostic[] }
   | { type: "getDoc"; requestId: number }
   | { type: "getSelection"; requestId: number }
   | { type: "getWordAtCursor"; requestId: number };
@@ -253,6 +362,7 @@ export type EditorWebViewOutbound =
   | { type: "cursorMoved"; position: EditorCursorPosition }
   | { type: "saveShortcut" }
   | { type: "findShortcut" }
+  | { type: "closeFindShortcut" }
   | { type: "goToLineShortcut" }
   | { type: "goToDefinitionShortcut" }
   | { type: "doc"; requestId: number; doc: string }

@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useState, type Ref } from "react";
+import { useIsLspBusy } from "@/stores/lsp-activity-store";
 import { useTranslation } from "react-i18next";
 import { View, Text, Pressable } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -261,6 +262,7 @@ function WorkspaceRowBody({
   onMarkAsRead,
   archiveShortcutKeys,
 }: WorkspaceRowBodyProps) {
+  const isLspBusy = useIsLspBusy(workspace.serverId, workspace.workspaceDirectory ?? null);
   const isTouchPlatform = platformIsNative;
   const draggable = Boolean(drag);
   const interaction = useLongPressDragInteraction({
@@ -304,6 +306,7 @@ function WorkspaceRowBody({
             scriptIconKind={scriptIconKind}
             isHovered={isHovered}
             isLoading={isArchiving || isCreating}
+            isIndexing={isLspBusy}
             isCreating={isCreating}
             shortcutNumber={shortcutNumber}
             showShortcutBadge={showShortcutBadge}

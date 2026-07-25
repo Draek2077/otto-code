@@ -63,11 +63,19 @@ export function useWebElementScrollbar(
     contentRef?: RefObject<HTMLElement | null>;
     /** Also render a horizontal overlay for elements that scroll on both axes. */
     horizontal?: boolean;
+    /**
+     * Render the vertical overlay. Off for surfaces that draw their own
+     * full-height indicator in that lane — the file editor's overview ruler —
+     * where a second thumb beside it would say the same thing twice. The native
+     * bar stays hidden either way: this switches off *our* bar, not the hiding.
+     */
+    vertical?: boolean;
   },
 ): ReactNode {
   const enabled = (options?.enabled ?? true) && platformIsWeb;
   const contentRef = options?.contentRef;
   const horizontal = options?.horizontal ?? false;
+  const vertical = options?.vertical ?? true;
 
   const [metrics, setMetrics] = useState<ScrollbarMetrics>({
     offset: 0,
@@ -173,7 +181,9 @@ export function useWebElementScrollbar(
 
   return (
     <>
-      <WebDesktopScrollbarOverlay enabled metrics={metrics} onScrollToOffset={onScrollToOffset} />
+      {vertical ? (
+        <WebDesktopScrollbarOverlay enabled metrics={metrics} onScrollToOffset={onScrollToOffset} />
+      ) : null}
       {horizontal ? (
         <WebDesktopScrollbarOverlay
           enabled

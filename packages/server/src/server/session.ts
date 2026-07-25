@@ -70,6 +70,15 @@ import {
   ActivityCountersSchema,
 } from "@otto-code/protocol/messages";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
+import type { GitHostingService } from "../services/git-hosting/types.js";
+import type { HostingOwnerSummary, HostingRepositorySummary } from "../services/github-service.js";
+import {
+  createProjectScaffoldService,
+  getScaffoldOutcome,
+  ProjectScaffoldError,
+  type ProjectScaffoldErrorCode,
+  type ProjectScaffoldOutcome,
+} from "./project-scaffold/project-scaffold-service.js";
 import {
   CLIENT_SHUTDOWN_RPC_REASON,
   normalizeClientRestartRpcReason,
@@ -224,6 +233,7 @@ import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 import type pino from "pino";
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { LoopService } from "./loop-service.js";
+import type { LspService } from "./lsp/service.js";
 import { ScheduleService } from "./schedule/service.js";
 import type { RunService } from "./orchestration/run-service.js";
 import type { GraphStore } from "./orchestration/graph-store.js";
@@ -501,11 +511,18 @@ export interface SessionOptions {
   appVersion?: string | null;
   clientCapabilities?: Record<string, unknown> | null;
   onMessage: (msg: SessionOutboundMessage) => void;
+  // Fans one message out to every connected session, this one included. Used for
+  // daemon-global state (project metadata) whose change must reach every client,
+  // not just the one that asked for it. Optional so the test harnesses need not
+  // wire a server; falls back to emitting on this session only.
+  broadcastToAllSessions?: (msg: SessionOutboundMessage) => void;
   onBinaryMessage?: (frame: Uint8Array) => void;
   getTransportBufferedAmount?: () => number | null;
   onLifecycleIntent?: (intent: SessionLifecycleIntent) => void;
   logger: pino.Logger;
   downloadTokenStore: DownloadTokenStore;
+  /** Daemon-scoped: one language-server pool shared by every client session. */
+  lspService: LspService;
   pushTokenStore: PushTokenStore;
   ottoHome: string;
   worktreesRoot?: string;
@@ -659,6 +676,7 @@ export class Session {
   private clientCapabilities: ReadonlySet<ClientCapability>;
   private readonly sessionId: string;
   private readonly onMessage: (msg: SessionOutboundMessage) => void;
+  private readonly onBroadcastMessage: ((msg: SessionOutboundMessage) => void) | undefined;
   private readonly onBinaryMessage: ((frame: Uint8Array) => void) | null;
   private readonly getTransportBufferedAmount: () => number | null;
   private readonly onLifecycleIntent: ((intent: SessionLifecycleIntent) => void) | null;
@@ -751,11 +769,13 @@ export class Session {
       appVersion,
       clientCapabilities,
       onMessage,
+      broadcastToAllSessions,
       onBinaryMessage,
       getTransportBufferedAmount,
       onLifecycleIntent,
       logger,
       downloadTokenStore,
+      lspService,
       pushTokenStore,
       ottoHome,
       worktreesRoot,
@@ -818,6 +838,7 @@ export class Session {
     this.clientCapabilities = parseClientCapabilities(clientCapabilities);
     this.sessionId = uuidv4();
     this.onMessage = onMessage;
+    this.onBroadcastMessage = broadcastToAllSessions;
     this.onBinaryMessage = onBinaryMessage ?? null;
     this.getTransportBufferedAmount = getTransportBufferedAmount ?? (() => 0);
     this.onLifecycleIntent = onLifecycleIntent ?? null;
@@ -836,6 +857,7 @@ export class Session {
         hasBinaryChannel: () => this.onBinaryMessage !== null,
       },
       downloadTokenStore,
+      lspService,
       ottoHome,
       logger: this.sessionLogger,
       // Cross-workspace file access is bounded to the distinct paths of every
@@ -1350,6 +1372,14 @@ export class Session {
   }
 
   public emitServerMessage(message: SessionOutboundMessage): void {
+    this.emit(message);
+  }
+
+  private broadcastToAllSessions(message: SessionOutboundMessage): void {
+    if (this.onBroadcastMessage) {
+      this.onBroadcastMessage(message);
+      return;
+    }
     this.emit(message);
   }
 
@@ -2539,6 +2569,184 @@ export class Session {
     }
   }
 
+  // Host-level provider lookup shared by the repository/owner listing RPCs and
+  // the scaffold service. Returns null for "not configured on this daemon" and
+  // for a provider id this build doesn't know, which callers report as an empty
+  // list rather than an error.
+  private resolveHostingProviderService(provider: string): GitHostingService | null {
+    if (!this.gitHostingResolver) {
+      return null;
+    }
+    const providerId = normalizeGitHostingProviderId(provider);
+    if (!providerId) {
+      return null;
+    }
+    return this.gitHostingResolver.resolveForProvider(providerId).service ?? null;
+  }
+
+  private async handleHostingListRepositoriesRequest(
+    msg: Extract<SessionInboundMessage, { type: "hosting.list_repositories.request" }>,
+  ): Promise<void> {
+    const { provider, requestId } = msg;
+    const emitResult = (payload: {
+      repositories: HostingRepositorySummary[];
+      error: string | null;
+    }) => {
+      this.emit({
+        type: "hosting.list_repositories.response",
+        payload: { provider, requestId, ...payload },
+      });
+    };
+
+    const service = this.resolveHostingProviderService(provider);
+    if (!service?.listRepositories) {
+      emitResult({ repositories: [], error: null });
+      return;
+    }
+
+    try {
+      const repositories = await service.listRepositories({
+        query: msg.query,
+        limit: msg.limit,
+      });
+      emitResult({ repositories, error: null });
+    } catch (error) {
+      this.sessionLogger.info({ err: error, provider }, "Hosting repository listing failed");
+      emitResult({
+        repositories: [],
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async handleHostingListOwnersRequest(
+    msg: Extract<SessionInboundMessage, { type: "hosting.list_owners.request" }>,
+  ): Promise<void> {
+    const { provider, requestId } = msg;
+    const emitResult = (payload: { owners: HostingOwnerSummary[]; error: string | null }) => {
+      this.emit({
+        type: "hosting.list_owners.response",
+        payload: { provider, requestId, ...payload },
+      });
+    };
+
+    const service = this.resolveHostingProviderService(provider);
+    if (!service?.listOwners) {
+      emitResult({ owners: [], error: null });
+      return;
+    }
+
+    try {
+      emitResult({ owners: await service.listOwners(), error: null });
+    } catch (error) {
+      this.sessionLogger.info({ err: error, provider }, "Hosting owner listing failed");
+      emitResult({ owners: [], error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  private async handleProjectScaffoldRequest(
+    request: Extract<SessionInboundMessage, { type: "project.scaffold.request" }>,
+  ): Promise<void> {
+    const { requestId } = request;
+    const emitFailure = (input: {
+      error: string;
+      errorCode: ProjectScaffoldErrorCode | null;
+      outcome: ProjectScaffoldOutcome | null;
+    }) => {
+      this.emit({
+        type: "project.scaffold.response",
+        payload: {
+          requestId,
+          project: null,
+          path: input.outcome?.path ?? null,
+          remoteUrl: input.outcome?.remoteUrl ?? null,
+          error: input.error,
+          errorCode: input.errorCode,
+          steps: input.outcome?.steps ?? [],
+        },
+      });
+    };
+
+    const scaffold = createProjectScaffoldService({
+      logger: this.sessionLogger,
+      resolveHostingProvider: async (providerId) => this.resolveHostingProviderService(providerId),
+      onProgress: (step) => {
+        this.emit({
+          type: "project.scaffold.progress",
+          payload: {
+            requestId,
+            step: step.id,
+            status: step.status,
+            detail: step.detail,
+          },
+        });
+      },
+    });
+
+    let outcome: ProjectScaffoldOutcome;
+    try {
+      outcome = await scaffold.scaffold({
+        parentDirectory: expandTilde(request.parentDirectory),
+        folderName: request.folderName,
+        git: request.git,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to create project";
+      this.sessionLogger.error(
+        { err: error, parentDirectory: request.parentDirectory, gitKind: request.git.kind },
+        "Project scaffold failed",
+      );
+      emitFailure({
+        error: message,
+        errorCode: error instanceof ProjectScaffoldError ? error.code : null,
+        outcome: getScaffoldOutcome(error),
+      });
+      return;
+    }
+
+    // The directory exists and is what the user asked for; registering it is
+    // the same find-or-create path `project.add` uses.
+    const createdPath = outcome.path;
+    if (!createdPath) {
+      emitFailure({
+        error: "Project directory was not created",
+        errorCode: "register_failed",
+        outcome,
+      });
+      return;
+    }
+
+    try {
+      const project = await this.workspaceProvisioning.findOrCreateProjectForDirectory(createdPath);
+      this.sessionLogger.info(
+        { path: createdPath, projectId: project.projectId, gitKind: request.git.kind },
+        "Project scaffolded",
+      );
+      this.emit({
+        type: "project.scaffold.response",
+        payload: {
+          requestId,
+          project: this.buildProjectDescriptor(project),
+          path: createdPath,
+          remoteUrl: outcome.remoteUrl,
+          error: null,
+          errorCode: null,
+          // The service can't run this step (it owns no registry), so its
+          // snapshot carries register_project as "skipped". Replace it rather
+          // than appending, or the client sees the id twice.
+          steps: [
+            ...outcome.steps.filter((step) => step.id !== "register_project"),
+            { id: "register_project", status: "done", detail: null },
+          ],
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to register project";
+      this.sessionLogger.error({ err: error, path: createdPath }, "Project registration failed");
+      emitFailure({ error: message, errorCode: "register_failed", outcome });
+    }
+  }
+
   private dispatchPreviewMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "preview.list_config.request":
@@ -2560,6 +2768,23 @@ export class Session {
         return this.handleWorktreeReattachListRequest(msg);
       case "worktree.reattach.request":
         return this.handleWorktreeReattachRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  // Creating a project from nothing: the scaffold itself plus the host-level
+  // hosting reads it needs (which owners you can create under, what you could
+  // clone). Separate from dispatchWorkspaceAndProjectMessage, which handles
+  // projects and workspaces that already exist on disk.
+  private dispatchProjectScaffoldMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "project.scaffold.request":
+        return this.handleProjectScaffoldRequest(msg);
+      case "hosting.list_repositories.request":
+        return this.handleHostingListRepositoriesRequest(msg);
+      case "hosting.list_owners.request":
+        return this.handleHostingListOwnersRequest(msg);
       default:
         return undefined;
     }
@@ -2609,7 +2834,10 @@ export class Session {
       case "workspace.title.set.request":
         return this.handleWorkspaceTitleSetRequest(msg.workspaceId, msg.title, msg.requestId);
       default:
-        return undefined;
+        // Chained here rather than in dispatchInboundMessage: scaffolding is
+        // the same domain, and the top-level chain is already at its
+        // complexity ceiling.
+        return this.dispatchProjectScaffoldMessage(msg);
     }
   }
 
@@ -2635,10 +2863,39 @@ export class Session {
         return this.workspaceFilesSession.handleFileSearchRequest(msg);
       case "file.replace.request":
         return this.workspaceFilesSession.handleFileReplaceRequest(msg);
+      default:
+        return this.dispatchCodeIntelligenceMessage(msg);
+    }
+  }
+
+  /**
+   * The code-intelligence half: the ctags index (`code.symbols`/`code.outline`) and the
+   * language-server family. Split from the file dispatcher above purely so neither
+   * switch grows past the complexity cap — one flat switch of every file-ish RPC was
+   * over it.
+   */
+  private dispatchCodeIntelligenceMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
       case "code.list_files.request":
         return this.workspaceFilesSession.handleCodeListFilesRequest(msg);
       case "code.symbols.request":
         return this.workspaceFilesSession.handleCodeSymbolsRequest(msg);
+      case "code.definition.request":
+        return this.workspaceFilesSession.handleCodeDefinitionRequest(msg);
+      case "code.document.sync.request":
+        return this.workspaceFilesSession.handleCodeDocumentSyncRequest(msg);
+      case "code.document.close.request":
+        return this.workspaceFilesSession.handleCodeDocumentCloseRequest(msg);
+      case "code.hover.request":
+        return this.workspaceFilesSession.handleCodeHoverRequest(msg);
+      case "code.references.request":
+        return this.workspaceFilesSession.handleCodeReferencesRequest(msg);
+      case "code.rename.preview.request":
+        return this.workspaceFilesSession.handleCodeRenamePreviewRequest(msg);
+      case "lsp.servers.list.request":
+        return this.workspaceFilesSession.handleLspServersListRequest(msg);
+      case "lsp.server.stop.request":
+        return this.workspaceFilesSession.handleLspServerStopRequest(msg);
       case "code.outline.request":
         return this.workspaceFilesSession.handleCodeOutlineRequest(msg);
       default:
@@ -3300,11 +3557,12 @@ export class Session {
       const trimmed = customName?.trim() ?? "";
       const nextCustomName = trimmed.length === 0 ? null : trimmed;
 
-      await this.projectRegistry.upsert({
+      const renamed = {
         ...existing,
         customName: nextCustomName,
         updatedAt: new Date().toISOString(),
-      });
+      };
+      await this.projectRegistry.upsert(renamed);
 
       this.emit({
         type: "project.rename.response",
@@ -3317,12 +3575,32 @@ export class Session {
         },
       });
 
-      // Re-emit descriptors for every workspace under this project so the new
-      // resolved name lands in the UI immediately.
+      // Only workspaces the client can actually see. Archived and hidden ones
+      // resolve to no descriptor, so listing them here would make the emission
+      // chokepoint fire a spurious `remove` per archived workspace on every
+      // rename.
       const workspaces = await this.workspaceRegistry.list();
       const affectedWorkspaceIds = workspaces
-        .filter((workspace) => workspace.projectId === projectId)
+        .filter(
+          (workspace) =>
+            workspace.projectId === projectId && !workspace.archivedAt && !workspace.hidden,
+        )
         .map((workspace) => workspace.workspaceId);
+
+      // The project's name is host-global state, and a project with no active
+      // workspaces has no workspace descriptor to carry it. Announce the project
+      // itself on the project channel, to every session — that is what makes the
+      // rename land instantly regardless of workspace count or which client asked.
+      this.broadcastToAllSessions({
+        type: "project.updated.notification",
+        payload: {
+          project: this.buildProjectDescriptor(renamed),
+          hasActiveWorkspaces: affectedWorkspaceIds.length > 0,
+        },
+      });
+
+      // Re-emit descriptors for every visible workspace under this project so the
+      // new resolved name lands on the workspace rows too.
       if (affectedWorkspaceIds.length > 0) {
         await this.emitWorkspaceUpdatesForWorkspaceIds(affectedWorkspaceIds, {
           skipReconcile: true,
