@@ -139,7 +139,9 @@ and Discovery.
   published treatment of the same design space.
 - **Ch. 16 Resource-Aware Optimization** is the missing prose for [token-economy.md](token-economy.md): Otto has the measurements but no framework for reasoning about them.
 - **Ch. 8 Memory Management** and **Ch. 9 Learning and Adaptation** are the direct input to
-  `projects/personality-memory`, which is currently a charter with an open scoping question.
+  personality memory, now shipped ([agent-personalities.md § Memory](agent-personalities.md#memory-accrued-lessons)).
+  Read them against what shipped: the scoping question resolved to `global ∪ thisProject`, resolved
+  rather than configured.
 - **Ch. 19 Evaluation and Monitoring** and **Ch. 20 Prioritization** bear on what an orchestration
   run should report back, which is an open area.
 - **Appendix G (coding agents)** and **Appendix E (CLI agents)** are the parts closest to Otto's
@@ -169,15 +171,18 @@ the pitch is "no database, no vendor lock-in — just `.md` files that think". T
 embeddings and no graph database** — consolidation is done by AI passes over markdown
 cross-references.
 
-**Relevant to Otto — high value.** This is the closest existing analogue to
-`projects/personality-memory`, and it validates that charter's central bet (daemon-owned,
-file-based, one-fact-per-file, no new storage engine) with a working example. The four mechanisms
-worth taking:
+**Relevant to Otto — high value.** This is the closest existing analogue to Otto's shipped
+[personality memory](agent-personalities.md#memory-accrued-lessons), and it validates the central bet
+(daemon-owned, file-based, no new storage engine) with a working example. Otto landed on **one file
+per personality** rather than one file per fact, because here the daemon maintains the store instead
+of an agent doing it by hand. The four mechanisms worth taking:
 
 1. **Tiered promotion by evidence count.** An entity starts as a Tier 3 stub on first mention,
    escalates to Tier 2 at 3+ references, and to Tier 1 at 8+ mentions or direct contact. This is a
-   concrete, cheap answer to "when is a fact worth writing down properly" — the question the
-   personality-memory charter's tier table currently answers by user setting rather than by
+   concrete, cheap answer to "when is a fact worth writing down properly". Otto shipped a cruder
+   version of the same idea — `reinforcedCount`, bumped when a near-duplicate is recorded again,
+   which orders the injection budget and is shown in the brief. Tiers-by-user-setting were rejected
+   outright as bookkeeping. What COG has and Otto does not is escalation driven by
    evidence.
 2. **`last_verified` + confidence stamps with source citations on every observation.** Memory that
    records how it knows something, and how stale that is.
@@ -303,18 +308,19 @@ rate means it needs re-running periodically. Full detail: `orchestration-design.
 
 ## 3. Agent memory and knowledge accrual
 
-The other direction Otto is heading. Today this is a charter
-(`projects/personality-memory/personality-memory.md`) and a shipped context surface
-(`projects/context-management/`); the sources below are what it should be built against.
+The other direction Otto is heading. Personality memory shipped 2026-07-25
+([agent-personalities.md § Memory](agent-personalities.md#memory-accrued-lessons)) on top of the
+context surface (`projects/context-management/`); the sources below are what the next increment —
+smarter consolidation, retrieval at scale — should be built against.
 
-| Source                                                                           | Status                      | What it contributed                                                                                                                                                                                                                                                                                                                      |
-| -------------------------------------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **[COG — second brain](https://github.com/huytieu/COG-second-brain)**            | **Unevaluated**             | The four mechanisms in §2.1: evidence-count tier promotion, `last_verified` + confidence + source stamps, the `memory-hygiene` re-verification sweep, and capable-model-explores / cheap-model-executes routing. Validates the file-based, no-database bet. Its lack of any search index is the limitation to decide about deliberately. |
-| **all-agentic-architectures — Memory family**                                    | **Unevaluated**             | Episodic + Semantic, Graph Memory, MemGPT, **Voyager**, **Agent Workflow Memory**. The last two are about accruing _reusable skills from completed work_ — the bridge between this section and §2, and the most directly relevant published work to the planned initiative.                                                              |
-| **Agentic Design Patterns Ch. 8–9** (Memory Management; Learning and Adaptation) | **Unevaluated**             | Vocabulary and completeness check for the personality-memory tier design.                                                                                                                                                                                                                                                                |
-| **Claude Code's own `MEMORY.md` + one-fact-per-file pattern**                    | **Read, adopted**           | The storage shape the personality-memory charter proposes: an index line per fact stacked into the system prompt at spawn, full facts loaded on demand via `recall`. Keeps token cost bounded and predictable.                                                                                                                           |
-| **PARA** (Projects / Areas / Resources / Archive) — Tiago Forte, via COG         | **Considered and rejected** | A personal-knowledge taxonomy for a human's notes. Otto's memory is per-personality, per-project and about code mechanisms; importing the folder scheme would be cargo-culting.                                                                                                                                                          |
-| **graphify** (`~/.claude/skills/graphify`, `docs/graphify-out/`)                 | **Dependency** (tooling)    | Knowledge-graph extraction over this repo's own docs and code — god nodes, community detection, query/path/explain. Used for navigating Otto itself, not shipped in the product. Relevant here as an existence proof for graph-shaped recall if the memory charter outgrows flat files.                                                  |
+| Source                                                                           | Status                      | What it contributed                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **[COG — second brain](https://github.com/huytieu/COG-second-brain)**            | **Unevaluated**             | The four mechanisms in §2.1: evidence-count tier promotion, `last_verified` + confidence + source stamps, the `memory-hygiene` re-verification sweep, and capable-model-explores / cheap-model-executes routing. Validates the file-based, no-database bet. Its lack of any search index is the limitation to decide about deliberately.                                   |
+| **all-agentic-architectures — Memory family**                                    | **Unevaluated**             | Episodic + Semantic, Graph Memory, MemGPT, **Voyager**, **Agent Workflow Memory**. The last two are about accruing _reusable skills from completed work_ — the bridge between this section and §2, and the most directly relevant published work to the planned initiative.                                                                                                |
+| **Agentic Design Patterns Ch. 8–9** (Memory Management; Learning and Adaptation) | **Unevaluated**             | Vocabulary and completeness check. Otto shipped without tiers; these chapters are the place to look before adding any.                                                                                                                                                                                                                                                     |
+| **Claude Code's own `MEMORY.md` + one-fact-per-file pattern**                    | **Read, adopted**           | Read, then **deliberately diverged from**. The index-plus-`recall` split it uses exists because an _agent_ maintains that store by hand; Otto's daemon maintains it, so the full lesson text is injected inside a token budget and there is no second tool. What Otto did adopt is the shape: plain files, no storage engine, and a system-prompt block composed at spawn. |
+| **PARA** (Projects / Areas / Resources / Archive) — Tiago Forte, via COG         | **Considered and rejected** | A personal-knowledge taxonomy for a human's notes. Otto's memory is per-personality, per-project and about code mechanisms; importing the folder scheme would be cargo-culting.                                                                                                                                                                                            |
+| **graphify** (`~/.claude/skills/graphify`, `docs/graphify-out/`)                 | **Dependency** (tooling)    | Knowledge-graph extraction over this repo's own docs and code — god nodes, community detection, query/path/explain. Used for navigating Otto itself, not shipped in the product. Relevant here as an existence proof for graph-shaped recall if the memory charter outgrows flat files.                                                                                    |
 
 ---
 

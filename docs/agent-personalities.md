@@ -34,6 +34,7 @@ AgentPersonality {
   spinner: { glowA: string; glowB: string }         // two hex colors for BlobLoader
   voice?: { provider: string; model: string; name: string }  // TTS voice; soft binding
   voiceCues?: { join?: string[]; thinking?: string[]; waiting?: string[]; done?: string[] }  // Visualizer spoken cues
+  memoryEnabled?: boolean       // accrues lessons across sessions; ABSENT MEANS ON (see Memory)
 }
 ```
 
@@ -199,6 +200,99 @@ How it's wired — entirely host-side, **no vendor patch** (playback can't live 
 
 Caveat: the very first cue on **web** may be silent until the user has interacted with the page once (browser autoplay unlock — cues fire without a fresh gesture).
 
+## Memory (accrued lessons)
+
+A personality **accrues lessons across sessions** and carries them into every later spawn. Naming an agent and giving it a role is a claim about continuity, and continuity without memory is cosmetic — every spawn used to start from zero.
+
+Underneath these are just stored memories: a flat list of text entries keyed to the personality id. No graph, no embeddings, no per-personality storage tier. The capability flag is `server_info.features.personalityMemory`, tagged `COMPAT(personalityMemory)`; without it the client hides the whole feature, since storage is daemon-side by definition and there is nothing a client-side fallback could read.
+
+### Storage
+
+`$OTTO_HOME/personality-memory/<personalityId>.json` — one file per personality, atomic writes, no migrations (see [data-model.md](data-model.md)). Entries carry `text`, `scope` (`project` | `global`), an optional `projectRoot`, timestamps, a `source` (`agent` | `user` | `review` | `transfer`), a `reinforcedCount`, and an optional `transferredFrom`.
+
+**One file per personality, not one file per fact.** The harness's own one-fact-per-file layout exists because an _agent_ maintains that index by hand; here the daemon maintains it, so splitting buys nothing and costs the atomicity that makes transfer-on-delete a single write. Every mutation goes through a **per-personality serialized read-modify-write queue** — two agents spawned from one personality can record concurrently, and a lost increment there is a lost lesson. Caps: 200 entries per personality, 1,200 chars per lesson.
+
+**Keyed to the personality id, never the agent.** The agent is ephemeral; the personality is the continuity. An agent whose personality has since been deleted from the roster still keeps that identity's lessons — the spawn snapshot outlives the roster entry, and so does its memory.
+
+**Scope is resolved, not configured.** A lesson defaults to the current project and an agent can mark one `everywhere`; injection is `global ∪ thisProject`. The project root is the **git repo root**, resolved daemon-side, so a worktree and its main checkout share one project's lessons. A client must never compute this itself — it would disagree with the daemon the moment a worktree is involved, and then the brief shown would not be the brief injected.
+
+### The three tools
+
+Registered on the daemon's existing MCP catalog, so **every provider gets them at once** — Claude, Codex, OpenCode, and an openai-compatible local model alike. They fall in the existing `agents` tool group (`ottoToolGroupForName` routes unprefixed names there), so the per-group allowlist can switch them off; a **new** group value was rejected because `OTTO_TOOL_GROUPS` is a wire enum an older peer could not parse. All three resolve the calling agent's personality from `callerAgentId` and fail with a named error when there is none — memory belongs to a personality, not to a single chat.
+
+| Tool              | Shape                                           | Ergonomics                                                      |
+| ----------------- | ----------------------------------------------- | --------------------------------------------------------------- |
+| `remember_lesson` | `{ lesson, scope?: "project" \| "everywhere" }` | Fire-and-forget. Returns `added` or `reinforced` — never an id. |
+| `review_lessons`  | `{}`                                            | Every lesson with a short handle, plus the review protocol.     |
+| `revise_lesson`   | `{ handle, lesson?, scope?, forget? }`          | One reviewed outcome. Only reachable through `review_lessons`.  |
+
+**Recording is fire-and-forget, and that is the load-bearing design decision.** The agent states what it learned — no ids to track, no file to choose, no index to maintain. If recording were any harder than that, agents would not do it. Which means **dedup is the daemon's job, not a discipline in the prompt**: `lesson-dedup.ts` scores lexical token overlap (Jaccard over significant tokens) and a near-duplicate **reinforces** the existing entry instead of adding a row. Deliberately lexical — no model, no network, microseconds, and trivial to reason about when it gets one wrong. The threshold sits high (0.75) because the failure modes are asymmetric: a missed duplicate costs one redundant line that `review_lessons` will consolidate, while a false merge silently destroys a distinct lesson. At 0.7, two six-word lessons differing by a single discriminating token scored 0.71 and merged.
+
+Only **same-scope** entries are dedup candidates. "Always true here" and "always true everywhere" are different claims even in identical words; merging them would silently widen or narrow a lesson's reach.
+
+**`review_lessons` is the deliberate counterpart, with the opposite ergonomics.** Its description carries the protocol, because the protocol _is_ the feature: read the lessons back, look for ones that are wrong, too vague to act on, or overlapping, **ask the user about them rather than guessing**, then call `revise_lesson` per outcome. A model that rewrites without asking has laundered its own assumptions into permanent storage. This is also why there is no scheduled consolidation pass: an unattended rewrite of behavioural rules is the one thing worth never automating.
+
+### Injection
+
+**Where:** `AgentManager.prepareSessionConfig` — the single choke point every spawn, resume and refresh path already funnels through (composer, MCP `create_agent`, schedule runs, orchestration runs, reattach). One site, above every provider adapter, no per-caller threading. The live personality switch composes it through the same helper (`withPersonalityMemory`), so a personality behaves identically however you attached it.
+
+**Runtime-only, never stored.** The brief is appended to the **launch** config's system prompt and deliberately not to `storedConfig`, mirroring how `daemonAppendSystemPrompt` is re-derived on resume. Two consequences, both wanted:
+
+1. Memory is **re-read on every resume** — a lesson recorded yesterday is present today without rewriting any agent record.
+2. The live-switch prompt-ownership check (`config.systemPrompt === outgoingComposedPrompt`) keeps comparing memory-free prompts, so it cannot start failing the moment a personality learns something.
+
+**Independent of `respectGlobalAppendPrompt`.** That toggle governs the _daemon-global_ append prompt; these lessons are the personality's own, so a personality that stands alone still gets them.
+
+**The brief is composed by one pure function** (`memory-brief.ts`), and that is what makes the feature inspectable: the RPC serving the UI and the spawn path injecting the prompt call it with the same inputs and get the same string, so what you are shown cannot drift from what is sent. Ordering is the budget policy — most-reinforced first (a lesson relearned three times has earned its place over a one-off), then most-recently-updated, then id for stability, because a prompt that reshuffles between spawns defeats provider prompt caching for nothing. The cap is `MEMORY_BRIEF_TOKEN_BUDGET` (1,500 tokens ≈ 0.75% of a 200K window, ≈ 4.7% of a 32K local model's — the constituency that actually feels it), and when entries are dropped **the brief says so and names `review_lessons`**: a silent truncation would make the injected set differ from the shown set.
+
+The brief's preamble does two things a bare list cannot — it tells the model these are its **own** prior conclusions rather than a user instruction to obey blindly, and it says what to do when this session contradicts one. That sentence is the difference between memory and dogma, and it is asserted in tests rather than left to prose review.
+
+**`memoryEnabled` on `AgentPersonality`: absent means ON.** A personality with no lessons injects nothing and costs nothing, so an off-by-default switch would only mean the feature never starts working for anyone who did not go looking for it. The switch exists to stop a personality accruing, not to start it — and the editor writes the field **only when false**, so the default state stays absent on the wire.
+
+### Where you see and manage it: Context Management
+
+Context Management owns "everything sent before you type", and memory is part of that, so the surface lives there rather than in the personality editor — per-personality editing scattered into a settings dialog would need list and diff tooling that surface does not have, and would split memory across two places.
+
+- **A "Viewing context for" selector** in the summary, beside the window presets (both answer the same question, so they share a visual idiom). Picking a personality re-requests the report with `personalityId`, so the category bars and the working-room figure include that personality's memory. **"Everyone"** is a real selectable answer, not a null state.
+- **A Memory sidebar tab**, beside Context and Worth fixing, badged with the lesson count and **never toned** — lessons are not a problem to fix, and amber would read as "this personality learned something wrong". Absent entirely on a host without the capability.
+- The tab shows **the injected brief verbatim** with its recurring cost, then the stored rows: editable in place, deletable, with an explicit scope toggle and an add-by-hand affordance.
+
+Two shape decisions worth keeping:
+
+- **Memory is not a node in the graph tree.** Tree rows open in the file pane and a lesson is a stored row, not a file; a row that opened a nonexistent path would be a worse lie than not being there.
+- **No new `ContextCategory` member.** That schema is a `z.enum` travelling daemon→client, so a new value would make a new daemon's report unparseable by an older client. Memory weight folds into `otto_injected`, which is literally what it is: prompt text Otto composes and injects. The report also carries additive `personalityId` / `personalityMemoryTokens`.
+- **Editing does not reuse Refine**, deliberately. Refine works on a _set of files_ and reviews a diff hunk by hunk — complexity that earns itself on a long document and is pure overhead on a two-sentence lesson. The model-assisted path for improving a lesson is `review_lessons`, which asks the user questions, which is the thing a diff review cannot do. `compact-memory-index` keeps its own job: the harness's `MEMORY.md`, which _is_ a file.
+
+### Personality dialogs: accrual, not management
+
+The list row shows `Used N times · N lessons` (silent at zero), and the editor's Personality tab carries a read-only count plus the **Remember lessons** switch, pointing at Context Management for the rest. A deliberate scope limit: enough that you would not delete a personality casually, and no CRUD.
+
+### Transfer on delete
+
+Deleting a personality that has lessons asks a **three-way question** instead of a yes/no confirm (`personality-memory-transfer-sheet.tsx`): transfer them to another personality, discard them deliberately, or cancel. Lessons are the only part of a personality that took real work to produce and there is no undo. Zero lessons keeps the plain confirm — a decision sheet about nothing is an extra click.
+
+- The destination list puts **same-role personalities first** (roster order within each group) because that is overwhelmingly the intent: you are replacing a Coder with another Coder. Pure reordering, nothing excluded — a user moving a Coder's lessons onto an Orchestrator may know something the role tags do not.
+- Transfer **merges** into the destination rather than renaming the file: the destination usually already has lessons, and clobbering them to save a merge would destroy exactly what this operation exists to preserve. Near-duplicates merge with their reinforcement counts **added**, because two personalities independently learning the same thing is stronger evidence than either alone. Moved entries get fresh ids (a reused id collides the second time the same lessons are transferred) and are stamped `source: "transfer"` + `transferredFrom`.
+- **Memory resolves before the roster write.** Reversing that order would delete the owner of a store nobody can then hand over; a failed transfer leaves both the personality and its lessons intact. An old client deleting a personality without this flow orphans the file rather than destroying it.
+
+### Provider parity
+
+Nothing here is Claude-shaped. The tools ride the daemon MCP catalog, injection sits above every provider adapter, and the review loop runs inside the agent's own session — so a local LM Studio model gets this exactly as a hosted frontier API does. No daemon-side generation is involved; anything model-assisted added later resolves through `resolveStructuredGenerationProviders`, the same chain Refine and the mini-tasks use.
+
+### Considered and rejected
+
+Kept because "we thought about it and said no" is the only useful form of a deleted idea, and each of these looks reasonable enough to be proposed again.
+
+| Rejected                                     | Why                                                                                                                                                                    |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Memory tiers** (off / simple / structured) | A tier is bookkeeping the user has to think about — the same failure as making recording hard, aimed at the user instead of the agent. One switch, one representation. |
+| **A memory index plus a `recall` tool**      | Costs a tool and a round trip, and makes remembering conditional on the model choosing to look. The entry set is capped and small, so the full text goes in.           |
+| **Editing in the personality editor**        | Context belongs in one place, and the editor would need the list and diff tooling that surface does not have. The editor shows accrual; Context Management manages.    |
+| **A scheduled consolidation pass**           | `review_lessons` _is_ the consolidation pass, and it asks the user. An unattended rewrite of behavioural rules is the one thing worth never automating.                |
+| **A shared per-team memory pool**            | A team is a selection of personalities, not an identity that learns. If it becomes one, it gets its own store keyed by team id.                                        |
+| **A new `ContextCategory` for memory**       | That schema is a `z.enum` travelling daemon→client; a new member breaks older clients. `otto_injected` is what the weight actually is.                                 |
+| **A new `OTTO_TOOL_GROUPS` value**           | Same reason, in the other direction: a new client could send `"memory"` to an older daemon that cannot parse it. The tools live in `agents`.                           |
+
 ## Otto tooling
 
 Personalities are first-class in the agent-management MCP tools, so multi-agent skills can say "spawn a Worker and a Judger" without hardcoding providers:
@@ -215,7 +309,7 @@ The five `skills/*/SKILL.md` files teach role-aware discovery: committee prefers
 
 Personalities are authored in the **Agent personalities** card (Host settings → Agents, `agent-personalities-section.tsx`), feature-gated on `features.agentPersonalities`. It reads/writes the roster via `useDaemonConfig`, so every save round-trips through `daemon-config-store.ts` and hot-reloads to all connected clients.
 
-- **List rows** show name, `provider · model · roles`, a live `BlobLoader` in the row's spinner colors, and "Used N times" (from `agentPersonalities.get_stats`). Rows for out-of-commission personalities are grayed out with a reason via the shared `checkPersonalityAvailability` predicate — the same availability logic the pickers use.
+- **List rows** show name, `provider · model · roles`, a live `BlobLoader` in the row's spinner colors, "Used N times" (from `agentPersonalities.get_stats`) and "N lessons" (from `personality.memory.stats`, silent at zero — see [Memory](#memory-accrued-lessons)). Rows for out-of-commission personalities are grayed out with a reason via the shared `checkPersonalityAvailability` predicate — the same availability logic the pickers use.
 - **Edit modal** (`PersonalityEditModal`) is **tabbed** (the form grew long) — a `SegmentedControl` across three tabs, all editing the one `draft` (fields are conditionally rendered, so switching tabs never loses in-progress edits), with the Cancel/Save actions pinned below the tabs:
   - **Identity** — name, personality-prompt textarea, respect-global-append toggle, role chips with an **All / None** toggle, and the two spinner **color inputs** (wheel + hex text) with a live `BlobLoader` preview.
   - **Model** — provider → model → mode → effort pickers sourced from the live providers snapshot.
@@ -237,6 +331,8 @@ Seeding is first-run-only and delete-safe: `bootstrap.ts` seeds the in-memory ro
 
 ## Where the code lives
 
-- **Shared (app + daemon):** `packages/protocol/src/messages.ts` (`AgentPersonalitySchema`, `PERSONALITY_ROLES`, the `agent.personality.set` schemas), `agent-personalities.ts` (role helpers, availability predicate), `default-personalities.ts`, `effort.ts`.
-- **Daemon:** `packages/server/src/server/agent/agent-personalities.ts` (resolution + snapshot), `agent-manager.ts` (`setAgentPersonality` live switch), `session/agent-config/agent-config-session.ts` (the `agent.personality.set` RPC envelope), providers' optional `applyPersonality` (`providers/claude/agent.ts`, `providers/openai-compat-agent.ts`), `daemon-config-store.ts` (persistence/seeding), `tools/otto-tools.ts` (`create_agent`/`list_personalities`), `PersonalityStatsStore`.
-- **App:** `packages/app/src/screens/settings/agent-personalities-section.tsx` (editor), `components/combined-model-selector.tsx` (picker section), `hooks/use-personality-selection.ts`, `provider-selection/personality-form.ts`, `composer/agent-controls/index.tsx` (`useRunningChatPersonality`, the running-agent live switch).
+- **Shared (app + daemon):** `packages/protocol/src/messages.ts` (`AgentPersonalitySchema` incl. `memoryEnabled`, `PERSONALITY_ROLES`, the `agent.personality.set` and `personality.memory.*` schemas), `agent-personalities.ts` (role helpers, availability predicate), `default-personalities.ts`, `effort.ts`.
+- **Daemon:** `packages/server/src/server/agent/agent-personalities.ts` (resolution + snapshot), `agent-manager.ts` (`setAgentPersonality` live switch, `prepareSessionConfig` memory injection), `session/agent-config/agent-config-session.ts` (the `agent.personality.set` RPC envelope), providers' optional `applyPersonality` (`providers/claude/agent.ts`, `providers/openai-compat-agent.ts`), `daemon-config-store.ts` (persistence/seeding), `tools/otto-tools.ts` (`create_agent`/`list_personalities`, the three memory tools), `PersonalityStatsStore`.
+- **Memory (daemon):** `packages/server/src/server/agent/personality-memory/` — `types.ts`, `personality-memory-store.ts` (file-backed, serialized RMW), `lesson-dedup.ts`, `memory-brief.ts` (the pure composer), `personality-memory-service.ts` (the façade every caller talks to). Wired in `bootstrap.ts`; RPCs handled in `session.ts`.
+- **App:** `packages/app/src/screens/settings/agent-personalities-section.tsx` (editor), `screens/settings/personality-memory-transfer-sheet.tsx` (transfer on delete), `components/combined-model-selector.tsx` (picker section), `hooks/use-personality-selection.ts`, `provider-selection/personality-form.ts`, `composer/agent-controls/index.tsx` (`useRunningChatPersonality`, the running-agent live switch).
+- **Memory (app):** `packages/app/src/context-management/` — `use-personality-memory.ts` (RPC hooks), `use-context-personality.tsx` (the panel's bundled wiring), `personality-selector.tsx`, `memory-list.tsx`.

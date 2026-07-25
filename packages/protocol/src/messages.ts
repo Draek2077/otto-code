@@ -411,7 +411,7 @@ export const AgentPersonalitySchema = z
     // and costs nothing, so an off-by-default switch would only mean the feature
     // never starts working for anyone who did not go looking for it. The switch
     // exists to stop a personality accruing, not to start it.
-    // See projects/personality-memory/personality-memory.md §2.1.
+    // See docs/agent-personalities.md § Memory.
     memoryEnabled: z.boolean().optional(),
   })
   .passthrough();
@@ -2591,7 +2591,7 @@ export const ContextEdgeConvertResponseMessageSchema = z.object({
 
 // ---------------------------------------------------------------------------
 // Personality memory — the lessons a named personality accrues across sessions.
-// See projects/personality-memory/personality-memory.md.
+// See docs/agent-personalities.md § Memory.
 // ---------------------------------------------------------------------------
 
 // Plain strings on the wire, like personality roles and effort levels, so the

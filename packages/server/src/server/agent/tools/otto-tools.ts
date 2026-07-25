@@ -2668,7 +2668,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   // -------------------------------------------------------------------------
   // Personality memory. Only registered when the host wires the store, and only
   // three tools: one reflexive write, one deliberate read, one reviewed edit.
-  // See projects/personality-memory/personality-memory.md §4.
+  // See docs/agent-personalities.md § Memory (The three tools).
   // -------------------------------------------------------------------------
   if (options.personalityMemory) {
     const personalityMemory = options.personalityMemory;

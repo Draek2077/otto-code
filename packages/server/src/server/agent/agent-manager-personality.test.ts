@@ -187,6 +187,8 @@ function createHarness(
   options: {
     behavior?: SessionBehavior;
     appendSystemPrompt?: string;
+    /** Stands in for the personality-memory service's brief resolver. */
+    memoryBrief?: string | null;
   } = {},
 ): Harness {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-personality-test-"));
@@ -199,6 +201,9 @@ function createHarness(
     onPersonalitySpawn: (personalityId) => {
       spawnedPersonalityIds.push(personalityId);
     },
+    ...(options.memoryBrief !== undefined
+      ? { resolvePersonalityMemoryBrief: async () => options.memoryBrief ?? null }
+      : {}),
   });
   return {
     manager,
@@ -512,6 +517,93 @@ test("onPersonalitySpawn fires once per personality-bound createAgent", async ()
     });
 
     expect(harness.spawnedPersonalityIds).toEqual(["personality-vera"]);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Personality memory injection (docs/agent-personalities.md § Memory)
+// ---------------------------------------------------------------------------
+
+test("a personality's accrued lessons ride the launch prompt but never the stored one", async () => {
+  const harness = createHarness({
+    memoryBrief: "## What you have learned\n\n1. Rebuild protocol first.",
+  });
+  try {
+    // Spawn callers compose the personality prompt into `systemPrompt` before
+    // they reach AgentManager (session.ts, otto-tools, schedules all do), so
+    // that is what the brief has to stack under.
+    const agent = await harness.manager.createAgent(
+      {
+        provider: "codex",
+        cwd: harness.workdir,
+        personalitySnapshot: buildSnapshot(),
+        systemPrompt: "You are Vera.",
+      },
+      undefined,
+      { workspaceId: undefined },
+    );
+
+    // The provider sees the lessons...
+    expect(harness.client.lastSession!.config.systemPrompt).toContain("Rebuild protocol first.");
+    expect(harness.client.lastSession!.config.systemPrompt).toContain("You are Vera.");
+    // ...and the persisted config does not. Baking memory into the stored prompt
+    // would break the live-switch ownership check the moment a personality
+    // learned anything, and would freeze the lessons as of spawn time.
+    expect(agent.config.systemPrompt).toBe("You are Vera.");
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("an agent with no personality is never handed a memory brief", async () => {
+  const harness = createHarness({ memoryBrief: "## What you have learned\n\n1. Something." });
+  try {
+    await harness.manager.createAgent({ provider: "codex", cwd: harness.workdir }, undefined, {
+      workspaceId: undefined,
+    });
+    expect(harness.client.lastSession!.config.systemPrompt).toBeUndefined();
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("nothing to remember leaves the launch prompt byte-identical", async () => {
+  const harness = createHarness({ memoryBrief: null });
+  try {
+    await harness.manager.createAgent(
+      {
+        provider: "codex",
+        cwd: harness.workdir,
+        personalitySnapshot: buildSnapshot(),
+        systemPrompt: "You are Vera.",
+      },
+      undefined,
+      { workspaceId: undefined },
+    );
+    expect(harness.client.lastSession!.config.systemPrompt).toBe("You are Vera.");
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("a live personality switch re-resolves the incoming personality's lessons", async () => {
+  const harness = createHarness({ memoryBrief: "## What you have learned\n\n1. Vera knows this." });
+  try {
+    const agent = await harness.manager.createAgent(
+      { provider: "codex", cwd: harness.workdir },
+      undefined,
+      { workspaceId: undefined },
+    );
+    await harness.manager.setAgentPersonality(agent.id, buildSnapshot());
+
+    const update = harness.client.lastSession!.personalityUpdates.at(-1)!;
+    // Switching to a personality mid-chat has to bring what it has learned, or
+    // you get its prompt and its brain but not its experience.
+    expect(update.systemPrompt).toContain("Vera knows this.");
+    // The stored prompt stays memory-free so the ownership check keeps matching.
+    expect(agent.config.systemPrompt).toBe("You are Vera.");
   } finally {
     harness.cleanup();
   }

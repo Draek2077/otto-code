@@ -335,7 +335,7 @@ export interface AgentManagerOptions {
    * unwired). Called from prepareSessionConfig — the one point every spawn,
    * resume and refresh path already funnels through — so memory is re-read on
    * every resume and no caller has to thread it.
-   * See projects/personality-memory/personality-memory.md §5.
+   * See docs/agent-personalities.md § Memory (Injection).
    */
   resolvePersonalityMemoryBrief?: (params: {
     personalityId: string;
