@@ -110,6 +110,8 @@ import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { RetainedTranscriptStore } from "./agent/retained-transcript-store.js";
 import { PersonalityStatsStore } from "./agent/personality-stats-store.js";
+import { PersonalityMemoryStore } from "./agent/personality-memory/personality-memory-store.js";
+import { PersonalityMemoryService } from "./agent/personality-memory/personality-memory-service.js";
 import {
   ActivityStatsStore,
   type ActivityIncrementFn,
@@ -1005,6 +1007,12 @@ export async function createOttoDaemon(
     path.join(config.ottoHome, "stats", "personality-usage.json"),
     logger,
   );
+  // The lessons personalities accrue. One file per personality, so the store is
+  // handed a directory rather than a path.
+  const personalityMemoryStore = new PersonalityMemoryStore(
+    path.join(config.ottoHome, "personality-memory"),
+    logger,
+  );
   const activityStatsStore = new ActivityStatsStore(
     path.join(config.ottoHome, "activity-stats.json"),
     logger,
@@ -1062,6 +1070,17 @@ export async function createOttoDaemon(
       },
     },
   });
+  // Personality memory. Constructed here because AgentManager needs it below to
+  // inject each personality's accrued lessons at spawn, and it needs the git
+  // service to scope project lessons to a repo root rather than a bare cwd
+  // (a worktree and its main checkout are the same project's lessons).
+  const personalityMemory = new PersonalityMemoryService({
+    store: personalityMemoryStore,
+    readAgentPersonalities: () => daemonConfigStore.get().agentPersonalities?.personalities ?? [],
+    resolveProjectRoot: (cwd) => workspaceGitService.resolveRepoRoot(cwd),
+    logger,
+  });
+
   const providerSnapshotLogger = logger.child({ module: "provider-snapshot-manager" });
   const providerSnapshotManager = new ProviderSnapshotManager({
     logger: providerSnapshotLogger,
@@ -1093,6 +1112,10 @@ export async function createOttoDaemon(
     onPersonalitySpawn: (personalityId) => {
       void personalityStatsStore.increment(personalityId);
     },
+    // Injected at the same choke point, so every spawn path — composer, MCP
+    // create_agent, schedule runs, orchestration, resume — carries the
+    // personality's accrued lessons without threading anything per-caller.
+    resolvePersonalityMemoryBrief: (params) => personalityMemory.resolveBriefForSpawn(params),
     onActivity: recordActivity,
     onUsageEvent: (event) => usageLogStore.append(event),
     mcpAuthToken: agentMcpAuthToken,
@@ -1596,6 +1619,7 @@ export async function createOttoDaemon(
     providerSnapshotManager,
     readAgentPersonalities: () => daemonConfigStore.get().agentPersonalities?.personalities ?? [],
     readAgentTeams: () => daemonConfigStore.get().agentTeams,
+    personalityMemory,
     github,
     workspaceGitService,
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
@@ -1968,6 +1992,7 @@ export async function createOttoDaemon(
             );
 
             wsServer.setPersonalityStatsProvider(() => personalityStatsStore.get());
+            wsServer.setPersonalityMemoryService(personalityMemory);
             wsServer.setNodeOutputStore(nodeOutputStore);
             wsServer.setPromptTemplateStore(promptTemplateStore);
 

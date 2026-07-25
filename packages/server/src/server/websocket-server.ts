@@ -17,6 +17,7 @@ import type { ScheduleService } from "./schedule/service.js";
 import type { RunService } from "./orchestration/run-service.js";
 import type { GraphStore } from "./orchestration/graph-store.js";
 import type { NodeOutputStore } from "./orchestration/node-output.js";
+import type { PersonalityMemoryService } from "./agent/personality-memory/personality-memory-service.js";
 import type { PromptTemplateStore } from "./orchestration/prompt-template-store.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import { redactDaemonConfigForClient } from "./daemon-config-store.js";
@@ -483,6 +484,7 @@ export class VoiceAssistantWebSocketServer {
   private getPersonalityStatsFn:
     | (() => Record<string, number> | Promise<Record<string, number>>)
     | null = null;
+  private personalityMemoryService: PersonalityMemoryService | null = null;
   private terminalManager!: TerminalManager | null;
   private serviceProxy!: ServiceProxySubsystem | null;
   private scriptRuntimeStore!: WorkspaceScriptRuntimeStore | null;
@@ -727,6 +729,15 @@ export class VoiceAssistantWebSocketServer {
     fn: () => Record<string, number> | Promise<Record<string, number>>,
   ): void {
     this.getPersonalityStatsFn = fn;
+  }
+
+  /**
+   * Provide the personality-memory service. Wired from bootstrap; when absent the
+   * daemon does not advertise `features.personalityMemory` and the client hides
+   * the whole feature — there is no client-side substitute for daemon storage.
+   */
+  public setPersonalityMemoryService(service: PersonalityMemoryService | null): void {
+    this.personalityMemoryService = service;
   }
 
   public setNodeOutputStore(store: NodeOutputStore | null): void {
@@ -1267,6 +1278,7 @@ export class VoiceAssistantWebSocketServer {
         ? (previewParams) => this.speech!.synthesizePreview(previewParams)
         : undefined,
       getPersonalityStats: this.getPersonalityStatsFn ?? undefined,
+      personalityMemory: this.personalityMemoryService,
       serverId: this.serverId,
       daemonVersion: this.daemonVersion,
       daemonRuntimeConfig: this.daemonRuntimeConfig,
@@ -1519,12 +1531,19 @@ export class VoiceAssistantWebSocketServer {
         suggestedTasks: true,
         // COMPAT(steerQueue): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
         steerQueue: true,
+        // COMPAT(steerQueueReorder): added in v0.6.9, drop the gate when daemon floor >= v0.6.9.
+        steerQueueReorder: true,
         // COMPAT(backgroundShellTasks): wire field reserved in v0.5.3 but never
         // advertised; the daemon always emits background_shell_task events (Claude
         // provider), so populate it now. Drop the gate when daemon floor >= v0.6.7.
         backgroundShellTasks: true,
         // COMPAT(contextManagement): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
         contextManagement: true,
+        // COMPAT(personalityMemory): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
+        // Conditional on the service actually being wired: the flag means "this
+        // daemon can store and serve lessons", and a host without the store must
+        // not advertise a surface that would answer every request with nothing.
+        personalityMemory: this.personalityMemoryService !== null,
         // COMPAT(projectLinks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         projectLinks: true,
         // COMPAT(fileOutsideWorkspace): added in v0.5.8, drop the gate when daemon floor >= v0.5.8.

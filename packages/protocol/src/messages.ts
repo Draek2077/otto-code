@@ -406,6 +406,13 @@ export const AgentPersonalitySchema = z
     spinner: AgentPersonalitySpinnerSchema.optional(),
     voice: AgentPersonalityVoiceSchema.optional(),
     voiceCues: AgentPersonalityVoiceCuesSchema.optional(),
+    // Whether this personality accrues lessons across sessions (personality
+    // memory). ABSENT MEANS ON: a personality with no lessons injects nothing
+    // and costs nothing, so an off-by-default switch would only mean the feature
+    // never starts working for anyone who did not go looking for it. The switch
+    // exists to stop a personality accruing, not to start it.
+    // See projects/personality-memory/personality-memory.md §2.1.
+    memoryEnabled: z.boolean().optional(),
   })
   .passthrough();
 
@@ -1692,6 +1699,26 @@ export const AgentQueueRemoveRequestMessageSchema = z.object({
   messageId: z.string(),
 });
 
+/**
+ * Move one queued message to a different position in an agent's queue.
+ *
+ * Order is what the queue means, so this is the edit that changes the next
+ * turn's content without changing the queue's membership. The daemon resolves
+ * `messageId` fresh and clamps `toIndex`, so a client acting on a snapshot that
+ * is one drain stale reorders what is actually there or reports `moved: false`.
+ * COMPAT(steerQueueReorder): added in v0.6.9, drop the gate when floor >= v0.6.9.
+ */
+export const AgentQueueReorderRequestMessageSchema = z.object({
+  type: z.literal("agent.queue.reorder.request"),
+  requestId: z.string(),
+  /** Accepts full ID, unique prefix, or exact full title (server resolves). */
+  agentId: z.string(),
+  /** The queued message's `id` from `AgentSnapshotPayload.queuedMessages`. */
+  messageId: z.string(),
+  /** Zero-based destination, clamped to the queue's current length. */
+  toIndex: z.number().int().nonnegative(),
+});
+
 /** Drop every message queued behind an agent's current turn. */
 export const AgentQueueClearRequestMessageSchema = z.object({
   type: z.literal("agent.queue.clear.request"),
@@ -2495,6 +2522,16 @@ export const ContextReportSchema = z.object({
   workingRoom: z.number(),
   aggregateSeverity: ContextSeveritySchema,
   findings: z.array(ContextFindingSchema),
+  // Which personality this report was evaluated FOR. Context became
+  // personality-specific once personalities accrue memory, so a report is only
+  // interpretable alongside the identity it was measured against.
+  // COMPAT(personalityMemory): additive; absent = the pre-memory, personality-agnostic report.
+  personalityId: z.string().optional(),
+  // That personality's injected memory brief, in tokens. Folded into the
+  // `otto_injected` category total rather than a new category: ContextCategory
+  // is a z.enum travelling daemon->client, so a new member would make a new
+  // daemon's report unparseable by an older client.
+  personalityMemoryTokens: z.number().optional(),
 });
 
 // Pushed with the full current report whenever a watched context file changes.
@@ -2515,6 +2552,10 @@ export const ContextReportGetRequestMessageSchema = z.object({
   workspaceId: z.string(),
   provider: z.string().optional(),
   windowTokens: z.number().optional(),
+  // "Evaluate as if this personality were running here": folds that
+  // personality's injected memory brief into the report's fixed weight. Omitted
+  // means the personality-agnostic report.
+  personalityId: z.string().optional(),
 });
 
 export const ContextReportGetResponseMessageSchema = z.object({
@@ -2545,6 +2586,125 @@ export const ContextEdgeConvertResponseMessageSchema = z.object({
     requestId: z.string(),
     ok: z.boolean(),
     error: z.string().optional(),
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Personality memory — the lessons a named personality accrues across sessions.
+// See projects/personality-memory/personality-memory.md.
+// ---------------------------------------------------------------------------
+
+// Plain strings on the wire, like personality roles and effort levels, so the
+// daemon can grow the vocabulary without breaking old peers. Logical values:
+// scope "project" | "global"; source "agent" | "user" | "review" | "transfer".
+export const PersonalityMemoryEntrySchema = z
+  .object({
+    id: z.string(),
+    text: z.string(),
+    scope: z.string(),
+    // Absolute, daemon-side. Present only on project-scoped entries.
+    projectRoot: z.string().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+    source: z.string(),
+    // How many times the lesson has been restated. Drives injection order and
+    // is shown in the brief, because a repeatedly-relearned gotcha is stronger
+    // evidence than a one-off observation.
+    reinforcedCount: z.number().optional(),
+    transferredFrom: z.string().optional(),
+  })
+  .passthrough();
+
+export const PersonalityMemoryListRequestMessageSchema = z.object({
+  type: z.literal("personality.memory.list.request"),
+  requestId: z.string(),
+  personalityId: z.string(),
+  // Which project's lessons count as in-scope for the returned brief. Omitted
+  // means global-only.
+  projectRoot: z.string().optional(),
+});
+
+export const PersonalityMemoryListResponseMessageSchema = z.object({
+  type: z.literal("personality.memory.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    personalityId: z.string(),
+    personalityName: z.string(),
+    /** Whether this personality is accruing (the `memoryEnabled` switch). */
+    enabled: z.boolean(),
+    /** Every stored entry, including other projects' — the UI shows them all. */
+    entries: z.array(PersonalityMemoryEntrySchema),
+    // The EXACT text the daemon would inject for `projectRoot`, not a
+    // reconstruction. Memory is only trustworthy if it is inspectable, and the
+    // only way the shown text cannot drift from the injected text is for both
+    // to come from one composer.
+    brief: z.string(),
+    briefTokens: z.number(),
+    /** Entries the injection budget cut, so the UI can say so. */
+    briefOmittedCount: z.number().optional(),
+  }),
+});
+
+// One write RPC covers add / edit / delete: no `entryId` = add a new lesson,
+// `drop: true` = forget one. The user-facing editing path from Context
+// Management (charter §2.4).
+export const PersonalityMemoryUpdateRequestMessageSchema = z.object({
+  type: z.literal("personality.memory.update.request"),
+  requestId: z.string(),
+  personalityId: z.string(),
+  entryId: z.string().optional(),
+  text: z.string().optional(),
+  scope: z.string().optional(),
+  projectRoot: z.string().optional(),
+  drop: z.boolean().optional(),
+});
+
+export const PersonalityMemoryUpdateResponseMessageSchema = z.object({
+  type: z.literal("personality.memory.update.response"),
+  payload: z.object({
+    requestId: z.string(),
+    ok: z.boolean(),
+    error: z.string().optional(),
+  }),
+});
+
+// Deleting a personality must never silently destroy what it learned, so the
+// delete flow resolves here first: `mode: "transfer"` moves the lessons to
+// `toPersonalityId` (merging near-duplicates), `mode: "delete"` discards them.
+export const PersonalityMemoryTransferRequestMessageSchema = z.object({
+  type: z.literal("personality.memory.transfer.request"),
+  requestId: z.string(),
+  fromPersonalityId: z.string(),
+  toPersonalityId: z.string().optional(),
+  mode: z.string(),
+});
+
+export const PersonalityMemoryTransferResponseMessageSchema = z.object({
+  type: z.literal("personality.memory.transfer.response"),
+  payload: z.object({
+    requestId: z.string(),
+    ok: z.boolean(),
+    /** Entries that landed as new rows in the destination. */
+    transferred: z.number().optional(),
+    /** Entries that merged into a lesson the destination already knew. */
+    merged: z.number().optional(),
+    error: z.string().optional(),
+  }),
+});
+
+// Per-personality lesson counts. Its own RPC over its own file, mirroring
+// agentPersonalities.get_stats — counts must not ride the daemon-config
+// broadcast, or every recorded lesson would fan a config change to every client.
+export const PersonalityMemoryStatsRequestMessageSchema = z.object({
+  type: z.literal("personality.memory.stats.request"),
+  requestId: z.string(),
+});
+
+export const PersonalityMemoryStatsResponseMessageSchema = z.object({
+  type: z.literal("personality.memory.stats.response"),
+  payload: z.object({
+    requestId: z.string(),
+    counts: z.record(z.string(), z.number()),
   }),
 });
 
@@ -4314,6 +4474,10 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   StatsActivityGetRequestMessageSchema,
   ContextReportGetRequestMessageSchema,
   ContextEdgeConvertRequestMessageSchema,
+  PersonalityMemoryListRequestMessageSchema,
+  PersonalityMemoryUpdateRequestMessageSchema,
+  PersonalityMemoryTransferRequestMessageSchema,
+  PersonalityMemoryStatsRequestMessageSchema,
   StatsActivityResetRequestMessageSchema,
   UsageLogGetRequestMessageSchema,
   AgentContextGetUsageRequestMessageSchema,
@@ -4339,6 +4503,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   AgentPersonalitySetRequestMessageSchema,
   AgentRewindRequestMessageSchema,
   AgentQueueRemoveRequestMessageSchema,
+  AgentQueueReorderRequestMessageSchema,
   AgentQueueClearRequestMessageSchema,
   AgentPermissionResponseMessageSchema,
   CheckoutStatusRequestSchema,
@@ -4701,6 +4866,11 @@ export const ServerInfoStatusPayloadSchema = z
         // composer keeps its own local queue — that is the pre-existing
         // behavior, not a degraded build of this feature.
         steerQueue: z.boolean().optional(),
+        // Daemon serves agent.queue.reorder. Separate from `steerQueue`
+        // because a daemon on 0.6.8 owns a queue but cannot re-order it;
+        // without this the move controls are absent (the queue still works).
+        // COMPAT(steerQueueReorder): added in v0.6.9, drop the gate when daemon floor >= v0.6.9.
+        steerQueueReorder: z.boolean().optional(),
         // Daemon can resolve and evaluate the provider's context graph, serve
         // context.report.* and push context_report_changed. Without it the
         // client hides both the Context Management tab and the composer
@@ -4717,6 +4887,13 @@ export const ServerInfoStatusPayloadSchema = z
         // Refine exists to replace.
         // COMPAT(refine): added in v0.6.9, drop the gate when daemon floor >= v0.6.9.
         refine: z.boolean().optional(),
+        // Personality memory — the daemon stores per-personality lessons, injects
+        // them at spawn, and serves personality.memory.*. Without it the client
+        // hides the Memory tab, the accrual indicator and the transfer-on-delete
+        // choice: storage is daemon-side by definition, so there is nothing a
+        // client-side fallback could read.
+        // COMPAT(personalityMemory): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
+        personalityMemory: z.boolean().optional(),
         // COMPAT(projectSearch): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         projectSearch: z.boolean().optional(),
         // COMPAT(codeIndex): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
@@ -5747,6 +5924,22 @@ export const AgentQueueRemoveResponseMessageSchema = z.object({
         text: z.string(),
       })
       .nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const AgentQueueReorderResponseMessageSchema = z.object({
+  type: z.literal("agent.queue.reorder.response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    /**
+     * False when the id was already gone (the turn drained it while the tap was
+     * in flight) or the entry was already at that position. The authoritative
+     * order arrives on the agent snapshot either way, so a client only needs
+     * this to decide whether to surface an error.
+     */
+    moved: z.boolean(),
     error: z.string().nullable(),
   }),
 });
@@ -8027,6 +8220,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentFeatureResponseMessageSchema,
   AgentDetachResponseMessageSchema,
   AgentQueueRemoveResponseMessageSchema,
+  AgentQueueReorderResponseMessageSchema,
   AgentQueueClearResponseMessageSchema,
   AgentSubagentStopResponseMessageSchema,
   AgentBackgroundTaskStopResponseMessageSchema,
@@ -8151,6 +8345,10 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   StatsActivityGetResponseMessageSchema,
   ContextReportGetResponseMessageSchema,
   ContextEdgeConvertResponseMessageSchema,
+  PersonalityMemoryListResponseMessageSchema,
+  PersonalityMemoryUpdateResponseMessageSchema,
+  PersonalityMemoryTransferResponseMessageSchema,
+  PersonalityMemoryStatsResponseMessageSchema,
   StatsActivityResetResponseMessageSchema,
   UsageLogGetResponseMessageSchema,
   ActivityStatsChangedSchema,
@@ -8289,6 +8487,10 @@ export type QueuedAgentMessagePayload = z.infer<typeof QueuedAgentMessagePayload
 export type AgentPromptDelivery = NonNullable<SendAgentMessageRequest["delivery"]>;
 export type AgentQueueRemoveRequestMessage = z.infer<typeof AgentQueueRemoveRequestMessageSchema>;
 export type AgentQueueRemoveResponseMessage = z.infer<typeof AgentQueueRemoveResponseMessageSchema>;
+export type AgentQueueReorderRequestMessage = z.infer<typeof AgentQueueReorderRequestMessageSchema>;
+export type AgentQueueReorderResponseMessage = z.infer<
+  typeof AgentQueueReorderResponseMessageSchema
+>;
 export type AgentQueueClearRequestMessage = z.infer<typeof AgentQueueClearRequestMessageSchema>;
 export type AgentQueueClearResponseMessage = z.infer<typeof AgentQueueClearResponseMessageSchema>;
 export type SetVoiceModeResponseMessage = z.infer<typeof SetVoiceModeResponseMessageSchema>;
@@ -8402,6 +8604,19 @@ export type StatsActivityGetResponseMessage = z.infer<typeof StatsActivityGetRes
 export type ContextReportGetResponseMessage = z.infer<typeof ContextReportGetResponseMessageSchema>;
 export type ContextEdgeConvertResponseMessage = z.infer<
   typeof ContextEdgeConvertResponseMessageSchema
+>;
+export type PersonalityMemoryEntryPayload = z.infer<typeof PersonalityMemoryEntrySchema>;
+export type PersonalityMemoryListResponseMessage = z.infer<
+  typeof PersonalityMemoryListResponseMessageSchema
+>;
+export type PersonalityMemoryUpdateResponseMessage = z.infer<
+  typeof PersonalityMemoryUpdateResponseMessageSchema
+>;
+export type PersonalityMemoryTransferResponseMessage = z.infer<
+  typeof PersonalityMemoryTransferResponseMessageSchema
+>;
+export type PersonalityMemoryStatsResponseMessage = z.infer<
+  typeof PersonalityMemoryStatsResponseMessageSchema
 >;
 export type StatsActivityResetRequestMessage = z.infer<
   typeof StatsActivityResetRequestMessageSchema
