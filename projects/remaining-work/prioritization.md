@@ -340,36 +340,59 @@ entries are the ones that explicitly never merge.
 It is a product decision, not a task, and it is cheap once decided. **Take it at the head of
 Wave 3**, before the performance work makes the tree noisy.
 
-### Wave 3 — the performance floor, plus three ready things
+### Wave 3 — memory, the performance floor, and system polish
 
-**Assessed 2026-07-25.** Wave 3 as originally cut was a single open-ended item, and that is
-not a runnable wave. Two reasons it needed re-cutting:
+**Cut 2026-07-25, in flight.** Wave 3 as originally written was a single open-ended item,
+which is not a runnable wave: its own measuring instrument ("no resource reporting at all")
+did not exist, so it was a _chain_ — build reporting → measure → find → fix — with an
+unknown tail. Every wave that shipped so far held several independently-completable things.
 
-- **Its own instrument does not exist.** "No resource reporting at all" is a separate open
-  item, and it is the thing that would find the leak. So Wave 3 is really a _chain_ — build
-  reporting → measure → find → fix — with an unknown tail, not a task with an end.
-- **One item with an unknown tail means the wave can produce nothing.** Every other wave so
-  far shipped because it held several independently-completable things.
+The four below touch different code on purpose; nothing here collides with the profiling
+work. All four were dispatched in parallel.
 
-So the FPS work stays the spine, and three ready items with known ends run beside it. They
-were chosen to touch different code: nothing here collides with the profiling work.
-
-1. **System-injected delivery decision** (above). Small, and it is a correctness question
-   sitting on machinery that just shipped
+1. **personality-memory** — _pulled forward from Wave 4, and expanded._ Impact 4 and
+   compounding: every spawn starts from zero today, so the same corrections get re-taught
+   forever. See the settled design below — it grew from the charter sketch into a full
+   vertical
 2. **App-wide FPS degradation** — the spine. Measurement-first: build the resource
-   reporting, then find the leak. Impact 4 — an app that degrades over a long session is
+   reporting, _then_ find the leak. Impact 4 — an app that degrades over a long session is
    exactly the failure mode a leave-it-running monitoring tool cannot have. The Visualizer
    staying smooth while the rest degrades points at the JS thread / a leak / daemon
    backpressure, **not** the GPU — that narrows the first measurement
-3. **computer-use Phase 0** (openai-compat vision) — _pulled forward from Wave 4._ Scope 2,
-   difficulty 2, impact 4: paste a screenshot at a local model and have it see. Its own
-   charter says Phase 0 is independently valuable, and it is the cheapest impact-4 item left
-   on the board. Pure fork thesis — a capability Claude users have and local-model users
-   do not
-4. **personality-memory** — _pulled forward from Wave 4._ Impact 4 and compounding: every
-   spawn starts from zero today, so the same corrections get re-taught forever. Self-contained,
-   and now cheaper than when it was scored — Refine's structured-generation chain and the
-   observed-subagent accounting both landed under it
+3. **System-injected delivery decision** (above). A correctness question sitting on
+   machinery that just shipped; carries the two steer-queue tails (reorder, interrupt
+   receipt) with it
+4. **References and sources index** — collect every external resource that shaped Otto,
+   with _what it contributed and why_, so the full set of ideas stays reviewable. Seeded
+   with four supplied repos on agentic architectures, agent memory, design patterns and
+   open research. Explicitly feeds the Wave 5 candidate below
+
+**Dropped from this wave:** _computer-use Phase 0_ — deferred to a later wave by the product
+owner; the vision capability is not the current focus. **AsciiDoc preview + embedded
+mermaid** was proposed for this wave and then withdrawn: it was already in flight and is
+substantially built (`components/markdown/asciidoc/asciidoc-to-markdown.ts`, 51 tests
+green, `projects/file-rendering/asciidoc-preview.md`).
+
+#### personality-memory — the settled design
+
+The charter is a sketch; these decisions from the product owner supersede it.
+
+- **Underneath these are just stored memories.** No exotic representation
+- **Recording is fire-and-forget.** The agent states what it learned; the system handles
+  storage, dedup and placement. No ids to track, no index to maintain. _If recording is
+  harder than that, agents will not do it_ — this is the load-bearing constraint
+- **A "review lessons" tool** reads the accrued set back, forms updates, and asks the user
+  clarifying questions in a session, rewriting the lesson from the answers. This is how
+  lessons improve instead of accumulating as noise
+- **Context Management is the one place** to see and manage them, with a selector for
+  _which personality you are viewing context for_ — context is personality-specific now.
+  Entries are editable there
+- **Personality dialogs show accrual, not management** — enough that you would not delete
+  one casually, but not full CRUD. A deliberate scope limit: the tooling is not there
+- **Deleting a personality offers delete _or transfer_** of its lessons to another
+  personality (most likely of the same role). Required, not a follow-up — accrued
+  knowledge must not be silently destroyed
+- **Injected context must be inspectable.** Memory is only trustworthy if you can see it
 
 Opportunistic, if the FPS measurement stalls: **Refine Phase 4** (a call site), the
 `projects/todos/` remainder, **preview-file-tabs**, **web-search-providers**.
@@ -389,6 +412,41 @@ sequencing constraint.
    than Wave 3 because its impact is provider-shaped in the same way the adapters are:
    a 5 for .NET developers, a 1 for everyone else. Phase 2 (general file mutations) is
    **not** .NET work and enables mutation paths beyond it
+
+### Wave 5 candidate — agentic architectures for coding tasks
+
+Added 2026-07-25 (product owner). The thesis: once the IDE-grade platform is solid — coding
+tasks executed, shown, and reviewable by a human — **the orchestration system is unlocked**,
+and the payoff is _coding pattern templates_: reusable structures for building software
+features, replacing the growth pains of bad prompting and ad-hoc AI use. It is the reason
+the platform work came first, not a separate ambition.
+
+This is a wave-scale architecture consolidation, not a feature. It builds on
+`projects/agent-orchestration/` (the CONTROL layer) and `projects/orchestration-graphs/`
+(built: the deterministic graph engine and designer). Wave 3's references index is its
+groundwork — the four seeded repos were supplied for exactly this.
+
+**Note against Wave 5's "pick one" rule below:** this and agent-orchestration are not
+independent bets. Agent-orchestration is the substrate this would stand on, so if this is
+the direction, that is the pick.
+
+### ⚠️ Divergence from upstream Paseo
+
+Flagged 2026-07-25. The fork has always aimed to keep merge capability with upstream Paseo
+(`docs/upstream-merges.md`), **and we are nearing the divergence point.** The waves above
+are what push past it — personality memory, an agentic orchestration layer and a
+per-personality context model have no upstream counterpart to merge against.
+
+Two consequences worth acting on rather than discovering later:
+
+- The trap-1 ordering (upstream merge → subagent convergence → provider adapters, Wave 4)
+  gets **more** expensive the longer it waits, not less. It is the last item whose whole
+  point is reducing divergence cost
+- Watch for anything that silently forfeits merge capability early. A concrete instance
+  found the same day: `asciidoc-to-markdown.ts` carries a literal NUL byte in a string
+  (`PLACEHOLDER_OPEN`), which makes git treat the whole file as **binary** — no textual
+  diff, no 3-way merge. `diff-base-switcher.tsx` had the identical defect and was fixed by
+  using the `"\0"` escape instead. One byte, and the file cannot be merged
 
 ### Wave 5 — the big bet
 
