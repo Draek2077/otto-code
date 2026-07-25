@@ -191,9 +191,13 @@ const HOVER_RETRY_MS = 400;
 const HOVER_RETRY_CEILING_MS = 15_000;
 const HOVER_SPINNER_PX = 11;
 
-// The glyph column between the line numbers and the code. Narrow on purpose: it is a
-// marker channel, not a toolbar, and every pixel here is one the code does not get.
-const DIAGNOSTIC_GUTTER_PX = 14;
+// The glyph column, between the line numbers and the code.
+//
+// Its width is the whole cost of putting it on that side: every pixel is one the line
+// numbers are pushed away from the text they number. So it is sized to the dot plus the
+// smallest gap that still reads as a gap — not to a comfortable margin. A marker channel,
+// not a toolbar.
+const DIAGNOSTIC_GUTTER_PX = 11;
 const DIAGNOSTIC_DOT_PX = 6;
 
 // The overview ruler splits into two bands: problem marks on the left, search
@@ -929,13 +933,6 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
   const state = EditorState.create({
     doc: options.doc,
     extensions: [
-      // ORDER IS THE LAYOUT for gutters: CM6 renders them left to right in the order
-      // their extensions appear, and puts the `border-right` divider on the container
-      // around all of them. So the problem glyphs go FIRST — outermost — and the line
-      // numbers end up against the divider, directly beside the code they number.
-      // The other way round (glyphs between numbers and code) pushes the numbers a
-      // column away from the text, which is the one thing they exist to sit next to.
-      createDiagnosticsExtension({ readTheme: () => activeTheme }),
       lineNumbers({ domEventHandlers: { mousedown: handleLineNumberMouseDown } }),
       highlightActiveLineGutter(),
       highlightActiveLine(),
@@ -1011,12 +1008,23 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       ...(options.hoverProvider
         ? [buildHoverTooltip(options.hoverProvider, () => activeTheme)]
         : []),
-      // Diagnostics are mounted up with the gutters, not here: their position in this
-      // array is what decides which side of the line numbers they draw on.
+      // ORDER IS THE LAYOUT for gutters: CM6 renders them left to right in extension
+      // order, so this mounting AFTER `lineNumbers()` is what puts the glyph column on
+      // the numbers' right — and that is deliberate, not incidental.
       //
-      // The overview ruler is unconditional — every mark it draws comes from state this
-      // editor already holds, and it needs no pointer to be useful; a thumb showing
-      // where you are is worth as much on a phone.
+      // The numbers are `text-align: right`, which makes the left side of their gutter
+      // ragged whitespace that varies with digit count. A glyph column over there floats
+      // a different distance from the digits in every file. On the right it is always
+      // flush against them, so the number and its marker read as one thing. The cost is
+      // that the numbers sit a column off the code, which is why DIAGNOSTIC_GUTTER_PX is
+      // as narrow as a 6px dot allows rather than a comfortable width.
+      //
+      // Unconditional: diagnostics are pushed, so unlike hover they need no pointer and
+      // work on every platform. With nothing pushed the gutter renders only its spacer.
+      createDiagnosticsExtension({ readTheme: () => activeTheme }),
+      // Also unconditional, and for the same reason: every mark it draws comes from state
+      // this editor already holds, and a thumb showing where you are is worth as much on
+      // a phone as on a desktop.
       createOverviewRulerExtension({ readTheme: () => activeTheme }),
       EditorView.domEventHandlers({
         contextmenu: (event, v) => {

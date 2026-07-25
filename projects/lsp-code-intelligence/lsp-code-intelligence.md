@@ -596,6 +596,23 @@ flex-direction:column }` — its own comment says "prevents margin collapsing" �
 > - **`TooltipContent` renders its children raw.** A bare string child gets no `<Text>` wrapper, so on
 >   web it inherits the document's font size and comes out roughly double. Every call site must pass
 >   `<Text style={…fontSize.sm}>`; `toolbar-icon-button.tsx` is the reference shape.
+> - **Gutter order IS the layout**: CM6 renders gutters left to right in extension order, and puts
+>   the `border-right` divider on the container around all of them. **The glyph column mounts AFTER
+>   `lineNumbers()`, on the numbers' right — settled by the product owner 2026-07-25 after trying
+>   both.** The reason is typographic and worth not re-litigating: line numbers are `text-align:
+right`, so the **left** side of their gutter is ragged whitespace that varies with digit count,
+>   and a glyph column over there floats a different distance from the digits in every file. On the
+>   right it is always flush against them, so a number and its marker read as one thing.
+>
+>   The cost of that side is real — the numbers sit a column off the code — and is paid down by
+>   width, not by moving: `DIAGNOSTIC_GUTTER_PX` is 11px, the 6px dot plus the smallest gap that
+>   still reads as one, rather than a comfortable margin.
+>
+>   The option that would end the tradeoff, if it ever comes up again: put severity **on** the line
+>   number itself (a coloured left border or coloured digits on the gutter element) and have no glyph
+>   column at all — zero width, always tight, and the existing per-line gutter hover still works
+>   because it resolves by line, not by element. Not built; it is a visual-design change, not a fix.
+>
 > - Problem totals moved **ahead of** the divider in the right-hand group, so the encoding and caret
 >   readouts stay rightmost. Each total is now a tooltip trigger naming its severity (`info` reads as
 >   "suggestion" — what a language server actually means by it), and each panel row carries the full
