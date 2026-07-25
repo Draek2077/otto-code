@@ -594,6 +594,21 @@ function coerceCodeReferencesTabTarget(raw: Record<string, unknown>): WorkspaceT
   });
 }
 
+/**
+ * Path plus an optional line scope, so it fits neither the single-string table
+ * nor the optional-string-pair one. The zero placeholders are deliberate in the
+ * same way as the references coercer: the normalizer drops a half-specified
+ * range back to whole-file history rather than restoring a nonsense scope.
+ */
+function coerceFileHistoryTabTarget(raw: Record<string, unknown>): WorkspaceTabTarget | null {
+  return normalizeWorkspaceTabTarget({
+    kind: "fileHistory",
+    path: typeof raw.path === "string" ? raw.path : "",
+    startLine: typeof raw.startLine === "number" ? raw.startLine : undefined,
+    endLine: typeof raw.endLine === "number" ? raw.endLine : undefined,
+  });
+}
+
 /** Same shape as the references coercer, plus the new name the job was set up with. */
 function coerceCodeRenameTabTarget(raw: Record<string, unknown>): WorkspaceTabTarget | null {
   return normalizeWorkspaceTabTarget({
@@ -669,6 +684,9 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
   }
   if (kind && kind in OPTIONAL_PAIR_FIELD_BY_KIND) {
     return coerceOptionalPairTabTarget(kind, raw);
+  }
+  if (kind === "fileHistory") {
+    return coerceFileHistoryTabTarget(raw);
   }
   if (kind === "codeReferences") {
     return coerceCodeReferencesTabTarget(raw);

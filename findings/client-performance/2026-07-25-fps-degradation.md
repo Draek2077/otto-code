@@ -1,5 +1,23 @@
 # Why app-wide FPS degrades over a long session
 
+> **Partly superseded by
+> [2026-07-25-workspace-tree-retention.md](2026-07-25-workspace-tree-retention.md).** Finding 1
+> below — "mounted workspace trees are never released", and the ~35% frame-rate cost attributed to
+> it — is **wrong**, for two independent reasons this report could not see:
+>
+> - **The soak seeded three workspaces and an LRU cap of 3 already existed**, so the eviction path
+>   never ran. Re-measured with six workspaces, the deck evicts correctly and unmounting fully
+>   releases the tree's `useQuery` observers. Retention is bounded by the cap, not by
+>   workspaces-visited.
+> - **The frame-rate number came from a one-sample-versus-one-sample comparison.** The frame-drift
+>   decile is `bucket = max(1, floor(n/10))`, which is 1 at 12 cycles. The same configuration
+>   produces both verdicts on consecutive runs, and it reports "degraded" even at a cap of 1, where
+>   retention is provably constant.
+>
+> This is the same class of error as the plateau-versus-leak trap recorded below, one level up: the
+> series was read, but the _threshold the series had to cross_ was never checked. Findings 2, 3 and
+> 4, and every retired hypothesis, still stand.
+
 **Date:** 2026-07-25 · **Question:** the app gets progressively worse the longer it stays open, while
 the Visualizer stays smooth. Where does it go?
 
@@ -91,7 +109,13 @@ an invariant in the instrument's documentation: read the series before calling s
 
 ## What is actually true
 
-### 1. Mounted workspace trees are never released
+### 1. Mounted workspace trees are never released — WITHDRAWN
+
+> **This section is wrong.** See
+> [2026-07-25-workspace-tree-retention.md](2026-07-25-workspace-tree-retention.md). The deck is an
+> LRU capped at 3 and it does release; this soak seeded exactly 3 workspaces, so it never crossed
+> the cap. The −35% is a one-sample comparison that flips sign between identical runs. Kept
+> verbatim because knowing what we believed, and why, is the point of this tree.
 
 Visiting a workspace mounts its tree; it stays mounted for the life of the session. That is
 deliberate — instant switch-back — and it is bounded by workspaces-visited rather than by time. But
@@ -138,3 +162,8 @@ of any release path.
 No behaviour was changed on the strength of this report beyond enabling the client's own traffic
 accounting. In particular, **whether to evict cold workspace trees** (LRU + remount on switch-back)
 trades instant switch-back for bounded cost, and is a product decision rather than a code one.
+
+> **Withdrawn with finding 1.** That eviction already exists —
+> `WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES = 3`, LRU, remount on switch-back — and it works. There was
+> no decision to take. The lesson: before framing something as a product choice, check whether the
+> mechanism is already in the tree.

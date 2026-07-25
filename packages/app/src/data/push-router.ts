@@ -135,6 +135,25 @@ const RECONNECT_REPAIR_POLICIES: ReconnectRepairPolicy[] = [
 ];
 const reconnectSubscriptionRepairsByServerId = new Map<string, Set<() => void>>();
 
+/**
+ * How long a workspace's terminal subscription outlives its last observer.
+ *
+ * The terminals query is `enabled` on route focus, so leaving a workspace drops
+ * its observers and coming back adds them again — and the daemon answers every
+ * subscribe with a full `terminals_changed` snapshot. Twelve workspace
+ * round-trips that changed nothing therefore produced 51-67 of them, which was
+ * the largest inbound cost on the navigation path once the redundant timeline
+ * fetches were gone.
+ *
+ * This is a debounce on that churn, not a retention policy: it only delays the
+ * unsubscribe, so a round-trip inside the window costs nothing and a workspace
+ * genuinely left still stops pushing shortly after. Deliberately short enough
+ * that it never becomes a second, competing answer to "how long do we keep
+ * workspace state alive" — that question belongs to the workspace deck's
+ * mounted set (`screens/workspace/workspace-deck-retention.ts`).
+ */
+export const TERMINAL_SUBSCRIPTION_LINGER_MS = 15_000;
+
 export function checkoutDiffPushRoute(input: {
   enabled: boolean;
   serverId: string;
@@ -207,6 +226,28 @@ export function applyProvidersSnapshotUpdate(input: {
 export function mountServerDataPushRouter(input: PushRouterInput): () => void {
   const activeCheckoutDiffSubscriptions = new Map<string, CheckoutDiffRoute>();
   const activeTerminalSubscriptions = new Map<string, WorkspaceTerminalsRoute>();
+  // Subscriptions whose observers went away but whose unsubscribe has not
+  // fired yet. They stay in `activeTerminalSubscriptions` the whole time, so a
+  // workspace revisited inside the window is a timer cancel rather than an
+  // unsubscribe/subscribe pair.
+  const pendingTerminalUnsubscribes = new Map<string, ReturnType<typeof setTimeout>>();
+
+  function cancelPendingTerminalUnsubscribe(key: string): void {
+    const timer = pendingTerminalUnsubscribes.get(key);
+    if (timer === undefined) {
+      return;
+    }
+    clearTimeout(timer);
+    pendingTerminalUnsubscribes.delete(key);
+  }
+
+  function clearPendingTerminalUnsubscribes(): void {
+    for (const timer of pendingTerminalUnsubscribes.values()) {
+      clearTimeout(timer);
+    }
+    pendingTerminalUnsubscribes.clear();
+  }
+
   let disposed = false;
 
   function reconcileSubscriptions(
@@ -246,6 +287,23 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
       active: activeTerminalSubscriptions,
       client: input.client,
       desired: desiredTerminalSubscriptions,
+      cancelPendingUnsubscribe: cancelPendingTerminalUnsubscribe,
+      scheduleUnsubscribe: (key, route) => {
+        if (pendingTerminalUnsubscribes.has(key)) {
+          return;
+        }
+        pendingTerminalUnsubscribes.set(
+          key,
+          setTimeout(() => {
+            pendingTerminalUnsubscribes.delete(key);
+            if (disposed || activeTerminalSubscriptions.get(key) !== route) {
+              return;
+            }
+            activeTerminalSubscriptions.delete(key);
+            input.client.unsubscribeTerminals(workspaceTerminalSubscriptionInput(route));
+          }, TERMINAL_SUBSCRIPTION_LINGER_MS),
+        );
+      },
     });
   }
 
@@ -254,6 +312,10 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
       checkoutDiff: new Map(activeCheckoutDiffSubscriptions),
       workspaceTerminals: new Map(activeTerminalSubscriptions),
     };
+    // A pending unsubscribe is for a socket that no longer exists; the daemon
+    // dropped every subscription when it went away. Firing it after the
+    // re-subscribe would tear down the fresh one.
+    clearPendingTerminalUnsubscribes();
     activeCheckoutDiffSubscriptions.clear();
     activeTerminalSubscriptions.clear();
     reconcileSubscriptions(fallbackActive);
@@ -373,6 +435,7 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
       unsubscribeCheckoutDiff(input.client, subscriptionId);
     }
     activeCheckoutDiffSubscriptions.clear();
+    clearPendingTerminalUnsubscribes();
     for (const route of activeTerminalSubscriptions.values()) {
       input.client.unsubscribeTerminals(workspaceTerminalSubscriptionInput(route));
     }
@@ -422,14 +485,18 @@ function reconcileTerminalSubscriptions(input: {
   active: Map<string, WorkspaceTerminalsRoute>;
   client: ServerDataPushClient;
   desired: Map<string, WorkspaceTerminalsRoute>;
+  cancelPendingUnsubscribe: (key: string) => void;
+  scheduleUnsubscribe: (key: string, route: WorkspaceTerminalsRoute) => void;
 }): void {
   for (const [key, current] of input.active) {
     const desired = input.desired.get(key);
     if (desired && areWorkspaceTerminalsRoutesEqual(current, desired)) {
+      // Wanted again — if it was on its way out, it isn't any more, and no
+      // subscribe is needed because it was never actually torn down.
+      input.cancelPendingUnsubscribe(key);
       continue;
     }
-    input.client.unsubscribeTerminals(workspaceTerminalSubscriptionInput(current));
-    input.active.delete(key);
+    input.scheduleUnsubscribe(key, current);
   }
 
   for (const [key, desired] of input.desired) {

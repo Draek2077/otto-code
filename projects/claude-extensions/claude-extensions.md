@@ -125,7 +125,7 @@ Config lives in `~/.claude.json` under `mcpServers` (user/local scope) and in pe
   `buildProviderTabOptions`
   ([provider-diagnostic-sheet.tsx:94](../../packages/app/src/components/provider-diagnostic-sheet.tsx:94)),
   already conditionally per provider: `connection | models | tools | agents`. New tabs slot in here.
-- **An overlapping open item.** [context-management](../context-management/context-management.md)
+- **An overlapping open item.** [context-management](../../docs/context-management.md)
   carries "skills/MCP toggles" in its open tail — per-agent _enablement_ of what is already
   installed. That is a different axis from this charter's _installation_ management, but the two
   surfaces must agree on vocabulary and must not both grow their own list of installed skills.
@@ -259,8 +259,8 @@ they type a word.
 Otto can total it, rank plugins by always-on cost, and show it where the decision is made — on the
 row, next to Disable. That turns an invisible cost into a decision, which is the same move
 [docs/token-economy.md](../../docs/token-economy.md) makes everywhere else and the same one
-[context-management](../context-management/context-management.md) makes for everything sent before you
-type. **The two must share a vocabulary and a unit** (% of context window, per that charter) rather
+[context-management](../../docs/context-management.md) makes for everything sent before you
+type. **The two must share a vocabulary and a unit** (% of context window, per that page) rather
 than each inventing a presentation.
 
 This also gives disable/enable a real purpose: not tidying, but reclaiming context.

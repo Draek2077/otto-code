@@ -25,7 +25,7 @@ function pushDiscovery(
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return
   const d = raw as Record<string, unknown>
   const type = asString(d.type)
-  if (type !== 'file' && type !== 'pattern' && type !== 'finding' && type !== 'code') return
+  if (type !== 'file' && type !== 'pattern' && type !== 'finding' && type !== 'code' && type !== 'error') return
   const label = asString(d.label)
   const content = asString(d.content)
   if (!label && !content) return

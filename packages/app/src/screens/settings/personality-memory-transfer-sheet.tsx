@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personalities";
@@ -51,6 +52,7 @@ export function PersonalityMemoryTransferSheet({
   onCancel,
   onConfirm,
 }: PersonalityMemoryTransferSheetProps): ReactElement {
+  const { t } = useTranslation();
   const ordered = useMemo(
     () => orderBySharedRole(personality, candidates),
     [personality, candidates],
@@ -69,20 +71,20 @@ export function PersonalityMemoryTransferSheet({
 
   const header = useMemo(
     () => ({
-      title: `Delete ${personality.name}`,
+      title: t("contextManagement.memory.transfer.title", { name: personality.name }),
       subtitle:
         lessonCount === 1
-          ? "It has remembered 1 lesson. Decide what happens to it."
-          : `It has remembered ${lessonCount} lessons. Decide what happens to them.`,
+          ? t("contextManagement.memory.transfer.subtitleOne")
+          : t("contextManagement.memory.transfer.subtitleMany", { count: lessonCount }),
     }),
-    [lessonCount, personality.name],
+    [t, lessonCount, personality.name],
   );
 
   const footer = useMemo(
     () => (
       <View style={styles.footer}>
         <Button variant="ghost" onPress={onCancel} disabled={busy} testID="memory-transfer-cancel">
-          Cancel
+          {t("common.actions.cancel")}
         </Button>
         <View style={styles.footerSpacer} />
         <Button
@@ -91,7 +93,7 @@ export function PersonalityMemoryTransferSheet({
           disabled={busy}
           testID="memory-transfer-discard"
         >
-          Delete the lessons
+          {t("contextManagement.memory.transfer.discard")}
         </Button>
         <Button
           variant="default"
@@ -99,11 +101,11 @@ export function PersonalityMemoryTransferSheet({
           disabled={busy || !selectedId}
           testID="memory-transfer-confirm"
         >
-          Transfer
+          {t("contextManagement.memory.transfer.confirm")}
         </Button>
       </View>
     ),
-    [busy, handleDiscard, handleTransfer, onCancel, selectedId],
+    [t, busy, handleDiscard, handleTransfer, onCancel, selectedId],
   );
 
   return (
@@ -117,12 +119,11 @@ export function PersonalityMemoryTransferSheet({
     >
       {ordered.length === 0 ? (
         <Text style={styles.body}>
-          {`There is no other personality to hand these lessons to. Deleting ${personality.name} ` +
-            "will discard them."}
+          {t("contextManagement.memory.transfer.noCandidates", { name: personality.name })}
         </Text>
       ) : (
         <>
-          <Text style={styles.body}>Give them to:</Text>
+          <Text style={styles.body}>{t("contextManagement.memory.transfer.giveThemTo")}</Text>
           {ordered.map(({ personality: candidate, sharesRole }) => (
             <DestinationRow
               key={candidate.id}
@@ -156,6 +157,7 @@ function DestinationRow({
   selected,
   onSelect,
 }: DestinationRowProps): ReactElement {
+  const { t } = useTranslation();
   const handlePress = useCallback(() => onSelect(personality.id), [onSelect, personality.id]);
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
   const roleLabels = useMemo(
@@ -179,7 +181,9 @@ function DestinationRow({
       </View>
       {/* The shared-role hint is why this row is near the top; saying so beats
           silently reordering and hoping the user infers the rule. */}
-      {sharesRole ? <Text style={styles.rowHint}>same role</Text> : null}
+      {sharesRole ? (
+        <Text style={styles.rowHint}>{t("contextManagement.memory.transfer.sameRole")}</Text>
+      ) : null}
     </Pressable>
   );
 }

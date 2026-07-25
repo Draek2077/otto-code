@@ -30,7 +30,7 @@ import type { StructuredTextGeneration } from "../checkout/git-metadata-generato
  * the id it was given, and anything else is dropped here. A model that invents
  * or mangles a path therefore cannot misroute a write.
  *
- * See projects/refine/refine.md.
+ * See docs/refine.md.
  */
 export interface RefineGenerator {
   /**

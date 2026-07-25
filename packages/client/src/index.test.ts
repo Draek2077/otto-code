@@ -706,6 +706,18 @@ test("config actions delegate to existing daemon config RPCs", async () => {
       modelTierOverrides: [],
       savedProviderEndpoints: [],
       appendSystemPrompt: "",
+      // The response above sends a partial config; everything here is a schema default the client
+      // fills in. Both host-scoped code sections default to a well-formed shape so a new client
+      // parsing an old daemon's config still renders the Daemon → Code screen — code intelligence
+      // on (nothing spawns until used), solution management OFF (it spawns a process).
+      lsp: {
+        enabled: true,
+        languages: {},
+        maxRunningServers: 6,
+        idleMinutes: 10,
+        backgroundIdleMinutes: 2,
+      },
+      dotnetSolutionManagement: { enabled: false, maxRunningProbes: 2, idleMinutes: 10 },
     },
   });
 
@@ -771,6 +783,14 @@ test("config actions delegate to existing daemon config RPCs", async () => {
       modelTierOverrides: [],
       savedProviderEndpoints: [],
       appendSystemPrompt: "",
+      lsp: {
+        enabled: true,
+        languages: {},
+        maxRunningServers: 6,
+        idleMinutes: 10,
+        backgroundIdleMinutes: 2,
+      },
+      dotnetSolutionManagement: { enabled: false, maxRunningProbes: 2, idleMinutes: 10 },
     },
   });
 

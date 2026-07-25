@@ -11,6 +11,7 @@ export const es: TranslationResources = {
       close: "Cerca",
       copy: "Copiar",
       dismiss: "Descartar",
+      ok: "Aceptar",
       retry: "Reintentar",
       search: "Buscar",
       select: "Seleccionar",
@@ -194,6 +195,64 @@ export const es: TranslationResources = {
       context: "Contexto",
       findings: "Conviene arreglar",
       findingsCount: "Conviene arreglar ({{count}})",
+      memory: "Memoria",
+      memoryCount: "Memoria ({{count}})",
+    },
+    personalitySelector: {
+      label: "Viendo el contexto de",
+      everyone: "Todos",
+      withLessons: "{{name}}, {{count}} lecciones recordadas",
+    },
+    memory: {
+      noPersonality:
+        "Elige arriba una personalidad para ver lo que ha aprendido y lo que eso añade a cada petición que hace.",
+      loading: "Leyendo lo que recuerda esta personalidad…",
+      failed: "No se pudo leer la memoria de esta personalidad: {{error}}",
+      emptyNamed:
+        "{{name}} todavía no ha registrado nada. Registra lecciones por sí misma mientras trabaja; también puedes añadir una a mano.",
+      emptyFallbackName: "Esta personalidad",
+      add: "Añadir una lección",
+      brief: {
+        title: "Inyectado para {{name}}",
+        nothing: "nada",
+        everyRequest: "{{tokens}} en cada petición",
+        disabled:
+          "La memoria está desactivada para esta personalidad, así que no se envía nada de esto. Las lecciones se conservan.",
+        empty: "No se añade nada al contexto de esta personalidad en este proyecto.",
+        omitted:
+          "{{count}} de las lecciones de abajo no caben en el presupuesto de inyección y no se están enviando.",
+      },
+      scope: {
+        global: "En todas partes",
+        project: "Este proyecto",
+        change: "Alcance: {{scope}}. Toca para cambiarlo.",
+      },
+      row: {
+        reinforced: "Aprendida {{count}} veces",
+        transferredFrom: "De {{name}}",
+        edit: "Editar esta lección",
+        forget: "Olvidar esta lección",
+      },
+      forgetDialog: {
+        title: "¿Olvidar esta lección?",
+        message: "«{{lesson}}» se eliminará de la memoria de esta personalidad.",
+        confirm: "Olvidar",
+      },
+      composer: {
+        placeholder: "¿Qué debería recordar esta personalidad?",
+        save: "Guardar esta lección",
+      },
+      transfer: {
+        title: "Eliminar {{name}}",
+        subtitleOne: "Ha recordado 1 lección. Decide qué pasa con ella.",
+        subtitleMany: "Ha recordado {{count}} lecciones. Decide qué pasa con ellas.",
+        discard: "Eliminar las lecciones",
+        confirm: "Transferir",
+        giveThemTo: "Dárselas a:",
+        noCandidates:
+          "No hay otra personalidad a la que pasarle estas lecciones. Al eliminar {{name}} se descartarán.",
+        sameRole: "mismo rol",
+      },
     },
     findings: {
       empty: "Nada que arreglar por ahora.",
@@ -360,7 +419,6 @@ export const es: TranslationResources = {
   sessions: {
     title: "Historial",
     empty: "Aún no hay sesiones",
-    // i18n lag: English until the translation pass (history management, 2026-07-25).
     emptyForHost: "No hay sesiones para este host",
     emptyActive: "No hay chats activos",
     emptyArchived: "No hay chats archivados",
@@ -373,6 +431,49 @@ export const es: TranslationResources = {
       loadMore: "Cargar más",
       clearArchived: "Vaciar archivados",
       clearingArchived: "Vaciando…",
+    },
+    dialogs: {
+      genericProvider: "El proveedor del agente",
+      deleteAgent: {
+        title: "¿Eliminar este chat?",
+        subjectFallback: "este chat",
+        recordLine:
+          "El registro que Otto tiene de {{subject}} se elimina permanentemente: la fila, su título y sus metadatos.",
+        transcriptLine:
+          "La transcripción propia de {{provider}} en el host se deja intacta, así que la conversación sigue en el disco y aún puede leerse o reanudarse fuera de Otto.",
+        undoLine: "La parte de Otto no se puede deshacer.",
+        confirm: "Eliminar",
+      },
+      clearArchived: {
+        titleOne: "¿Vaciar 1 chat archivado?",
+        titleMany: "¿Vaciar {{count}} chats archivados?",
+        recordLineOne:
+          "Elimina permanentemente los registros de Otto de 1 chat archivado. Los chats que no has archivado no se tocan.",
+        recordLineMany:
+          "Elimina permanentemente los registros de Otto de {{count}} chats archivados. Los chats que no has archivado no se tocan.",
+        transcriptLine:
+          "Las transcripciones propias de los proveedores en el host se dejan intactas: esto vacía el historial de Otto, no las conversaciones del disco.",
+        undoLine: "La parte de Otto no se puede deshacer.",
+        confirm: "Vaciar",
+      },
+      nothingToClear: {
+        title: "Nada que vaciar",
+        message: "No hay chats archivados en los hosts seleccionados.",
+      },
+      noHost: {
+        title: "No hay ningún host disponible",
+        message:
+          "Conéctate a un host que admita eliminar chats y vuelve a intentar vaciar el archivo.",
+      },
+      partialFailure: {
+        title: "Algunos chats no se pudieron vaciar",
+        message:
+          "Se eliminaron {{deleted}}. No se pudieron eliminar {{failed}} y siguen en tu historial. Inténtalo de nuevo o revisa los registros del host.",
+      },
+      unsupported: {
+        title: "Eliminar no está disponible",
+        message: "Actualiza el host para eliminar chats de tu historial.",
+      },
     },
   },
   agentList: {
@@ -519,12 +620,12 @@ export const es: TranslationResources = {
     },
     solution: {
       lens: {
-        files: "Files",
+        files: "Archivos",
       },
-      loading: "Reading the solution…",
-      empty: "This solution has no projects.",
-      outsideWorkspace: "outside workspace",
-      projectFailed: "This project could not be evaluated.",
+      loading: "Leyendo la solución…",
+      empty: "Esta solución no tiene proyectos.",
+      outsideWorkspace: "fuera del Workspace",
+      projectFailed: "No se pudo evaluar este proyecto.",
     },
     fileExplorer: {
       sort: {
@@ -1857,6 +1958,124 @@ export const es: TranslationResources = {
       settings: "Ajustes",
     },
   },
+  setupWizard: {
+    chrome: {
+      skip: "Omitir la configuración",
+      back: "Atrás",
+      continue: "Continuar",
+    },
+    welcome: {
+      headline: "Bienvenido a Otto",
+      subtitle:
+        "Un asistente de programación con agentes y personalidad, para cualquier modelo, en la nube o local.",
+      start: "Empezar",
+    },
+    mode: {
+      title: "¿Cómo quieres usar Otto?",
+      subtitle: "Puedes cambiarlo cuando quieras en Ajustes.",
+      user: {
+        title: "Usuario",
+        tagline: "Chatea con agentes de IA, organiza proyectos y saca el trabajo adelante.",
+        bulletInterface: "Una interfaz centrada y amable",
+        bulletNoTooling: "Sin herramientas de desarrollo por medio",
+      },
+      developer: {
+        title: "Desarrollador",
+        tagline: "El entorno de desarrollo completo.",
+        bulletTools: "Archivos, diferencias, terminales, búsqueda",
+        bulletGit: "Git, pull requests y todo lo que Otto sabe hacer",
+      },
+    },
+    providers: {
+      title: "Tus proveedores",
+      subtitlePick:
+        "Elige el proveedor que tus agentes usarán por defecto. Puedes añadir más luego en Ajustes.",
+      subtitleNone:
+        "Otto detecta tus proveedores de agentes automáticamente. Puedes añadir uno luego en Ajustes.",
+      detecting: "Detectando proveedores…",
+      waitingForHost: "Esperando al host…",
+      empty:
+        "Aún no se ha detectado ningún proveedor. Puedes continuar y configurar uno más tarde.",
+      status: {
+        available: "Disponible",
+        availableWithModels: "Disponible · {{count}} modelos",
+        detecting: "Detectando…",
+        error: "Error",
+        notInstalled: "No instalado",
+      },
+    },
+    team: {
+      title: "¿Qué tipo de equipo quieres?",
+      subtitle:
+        "Elige un equipo y Otto te construye un grupo completo y equilibrado: personajes con nombre y personalidad propia. ¿No encaja? Baraja de nuevo. O construye el tuyo con tus agentes.",
+      unsupportedTitle: "Construye tu equipo",
+      unsupportedBody:
+        "Este host todavía no admite equipos de agentes. Actualiza el host para que Otto te construya uno; por ahora puedes omitir este paso.",
+      blueprints: {
+        application: {
+          name: "Equipo de aplicaciones",
+          tagline: "Un grupo full-stack para construir y publicar aplicaciones de verdad.",
+        },
+        game: {
+          name: "Equipo de videojuegos",
+          tagline: "Un estudio para crear juegos: mecánicas, sensaciones y chispa.",
+        },
+        web: {
+          name: "Equipo web",
+          tagline: "Un grupo web para sitios y apps rápidos, accesibles y bien hechos.",
+        },
+        creative: {
+          name: "Estudio creativo",
+          tagline: "Un estudio para escribir, crear y pensar ideas, sin necesidad de código.",
+        },
+        management: {
+          name: "Equipo de gestión",
+          tagline: "Un equipo para llevar proyectos, estados y decisiones.",
+        },
+        planning: {
+          name: "Equipo de planificación",
+          tagline: "Un equipo para investigar, trazar hojas de ruta y pensar las cosas a fondo.",
+        },
+      },
+      custom: {
+        name: "Construye el tuyo",
+        tagline: "Monta un equipo con tus agentes, a tu manera.",
+      },
+      providerNoModels:
+        "Este proveedor todavía no tiene modelos: actualízalo en Ajustes y vuelve aquí.",
+      providerMissing:
+        "Elige primero un proveedor (en el paso anterior) para que Otto sepa qué modelos usar.",
+      memberCountOne: "1 miembro",
+      memberCountMany: "{{count}} miembros",
+      reshuffle: "Barajar de nuevo",
+      added: "Añadido ✓",
+      addTeam: "Añadir este equipo",
+      noRoles: "Sin roles",
+      builder: {
+        nameLabel: "Nombre del equipo",
+        defaultName: "Mi equipo",
+        members: "Miembros",
+        membersWithCount: "Miembros ({{count}})",
+        empty:
+          "Aún no hay agentes que elegir. Genera un equipo arriba (eso añade agentes que puedes combinar aquí) o añade los tuyos en Ajustes → Agentes, y vuelve.",
+        covers: "Cubre: {{roles}}",
+        orchestratorTip:
+          "  ·  Consejo: añade un Orchestrator para que el equipo tenga quien lo dirija.",
+        addedNamed: "Añadido «{{name}}» ✓",
+      },
+    },
+    done: {
+      headline: "Todo listo",
+      subtitle: "Otto está preparado. Esto es lo que hemos configurado:",
+      finish: "Empezar",
+      interfaceMode: "Modo de interfaz",
+      provider: "Proveedor",
+      agents: "Agentes",
+      agentCountOne: "1 agente",
+      agentCountMany: "{{count}} agentes",
+      activeTeam: "Equipo activo",
+    },
+  },
   modelSelector: {
     title: "Seleccionar proveedor",
     selectModel: "Seleccionar modelo",
@@ -2085,16 +2304,10 @@ export const es: TranslationResources = {
     cancel: "Cancelar",
     wordWrap: "Ajuste de línea",
     outOfProject: {
-      badge: "Fuera del proyecto · {{project}}",
-      badgeNoProject: "Fuera de cualquier proyecto",
-      editOutsideTitle: "¿Editar un archivo fuera de todo proyecto?",
-      editOutsideMessage:
-        "Este archivo no forma parte de ningún proyecto. Editarlo escribe directamente en el archivo del disco. Esta advertencia se muestra cada vez.",
-      editConfirm: "Editar de todos modos",
-      editOtherTitle: "¿Editar un archivo de otro proyecto?",
-      editOtherMessage:
-        "Este archivo pertenece a {{project}}. Los cambios que hagas aquí no formarán parte del commit de este proyecto.",
-      editOtherSuppress: "No volver a avisarme sobre otros proyectos",
+      badge:
+        "Editando fuera del proyecto ({{project}}): no forma parte del contexto del agente ni de los cambios de Git de este Workspace.",
+      badgeNoProject:
+        "Editando fuera del proyecto: no forma parte del contexto del agente ni de los cambios de Git de este Workspace.",
     },
     contextMenu: {
       cut: "Cortar",
@@ -2153,12 +2366,110 @@ export const es: TranslationResources = {
     loading: "Cargando archivos...",
     noResults: "Sin archivos",
   },
-  // Refine — the reviewed AI rewrite (projects/refine/refine.md). Only the two
+  // Refine — the reviewed AI rewrite (docs/refine.md). Only the two
   // entry-point strings are translated here; the Refine tab itself is literal
   // English pending the pre-release i18n sweep, like the rename/references tabs.
   refine: {
     open: "Refinar con IA",
     saveFirst: "Guarda o revierte tus cambios primero: Refinar trabaja sobre el archivo del disco.",
+    compactOpen: "Compactar con IA",
+    unsupported: "Actualiza el host para usar Refinar.",
+    job: {
+      refine: "Refinar",
+      compact: "Compactar",
+    },
+    tab: {
+      title: "{{job}}: {{file}}",
+      moreFile: "+{{count}} archivo más",
+      moreFiles: "+{{count}} archivos más",
+      fallbackSubtitle: "Reescritura con IA",
+    },
+    toolbar: {
+      discard: "Descartar esta propuesta y releer todos los archivos",
+      writing: "Escribiendo…",
+      acceptOne: "Aceptar: escribir los cambios conservados",
+      acceptMany: "Aceptar: escribir {{count}} archivos",
+      dropAll: "Descartar todos los cambios",
+      keepAll: "Conservar todos los cambios",
+    },
+    workingSet: {
+      single:
+        "Un solo archivo en este conjunto. Todo lo que enlace sería contexto de solo lectura.",
+      allWritable: "Estos {{count}} archivos se pueden reescribir todos.",
+      someWritable:
+        "{{writable}} de {{total}} archivos se pueden reescribir; el resto es contexto de solo lectura.",
+      allChipLabel: "Todos los archivos",
+      allChipText: "Todos",
+      allOnHint:
+        "Se puede reescribir cualquier archivo. Toca para volver a solo el primero, con el resto como contexto de solo lectura.",
+      allOffHint:
+        "Deja que la reescritura cambie todos los archivos del conjunto, no solo el primero.",
+      writableHint: "Se puede reescribir. Toca para dejarlo como contexto de solo lectura.",
+      referenceHint:
+        "Contexto de solo lectura: el modelo lo lee pero nunca puede cambiarlo. Toca para permitir reescribirlo.",
+    },
+    instruction: {
+      placeholder: "¿Qué debería cambiar? P. ej.: conserva cada regla, quita la repetición",
+      startOver: "Empezar de nuevo",
+      refining: "Refinando…",
+      compacting: "Compactando…",
+      again: "{{job}} de nuevo",
+    },
+    presets: {
+      compactContextFile: {
+        label: "Compactar archivo de contexto",
+        description:
+          "Quita la repetición de un archivo de instrucciones sin perder ni una sola regla.",
+      },
+      compactMemoryIndex: {
+        label: "Compactar índice de memoria",
+        description:
+          "Una línea por entrada; el detalle se traslada a los archivos de cada entrada.",
+      },
+      tightenProse: {
+        label: "Ajustar la prosa",
+        description: "Más corto, el mismo significado, sin afirmaciones nuevas.",
+      },
+    },
+    body: {
+      pinning: "Leyendo los archivos…",
+      generating: "Preparando una reescritura…",
+      idle: "Di qué debería cambiar y pulsa {{job}}. No se escribe nada hasta que lo aceptes.",
+    },
+    file: {
+      keptCount: "{{count}} conservados",
+      keepEveryChangeIn: "Conservar todos los cambios en {{file}}",
+    },
+    hunk: {
+      title: "Cambio {{ordinal}}",
+      keeping: "Se conserva",
+      dropped: "Descartado",
+      keepAccessibility: "Conservar el cambio {{ordinal}}",
+    },
+    outcome: {
+      written: "escrito",
+      stale: "sin tocar",
+      failed: "no se pudo escribir",
+    },
+    summary: {
+      pinning:
+        "Fijando los archivos tal y como están ahora: eso es contra lo que se medirá cada propuesta.",
+      unreadable: "No se pudo leer este conjunto de trabajo.",
+      idle: "Todavía no hay ninguna propuesta. No se ha tocado ningún archivo.",
+      generating: "Ronda {{round}}: reescribiendo.",
+      accepting: "Escribiendo los cambios conservados.",
+      acceptedOne: "Listo: 1 archivo escrito.",
+      acceptedMany: "Listo: {{count}} archivos escritos.",
+      partiallyAccepted: "{{written}} escritos, {{skipped}} sin tocar. No se sobrescribió nada.",
+      reviewOne:
+        "Ronda {{round}}: {{kept}} de {{total}} cambio conservado, +{{additions}} −{{removals}} líneas. Todavía no se ha escrito nada.",
+      reviewMany:
+        "Ronda {{round}}: {{kept}} de {{total}} cambios conservados, +{{additions}} −{{removals}} líneas. Todavía no se ha escrito nada.",
+      reviewOneScoped:
+        "Ronda {{round}}: {{kept}} de {{total}} cambio conservado en {{changedFiles}}/{{proposedFiles}} archivos, +{{additions}} −{{removals}} líneas. Todavía no se ha escrito nada.",
+      reviewManyScoped:
+        "Ronda {{round}}: {{kept}} de {{total}} cambios conservados en {{changedFiles}}/{{proposedFiles}} archivos, +{{additions}} −{{removals}} líneas. Todavía no se ha escrito nada.",
+    },
   },
   refactor: {
     open: "Refactorizar con IA",
@@ -2257,6 +2568,32 @@ export const es: TranslationResources = {
     clearCompletedTooltip: "Archivar todos los subagentes completados",
     stopNothingRunning: "El subagente no está en ejecución; no hay nada que detener.",
     daemonUnavailable: "Daemon no disponible",
+    dialogs: {
+      subjectFallback: "este subagente",
+      subjectFallbackCapitalized: "Este subagente",
+      archive: {
+        titleRunning: "¿Archivar el subagente en ejecución?",
+        title: "¿Archivar el subagente?",
+        messageRunning:
+          "{{subject}} sigue en ejecución. Archivarlo detendrá el subagente y lo quitará de la pista.",
+        message: "Quita {{subject}} de la pista. El subagente quedará archivado.",
+        confirm: "Archivar",
+      },
+      detach: {
+        title: "¿Separar el subagente?",
+        message: "{{subject}} saldrá de esta pista y continuará como agente independiente.",
+        confirm: "Separar",
+      },
+      clearCompleted: {
+        titleOne: "¿Vaciar el subagente completado?",
+        titleMany: "¿Vaciar {{count}} subagentes completados?",
+        messageOne:
+          "Archiva 1 subagente completado y lo quita de la pista. Los subagentes en ejecución no se tocan.",
+        messageMany:
+          "Archiva {{count}} subagentes completados y los quita de la pista. Los subagentes en ejecución no se tocan.",
+        confirm: "Vaciar",
+      },
+    },
   },
   panels: {
     draft: {
@@ -2413,6 +2750,12 @@ export const es: TranslationResources = {
           inApp: "En Otto",
           external: "Navegador externo",
         },
+      },
+      mountedWorkspaceLimit: {
+        label: "Workspaces que siguen cargados",
+        description:
+          "Cuántos Workspaces se mantienen cargados para que volver a ellos sea instantáneo. A partir de ese número, se descarga el que usaste hace más tiempo y se vuelve a cargar la próxima vez que lo abras. Ponlo al menos en la cantidad entre la que realmente alternas: por debajo de eso, cada cambio descarga el Workspace al que estás a punto de volver. Cuanto más alto, más memoria usa.",
+        accessibilityLabel: "Workspaces que siguen cargados",
       },
       terminalScrollback: {
         label: "Historial de terminal",
@@ -2905,9 +3248,9 @@ export const es: TranslationResources = {
         enabled: "Activar la inteligencia de código",
         enabledHint:
           'Ejecuta un servidor de lenguaje por proyecto para que "Ir a la definición" resuelva el símbolo bajo el cursor. No se inicia nada hasta que lo usas; al desactivarlo se detienen todos los servidores y se vuelve al índice basado en nombres.',
-        solution: "Microsoft .NET Solution Management",
+        solution: "Gestión de soluciones de Microsoft .NET",
         solutionHint:
-          "Adds a Solution view to the Files tab, showing your .sln or .slnx as the build system sees it. Independent of code intelligence above. Off by default: it runs a .NET helper process and evaluates MSBuild, and it needs the .NET SDK on this host.",
+          "Añade una vista Solución a la pestaña de archivos, que muestra tu .sln o .slnx tal y como lo ve el sistema de compilación. Es independiente de la inteligencia de código de arriba. Desactivada por defecto: ejecuta un proceso auxiliar de .NET y evalúa MSBuild, y necesita el SDK de .NET en este host.",
         languages: "Lenguajes",
         installed: "{{bin}} — encontrado ({{rung}})",
         notInstalled: "{{bin}} — no está instalado en este host",

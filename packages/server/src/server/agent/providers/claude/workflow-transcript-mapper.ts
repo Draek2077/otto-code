@@ -1,7 +1,7 @@
 // Maps an on-disk Claude workflow-subagent transcript (agent-<id>.jsonl) into
 // Otto AgentTimelineItem[] — the SAME timeline shape the live SDK path produces,
 // so the synthetic workflow-decomposition stream ingests identically (see
-// projects/workflow-decomposition/workflow-decomposition.md).
+// docs/subagent-accounting.md, "Workflow decomposition").
 //
 // It is deliberately self-contained: it reuses the pure, exported
 // mapClaude*ToolCall mappers from ./tool-call-mapper (so tool_call detail/summary

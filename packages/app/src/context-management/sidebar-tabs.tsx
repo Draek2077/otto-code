@@ -69,7 +69,10 @@ export function ContextSidebarTabs({
     if (lessonCount !== null) {
       segments.push({
         value: "memory",
-        label: lessonCount > 0 ? `Memory (${lessonCount})` : "Memory",
+        label:
+          lessonCount > 0
+            ? t("contextManagement.tabs.memoryCount", { count: lessonCount })
+            : t("contextManagement.tabs.memory"),
         testID: "context-sidebar-tab-memory",
       });
     }

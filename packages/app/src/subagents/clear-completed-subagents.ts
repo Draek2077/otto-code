@@ -1,3 +1,4 @@
+import { i18n } from "@/i18n/i18next";
 import type { ConfirmDialogInput } from "@/utils/confirm-dialog";
 import type { RecordClearedInput } from "./cleared-subagent-tokens-store";
 
@@ -9,14 +10,16 @@ import type { RecordClearedInput } from "./cleared-subagent-tokens-store";
  * See docs/agent-lifecycle.md (the sub-agents track).
  */
 export function resolveClearCompletedDialog(count: number): ConfirmDialogInput {
-  const noun = count === 1 ? "completed subagent" : "completed subagents";
+  const one = count === 1;
   return {
-    title: count === 1 ? "Clear completed subagent?" : `Clear ${count} completed subagents?`,
-    message: `Archive ${count} ${noun} and remove ${
-      count === 1 ? "it" : "them"
-    } from the track. Running subagents are untouched.`,
-    confirmLabel: "Clear",
-    cancelLabel: "Cancel",
+    title: one
+      ? i18n.t("subagents.dialogs.clearCompleted.titleOne")
+      : i18n.t("subagents.dialogs.clearCompleted.titleMany", { count }),
+    message: one
+      ? i18n.t("subagents.dialogs.clearCompleted.messageOne")
+      : i18n.t("subagents.dialogs.clearCompleted.messageMany", { count }),
+    confirmLabel: i18n.t("subagents.dialogs.clearCompleted.confirm"),
+    cancelLabel: i18n.t("common.actions.cancel"),
     destructive: true,
   };
 }

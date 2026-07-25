@@ -22,7 +22,9 @@ export function DiscoveryDetailPopup({ discovery, position, onClose }: Discovery
   const typeLabel =
     discovery.type === 'file' ? 'FILE' :
     discovery.type === 'pattern' ? 'PATTERN' :
-    discovery.type === 'finding' ? 'FINDING' : 'CODE'
+    discovery.type === 'finding' ? 'FINDING' :
+    // OTTO PATCH (OTTO-PATCHES.md): red failure cards (failed command/tests)
+    discovery.type === 'error' ? 'ERROR' : 'CODE'
 
   return (
     <DetailPopup position={position} width={POPUP.discovery.width} estimatedHeight={POPUP.discovery.estimatedHeight} onClose={onClose}>

@@ -56,33 +56,28 @@ says _how it works_.
 Everything currently in this tree. Status vocabulary: **Charter** (nothing built) · **In build** ·
 **Partial** (shipped in part, a named remainder open) · **Reference** (not work).
 
-| Project                                                                                         | Status  | What it is                                                                                                                                                                                                                          |
-| ----------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [agent-orchestration](agent-orchestration/agent-orchestration.md)                               | Charter | The **control layer** — Teams as the way work is invoked, typed tasks, recognize → plan → delegate → synthesize. Quarter-scale. Companion: [invocation.md](agent-orchestration/invocation.md)                                       |
-| [bug-reporting](bug-reporting/bug-reporting.md)                                                 | Charter | In-app bug/suggestion reporting; the daemon files the GitHub issue so reporters need no account                                                                                                                                     |
-| [claude-extensions](claude-extensions/claude-extensions.md)                                     | Charter | Plugins, marketplaces, skills and MCP in the Claude provider settings panel — management plus the always-on context budget nothing else totals. **Deliberately Claude-only**                                                        |
-| [computer-use](computer-use/computer-use.md)                                                    | Charter | Agents see and control the desktop via a shared computer-control library; layered safety. Companion: [computer-control-library.md](computer-use/computer-control-library.md)                                                        |
-| [context-management](context-management/context-management.md)                                  | Partial | Everything sent before you type, plus the 3-pane tab. Built and committed. Open: demote-to-subdirectory, skills/MCP toggles, the §11 calibration                                                                                    |
-| [dictation-refine](dictation-refine/dictation-refine.md)                                        | Charter | AI cleanup over dictated text via a latency-ordered ladder (lexical → ONNX → optional LLM)                                                                                                                                          |
-| [editor-repo-conventions](editor-repo-conventions/editor-repo-conventions.md)                   | Charter | Honour the repo's own `.editorconfig` without configuring Otto; repo wins file-shaped settings, user wins view-shaped ones                                                                                                          |
-| [e2e-qa-coverage](e2e-qa-coverage/e2e-qa-coverage.md)                                           | Partial | Full-app Playwright QA across 3 tiers (mock / local-AI / real provider). T1 and T2 green. Companions: coverage-matrix, local-ai-tier, reporting                                                                                     |
-| [file-rendering](file-rendering/file-rendering.md)                                              | Partial | IDE-grade file rendering. Mermaid shipped; AsciiDoc preview in flight. Companions: [asciidoc-preview.md](file-rendering/asciidoc-preview.md), [relative-image-resolution.md](file-rendering/relative-image-resolution.md)           |
-| [inline-widgets](inline-widgets/inline-widgets.md)                                              | Charter | In-message widgets — a `show_widget` tool carrying an HTML/SVG fragment rendered inline. Distinct from artifacts; reuses their sandbox                                                                                              |
-| [marketing-strategy](marketing-strategy/marketing-strategy.md)                                  | Charter | Otto's public voice (Philippe, first person) and the channels still to create                                                                                                                                                       |
-| [mobile-daemon](mobile-daemon/mobile-daemon.md)                                                 | Charter | Embedded API-native daemon on the phone ("This device" host); no CLIs                                                                                                                                                               |
-| [multiplayer](multiplayer/multiplayer.md)                                                       | Charter | Presence, entering each other's workspaces, opt-in follow — never forced mirroring                                                                                                                                                  |
-| [observed-subagents](observed-subagents/observed-subagents.md)                                  | Partial | Provider subagents promoted to read-only track rows. Claude proof shipped; generalizing is adapter-only work. **[provider-adapters.md](observed-subagents/provider-adapters.md) is the adapter contract** and is cited from `docs/` |
-| [outreach](outreach/outreach.md)                                                                | Charter | Awareness strategy, website-scoped. Sells nothing. Companions: channels, content, pipeline, runbook                                                                                                                                 |
-| [preview-file-tabs](preview-file-tabs/preview-file-tabs.md)                                     | Charter | VSCode-style preview tabs (transient vs pinned); web-only idiom                                                                                                                                                                     |
-| [refine](refine/refine.md)                                                                      | Partial | AI rewrite loop with review, as its own job tab. Prose only, never code. Built. Open: the Context Management call site, a conflict test, i18n                                                                                       |
-| [sidebar-reveal](sidebar-reveal/sidebar-reveal.md)                                              | Partial | Increment 1 (reveal primitive) shipped. Increment 2 (tutorial create-workspace step) unbuilt — this folder holds the only plan for it                                                                                               |
-| [site-demos](site-demos/site-demos.md)                                                          | Partial | Marketing-site demo assets — staged repos, Playwright capture pipeline. Companion: [runbook.md](site-demos/runbook.md)                                                                                                              |
-| [solution-view](solution-view/solution-view.md)                                                 | Partial | Phases 0 and 1 built — the read-only Solution lens, its sidecar, and its switch. Architecture folded into [docs/solution-view.md](../docs/solution-view.md). Open: Phases 2–4, below                                                |
-| [upstream-subagent-convergence](upstream-subagent-convergence/upstream-subagent-convergence.md) | Charter | Stop forking upstream's provider-subagent ingestion — take theirs verbatim, project it into Otto's observed model                                                                                                                   |
-| [visualizer-node-richness](visualizer-node-richness/visualizer-node-richness.md)                | Partial | Discovery cards shipped. Open: the context-composition ring                                                                                                                                                                         |
-| [visualizer-pip](visualizer-pip/visualizer-pip.md)                                              | Partial | Audio-while-closed shipped. Open: PIP window, Arena mode                                                                                                                                                                            |
-| [web-search-providers](web-search-providers/web-search-providers.md)                            | Charter | Selectable web-search engine for the openai-compat provider settings panel                                                                                                                                                          |
-| [workflow-decomposition](workflow-decomposition/workflow-decomposition.md)                      | Partial | Decompose a Claude Workflow run into per-`agent()` observed-subagent rows. Path B built and live-verified                                                                                                                           |
+| Project                                                                                         | Status  | What it is                                                                                                                                                                                                                                                                                                                                                        |
+| ----------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [agent-orchestration](agent-orchestration/agent-orchestration.md)                               | Charter | The **control layer** — Teams as the way work is invoked, typed tasks, recognize → plan → delegate → synthesize. Quarter-scale. Companion: [invocation.md](agent-orchestration/invocation.md)                                                                                                                                                                     |
+| [bug-reporting](bug-reporting/bug-reporting.md)                                                 | Charter | In-app bug/suggestion reporting; the daemon files the GitHub issue so reporters need no account                                                                                                                                                                                                                                                                   |
+| [claude-extensions](claude-extensions/claude-extensions.md)                                     | Charter | Plugins, marketplaces, skills and MCP in the Claude provider settings panel — management plus the always-on context budget nothing else totals. **Deliberately Claude-only**                                                                                                                                                                                      |
+| [computer-use](computer-use/computer-use.md)                                                    | Charter | Agents see and control the desktop via a shared computer-control library; layered safety. Companion: [computer-control-library.md](computer-use/computer-control-library.md)                                                                                                                                                                                      |
+| [dictation-refine](dictation-refine/dictation-refine.md)                                        | Charter | AI cleanup over dictated text via a latency-ordered ladder (lexical → ONNX → optional LLM)                                                                                                                                                                                                                                                                        |
+| [editor-repo-conventions](editor-repo-conventions/editor-repo-conventions.md)                   | Charter | Honour the repo's own `.editorconfig` without configuring Otto; repo wins file-shaped settings, user wins view-shaped ones                                                                                                                                                                                                                                        |
+| [e2e-qa-coverage](e2e-qa-coverage/e2e-qa-coverage.md)                                           | Partial | Full-app Playwright QA across 3 tiers. T1 and T2 green; Phase 3.5 iron-out and the ❌ rows remain. Tier design folded into [docs/testing.md](../docs/testing.md). **[coverage-matrix.md](e2e-qa-coverage/coverage-matrix.md) is live tooling, not a plan** — `scripts/e2e-coverage-check.mjs` and the QA reporter read it at runtime, so this folder cannot drain |
+| [file-rendering](file-rendering/file-rendering.md)                                              | Partial | IDE-grade file rendering. Mermaid shipped; AsciiDoc preview in flight. Companions: [asciidoc-preview.md](file-rendering/asciidoc-preview.md), [relative-image-resolution.md](file-rendering/relative-image-resolution.md)                                                                                                                                         |
+| [inline-widgets](inline-widgets/inline-widgets.md)                                              | Charter | In-message widgets — a `show_widget` tool carrying an HTML/SVG fragment rendered inline. Distinct from artifacts; reuses their sandbox                                                                                                                                                                                                                            |
+| [marketing-strategy](marketing-strategy/marketing-strategy.md)                                  | Charter | Otto's public voice (Philippe, first person) and the channels still to create                                                                                                                                                                                                                                                                                     |
+| [mobile-daemon](mobile-daemon/mobile-daemon.md)                                                 | Charter | Embedded API-native daemon on the phone ("This device" host); no CLIs                                                                                                                                                                                                                                                                                             |
+| [multiplayer](multiplayer/multiplayer.md)                                                       | Charter | Presence, entering each other's workspaces, opt-in follow — never forced mirroring                                                                                                                                                                                                                                                                                |
+| [observed-subagents](observed-subagents/observed-subagents.md)                                  | Partial | Provider subagents promoted to read-only track rows. Claude proof shipped; generalizing is adapter-only work. **[provider-adapters.md](observed-subagents/provider-adapters.md) is the adapter contract** and is cited from `docs/`                                                                                                                               |
+| [outreach](outreach/outreach.md)                                                                | Charter | Awareness strategy, website-scoped. Sells nothing. Companions: channels, content, pipeline, runbook                                                                                                                                                                                                                                                               |
+| [preview-file-tabs](preview-file-tabs/preview-file-tabs.md)                                     | Charter | VSCode-style preview tabs (transient vs pinned); web-only idiom                                                                                                                                                                                                                                                                                                   |
+| [sidebar-reveal](sidebar-reveal/sidebar-reveal.md)                                              | Partial | Increment 1 (reveal primitive) shipped. Increment 2 (tutorial create-workspace step) unbuilt — this folder holds the only plan for it                                                                                                                                                                                                                             |
+| [solution-view](solution-view/solution-view.md)                                                 | Partial | Phases 0 and 1 built — the read-only Solution lens, its sidecar, and its switch. Architecture folded into [docs/solution-view.md](../docs/solution-view.md). Open: Phases 2–4, below                                                                                                                                                                              |
+| [upstream-subagent-convergence](upstream-subagent-convergence/upstream-subagent-convergence.md) | Charter | Stop forking upstream's provider-subagent ingestion — take theirs verbatim, project it into Otto's observed model                                                                                                                                                                                                                                                 |
+| [visualizer-pip](visualizer-pip/visualizer-pip.md)                                              | Partial | Audio-while-closed shipped. Open: PIP window, Arena mode                                                                                                                                                                                                                                                                                                          |
+| [web-search-providers](web-search-providers/web-search-providers.md)                            | Charter | Selectable web-search engine for the openai-compat provider settings panel                                                                                                                                                                                                                                                                                        |
 
 ---
 
@@ -102,10 +97,54 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
   suite against a live daemon.** Architecture: [docs/code-intelligence.md](../docs/code-intelligence.md).
 - ⚪ **LSP Phase 4 (Angular / second server per document)** — deferred indefinitely. The multi-server
   binding it existed to prove now has a real production user in the `oxlint` row.
-- 🟡 **Refine: the Context Management call site.** The per-file action calling
-  `openRefineTab({ path, presetId })`. The tab target already carries `presetId` and the panel
-  already seeds from it — a call site, not a feature. Also open: the conflict-path integration test
-  (the `stale` phase writes nothing on conflict — written and typed, untested) and i18n.
+- 🟡 **Refine: the conflict-path integration test.** The `stale` phase writes nothing on conflict —
+  written and typed, untested. Plus i18n. **Correction (integrated QA, 2026-07-25):** the Context
+  Management call site this entry also listed **is built** — `ContextRefineAction`
+  (`app/src/context-management/refine-action.tsx`, mounted at `context-management/panel.tsx:367`)
+  opens the job with the selected file as the only rewritable path and the rest of the context graph
+  as budgeted read-only references. It does not work end-to-end today; see the job-tab retarget row
+  below. _(Charter drained 2026-07-25 — architecture in [docs/refine.md](../docs/refine.md).)_
+- ⚪ **Refine: the four deferrals, in the order a user would notice them.**
+  (a) **Add a file to the set from inside the tab.** Today the working set is whatever the opening
+  surface seeded; the chips change a file's _role_ but cannot introduce a new file. A picker is what
+  would make the editor entry as useful as the Context one.
+  (b) **Selection-scoped refine.** Still the thing that would make Context Management's
+  "demote a rule to a subdirectory" tractable, and the other half of a read-only
+  "explain this selection" (see the explain-selection row above — `useRefineSession` already exposes
+  `accept` as the only writing method, so a read-only host is the same session minus a button).
+  (c) **A cost estimate in the instruction bar**, now that a hard 120K-character ceiling exists —
+  the ceiling is the floor of the guard, not the guard.
+  (d) **Streaming output**, which needs a streaming variant of the one-shot generation primitive
+  that does not exist; and **round history**, where it is still unclear anyone wants stepping back a
+  round over just re-running.
+  **Do not "fix" the prose-only gate as part of any of these** — `refine-scope.ts` is deliberate and
+  [docs/refine.md](../docs/refine.md) says why.
+- 🔴 **Re-opening a job tab never refreshes what the job was set up with.**
+  `findExistingTabForTarget` matches an open tab by deterministic id **or** target equality, and
+  `updateExistingTabTarget` then skips the replace when `workspaceTabTargetsEqual` says the same
+  thing (`app/src/stores/workspace-layout-actions.ts:1118-1143`). For every kind whose identity is
+  its whole payload — refine (`paths[0]` only), fileHistory, contextManagement, orchestrationGraph —
+  those two predicates are the _same_ test, so the second open can only ever focus the first tab.
+  File tabs are the exception that shows the inconsistency: their id ignores lines while their
+  equality includes them, which is why jump-to-line retargets correctly.
+  **Repro:** open `CLAUDE.md`, press Refine in the file toolbar (single file, no preset, no
+  references) → then in Context Management select `CLAUDE.md` and press **Compact with AI**. The tab
+  focuses and nothing else happens: no references, no seeded instruction. Reverse the order and the
+  file toolbar's "single-file counterpart" silently hands you the multi-file job instead. Refine's
+  own identity comment states the intended behaviour — _"a re-request is a fresh pin of the same
+  job"_ — so the design and the implementation disagree.
+  **Not fixed deliberately:** there are three candidate fix sites (a payload-equality predicate used
+  only by `updateExistingTabTarget`, a per-kind "refreshable fields" rule, or a `retargetTab` call
+  from `openRefineTab`), and picking one is a decision about which target fields are identity and
+  which are settings. Read-verified across all three functions; not executed.
+- 🔵 **Workspace tab targets are coerced in two places, and they had already drifted.**
+  `workspace-layout-store` (the live tab system) restores through `normalizeWorkspaceTabTarget`;
+  `workspace-tabs-store` keeps a hand-written `coerceWorkspaceTabTarget` that has to be extended per
+  kind. `fileHistory` was missing from it, so any persisted file-history tab was silently dropped by
+  that store's `migrate`. Fixed 2026-07-25 with a regression test pinning all four job-tab kinds
+  (`state.test.ts` — "restores every job-tab kind"). Latent rather than user-visible: `migrate` only
+  runs on a version bump, and the four remaining consumers of that store do not read job tabs. The
+  open question is whether the second coercer should exist at all.
 - 🔵 **Verify caret auto-scroll follow + search-match-scroll.** Both marked fixed but carry "verify on
   the live repro across plain and split mode before closing."
 - 🟡 **ctags fallback: incremental re-index.** Build once, then re-index only the written file (the
@@ -125,6 +164,16 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
   daemon-side, type-level, or against the pure row builder, plus six end-to-end against the real
   sidecar. The switcher, the picker, the tree and the failed-project tooltip have never been clicked
   through. **Never run the test suite against a live daemon.**
+- ⚪ **Solution view: the client probes on the capability flag, not on the host's switch.** The
+  daemon's half of "disabled is genuinely off" holds exactly as documented — `SolutionService`
+  checks one boolean before any walk, read, parse, process, cache or watcher, and `service.test.ts`
+  pins it against a provider spy. The client half is looser: `useSolutionsQuery` is gated on
+  `features.solutionView`, which `websocket-server.ts:1514` sets unconditionally to `true`, so with
+  `dotnetSolutionManagement` **off** every workspace still issues a `code.solution.list` round trip
+  (5-minute staleness) to be told `[]`. Nothing spawns and nothing walks, so the cost policy is not
+  violated — but it is one avoidable no-op RPC per workspace, and it lands in the same place as the
+  "navigation refetches state the client already holds" row under [Performance](#performance).
+  Closing it means the client learning the host setting, which it does not fetch outside Settings.
 - ⚪ **Solution view Phase 2 — general file mutations.** _Otto has no file create, delete, rename or
   move RPC at all._ The whole mutation surface is `file.write`, `file.replace` and `file.upload`.
   "Manage files within projects" therefore has a prerequisite strictly larger than the Solution view
@@ -197,6 +246,28 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
 - ⚪ **Observed subagents: the remaining provider adapters.** Claude is the shipped reference; the
   3-step adapter contract is in [docs/subagent-accounting.md](../docs/subagent-accounting.md).
   Sequenced behind the upstream merge — see [Build order](#build-order).
+- 🟡 **Workflow decomposition: the four refinements the disk-tailing build left open.** Path B
+  shipped and is live-verified (a 3-agent RGB fan-out decomposed into one `Workflow:` row with three
+  nested children); architecture in
+  [docs/subagent-accounting.md](../docs/subagent-accounting.md#workflow-decomposition-a-synthetic-event-source).
+  What remains, none of it blocking:
+  (a) **Phase grouping** — `wf_<id>.json` carries `phases` / `workflowProgress`, which the watcher
+  reads but nothing surfaces as track or Visualizer grouping;
+  (b) **Nicer titles** — the live title is the per-agent prompt, because the pretty script `label`
+  is end-only and the row title freezes at first announce;
+  (c) **Per-agent error granularity** — the live settle is always `idle`; an individual failure only
+  surfaces through the run-state at reconcile, so a transcript-level failing signal is the refinement;
+  (d) **Archived-run rebuild** — the reconcile already reads on-disk state, so "reconstruct this
+  archived workflow" is cheap to add. It is a product question, not a cost one: observed rows are
+  ephemeral by design, and this would be the first thing to break that.
+  Also open, and larger: **nested workflow agents** (an internal `agent()` that itself fans out)
+  currently have no decided shape — flatten under the workflow row, or preserve depth via the
+  existing `observedParentKeyByToolUseId` chain. Leaning preserve, since the primitive exists.
+- 🔵 **Replace the workflow watcher's hand-rolled tailing with the SDK's session-store APIs.**
+  Claude Agent SDK ≥ 0.3.212 has `getSubagentMessages(sessionId, agentId)` / `listSubagents(sessionId)`,
+  and `SessionMessage` now carries `parent_agent_id`. They are poll-style reads, not a push stream,
+  so they do not replace the watcher outright — but they would retire its JSONL parsing and its
+  inferred parentage. Keep the watcher's shape for any provider without session-store APIs.
 
 ### Visualizer
 
@@ -204,6 +275,16 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
   completion. Suspected fixed-TTL node versus a lifecycle tied to the tool call.
 - 🟡 **Discoveries should fade; their colours read as wrong or unexplained.**
 - 🟡 **Skill activation is not shown at all.** No node or badge when a skill fires.
+- 🔵 **Live-verify the context ring and the discovery cards on a real Claude session.** Both are
+  covered by pure-mapper unit tests and by the vendor's own render subsystem, but neither has been
+  watched on canvas against a real run — canvas pixels are unassertable, so the bridge-log loop in
+  [docs/visualizer.md § Debugging](../docs/visualizer.md#debugging--iterating-fastest-loop) is the
+  only check. The **discovery-noise question rides with it**: the derivation excludes Read and
+  `sub_agent` and nothing else, with no per-node cap or rate limit, so whether a burst of Greps and
+  Edits sprays cards is a live-observation question, not a code-reading one. A per-node cap is the
+  next lever if it does; widening the exclusions is not.
+  _(Charter drained 2026-07-25 — architecture in [docs/visualizer.md](../docs/visualizer.md),
+  "Context ring" and "Discovery cards".)_
 - ✅ **The context-composition ring.** Built 2026-07-25 (uncommitted). Unified onto the provider's
   own accounting — `AgentUsage.contextCategories`, the same reading
   `agent.context.get_usage` serves the context meter, so the graph and the meter can no longer
@@ -221,23 +302,98 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
   `window.__ottoResourceMonitor`. Off switch: `Settings › Diagnostics › Performance monitoring`.
   Soak: `packages/app/e2e/client-resource-soak.spec.ts` (`OTTO_RESOURCE_SOAK_E2E=1`). Documented in
   [docs/client-performance.md](../docs/client-performance.md).
+- 🟡 **The performance-monitoring off switch does not uninstall the timer patch.** `installRuntimeCounters`
+  wraps global `setTimeout`/`clearTimeout`/`setInterval`/`clearInterval` from `resourceMonitor.start()`
+  (`app/src/diagnostics/resource-report/runtime-counters.ts`), and there is **no uninstall path** —
+  only `resetRuntimeCountersForTest`. `ResourceMonitorHost` turning the setting off calls
+  `resourceMonitor.stop()`, which clears the census interval and the rAF chain but leaves the wrappers
+  and their two live handle `Set`s in place for the rest of the process. So the instrument that exists
+  to measure overhead keeps a permanent hook on the app's hottest scheduling path even when the user
+  has said no. **Measured, so it is not overstated:** the wrapper costs ~1.57× native on
+  schedule-then-clear — 0.375 µs vs 0.239 µs per op on this machine, i.e. ~27 ms per 200,000 timer
+  pairs. Small in absolute terms; the defect is that the switch is not honest, not that it is slow.
+  Fixing it means keeping the natives and restoring them, and deciding what happens if something else
+  patched on top in the meantime.
 - 🔴 **App-wide FPS degrades over time — measured, not yet fixed.** Findings in
   [docs/client-performance.md](../docs/client-performance.md#what-the-client-actually-does-with-resources).
   Retired by measurement: timer leak, query-cache growth, observer leak, message-decode cost (0.25%
-  of wall clock). Confirmed: **mounted workspace trees are never released** — 1 → 3 workspaces costs
-  ~35% of the frame rate and never comes back. The remaining sub-items are below.
-- 🔴 **Decide workspace-tree retention.** Evict cold workspace trees (LRU, remount on switch-back),
-  or keep today's retain-everything trade? Product decision; it blocks the main FPS fix.
+  of wall clock). **Correction 2026-07-25:** the headline that followed — "mounted workspace trees
+  are never released, 1 → 3 workspaces costs ~35% of the frame rate" — **is withdrawn on both
+  halves** (row below). No confirmed cause remains for the reported symptom; the live candidate is
+  render cost per inbound daemon message, below.
+- ✅ **Workspace-tree retention — verified, nothing to build.** Answered 2026-07-25 by re-running the
+  soak above the cap (6 workspaces, 12 cycles, two runs per cap value at 1 / 3 / 6):
+  [findings/client-performance/2026-07-25-workspace-tree-retention.md](../findings/client-performance/2026-07-25-workspace-tree-retention.md).
+  **Eviction fires and fully releases the tree** — mounted trees flat at 3 while six workspaces were
+  visited, `query.observers` plateaued at the 3-tree cost, and the released queries showed up as
+  `query.unobserved`. Retention is bounded by the cap, not by workspaces-visited. **The −35% frame
+  cost is withdrawn too:** it came from `Client frame drift`, whose decile bucket is one sample at 12
+  cycles — the same configuration produced both verdicts on consecutive runs, and it reported
+  "degraded" at a cap of 1, where retention is provably constant. Nothing was changed in the app; the
+  harness gained `OTTO_RESOURCE_SOAK_WORKSPACES`, a mounted-tree count and a switch-back timer, and
+  `docs/client-performance.md` gained the two invariants this cost.
+- ✅ **The mounted-workspace cap is a setting.** Built 2026-07-25, closing the entry that asked for
+  it. `mountedWorkspaceLimit` — device-local, **default 5**, clamped 2–12 — surfaced as
+  Settings › General › _Workspaces kept loaded_ and consumed by the workspace deck via a narrow
+  `useAppSettingValue` subscription, so lowering it releases the excess trees on the next render
+  rather than at the next switch. `WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES` is **gone**:
+  `maxMountedWorkspaces` is a required argument and the pure module holds no default, because a
+  fallback constant there would be a second cap able to disagree with Settings.
+  **Why it mattered**, from real usage: _"At work I need 8 projects and each one has 1 workspace. I
+  don't use them ALL but often use 4 at once."_ With 4 in rotation and a cap of 3, every switch
+  evicts the tree the user is about to return to — LRU thrashing with the cap one short of the
+  working set, close to the worst possible value.
+  **Default justified by measurement, not by a round number:** anything below 4 thrashes that
+  rotation, and 5 covers it with one spare. The two extra trees over the old 3 cost +118 to +236
+  observers and +152 to +338 DOM nodes — one resident tree is +59 to +118 observers and +76 to +169
+  DOM nodes, a **range** depending on what that workspace has open — and no frame rate the soak can
+  resolve (3 → 6 sits inside run-to-run noise). So the trade-off is **memory, not smoothness**, and
+  the user-facing description says so.
+  **Two caveats that survive.** Switch-back to a _resident_ tree measured no faster than a cold mount
+  (356ms vs 298ms median), but that timer stops when the panel is **painted** and a cold mount paints
+  before its timeline refetch lands — the latency win retention is supposed to buy still needs a
+  usable-not-painted measure. And the soak drives idle agents, so it never exercises
+  `push rate × mounted subscriber count` — the row below.
+  Storage layer (`AppSettings` field, clamp, `parseMountedWorkspaceLimit`, and the 5/2/12 bounds)
+  came from a concurrent session and was consumed unmodified; that session has since corrected its
+  doc comment to match the measurement.
 - 🟡 **Instrument render cost per inbound daemon message.** The one gap keeping "daemon volume is the
   bottleneck" alive: `traffic.handlerMs` covers decode, validate and dispatch, **not** the React
-  re-render each store write triggers. Cost is plausibly `push rate × mounted subscriber count`, and
-  both factors grow over a session.
-- 🟡 **Navigation refetches state the client already holds.** Four `fetch_agent_timeline` calls per
-  workspace round-trip plus `terminals_changed` fan-out. Cheapest concrete win, and it is what the
-  connection indicator is reacting to.
-- 🟡 **`agentStreamTail`/`agentStreamHead` have no per-agent eviction.** Cleared only by
-  `clearSession`, so every timeline item for every agent opened this session is retained. Needs a cap
-  or a release path on chat close/archive.
+  re-render each store write triggers. Cost is plausibly `push rate × mounted subscriber count`.
+  **Promoted 2026-07-25 to the only live mechanism** now that workspace-tree retention is out: the
+  subscriber count is bounded by the deck cap, but the push rate is not, and the navigation-only soak
+  drives idle agents so it has never exercised this at all. Needs its own instrument — this is not a
+  question the existing soak can answer.
+- ✅ **Navigation refetches state the client already holds.** Fixed 2026-07-25. Three redundant
+  round-trips per workspace round-trip, all now at their floor of one per workspace visited:
+  **`fetch_agent_timeline` 33 → 4**, **`workspace_setup_status` 38 → 4**, **`terminals_changed`
+  51 → 4** over 12 navigation-only cycles across 4 workspaces; total inbound 232 → 99 messages and
+  `traffic.handlerMs` 267ms → 130ms. (1) Focusing a chat pane fetched the timeline unconditionally —
+  now gated on `shouldSyncAgentTimelineOnFocus`, which fetches only when history was never applied or
+  the host reconnected since this agent last synced; the reducer's seq/epoch gate already covers
+  gaps. (2) `ensureSetupStatus` cached only a positive answer, so "this workspace has no setup" was
+  re-asked on every route focus — now cached, cleared by a progress push, workspace removal, or
+  reconnect. (3) The terminals push subscription now lingers 15s past its last observer
+  (`TERMINAL_SUBSCRIPTION_LINGER_MS`) so leaving and returning is a timer cancel, not an
+  unsubscribe/subscribe pair — a debounce on churn, deliberately not a second retention policy
+  competing with the deck's mounted set. Evidence:
+  [findings](../findings/client-performance/2026-07-25-navigation-refetch-and-stream-retention.md).
+- ✅ **`agentStreamTail`/`agentStreamHead` have no per-agent eviction.** Fixed 2026-07-25.
+  **The release trigger, decided:** buffers are released when the agent is not being displayed AND
+  either it has left the session (deleted, removed, archived) or it is past a cap of 12 agents,
+  oldest-touched first (`timeline/agent-stream-retention.ts`). Two load-bearing parts: "not being
+  displayed" is an explicit ref-counted retainer registered by every surface that renders the buffers
+  (`useAgentStreamRetention`) — inferring it from focus or lifecycle blanks a mounted background pane;
+  and releasing also drops `agentTimelineCursor` + `agentAuthoritativeHistoryApplied`, without which
+  the next open is an `after` catch-up onto an empty tail. Archive released nothing before this, and
+  the `agent_update{remove}` path cleared the cursor while leaving the tail as unreachable state.
+  The Visualizer is unaffected — checked, not assumed: its backfill re-fetches from the daemon, not
+  these buffers. **The cap is not soak-verified** (the soak seeds 4 agents against a cap of 12); it is
+  covered by unit tests only, and the number itself was chosen, not measured — see the open row below.
+- 🔵 **Is 12 the right stream-buffer cap?** Chosen as "more chats than a session realistically has
+  open at once, far fewer than a day's worth of agents". Too low costs a `tail` refetch on reopen,
+  too high costs retention; nothing measures the per-agent cost yet. Worth answering with the same
+  instrument as the row above it, not in isolation.
 
 ### Onboarding & UX
 
@@ -316,9 +472,52 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
   lexically, like every other dedup in the subsystem. Asking the destination personality to reconcile
   two overlapping lessons is the natural extension of the `review_lessons` loop — the one place in
   this feature where a model is the right tool.
+- ⚪ **Context Management: demote a rule to a subdirectory.** The one graph operation the charter
+  named and did not build. It converts fixed → conditional weight by moving a **rule** — a span the
+  user chooses — out of the root context file and into a subdirectory one. It is deliberately not a
+  one-click button: content surgery needs a selection model that a read-mostly tree does not have,
+  and the safe version of it is Refine with **selection scope** (above), not a bespoke edit. Sequence
+  it behind that.
+- ⚪ **Context Management: skills and MCP toggles.** The report already _measures_ both — per-skill
+  description weight (the description is the fixed cost, the body is not) and MCP tool schemas.
+  Turning them **off** is each its own subsystem: a skill needs a daemon skill registry with a write
+  path, and MCP needs per-project MCP config editing, so the lever belongs with whichever subsystem
+  owns that config rather than being smuggled into this tab.
+  **Coordinate with [claude-extensions](claude-extensions/claude-extensions.md)** — that charter's
+  always-on plugin cost budget describes the same consumption from the other direction, and the two
+  must share a vocabulary and the unit (% of context window) rather than each inventing a
+  presentation.
+- 🔵 **Context Management: calibrate the estimate, and populate the real model window.** Two
+  measurements the tab ships without.
+  (a) **Token counts are chars/4.** The calibration is a differential measurement, and the harness
+  for it already exists: the Claude provider supports a stripped agent (`settingSources: []`, no
+  preset, no tools), so diffing its turn-one input tokens against a normal agent's gives **the real
+  fixed tax**, per provider. A fixture repo (hard `@import`, markdown link, subdirectory context
+  file, a cycle, a duplicate import) run against each CLI would additionally become a permanent
+  regression test for when a CLI changes behaviour under us — including confirming duplicate-import
+  dedup, which the deduplicated token total depends on.
+  (b) **The window picker defaults to 200K rather than the active model's real window.** The daemon
+  accepts one (`WorkspaceContextRuntime.windowTokens`); nothing populates it, because no
+  provider-neutral model-window lookup exists. Never let this default to the largest preset — that
+  reports "you're fine" to everyone.
+  _(Charter drained 2026-07-25 — architecture in
+  [docs/context-management.md](../docs/context-management.md).)_
+- 🔵 **Context Management: dismissal is device-local, and cross-device sync was deferred, not
+  forgotten.** The flyout's mute-with-key mirrors the client store's proven
+  `rateLimitDismissKey` / `mutedUntil` shape, scoped per workspace. Server-side sync needs a new
+  persisted daemon store; for a multi-device product it is the eventual answer.
 
 ### Testing & tooling
 
+- 🔴 **`main` has a failing unit test, and has had since the LSP landing.**
+  `packages/client/src/index.test.ts` ("config actions delegate to existing daemon config RPCs")
+  asserts the parsed daemon config with `resolves.toEqual` — a strict deep equal. `0a8abeb7d` gave
+  `lsp` a schema `.default(...)` and `beb4b833a` did the same for `dotnetSolutionManagement`
+  (`protocol/src/messages.ts`), so the client now fills two keys the expectation does not list. The
+  test file itself was last touched in `a1254c4ba`, well before either. **Repro:** clean checkout of
+  `main`, `npx vitest run packages/client/src/index.test.ts`. A fix is already sitting **uncommitted**
+  in the working tree and is green there — it just has to land before the 0.7.0 cut, or the release is
+  cut over a red suite. Worth asking separately why CI did not catch it.
 - 🔴 **Metro dies mid-E2E when Playwright churns `packages/app/test-results`.** Playwright's default
   `outputDir` sits **inside Metro's watched project root**, so deleting a scratch dir makes Metro's
   watcher throw `ENOENT`, the Expo CLI rethrow, and the bundler exit. Every later navigation then
@@ -332,25 +531,99 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
   remain: the scoped `personality-autosubmit-regression` rework, the Windows-only
   `git-cta-push-reconcile` limitation, and the deferred vision spec, which needs a vision-capable
   pinned model.
+- 🟡 **The coverage drift guard is failing, which is it working.**
+  `node scripts/e2e-coverage-check.mjs` exits 1: `client-resource-soak.spec.ts` landed with resource
+  reporting in `beb4b833a` without its matrix row, so 122 specs on disk are claimed by 121 rows.
+  That is exactly the "adding a spec without a matrix row must be impossible" rule catching a real
+  omission — the fix is one row in
+  [coverage-matrix.md](e2e-qa-coverage/coverage-matrix.md), left here rather than made because that
+  spec is being edited in-flight. It also strengthens the case for the project's deferred Phase 1
+  item: the guard only bites when someone runs it by hand, and nobody did between the wave landing
+  and this pass.
+- 🟡 **Site demos: the scenario backlog.** The pipeline itself is shipped and documented
+  ([docs/site-demos.md](../docs/site-demos.md)); what remains is content. In rough priority:
+  (a) **A `demo:real` capture pass over 07-subagent-track / 08-visualizer / 09-composer-intelligence**
+  — all three are written against the e2e selector helpers but their non-deterministic beats have not
+  been validated. 09 has a known open problem: two real runs completed the turn but neither triggered
+  `spawn_task`, so the task-chip beat never fired. That looks like more than ordinary
+  non-determinism, since the deliberate out-of-scope TODO lives in `routes/events.js` while the
+  prompt scopes the agent to `routes/health.js` — the agent may simply never read the file with the
+  bug. Narrow the prompt or move the TODO **before** spending more real-run tokens on retries.
+  (b) **Unbuilt scenarios**, cheapest first: `11-homepage-tour`, `12-themes` (which is where Neotokyo
+  lives now), `13-artifacts` and `14-schedules` (both free _if_ the seeder plants the files),
+  `15-workspace-layouts`, then `16-terminals`, `17-multi-provider`, `18-worktrees`, `19-editor-ide`.
+  Two remain storyboards only: `01-agent-live` and `10-diff-ai-review`.
+  (c) **Mobile passes.** Same scenarios at a phone viewport via a `demo-mobile` project rather than
+  forked specs, opting in per scenario after one explicit compact-layout verification — mobile
+  navigation differs (sheets, tab switcher), and desktop-only beats are skipped, not simulated. This
+  is what replaces the hand-made mobile slides and animations.
+  (d) **Route the four legacy scenarios through `resolveDemoProvider()`.** `hero-shot`,
+  `07`, `08` and `09` predate the convention and hardcode `provider: "claude"` — functionally the
+  same default, just not overridable.
+  The end goal is that **every** screenshot on otto-code.me and every store slide is generated from
+  this pipeline. _(Charter drained 2026-07-25.)_
+- 🔵 **Site demos: two questions the pipeline never settled.** Should video show the bare web app, or
+  add desktop-window framing in post? (Today the site does the framing in CSS, which is the
+  cheaper-to-change answer.) And nothing in the pipeline flags a **stale brand asset** — both
+  `og-image.png` and `hero-mockup.png` were found to be pre-fork Paseo screenshots by inspection, not
+  by a run. A recurring check, or a drift guard, is unowned.
 
 ### i18n
 
-- ⚪ **Dead i18n cleanup from the edit-outside change.** Now-dead
-  `editor.outOfProject.editOutside*` / `editOther*` across 8 locales, plus
-  `suppressOutOfProjectWarning` in `editor-prefs-store.ts`. Non-blocking sweep.
-- ⚪ **i18n lag: worktree branch-cleanup and re-attach strings.** Only `en.ts` has these keys; the 7
-  non-English locales lag. Batch translate pass.
-- ⚪ **i18n: the setup wizard, Refine and personality memory.** All shipped English-only.
-- ⚪ **i18n: the Solution view.** `workspace.solution.*` and `settings.host.code.solution*` are
-  present in all 8 locales but carry the English strings in the 7 non-English ones — the resource
-  types require every key to exist, so they were seeded rather than left absent. Batch translate pass.
-- ⚪ **i18n lag: history delete.** `sessions.filters.*`, `sessions.actions.clearArchived` /
-  `clearingArchived`, and the `emptyActive` / `emptyArchived` / `emptyForHost` empty states carry
-  **English values in all 7 non-English locales** (the resource type requires key parity), each marked
-  with a lag comment. The destructive confirm copy is not in i18n at all — it lives as pure English in
-  `app/src/history/delete-dialogs.ts`, matching `clear-completed-subagents.ts`; translating it means
-  deciding whether that whole family of dialog resolvers moves into i18n, which is a bigger call than
-  one feature.
+**The pre-0.7.0 debt is paid** (2026-07-25, "Batch 5C" in
+[docs/i18n.md](../docs/i18n.md#progress)). The five entries below that named seeded English, lagging
+keys, English-only surfaces and dead keys are all closed; what remains is one review and two newly
+named surfaces.
+
+- ✅ **Seeded English is gone.** The Solution view (`workspace.solution.*`) and its host setting
+  (`settings.host.code.solution` / `solutionHint`) carried the English source in all 7 non-English
+  locales and are now really translated. `Solution` follows each locale's established .NET wording
+  (Solución / Solution / ソリューション / Решение / 解决方案 / Solução / الحل) rather than staying
+  English: it is a .NET concept with a localization users already know, and it is not one of the
+  product nouns [docs/i18n.md](../docs/i18n.md#what-stays-in-english) keeps English.
+- ✅ **History delete and worktree branch-cleanup were already translated** — those two entries were
+  stale. Both landed translated in `beb4b833a`; only the `// i18n lag:` comments survived, and they
+  have been removed so the next reader is not sent to fix something already done. **Read the tree,
+  not the ledger, before starting a translate pass.**
+- ✅ **The setup wizard, Refine and personality memory are migrated and translated.** ~200 new keys
+  under `setupWizard.*`, `refine.*` and `contextManagement.memory.*` / `personalitySelector.*`,
+  across all 8 locales. What deliberately stayed English is recorded in
+  [docs/i18n.md](../docs/i18n.md#what-stays-in-english): the wizard's team prompts, functional cores
+  and persona names, and Refine's seeded `instruction` — all model input rather than UI copy.
+- ✅ **The destructive-dialog resolver family moved into i18n, whole.** `history/delete-dialogs.ts`
+  plus `subagents/archive-subagent.ts`, `detach-subagent.ts` and `clear-completed-subagents.ts`.
+  **The rationale is written down** in [docs/i18n.md § Dialog resolvers](../docs/i18n.md#dialog-resolvers):
+  confirmation text is in scope, a destructive dialog is the worst place to make someone read a
+  second language, and being a pure helper is not an exemption — pure helpers call `i18n.t(...)`
+  directly (Batch 4Y). Provider display names stay literal; the neutral fallback is translated.
+  Existing tests still assert English (`en` is the default) and `delete-dialogs.test.ts` gained a
+  `changeLanguage("zh-CN")` case so the decision is guarded rather than remembered.
+- ✅ **Dead keys from the edit-outside change are gone**, along with `suppressOutOfProjectWarning`
+  and its setter in `editor-prefs-store.ts`. The sweep turned up more than dead keys: the two
+  surviving `editor.outOfProject.badge*` strings were translations of a **superseded** English
+  source — short badges like "Fuera del proyecto · {{project}}" against an English sentence that had
+  grown to explain the consequence. Both were retranslated. **A key that exists in every locale can
+  still be stale**; key parity does not catch a rewritten source string, and nothing in the guard
+  suite does either.
+- ⚪ **i18n: Agent personalities and Agent teams settings, including `ROLE_LABELS` / `ROLE_HINTS`.**
+  `agent-personalities-section.tsx` (~2.4k lines) and `agent-teams-section.tsx` are English-only, and
+  the shared role labels in `provider-selection/role-labels.ts` are consumed by five surfaces —
+  three of which are now translated. Deliberately **left out of Batch 5C**: translating only the role
+  pills would half-migrate the personalities editor, which is exactly the mixed-language state
+  [docs/i18n.md](../docs/i18n.md#migration-order) forbids. Whole-surface pass or nothing.
+- 🔵 **Review the `settings.general.mountedWorkspaceLimit.*` translations.** Added to `en.ts`
+  2026-07-25 with the workspaces-kept-loaded setting (label, description, accessibilityLabel) and
+  **picked up by the concurrent translation sweep the same day** — all 7 non-English locales carry
+  real translations rather than seeded English, verified present, not reviewed by the author of the
+  English. The description is the longest setting hint in the file and carries the load-bearing
+  guidance ("set it to at least the number you actually switch between"), so it is worth a native
+  read: a translation that softens that sentence loses the only part a user can act on.
+- ⚪ **The guard cannot see a stale translation.** `resources.test.ts` catches missing keys, a
+  fallback ratio and dropped interpolation placeholders — none of which fires when an English source
+  string is rewritten and the seven translations keep answering the old question. That is how the
+  `outOfProject.badge*` strings survived. A cheap fix exists: hash each English leaf and store the
+  hash a translation was made against, so a changed source shows up as a lag list rather than as
+  nothing at all.
 
 ---
 
@@ -551,11 +824,12 @@ One decision hides inside it: history delete's destructive confirm copy is not i
 translating it means deciding whether that whole family of dialog resolvers moves into i18n. That is
 a bigger call than one feature — settle it deliberately or leave it out deliberately, not by default.
 
-**3. The six owed fold-ins.** Rule 4 says a shipped project cannot leave until its durable facts
-reach `docs/`, and six are outstanding — context-management, refine, site-demos, e2e-qa-coverage,
-workflow-decomposition, visualizer-node-richness. Cheap, and it is the difference between `projects/`
-being a ledger and being a graveyard. Cutting a release over an unreconciled tree is how the next
-assessment starts with "five charters disagree with the code".
+**3. ✅ The six owed fold-ins — DONE 2026-07-25.** All six debts are paid and five folders have
+drained; see [Owed fold-ins](#owed-fold-ins) for what landed where, and why e2e-qa-coverage keeps
+its folder. `docs/` gained three pages (context-management, refine, site-demos) and three sections
+(testing's E2E tiers, subagent-accounting's workflow decomposition, visualizer's discovery cards).
+The tree is now reconciled going into the cut, which is what stops the next assessment starting with
+"five charters disagree with the code".
 
 **4. A real pass over what shipped.** Three waves landed largely in parallel sessions against a
 shared tree. Nothing has exercised Refine, the Solution view, history delete and the steer queue
@@ -647,11 +921,30 @@ rediscovered as new work. Folder: `archive/projects/duplicate-base-workspaces/`.
 Shipped work whose durable facts have **not yet** reached `docs/`. Each is a debt against rule 4 —
 until it is paid, the project folder cannot leave.
 
-| Project                                                                          | Owes                                                                                                                                     |
-| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| [context-management](context-management/context-management.md)                   | A `docs/context-management.md`: the inventory model, % of context window as the severity unit, the three-pane tab, the load-mode control |
-| [refine](refine/refine.md)                                                       | A `docs/refine.md`: the propose-then-accept invariant, the job-tab shape, the document/reference set model, prose-only scope             |
-| [site-demos](site-demos/site-demos.md)                                           | A `docs/site-demos.md`: the capture pipeline as process knowledge                                                                        |
-| [e2e-qa-coverage](e2e-qa-coverage/e2e-qa-coverage.md)                            | A tiers section in [docs/testing.md](../docs/testing.md)                                                                                 |
-| [workflow-decomposition](workflow-decomposition/workflow-decomposition.md)       | A note in [docs/subagent-accounting.md](../docs/subagent-accounting.md)                                                                  |
-| [visualizer-node-richness](visualizer-node-richness/visualizer-node-richness.md) | The shipped discovery cards belong in [docs/visualizer.md](../docs/visualizer.md)                                                        |
+**None outstanding.** The six debts standing at the start of the 0.7.0 run were paid on 2026-07-25:
+
+| Was owed by              | Paid into                                                                                                     | Folder            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------- | ----------------- |
+| context-management       | [docs/context-management.md](../docs/context-management.md) — new page                                        | drained           |
+| refine                   | [docs/refine.md](../docs/refine.md) — new page                                                                | drained           |
+| site-demos               | [docs/site-demos.md](../docs/site-demos.md) — new page                                                        | drained           |
+| workflow-decomposition   | [docs/subagent-accounting.md](../docs/subagent-accounting.md#workflow-decomposition-a-synthetic-event-source) | drained           |
+| visualizer-node-richness | [docs/visualizer.md](../docs/visualizer.md) — "Discovery cards", beside the already-folded "Context ring"     | drained           |
+| e2e-qa-coverage          | [docs/testing.md § App end-to-end tiers](../docs/testing.md#app-end-to-end-tiers-playwright)                  | **stays** — below |
+
+**Why e2e-qa-coverage keeps its folder even though its debt is paid.** Its
+[coverage-matrix.md](e2e-qa-coverage/coverage-matrix.md) is not a plan — it is **live tooling**.
+`scripts/e2e-coverage-check.mjs` reads it to fail on stale rows and unmapped specs, and
+`packages/app/e2e/reporters/qa-reporter.ts` reads its section headings to bucket every test in a run
+report. Archiving it would break `npm run e2e:coverage` and produce an all-"Unclassified" report.
+The project also has a genuine unshipped remainder (the Phase 3.5 iron-out and the ❌ rows), so it
+stays a Partial charter rather than a drained one. Rule 4 is about status documents rotting in this
+tree, not about deleting a file the build depends on.
+
+**A note for the next pass, since this one hit it.** A drained folder is only actually removable once
+nothing points at it. Five of the six were cited from **code comments** (`refine-generator.ts`,
+`context-management/types.ts`, `workflow-transcript-*.ts`, the visualizer adapter, eight i18n
+resource files) and from `packages/app/demo/README.md`. Those citations were repointed at the new
+`docs/` pages as part of the drain. Grep for `projects/<name>` across `packages/`, `docs/`,
+`scripts/` and `archdocs/` before removing a folder — a dangling pointer into `archive/` is worse
+than the charter was.

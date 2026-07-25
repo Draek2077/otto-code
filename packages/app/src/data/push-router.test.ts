@@ -1,5 +1,5 @@
 import { QueryClient, QueryObserver, skipToken } from "@tanstack/react-query";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MutableDaemonConfig, SessionOutboundMessage } from "@otto-code/protocol/messages";
 import { checkoutDiffQueryKey, checkoutStatusQueryKey } from "@/git/query-keys";
 import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
@@ -9,6 +9,7 @@ import {
   checkoutDiffPushRoute,
   invalidateServerDataQueriesAfterReconnect,
   mountServerDataPushRouter,
+  TERMINAL_SUBSCRIPTION_LINGER_MS,
   workspaceTerminalsPushRoute,
 } from "@/data/push-router";
 
@@ -183,6 +184,16 @@ function providerUpdate(generatedAt: string): ProvidersSnapshotUpdateMessage {
 }
 
 describe("server data push router", () => {
+  // The terminal subscription lingers past its last observer, so every test in
+  // here drives that timer explicitly rather than waiting on wall time.
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("routes provider snapshot and daemon config payloads until detached", () => {
     const queryClient = new QueryClient();
     const fake = createFakeClient();
@@ -446,9 +457,78 @@ describe("server data push router", () => {
 
     unsubscribeObserver();
 
+    // The subscription lingers rather than tearing down the moment the last
+    // observer detaches — leaving a workspace and coming straight back is the
+    // common case, and each subscribe costs a full `terminals_changed` push.
+    expect(fake.unsubscribeTerminalCalls).toEqual([]);
+
+    vi.advanceTimersByTime(TERMINAL_SUBSCRIPTION_LINGER_MS);
     expect(fake.unsubscribeTerminalCalls).toEqual([{ cwd, workspaceId }]);
 
     unmount();
+  });
+
+  it("a workspace revisited inside the linger window costs no subscription traffic", () => {
+    const queryClient = new QueryClient();
+    const fake = createFakeClient();
+    const serverId = "server-1";
+    const cwd = "/repo";
+    const workspaceId = "workspace-a";
+    const queryKey = buildTerminalsQueryKey(serverId, cwd, workspaceId);
+    const observerOptions = {
+      queryKey,
+      queryFn: skipToken,
+      enabled: true,
+      gcTime: Infinity,
+      staleTime: Infinity,
+      meta: workspaceTerminalsPushRoute({ enabled: true, serverId, cwd, workspaceId }),
+    } as const;
+
+    const first = new QueryObserver(queryClient, observerOptions);
+    const unsubscribeFirst = first.subscribe(() => undefined);
+    const unmount = mountServerDataPushRouter({ client: fake.client, queryClient, serverId });
+    expect(fake.subscribeTerminalCalls).toEqual([{ cwd, workspaceId }]);
+
+    // Leave the workspace, then come back before the linger expires.
+    unsubscribeFirst();
+    vi.advanceTimersByTime(TERMINAL_SUBSCRIPTION_LINGER_MS / 2);
+    const second = new QueryObserver(queryClient, observerOptions);
+    const unsubscribeSecond = second.subscribe(() => undefined);
+
+    // No teardown, and no second subscribe — the round-trip is free.
+    expect(fake.unsubscribeTerminalCalls).toEqual([]);
+    expect(fake.subscribeTerminalCalls).toEqual([{ cwd, workspaceId }]);
+
+    // The cancelled unsubscribe must not fire later either.
+    vi.advanceTimersByTime(TERMINAL_SUBSCRIPTION_LINGER_MS * 2);
+    expect(fake.unsubscribeTerminalCalls).toEqual([]);
+
+    unsubscribeSecond();
+    unmount();
+  });
+
+  it("unmounting cancels a pending terminal unsubscribe instead of firing it twice", () => {
+    const queryClient = new QueryClient();
+    const fake = createFakeClient();
+    const serverId = "server-1";
+    const cwd = "/repo";
+    const workspaceId = "workspace-a";
+    const observer = new QueryObserver(queryClient, {
+      queryKey: buildTerminalsQueryKey(serverId, cwd, workspaceId),
+      queryFn: skipToken,
+      enabled: true,
+      gcTime: Infinity,
+      staleTime: Infinity,
+      meta: workspaceTerminalsPushRoute({ enabled: true, serverId, cwd, workspaceId }),
+    });
+    const unsubscribeObserver = observer.subscribe(() => undefined);
+    const unmount = mountServerDataPushRouter({ client: fake.client, queryClient, serverId });
+
+    unsubscribeObserver();
+    unmount();
+    vi.advanceTimersByTime(TERMINAL_SUBSCRIPTION_LINGER_MS * 2);
+
+    expect(fake.unsubscribeTerminalCalls).toEqual([{ cwd, workspaceId }]);
   });
 
   it("re-sends active push subscriptions after reconnect", () => {

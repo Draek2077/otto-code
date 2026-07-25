@@ -16,7 +16,7 @@ import { DESKTOP_CAPTURE_RESOLUTION, DESKTOP_LAYOUT_VIEWPORT } from "../helpers/
  * a real Electron desktop window (not plain Chromium) rendering Otto's
  * `<webview>`-backed Preview browser pane with genuine dev-server content
  * inside it. This is the scenario that unblocks
- * projects/site-demos "02-preview-verify": Preview's `<webview>` tag only has
+ * the "02-preview-verify" demo scenario: Preview's `<webview>` tag only has
  * runtime behavior inside Electron's renderer, so the plain-Chromium demo
  * pipeline (playwright.demo.config.ts) can never capture it — see
  * docs/preview.md and this file's sibling playwright.demo-electron.config.ts.

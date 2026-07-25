@@ -11,6 +11,7 @@ export const ru: TranslationResources = {
       close: "Закрывать",
       copy: "Копировать",
       dismiss: "Скрыть",
+      ok: "ОК",
       retry: "Повторить",
       search: "Поиск",
       select: "Выбирать",
@@ -195,6 +196,63 @@ export const ru: TranslationResources = {
       context: "Контекст",
       findings: "Стоит исправить",
       findingsCount: "Стоит исправить ({{count}})",
+      memory: "Память",
+      memoryCount: "Память ({{count}})",
+    },
+    personalitySelector: {
+      label: "Контекст показан для",
+      everyone: "Все",
+      withLessons: "{{name}}, запомнено уроков: {{count}}",
+    },
+    memory: {
+      noPersonality:
+        "Выберите личность выше, чтобы увидеть, чему она научилась и что это добавляет к каждому её запросу.",
+      loading: "Читаем, что помнит эта личность…",
+      failed: "Не удалось прочитать память этой личности: {{error}}",
+      emptyNamed:
+        "{{name}} пока ничего не записала. Она записывает уроки сама по ходу работы; вы также можете добавить урок вручную.",
+      emptyFallbackName: "Эта личность",
+      add: "Добавить урок",
+      brief: {
+        title: "Внедряется для {{name}}",
+        nothing: "ничего",
+        everyRequest: "{{tokens}} в каждом запросе",
+        disabled:
+          "Память для этой личности отключена, поэтому ничего из этого не отправляется. Уроки при этом сохраняются.",
+        empty: "В этом проекте к контексту этой личности ничего не добавляется.",
+        omitted: "Уроков ниже, не поместившихся в бюджет внедрения и не отправляемых: {{count}}.",
+      },
+      scope: {
+        global: "Везде",
+        project: "Этот проект",
+        change: "Область: {{scope}}. Нажмите, чтобы изменить.",
+      },
+      row: {
+        reinforced: "Выучено раз: {{count}}",
+        transferredFrom: "От {{name}}",
+        edit: "Изменить этот урок",
+        forget: "Забыть этот урок",
+      },
+      forgetDialog: {
+        title: "Забыть этот урок?",
+        message: "«{{lesson}}» будет удалён из памяти этой личности.",
+        confirm: "Забыть",
+      },
+      composer: {
+        placeholder: "Что должна запомнить эта личность?",
+        save: "Сохранить этот урок",
+      },
+      transfer: {
+        title: "Удалить {{name}}",
+        subtitleOne: "Запомнен 1 урок. Решите, что с ним делать.",
+        subtitleMany: "Запомнено уроков: {{count}}. Решите, что с ними делать.",
+        discard: "Удалить уроки",
+        confirm: "Передать",
+        giveThemTo: "Передать их:",
+        noCandidates:
+          "Передать эти уроки некому — других личностей нет. Удаление {{name}} отбросит их.",
+        sameRole: "та же роль",
+      },
     },
     findings: {
       empty: "Сейчас исправлять нечего.",
@@ -360,7 +418,6 @@ export const ru: TranslationResources = {
   sessions: {
     title: "История",
     empty: "Сеансов пока нет",
-    // i18n lag: English until the translation pass (history management, 2026-07-25).
     emptyForHost: "Нет сессий для этого хоста",
     emptyActive: "Нет активных чатов",
     emptyArchived: "Нет архивных чатов",
@@ -373,6 +430,49 @@ export const ru: TranslationResources = {
       loadMore: "Загрузить больше",
       clearArchived: "Очистить архив",
       clearingArchived: "Очистка…",
+    },
+    dialogs: {
+      genericProvider: "Провайдер агента",
+      deleteAgent: {
+        title: "Удалить этот чат?",
+        subjectFallback: "этот чат",
+        recordLine:
+          "Запись Otto о {{subject}} удаляется безвозвратно — строка, её название и метаданные.",
+        transcriptLine:
+          "Собственная стенограмма {{provider}} на хосте остаётся на месте, поэтому сама переписка сохраняется на диске и её по-прежнему можно прочитать или продолжить вне Otto.",
+        undoLine: "Со стороны Otto это не отменить.",
+        confirm: "Удалить",
+      },
+      clearArchived: {
+        titleOne: "Очистить 1 архивный чат?",
+        titleMany: "Очистить {{count}} архивных чатов?",
+        recordLineOne:
+          "Безвозвратно удаляет записи Otto по 1 архивному чату. Чаты, которые вы не архивировали, не затрагиваются.",
+        recordLineMany:
+          "Безвозвратно удаляет записи Otto по {{count}} архивным чатам. Чаты, которые вы не архивировали, не затрагиваются.",
+        transcriptLine:
+          "Собственные стенограммы провайдеров агентов на хосте остаются на месте — это очищает историю Otto, а не переписку на диске.",
+        undoLine: "Со стороны Otto это не отменить.",
+        confirm: "Очистить",
+      },
+      nothingToClear: {
+        title: "Очищать нечего",
+        message: "На выбранных хостах нет архивных чатов.",
+      },
+      noHost: {
+        title: "Нет доступного хоста",
+        message:
+          "Подключитесь к хосту, который поддерживает удаление чатов, и повторите очистку архива.",
+      },
+      partialFailure: {
+        title: "Некоторые чаты не удалось очистить",
+        message:
+          "Удалено: {{deleted}}. Не удалось удалить: {{failed}} — они остались в истории. Повторите попытку или проверьте журналы хоста.",
+      },
+      unsupported: {
+        title: "Удаление недоступно",
+        message: "Обновите хост, чтобы удалять чаты из истории.",
+      },
     },
   },
   agentList: {
@@ -519,12 +619,12 @@ export const ru: TranslationResources = {
     },
     solution: {
       lens: {
-        files: "Files",
+        files: "Файлы",
       },
-      loading: "Reading the solution…",
-      empty: "This solution has no projects.",
-      outsideWorkspace: "outside workspace",
-      projectFailed: "This project could not be evaluated.",
+      loading: "Чтение решения…",
+      empty: "В этом решении нет проектов.",
+      outsideWorkspace: "вне Workspace",
+      projectFailed: "Не удалось вычислить этот проект.",
     },
     fileExplorer: {
       sort: {
@@ -1846,6 +1946,121 @@ export const ru: TranslationResources = {
       settings: "Настройки",
     },
   },
+  setupWizard: {
+    chrome: {
+      skip: "Пропустить настройку",
+      back: "Назад",
+      continue: "Продолжить",
+    },
+    welcome: {
+      headline: "Добро пожаловать в Otto",
+      subtitle: "Агентный помощник по коду с характером — для любой модели, в облаке или локально.",
+      start: "Начать",
+    },
+    mode: {
+      title: "Как вы хотите пользоваться Otto?",
+      subtitle: "Это можно изменить в любой момент в настройках.",
+      user: {
+        title: "Пользователь",
+        tagline: "Общайтесь с ИИ-агентами, ведите проекты, доводите дела до конца.",
+        bulletInterface: "Собранный, дружелюбный интерфейс",
+        bulletNoTooling: "Без инструментов разработчика, через которые надо пробираться",
+      },
+      developer: {
+        title: "Разработчик",
+        tagline: "Полноценная среда разработки.",
+        bulletTools: "Файлы, диффы, терминалы, поиск",
+        bulletGit: "Git, пул-реквесты — всё, что умеет Otto",
+      },
+    },
+    providers: {
+      title: "Ваши провайдеры",
+      subtitlePick:
+        "Выберите провайдера, которого агенты будут использовать по умолчанию. Добавить остальных можно позже в настройках.",
+      subtitleNone:
+        "Otto определяет ваших провайдеров агентов автоматически. Добавить провайдера можно позже в настройках.",
+      detecting: "Определяем провайдеров…",
+      waitingForHost: "Ожидаем хост…",
+      empty: "Провайдеры пока не найдены. Можно продолжить и настроить их позже.",
+      status: {
+        available: "Доступен",
+        availableWithModels: "Доступен · {{count}} моделей",
+        detecting: "Определяем…",
+        error: "Ошибка",
+        notInstalled: "Не установлен",
+      },
+    },
+    team: {
+      title: "Какая команда вам нужна?",
+      subtitle:
+        "Выберите команду, и Otto соберёт полный сбалансированный состав — персонажей с именами и собственным характером. Не подошло? Пересоберите. Или соберите свою из ваших агентов.",
+      unsupportedTitle: "Соберите свою команду",
+      unsupportedBody:
+        "Этот хост пока не поддерживает команды агентов. Обновите хост, чтобы Otto собрал вам команду, — пока этот шаг можно пропустить.",
+      blueprints: {
+        application: {
+          name: "Команда приложений",
+          tagline: "Full-stack состав для создания и выпуска настоящих приложений.",
+        },
+        game: {
+          name: "Команда игр",
+          tagline: "Студийная группа для создания игр — механики, ощущения и блеск.",
+        },
+        web: {
+          name: "Веб-команда",
+          tagline: "Веб-состав для быстрых, доступных и добротно сделанных сайтов и приложений.",
+        },
+        creative: {
+          name: "Творческая студия",
+          tagline: "Студия для текстов, картинок и идей — код не нужен.",
+        },
+        management: {
+          name: "Команда управления",
+          tagline: "Команда для ведения проектов, статусов и решений.",
+        },
+        planning: {
+          name: "Команда планирования",
+          tagline: "Команда для исследований, дорожных карт и вдумчивой проработки.",
+        },
+      },
+      custom: {
+        name: "Собрать свою",
+        tagline: "Соберите команду из ваших агентов по-своему.",
+      },
+      providerNoModels:
+        "У этого провайдера пока нет моделей — обновите его в настройках и вернитесь сюда.",
+      providerMissing:
+        "Сначала выберите провайдера (на предыдущем шаге), чтобы Otto знал, какие модели использовать.",
+      memberCountOne: "1 участник",
+      memberCountMany: "{{count}} участников",
+      reshuffle: "Пересобрать",
+      added: "Добавлена ✓",
+      addTeam: "Добавить эту команду",
+      noRoles: "Без ролей",
+      builder: {
+        nameLabel: "Название команды",
+        defaultName: "Моя команда",
+        members: "Участники",
+        membersWithCount: "Участники ({{count}})",
+        empty:
+          "Выбирать пока не из кого. Сгенерируйте команду выше (это добавит агентов, которых можно смешивать здесь) или добавьте своих в «Настройки → Агенты», а затем вернитесь.",
+        covers: "Покрывает: {{roles}}",
+        orchestratorTip: "  ·  Совет: добавьте Orchestrator, чтобы у команды был ведущий.",
+        addedNamed: "«{{name}}» добавлена ✓",
+      },
+    },
+    done: {
+      headline: "Всё готово",
+      subtitle: "Otto готов. Вот что мы настроили:",
+      finish: "Начать работу",
+      interfaceMode: "Режим интерфейса",
+      provider: "Провайдер",
+      agents: "Агенты",
+      agentCountOne: "1 агент",
+      agentCountMany: "{{count}} агентов",
+      activeTeam: "Активная команда",
+    },
+  },
   modelSelector: {
     title: "Выберите провайдера",
     selectModel: "Выберите модель",
@@ -2074,16 +2289,10 @@ export const ru: TranslationResources = {
     cancel: "Отмена",
     wordWrap: "Перенос по словам",
     outOfProject: {
-      badge: "Вне проекта · {{project}}",
-      badgeNoProject: "Вне какого-либо проекта",
-      editOutsideTitle: "Редактировать файл вне какого-либо проекта?",
-      editOutsideMessage:
-        "Этот файл не относится ни к одному проекту. Его редактирование напрямую записывает файл на диск. Это предупреждение показывается каждый раз.",
-      editConfirm: "Всё равно редактировать",
-      editOtherTitle: "Редактировать файл из другого проекта?",
-      editOtherMessage:
-        "Этот файл принадлежит проекту {{project}}. Внесённые здесь изменения не войдут в коммит этого проекта.",
-      editOtherSuppress: "Больше не предупреждать о других проектах",
+      badge:
+        "Редактирование вне проекта ({{project}}) — не входит ни в контекст агента, ни в изменения Git этого Workspace.",
+      badgeNoProject:
+        "Редактирование вне проекта — не входит ни в контекст агента, ни в изменения Git этого Workspace.",
     },
     contextMenu: {
       cut: "Вырезать",
@@ -2142,12 +2351,107 @@ export const ru: TranslationResources = {
     loading: "Загрузка файлов...",
     noResults: "Нет файлов",
   },
-  // Refine — the reviewed AI rewrite (projects/refine/refine.md). Only the two
+  // Refine — the reviewed AI rewrite (docs/refine.md). Only the two
   // entry-point strings are translated here; the Refine tab itself is literal
   // English pending the pre-release i18n sweep, like the rename/references tabs.
   refine: {
     open: "Улучшить с помощью ИИ",
     saveFirst: "Сначала сохраните или откатите изменения — улучшение работает с файлом на диске.",
+    compactOpen: "Сжать с помощью ИИ",
+    unsupported: "Обновите хост, чтобы пользоваться улучшением.",
+    job: {
+      refine: "Улучшить",
+      compact: "Сжать",
+    },
+    tab: {
+      title: "{{job}}: {{file}}",
+      moreFile: "+{{count}} файл ещё",
+      moreFiles: "+{{count}} файлов ещё",
+      fallbackSubtitle: "Переписывание ИИ",
+    },
+    toolbar: {
+      discard: "Отбросить это предложение и перечитать все файлы",
+      writing: "Запись…",
+      acceptOne: "Принять — записать оставленные изменения",
+      acceptMany: "Принять — записать {{count}} файлов",
+      dropAll: "Отбросить все изменения",
+      keepAll: "Оставить все изменения",
+    },
+    workingSet: {
+      single: "В наборе один файл. Всё, на что он ссылается, будет контекстом только для чтения.",
+      allWritable: "Все эти {{count}} файлов можно переписать.",
+      someWritable:
+        "Переписать можно {{writable}} из {{total}} файлов; остальные — контекст только для чтения.",
+      allChipLabel: "Все файлы",
+      allChipText: "Все",
+      allOnHint:
+        "Переписать можно любой файл. Нажмите, чтобы вернуться к одному первому, а остальные оставить контекстом только для чтения.",
+      allOffHint: "Разрешить переписывание всех файлов набора, а не только первого.",
+      writableHint: "Можно переписать. Нажмите, чтобы сделать его контекстом только для чтения.",
+      referenceHint:
+        "Контекст только для чтения — модель его читает, но изменить не может. Нажмите, чтобы разрешить переписывание.",
+    },
+    instruction: {
+      placeholder: "Что нужно изменить? Например: сохранить все правила, убрать повторы",
+      startOver: "Начать заново",
+      refining: "Улучшаем…",
+      compacting: "Сжимаем…",
+      again: "{{job}} снова",
+    },
+    presets: {
+      compactContextFile: {
+        label: "Сжать файл контекста",
+        description: "Убирает повторы из файла инструкций, не теряя ни одного правила.",
+      },
+      compactMemoryIndex: {
+        label: "Сжать индекс памяти",
+        description: "По одной строке на запись; подробности уходят в файлы самих записей.",
+      },
+      tightenProse: {
+        label: "Подтянуть текст",
+        description: "Короче, тот же смысл, никаких новых утверждений.",
+      },
+    },
+    body: {
+      pinning: "Читаем файлы…",
+      generating: "Продумываем переписывание…",
+      idle: "Скажите, что нужно изменить, и нажмите «{{job}}». Ничего не записывается, пока вы не примете.",
+    },
+    file: {
+      keptCount: "оставлено: {{count}}",
+      keepEveryChangeIn: "Оставить все изменения в {{file}}",
+    },
+    hunk: {
+      title: "Изменение {{ordinal}}",
+      keeping: "Оставлено",
+      dropped: "Отброшено",
+      keepAccessibility: "Оставить изменение {{ordinal}}",
+    },
+    outcome: {
+      written: "записан",
+      stale: "оставлен как есть",
+      failed: "не удалось записать",
+    },
+    summary: {
+      pinning:
+        "Фиксируем файлы в текущем виде — именно с этим будет сравниваться каждое предложение.",
+      unreadable: "Не удалось прочитать этот рабочий набор.",
+      idle: "Пока ничего не предложено. Ни один файл не тронут.",
+      generating: "Раунд {{round}} — переписываем.",
+      accepting: "Записываем оставленные изменения.",
+      acceptedOne: "Готово — записан 1 файл.",
+      acceptedMany: "Готово — записано файлов: {{count}}.",
+      partiallyAccepted:
+        "Записано: {{written}}, оставлено без изменений: {{skipped}}. Ничего не перезаписано.",
+      reviewOne:
+        "Раунд {{round}} — оставлено {{kept}} из {{total}} изменения, +{{additions}} −{{removals}} строк. Пока ничего не записано.",
+      reviewMany:
+        "Раунд {{round}} — оставлено {{kept}} из {{total}} изменений, +{{additions}} −{{removals}} строк. Пока ничего не записано.",
+      reviewOneScoped:
+        "Раунд {{round}} — оставлено {{kept}} из {{total}} изменения в {{changedFiles}}/{{proposedFiles}} файлах, +{{additions}} −{{removals}} строк. Пока ничего не записано.",
+      reviewManyScoped:
+        "Раунд {{round}} — оставлено {{kept}} из {{total}} изменений в {{changedFiles}}/{{proposedFiles}} файлах, +{{additions}} −{{removals}} строк. Пока ничего не записано.",
+    },
   },
   refactor: {
     open: "Рефакторинг с помощью ИИ",
@@ -2245,6 +2549,32 @@ export const ru: TranslationResources = {
     clearCompletedTooltip: "Архивировать все завершённые субагенты",
     stopNothingRunning: "Субагент не запущен, нечего останавливать.",
     daemonUnavailable: "Демон недоступен",
+    dialogs: {
+      subjectFallback: "этот субагент",
+      subjectFallbackCapitalized: "Этот субагент",
+      archive: {
+        titleRunning: "Архивировать работающий субагент?",
+        title: "Архивировать субагент?",
+        messageRunning:
+          "{{subject}} ещё работает. Архивирование остановит субагент и уберёт его с дорожки.",
+        message: "Убрать {{subject}} с дорожки. Субагент будет архивирован.",
+        confirm: "Архивировать",
+      },
+      detach: {
+        title: "Отделить субагент?",
+        message: "{{subject}} покинет эту дорожку и продолжит работу как самостоятельный агент.",
+        confirm: "Отделить",
+      },
+      clearCompleted: {
+        titleOne: "Очистить завершённый субагент?",
+        titleMany: "Очистить {{count}} завершённых субагентов?",
+        messageOne:
+          "Архивирует 1 завершённый субагент и убирает его с дорожки. Работающие субагенты не затрагиваются.",
+        messageMany:
+          "Архивирует {{count}} завершённых субагентов и убирает их с дорожки. Работающие субагенты не затрагиваются.",
+        confirm: "Очистить",
+      },
+    },
   },
   panels: {
     draft: {
@@ -2398,6 +2728,12 @@ export const ru: TranslationResources = {
           inApp: "В Otto",
           external: "Внешний браузер",
         },
+      },
+      mountedWorkspaceLimit: {
+        label: "Сколько Workspace остаются загруженными",
+        description:
+          "Сколько Workspace остаются загруженными, чтобы возврат к ним был мгновенным. Сверх этого числа выгружается тот, которым вы пользовались дольше всего назад, и он загрузится заново при следующем открытии. Задайте значение не меньше того количества, между которым вы реально переключаетесь: при меньшем каждое переключение выгружает именно тот Workspace, куда вы вот-вот вернётесь. Чем больше значение, тем больше памяти.",
+        accessibilityLabel: "Сколько Workspace остаются загруженными",
       },
       terminalScrollback: {
         label: "Terminal прокрутка назад",
@@ -2890,9 +3226,9 @@ export const ru: TranslationResources = {
         enabled: "Включить интеллект кода",
         enabledHint:
           "Запускает языковой сервер для каждого проекта, чтобы «Перейти к определению» находил символ под курсором. Ничего не запускается, пока вы им не воспользуетесь; при выключении все серверы останавливаются и используется индекс по именам.",
-        solution: "Microsoft .NET Solution Management",
+        solution: "Управление решениями Microsoft .NET",
         solutionHint:
-          "Adds a Solution view to the Files tab, showing your .sln or .slnx as the build system sees it. Independent of code intelligence above. Off by default: it runs a .NET helper process and evaluates MSBuild, and it needs the .NET SDK on this host.",
+          "Добавляет представление решения на вкладку файлов и показывает ваш .sln или .slnx так, как его видит система сборки. Не зависит от интеллекта кода выше. По умолчанию выключено: запускается вспомогательный процесс .NET и вычисляется MSBuild, а на этом хосте требуется .NET SDK.",
         languages: "Языки",
         installed: "{{bin}} — найден ({{rung}})",
         notInstalled: "{{bin}} — не установлен на этом хосте",

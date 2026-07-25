@@ -1,5 +1,5 @@
 // Synthetic event source for Claude Workflow (ultracode) runs — see
-// projects/workflow-decomposition/workflow-decomposition.md.
+// docs/subagent-accounting.md, "Workflow decomposition: a synthetic event source".
 //
 // A Workflow's internal agent() fan-out carries NO per-agent identity on the
 // live SDK stream (proven 2026-07-16): the parent query sees only the aggregate

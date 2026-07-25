@@ -11,6 +11,7 @@ export const ja: TranslationResources = {
       close: "閉じる",
       copy: "コピー",
       dismiss: "閉じる",
+      ok: "OK",
       retry: "再試行",
       search: "検索",
       select: "選択",
@@ -196,6 +197,63 @@ export const ja: TranslationResources = {
       context: "コンテキスト",
       findings: "直す価値あり",
       findingsCount: "直す価値あり ({{count}})",
+      memory: "メモリ",
+      memoryCount: "メモリ ({{count}})",
+    },
+    personalitySelector: {
+      label: "コンテキストの表示対象",
+      everyone: "全員",
+      withLessons: "{{name}}、記憶している教訓 {{count}} 件",
+    },
+    memory: {
+      noPersonality:
+        "上でパーソナリティを選ぶと、そのパーソナリティが学んだ内容と、それが各リクエストに何を追加しているかを確認できます。",
+      loading: "このパーソナリティが覚えている内容を読み込み中…",
+      failed: "このパーソナリティのメモリを読み込めませんでした: {{error}}",
+      emptyNamed:
+        "{{name}} はまだ何も記録していません。作業しながら自分で教訓を記録しますが、手動で追加することもできます。",
+      emptyFallbackName: "このパーソナリティ",
+      add: "教訓を追加",
+      brief: {
+        title: "{{name}} に注入される内容",
+        nothing: "なし",
+        everyRequest: "リクエストごとに {{tokens}}",
+        disabled:
+          "このパーソナリティのメモリはオフになっているため、これらは送信されません。教訓は保持されます。",
+        empty: "このプロジェクトでは、このパーソナリティのコンテキストに何も追加されていません。",
+        omitted: "下の教訓のうち {{count}} 件は注入予算に収まらず、送信されていません。",
+      },
+      scope: {
+        global: "すべての場所",
+        project: "このプロジェクト",
+        change: "適用範囲: {{scope}}。タップで変更します。",
+      },
+      row: {
+        reinforced: "{{count}} 回学習",
+        transferredFrom: "{{name}} から",
+        edit: "この教訓を編集",
+        forget: "この教訓を忘れる",
+      },
+      forgetDialog: {
+        title: "この教訓を忘れますか？",
+        message: "「{{lesson}}」はこのパーソナリティのメモリから削除されます。",
+        confirm: "忘れる",
+      },
+      composer: {
+        placeholder: "このパーソナリティに何を覚えさせますか？",
+        save: "この教訓を保存",
+      },
+      transfer: {
+        title: "{{name}} を削除",
+        subtitleOne: "教訓を 1 件記憶しています。その扱いを決めてください。",
+        subtitleMany: "教訓を {{count}} 件記憶しています。それらの扱いを決めてください。",
+        discard: "教訓を削除する",
+        confirm: "引き継ぐ",
+        giveThemTo: "引き継ぎ先:",
+        noCandidates:
+          "これらの教訓を引き継げる他のパーソナリティがありません。{{name}} を削除すると破棄されます。",
+        sameRole: "同じロール",
+      },
     },
     findings: {
       empty: "いま直すべきものはありません。",
@@ -362,7 +420,6 @@ export const ja: TranslationResources = {
   sessions: {
     title: "履歴",
     empty: "セッションがまだありません",
-    // i18n lag: English until the translation pass (history management, 2026-07-25).
     emptyForHost: "このホストのセッションはありません",
     emptyActive: "アクティブなチャットはありません",
     emptyArchived: "アーカイブされたチャットはありません",
@@ -375,6 +432,49 @@ export const ja: TranslationResources = {
       loadMore: "さらに読み込む",
       clearArchived: "アーカイブを消去",
       clearingArchived: "消去中…",
+    },
+    dialogs: {
+      genericProvider: "エージェントプロバイダー",
+      deleteAgent: {
+        title: "このチャットを削除しますか？",
+        subjectFallback: "このチャット",
+        recordLine:
+          "{{subject}} に対する Otto の記録（行、タイトル、メタデータ）を完全に削除します。",
+        transcriptLine:
+          "ホスト上にある {{provider}} 自身のトランスクリプトはそのまま残ります。会話自体はディスクに残り、Otto の外でも読んだり再開したりできます。",
+        undoLine: "Otto 側のこの操作は元に戻せません。",
+        confirm: "削除",
+      },
+      clearArchived: {
+        titleOne: "アーカイブ済みチャット 1 件を消去しますか？",
+        titleMany: "アーカイブ済みチャット {{count}} 件を消去しますか？",
+        recordLineOne:
+          "アーカイブ済みチャット 1 件について、Otto の記録を完全に削除します。アーカイブしていないチャットはそのままです。",
+        recordLineMany:
+          "アーカイブ済みチャット {{count}} 件について、Otto の記録を完全に削除します。アーカイブしていないチャットはそのままです。",
+        transcriptLine:
+          "ホスト上にあるエージェントプロバイダー自身のトランスクリプトはそのまま残ります。消去されるのは Otto の履歴であり、ディスク上の会話ではありません。",
+        undoLine: "Otto 側のこの操作は元に戻せません。",
+        confirm: "消去",
+      },
+      nothingToClear: {
+        title: "消去するものはありません",
+        message: "選択したホストにアーカイブ済みチャットはありません。",
+      },
+      noHost: {
+        title: "利用できるホストがありません",
+        message:
+          "チャットの削除に対応したホストに接続してから、もう一度アーカイブの消去をお試しください。",
+      },
+      partialFailure: {
+        title: "一部のチャットを消去できませんでした",
+        message:
+          "{{deleted}} 件を削除しました。{{failed}} 件は削除できず、履歴に残っています。もう一度試すか、ホストのログを確認してください。",
+      },
+      unsupported: {
+        title: "削除は利用できません",
+        message: "履歴からチャットを削除するにはホストを更新してください。",
+      },
     },
   },
   agentList: {
@@ -521,12 +621,12 @@ export const ja: TranslationResources = {
     },
     solution: {
       lens: {
-        files: "Files",
+        files: "ファイル",
       },
-      loading: "Reading the solution…",
-      empty: "This solution has no projects.",
-      outsideWorkspace: "outside workspace",
-      projectFailed: "This project could not be evaluated.",
+      loading: "ソリューションを読み込み中…",
+      empty: "このソリューションにはプロジェクトがありません。",
+      outsideWorkspace: "ワークスペース外",
+      projectFailed: "このプロジェクトは評価できませんでした。",
     },
     fileExplorer: {
       sort: {
@@ -1839,6 +1939,122 @@ export const ja: TranslationResources = {
       settings: "設定",
     },
   },
+  setupWizard: {
+    chrome: {
+      skip: "セットアップをスキップ",
+      back: "戻る",
+      continue: "続ける",
+    },
+    welcome: {
+      headline: "Ottoへようこそ",
+      subtitle:
+        "個性を持ったエージェント型コーディングアシスタント。クラウドでもローカルでも、あらゆるモデルで。",
+      start: "はじめる",
+    },
+    mode: {
+      title: "Otto をどのように使いますか？",
+      subtitle: "設定からいつでも切り替えられます。",
+      user: {
+        title: "ユーザー",
+        tagline: "AI エージェントと会話し、プロジェクトを整理し、仕事を進めます。",
+        bulletInterface: "すっきりした親しみやすいインターフェース",
+        bulletNoTooling: "開発者向けツールをかき分ける必要なし",
+      },
+      developer: {
+        title: "開発者",
+        tagline: "フル装備の開発環境。",
+        bulletTools: "ファイル、差分、ターミナル、検索",
+        bulletGit: "Git、プルリクエスト、Otto にできることすべて",
+      },
+    },
+    providers: {
+      title: "あなたのプロバイダー",
+      subtitlePick:
+        "エージェントが既定で使うプロバイダーを選んでください。あとから設定で追加できます。",
+      subtitleNone:
+        "Otto はエージェントプロバイダーを自動的に検出します。あとから設定で追加できます。",
+      detecting: "プロバイダーを検出中…",
+      waitingForHost: "ホストを待機中…",
+      empty: "まだプロバイダーは検出されていません。このまま進めて、あとで設定できます。",
+      status: {
+        available: "利用可能",
+        availableWithModels: "利用可能 · {{count}}つのモデル",
+        detecting: "検出中…",
+        error: "エラー",
+        notInstalled: "未インストール",
+      },
+    },
+    team: {
+      title: "どんなチームがほしいですか？",
+      subtitle:
+        "チームを選ぶと、Otto がバランスの取れた完全な布陣を組み立てます — 名前と個性を持ったメンバーです。合わなければシャッフルを。自分のエージェントから組むこともできます。",
+      unsupportedTitle: "チームを組む",
+      unsupportedBody:
+        "このホストはまだエージェントチームに対応していません。ホストを更新すると Otto がチームを組み立てます。いまはこの手順をスキップできます。",
+      blueprints: {
+        application: {
+          name: "アプリケーションチーム",
+          tagline: "実際のアプリを作って出荷するためのフルスタックな布陣。",
+        },
+        game: {
+          name: "ゲームチーム",
+          tagline: "ゲーム制作のためのスタジオ班 — メカニクス、手触り、そして遊び心。",
+        },
+        web: {
+          name: "Web チーム",
+          tagline: "速く、アクセシブルで、丁寧に作られたサイトとアプリのための Web 班。",
+        },
+        creative: {
+          name: "クリエイティブスタジオ",
+          tagline: "文章、アート、アイデアのためのスタジオ。コードは不要です。",
+        },
+        management: {
+          name: "マネジメントチーム",
+          tagline: "プロジェクト運営、状況把握、意思決定のためのチーム。",
+        },
+        planning: {
+          name: "プランニングチーム",
+          tagline: "調査、ロードマップ、じっくり考えるためのチーム。",
+        },
+      },
+      custom: {
+        name: "自分で組む",
+        tagline: "自分のエージェントから、好きなようにチームを組み立てます。",
+      },
+      providerNoModels:
+        "このプロバイダーにはまだモデルがありません。設定で更新してから戻ってきてください。",
+      providerMissing:
+        "先に（前の手順で）プロバイダーを選んでください。Otto が使うモデルを判断できるようになります。",
+      memberCountOne: "1人のメンバー",
+      memberCountMany: "{{count}}人のメンバー",
+      reshuffle: "シャッフル",
+      added: "追加しました ✓",
+      addTeam: "このチームを追加",
+      noRoles: "ロールなし",
+      builder: {
+        nameLabel: "チーム名",
+        defaultName: "マイチーム",
+        members: "メンバー",
+        membersWithCount: "メンバー ({{count}})",
+        empty:
+          "選べるエージェントがまだありません。上でチームを生成する（ここで組み合わせられるエージェントが追加されます）か、「設定 → エージェント」で自分のエージェントを追加してから戻ってきてください。",
+        covers: "カバー範囲: {{roles}}",
+        orchestratorTip: "  ·  ヒント: Orchestrator を加えるとチームに司令塔ができます。",
+        addedNamed: "「{{name}}」を追加しました ✓",
+      },
+    },
+    done: {
+      headline: "準備完了です",
+      subtitle: "Otto の準備ができました。設定した内容は次のとおりです:",
+      finish: "はじめる",
+      interfaceMode: "インターフェースモード",
+      provider: "プロバイダー",
+      agents: "エージェント",
+      agentCountOne: "1つのエージェント",
+      agentCountMany: "{{count}}つのエージェント",
+      activeTeam: "アクティブなチーム",
+    },
+  },
   modelSelector: {
     title: "プロバイダーを選択",
     selectModel: "モデルを選択",
@@ -2067,16 +2283,10 @@ export const ja: TranslationResources = {
     cancel: "キャンセル",
     wordWrap: "折り返し",
     outOfProject: {
-      badge: "プロジェクト外 · {{project}}",
-      badgeNoProject: "プロジェクト外",
-      editOutsideTitle: "どのプロジェクトにも属さないファイルを編集しますか？",
-      editOutsideMessage:
-        "このファイルはどのプロジェクトにも属していません。編集するとディスク上のファイルに直接書き込まれます。この警告は毎回表示されます。",
-      editConfirm: "編集する",
-      editOtherTitle: "別のプロジェクトのファイルを編集しますか？",
-      editOtherMessage:
-        "このファイルは {{project}} に属しています。ここでの変更はこのプロジェクトのコミットには含まれません。",
-      editOtherSuppress: "他のプロジェクトについて今後警告しない",
+      badge:
+        "プロジェクト ({{project}}) の外側を編集しています — エージェントのコンテキストにも、このワークスペースの Git 変更にも含まれません。",
+      badgeNoProject:
+        "プロジェクトの外側を編集しています — エージェントのコンテキストにも、このワークスペースの Git 変更にも含まれません。",
     },
     contextMenu: {
       cut: "切り取り",
@@ -2135,12 +2345,107 @@ export const ja: TranslationResources = {
     loading: "ファイルを読み込み中...",
     noResults: "ファイルなし",
   },
-  // Refine — the reviewed AI rewrite (projects/refine/refine.md). Only the two
+  // Refine — the reviewed AI rewrite (docs/refine.md). Only the two
   // entry-point strings are translated here; the Refine tab itself is literal
   // English pending the pre-release i18n sweep, like the rename/references tabs.
   refine: {
     open: "AI で推敲",
     saveFirst: "先に変更を保存するか元に戻してください。推敲はディスク上のファイルを対象にします。",
+    compactOpen: "AI で圧縮",
+    unsupported: "推敲を使うにはホストを更新してください。",
+    job: {
+      refine: "推敲",
+      compact: "圧縮",
+    },
+    tab: {
+      title: "{{job}}: {{file}}",
+      moreFile: "他 {{count}} ファイル",
+      moreFiles: "他 {{count}} ファイル",
+      fallbackSubtitle: "AI による書き換え",
+    },
+    toolbar: {
+      discard: "この提案を破棄してすべてのファイルを読み直す",
+      writing: "書き込み中…",
+      acceptOne: "承認 — 残した変更を書き込む",
+      acceptMany: "承認 — {{count}} ファイルに書き込む",
+      dropAll: "すべての変更を破棄",
+      keepAll: "すべての変更を残す",
+    },
+    workingSet: {
+      single:
+        "このセットのファイルは 1 つだけです。そこからリンクされるものは読み取り専用のコンテキストになります。",
+      allWritable: "この {{count}} ファイルはすべて書き換え可能です。",
+      someWritable:
+        "{{total}} ファイル中 {{writable}} ファイルが書き換え可能です。残りは読み取り専用のコンテキストです。",
+      allChipLabel: "すべてのファイル",
+      allChipText: "すべて",
+      allOnHint:
+        "すべてのファイルが書き換え可能です。タップすると最初の 1 つだけに戻り、残りは読み取り専用のコンテキストになります。",
+      allOffHint: "最初の 1 つだけでなく、このセットのすべてのファイルを書き換え対象にします。",
+      writableHint: "書き換え可能です。タップすると読み取り専用のコンテキストになります。",
+      referenceHint:
+        "読み取り専用のコンテキストです。モデルは読めますが変更はできません。タップすると書き換えを許可します。",
+    },
+    instruction: {
+      placeholder: "何を変えますか？ 例: ルールはすべて残し、重複を削る",
+      startOver: "やり直す",
+      refining: "推敲中…",
+      compacting: "圧縮中…",
+      again: "もう一度{{job}}",
+    },
+    presets: {
+      compactContextFile: {
+        label: "コンテキストファイルを圧縮",
+        description: "ルールを 1 つも失わずに、指示ファイルの重複を削ります。",
+      },
+      compactMemoryIndex: {
+        label: "メモリインデックスを圧縮",
+        description: "1 エントリ 1 行に。詳細は各エントリのファイルへ移します。",
+      },
+      tightenProse: {
+        label: "文章を引き締める",
+        description: "短く、意味はそのまま、新しい主張は加えません。",
+      },
+    },
+    body: {
+      pinning: "ファイルを読み込み中…",
+      generating: "書き換え案を検討中…",
+      idle: "何を変えるか入力して「{{job}}」を押してください。承認するまで何も書き込まれません。",
+    },
+    file: {
+      keptCount: "{{count}} 件を保持",
+      keepEveryChangeIn: "{{file}} の変更をすべて残す",
+    },
+    hunk: {
+      title: "変更 {{ordinal}}",
+      keeping: "保持",
+      dropped: "破棄",
+      keepAccessibility: "変更 {{ordinal}} を残す",
+    },
+    outcome: {
+      written: "書き込み済み",
+      stale: "そのまま",
+      failed: "書き込めませんでした",
+    },
+    summary: {
+      pinning: "ファイルを現在の状態で固定しています。すべての提案はこれを基準に測られます。",
+      unreadable: "この作業セットは読み取れませんでした。",
+      idle: "まだ提案はありません。どのファイルにも手を加えていません。",
+      generating: "ラウンド {{round}} — 書き換え中。",
+      accepting: "残した変更を書き込んでいます。",
+      acceptedOne: "完了 — 1 ファイルに書き込みました。",
+      acceptedMany: "完了 — {{count}} ファイルに書き込みました。",
+      partiallyAccepted:
+        "{{written}} 件を書き込み、{{skipped}} 件はそのままにしました。上書きは行っていません。",
+      reviewOne:
+        "ラウンド {{round}} — {{total}} 件中 {{kept}} 件の変更を保持、+{{additions}} −{{removals}} 行。まだ何も書き込まれていません。",
+      reviewMany:
+        "ラウンド {{round}} — {{total}} 件中 {{kept}} 件の変更を保持、+{{additions}} −{{removals}} 行。まだ何も書き込まれていません。",
+      reviewOneScoped:
+        "ラウンド {{round}} — {{proposedFiles}} ファイル中 {{changedFiles}} ファイルで、{{total}} 件中 {{kept}} 件の変更を保持、+{{additions}} −{{removals}} 行。まだ何も書き込まれていません。",
+      reviewManyScoped:
+        "ラウンド {{round}} — {{proposedFiles}} ファイル中 {{changedFiles}} ファイルで、{{total}} 件中 {{kept}} 件の変更を保持、+{{additions}} −{{removals}} 行。まだ何も書き込まれていません。",
+    },
   },
   refactor: {
     open: "AI でリファクタリング",
@@ -2239,6 +2544,32 @@ export const ja: TranslationResources = {
     clearCompletedTooltip: "完了したサブエージェントをすべてアーカイブ",
     stopNothingRunning: "サブエージェントは実行されていないため、停止するものがありません。",
     daemonUnavailable: "デーモンが利用できません",
+    dialogs: {
+      subjectFallback: "このサブエージェント",
+      subjectFallbackCapitalized: "このサブエージェント",
+      archive: {
+        titleRunning: "実行中のサブエージェントをアーカイブしますか？",
+        title: "サブエージェントをアーカイブしますか？",
+        messageRunning:
+          "{{subject}} はまだ実行中です。アーカイブするとサブエージェントは停止し、トラックから削除されます。",
+        message: "{{subject}} をトラックから削除します。サブエージェントはアーカイブされます。",
+        confirm: "アーカイブ",
+      },
+      detach: {
+        title: "サブエージェントを切り離しますか？",
+        message: "{{subject}} はこのトラックを離れ、独立したエージェントとして継続します。",
+        confirm: "切り離す",
+      },
+      clearCompleted: {
+        titleOne: "完了したサブエージェントを消去しますか？",
+        titleMany: "完了したサブエージェント {{count}} 件を消去しますか？",
+        messageOne:
+          "完了したサブエージェント 1 件をアーカイブし、トラックから削除します。実行中のサブエージェントはそのままです。",
+        messageMany:
+          "完了したサブエージェント {{count}} 件をアーカイブし、トラックから削除します。実行中のサブエージェントはそのままです。",
+        confirm: "消去",
+      },
+    },
   },
   panels: {
     draft: {
@@ -2392,6 +2723,12 @@ export const ja: TranslationResources = {
           inApp: "Otto 内",
           external: "外部ブラウザー",
         },
+      },
+      mountedWorkspaceLimit: {
+        label: "読み込んだままにするワークスペース数",
+        description:
+          "切り替えを即座に行えるよう、読み込んだままにしておくワークスペースの数です。この数を超えると、最後に使ってから最も時間が経ったワークスペースが解放され、次に開いたときに再読み込みされます。実際に行き来する数以上に設定してください。それより小さいと、切り替えのたびにこれから戻ろうとしているワークスペースが解放されます。大きくするほどメモリを多く使います。",
+        accessibilityLabel: "読み込んだままにするワークスペース数",
       },
       terminalScrollback: {
         label: "ターミナルスクロールバック",
@@ -2883,9 +3220,9 @@ export const ja: TranslationResources = {
         enabled: "コードインテリジェンスを有効にする",
         enabledHint:
           "プロジェクトごとに言語サーバーを起動し、「定義へ移動」がカーソル位置のシンボルを解決できるようにします。使うまで何も起動せず、オフにするとすべてのサーバーが停止し、名前ベースのインデックスに戻ります。",
-        solution: "Microsoft .NET Solution Management",
+        solution: "Microsoft .NET ソリューション管理",
         solutionHint:
-          "Adds a Solution view to the Files tab, showing your .sln or .slnx as the build system sees it. Independent of code intelligence above. Off by default: it runs a .NET helper process and evaluates MSBuild, and it needs the .NET SDK on this host.",
+          "ファイルタブにソリューションビューを追加し、.sln または .slnx をビルドシステムが見るとおりに表示します。上のコードインテリジェンスとは独立しています。既定ではオフです。有効にすると .NET ヘルパープロセスを起動して MSBuild を評価するため、このホストに .NET SDK が必要です。",
         languages: "言語",
         installed: "{{bin}} — 検出済み（{{rung}}）",
         notInstalled: "{{bin}} — このホストにはインストールされていません",

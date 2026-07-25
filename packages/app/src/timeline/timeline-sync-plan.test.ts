@@ -6,6 +6,7 @@ import {
   planResumeTimelineSync,
   planTimelineCatchUpFollowUp,
   planTimelineOlderFetch,
+  shouldSyncAgentTimelineOnFocus,
 } from "./timeline-sync-plan";
 
 describe("timeline sync planning", () => {
@@ -84,6 +85,36 @@ describe("timeline sync planning", () => {
       limit: TIMELINE_FETCH_PAGE_SIZE,
       projection: "projected",
     });
+  });
+
+  // The navigation-path regression guard: re-focusing a chat the client already
+  // holds must not cost a round-trip. Four `fetch_agent_timeline` responses per
+  // workspace round-trip came from focus fetching unconditionally.
+  test("re-focusing a chat the client already holds needs no fetch", () => {
+    expect(
+      shouldSyncAgentTimelineOnFocus({
+        hasAuthoritativeHistory: true,
+        needsAuthoritativeSync: false,
+      }),
+    ).toBe(false);
+  });
+
+  test("focusing a chat with no applied history fetches", () => {
+    expect(
+      shouldSyncAgentTimelineOnFocus({
+        hasAuthoritativeHistory: false,
+        needsAuthoritativeSync: false,
+      }),
+    ).toBe(true);
+  });
+
+  test("focusing after a reconnect fetches even with history applied", () => {
+    expect(
+      shouldSyncAgentTimelineOnFocus({
+        hasAuthoritativeHistory: true,
+        needsAuthoritativeSync: true,
+      }),
+    ).toBe(true);
   });
 
   test("catch-up finishes when the daemon reports no newer rows", () => {

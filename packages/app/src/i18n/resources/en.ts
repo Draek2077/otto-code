@@ -9,6 +9,7 @@ export const en = {
       close: "Close",
       copy: "Copy",
       dismiss: "Dismiss",
+      ok: "OK",
       retry: "Retry",
       search: "Search",
       select: "Select",
@@ -195,6 +196,66 @@ export const en = {
       context: "Context",
       findings: "Worth fixing",
       findingsCount: "Worth fixing ({{count}})",
+      memory: "Memory",
+      memoryCount: "Memory ({{count}})",
+    },
+    personalitySelector: {
+      label: "Viewing context for",
+      everyone: "Everyone",
+      withLessons: "{{name}}, {{count}} remembered lessons",
+    },
+    // What one personality has learned, and the exact text injected because of
+    // it. See docs/agent-personalities.md § Memory.
+    memory: {
+      noPersonality:
+        "Pick a personality above to see what it has learned, and what that adds to every request it makes.",
+      loading: "Reading what this personality remembers…",
+      failed: "Could not read this personality's memory: {{error}}",
+      emptyNamed:
+        "{{name}} has not recorded anything yet. It records lessons itself as it works; you can also add one by hand.",
+      emptyFallbackName: "This personality",
+      add: "Add a lesson",
+      brief: {
+        title: "Injected for {{name}}",
+        nothing: "nothing",
+        everyRequest: "{{tokens}} every request",
+        disabled:
+          "Memory is switched off for this personality, so none of this is sent. The lessons are kept.",
+        empty: "Nothing is added to this personality's context in this project.",
+        omitted:
+          "{{count}} of the lessons below did not fit the injection budget and are not being sent.",
+      },
+      scope: {
+        global: "Everywhere",
+        project: "This project",
+        change: "Scope: {{scope}}. Tap to change.",
+      },
+      row: {
+        reinforced: "Learned {{count}} times",
+        transferredFrom: "From {{name}}",
+        edit: "Edit this lesson",
+        forget: "Forget this lesson",
+      },
+      forgetDialog: {
+        title: "Forget this lesson?",
+        message: '"{{lesson}}" will be removed from this personality\'s memory.',
+        confirm: "Forget",
+      },
+      composer: {
+        placeholder: "What should this personality remember?",
+        save: "Save this lesson",
+      },
+      transfer: {
+        title: "Delete {{name}}",
+        subtitleOne: "It has remembered 1 lesson. Decide what happens to it.",
+        subtitleMany: "It has remembered {{count}} lessons. Decide what happens to them.",
+        discard: "Delete the lessons",
+        confirm: "Transfer",
+        giveThemTo: "Give them to:",
+        noCandidates:
+          "There is no other personality to hand these lessons to. Deleting {{name}} will discard them.",
+        sameRole: "same role",
+      },
     },
     findings: {
       empty: "Nothing worth fixing right now.",
@@ -371,6 +432,54 @@ export const en = {
       loadMore: "Load more",
       clearArchived: "Clear archived",
       clearingArchived: "Clearing…",
+    },
+    // The destructive-delete copy. It says the same two things everywhere and has
+    // to: deleting in Otto removes *Otto's record*, never the agent provider's own
+    // transcript on the host. Consent to an irreversible action you were told the
+    // wrong shape of is not consent, so this is translated like any other
+    // confirmation text — see history/delete-dialogs.ts.
+    dialogs: {
+      genericProvider: "The agent provider",
+      deleteAgent: {
+        title: "Delete this chat?",
+        subjectFallback: "this chat",
+        recordLine:
+          "Otto's record of {{subject}} is deleted permanently — the row, its title, and its metadata.",
+        transcriptLine:
+          "{{provider}}'s own transcript on the host is left in place, so the conversation itself stays on disk and can still be read or resumed outside Otto.",
+        undoLine: "Otto's side of this can't be undone.",
+        confirm: "Delete",
+      },
+      clearArchived: {
+        titleOne: "Clear 1 archived chat?",
+        titleMany: "Clear {{count}} archived chats?",
+        recordLineOne:
+          "Permanently deletes Otto's records for 1 archived chat. Chats you haven't archived are untouched.",
+        recordLineMany:
+          "Permanently deletes Otto's records for {{count}} archived chats. Chats you haven't archived are untouched.",
+        transcriptLine:
+          "The agent providers' own transcripts on the host are left in place — this clears Otto's history, not the conversations on disk.",
+        undoLine: "Otto's side of this can't be undone.",
+        confirm: "Clear",
+      },
+      nothingToClear: {
+        title: "Nothing to clear",
+        message: "There are no archived chats on the selected hosts.",
+      },
+      noHost: {
+        title: "No host available",
+        message:
+          "Connect to a host that supports deleting chats, then try clearing the archive again.",
+      },
+      partialFailure: {
+        title: "Some chats could not be cleared",
+        message:
+          "Deleted {{deleted}}. {{failed}} could not be deleted and are still in your history. Try again, or check the host's logs.",
+      },
+      unsupported: {
+        title: "Delete not available",
+        message: "Update the host to delete chats from your history.",
+      },
     },
   },
   agentList: {
@@ -1831,6 +1940,124 @@ export const en = {
       settings: "Settings",
     },
   },
+  // The first-run setup wizard. The blueprint names below are also the names the
+  // generated teams are saved under, so the card and the installed team always
+  // agree. What stays English is what the model reads, not what the user does:
+  // the team prompts, functional cores and persona names in
+  // screens/setup-wizard/presets/ are agent input.
+  setupWizard: {
+    chrome: {
+      skip: "Skip setup",
+      back: "Back",
+      continue: "Continue",
+    },
+    welcome: {
+      headline: "Welcome to Otto",
+      subtitle: "An agentic coding assistant with personality, for every model, cloud or local.",
+      start: "Start",
+    },
+    mode: {
+      title: "How do you want to use Otto?",
+      subtitle: "You can switch anytime in Settings.",
+      user: {
+        title: "User",
+        tagline: "Chat with AI agents, organize projects, get things done.",
+        bulletInterface: "Focused, friendly interface",
+        bulletNoTooling: "No developer tooling to wade through",
+      },
+      developer: {
+        title: "Developer",
+        tagline: "The full development environment.",
+        bulletTools: "Files, diffs, terminals, search",
+        bulletGit: "Git, pull requests, everything Otto can do",
+      },
+    },
+    providers: {
+      title: "Your providers",
+      subtitlePick:
+        "Pick the provider your agents should use by default. You can add more later in Settings.",
+      subtitleNone:
+        "Otto detects your agent providers automatically. You can add one later in Settings.",
+      detecting: "Detecting providers…",
+      waitingForHost: "Waiting for the host…",
+      empty: "No providers detected yet. You can still continue and set one up later.",
+      status: {
+        available: "Available",
+        availableWithModels: "Available · {{count}} models",
+        detecting: "Detecting…",
+        error: "Error",
+        notInstalled: "Not installed",
+      },
+    },
+    team: {
+      title: "What kind of team do you want?",
+      subtitle:
+        "Pick a team and Otto builds you a complete, balanced crew — named characters with their own personalities. Not a fit? Reshuffle. Or build your own from your agents.",
+      unsupportedTitle: "Build your team",
+      unsupportedBody:
+        "This host doesn't support agent teams yet. Update the host to have Otto build you a team — you can skip this for now.",
+      blueprints: {
+        application: {
+          name: "Application Team",
+          tagline: "A full-stack crew for building and shipping real applications.",
+        },
+        game: {
+          name: "Game Team",
+          tagline: "A studio pod for building games — mechanics, feel, and juice.",
+        },
+        web: {
+          name: "Web Team",
+          tagline: "A web crew for fast, accessible, well-crafted sites and apps.",
+        },
+        creative: {
+          name: "Creative Studio",
+          tagline: "A studio for writing, art, and ideas — no code required.",
+        },
+        management: {
+          name: "Management Team",
+          tagline: "A team for running projects, status, and decisions.",
+        },
+        planning: {
+          name: "Planning Team",
+          tagline: "A team for research, roadmaps, and thinking things through.",
+        },
+      },
+      custom: {
+        name: "Build your own",
+        tagline: "Assemble a team from your agents, your way.",
+      },
+      providerNoModels: "This provider has no models yet — refresh it in Settings, then come back.",
+      providerMissing: "Pick a provider first (previous step) so Otto knows which models to use.",
+      memberCountOne: "1 member",
+      memberCountMany: "{{count}} members",
+      reshuffle: "Reshuffle",
+      added: "Added ✓",
+      addTeam: "Add this team",
+      noRoles: "No roles",
+      builder: {
+        nameLabel: "Team name",
+        defaultName: "My Team",
+        members: "Members",
+        membersWithCount: "Members ({{count}})",
+        empty:
+          "No agents to pick from yet. Generate a team above (that adds agents you can mix in here), or add your own in Settings → Agents — then come back.",
+        covers: "Covers: {{roles}}",
+        orchestratorTip: "  ·  Tip: add an Orchestrator to give the team a lead.",
+        addedNamed: "Added “{{name}}” ✓",
+      },
+    },
+    done: {
+      headline: "You're all set",
+      subtitle: "Otto is ready. Here's what we set up:",
+      finish: "Get started",
+      interfaceMode: "Interface mode",
+      provider: "Provider",
+      agents: "Agents",
+      agentCountOne: "1 agent",
+      agentCountMany: "{{count}} agents",
+      activeTeam: "Active team",
+    },
+  },
   modelSelector: {
     title: "Select provider",
     selectModel: "Select model",
@@ -2038,6 +2265,32 @@ export const en = {
     clearCompletedTooltip: "Archive all completed subagents",
     stopNothingRunning: "Subagent isn't running. Nothing to stop.",
     daemonUnavailable: "Daemon unavailable",
+    dialogs: {
+      subjectFallback: "this subagent",
+      subjectFallbackCapitalized: "This subagent",
+      archive: {
+        titleRunning: "Archive running subagent?",
+        title: "Archive subagent?",
+        messageRunning:
+          "{{subject}} is still running. Archiving it will stop the subagent and remove it from the track.",
+        message: "Remove {{subject}} from the track. The subagent will be archived.",
+        confirm: "Archive",
+      },
+      detach: {
+        title: "Detach subagent?",
+        message: "{{subject}} will leave this track and continue as a standalone agent.",
+        confirm: "Detach",
+      },
+      clearCompleted: {
+        titleOne: "Clear completed subagent?",
+        titleMany: "Clear {{count}} completed subagents?",
+        messageOne:
+          "Archive 1 completed subagent and remove it from the track. Running subagents are untouched.",
+        messageMany:
+          "Archive {{count}} completed subagents and remove them from the track. Running subagents are untouched.",
+        confirm: "Clear",
+      },
+    },
   },
   observedSubagents: {
     readOnlyTitle: "Observed subagent · read-only",
@@ -2073,14 +2326,6 @@ export const en = {
         "Editing outside the project ({{project}}) — not part of the agent's context or this workspace's Git changes.",
       badgeNoProject:
         "Editing outside the project — not part of the agent's context or this workspace's Git changes.",
-      editOutsideTitle: "Edit a file outside any project?",
-      editOutsideMessage:
-        "This file isn't part of any project. Editing it writes directly to the file on disk. This warning shows every time.",
-      editConfirm: "Edit anyway",
-      editOtherTitle: "Edit a file from another project?",
-      editOtherMessage:
-        "This file belongs to {{project}}. Changes you make here won't be part of this project's commit.",
-      editOtherSuppress: "Don't warn me again for other projects",
     },
     contextMenu: {
       cut: "Cut",
@@ -2139,12 +2384,110 @@ export const en = {
     loading: "Loading files...",
     noResults: "No files",
   },
-  // Refine — the reviewed AI rewrite (projects/refine/refine.md). Only the two
+  // Refine — the reviewed AI rewrite (docs/refine.md). Only the two
   // entry-point strings are translated here; the Refine tab itself is literal
   // English pending the pre-release i18n sweep, like the rename/references tabs.
   refine: {
     open: "Refine with AI",
     saveFirst: "Save or revert your changes first — Refine works from the file on disk.",
+    compactOpen: "Compact with AI",
+    unsupported: "Update the host to use Refine.",
+    // The job the tab presents itself as: a tab opened from "Compact with AI"
+    // must not call itself "Refine". Used as the tab title, the run button and
+    // inside the idle note, so it has to be a standalone noun/verb in every
+    // locale.
+    job: {
+      refine: "Refine",
+      compact: "Compact",
+    },
+    tab: {
+      title: "{{job}}: {{file}}",
+      moreFile: "+{{count}} more file",
+      moreFiles: "+{{count}} more files",
+      fallbackSubtitle: "AI rewrite",
+    },
+    toolbar: {
+      discard: "Discard this proposal and re-read every file",
+      writing: "Writing…",
+      acceptOne: "Accept — write the kept changes",
+      acceptMany: "Accept — write {{count}} files",
+      dropAll: "Drop every change",
+      keepAll: "Keep every change",
+    },
+    workingSet: {
+      single: "One file in this set. Anything it links to would be read-only context.",
+      allWritable: "Every one of these {{count}} files may be rewritten.",
+      someWritable:
+        "{{writable}} of {{total}} files may be rewritten; the rest are read-only context.",
+      allChipLabel: "All files",
+      allChipText: "All",
+      allOnHint:
+        "Every file may be rewritten. Tap to go back to just the first, with the rest as read-only context.",
+      allOffHint: "Let the rewrite change every file in this set, not only the first.",
+      writableHint: "May be rewritten. Tap to make it read-only context instead.",
+      referenceHint:
+        "Read-only context — the model reads it but can never change it. Tap to allow rewriting.",
+    },
+    instruction: {
+      placeholder: "What should change? e.g. keep every rule, cut the repetition",
+      startOver: "Start over",
+      refining: "Refining…",
+      compacting: "Compacting…",
+      again: "{{job}} again",
+    },
+    presets: {
+      compactContextFile: {
+        label: "Compact context file",
+        description: "Cuts repetition out of an instruction file without losing a single rule.",
+      },
+      compactMemoryIndex: {
+        label: "Compact memory index",
+        description: "One line per entry; detail moves into the entry files.",
+      },
+      tightenProse: {
+        label: "Tighten prose",
+        description: "Shorter, same meaning, no new claims.",
+      },
+    },
+    body: {
+      pinning: "Reading the files…",
+      generating: "Working out a rewrite…",
+      idle: "Say what should change, then press {{job}}. Nothing is written until you accept it.",
+    },
+    file: {
+      keptCount: "{{count}} kept",
+      keepEveryChangeIn: "Keep every change in {{file}}",
+    },
+    hunk: {
+      title: "Change {{ordinal}}",
+      keeping: "Keeping",
+      dropped: "Dropped",
+      keepAccessibility: "Keep change {{ordinal}}",
+    },
+    outcome: {
+      written: "written",
+      stale: "left as it is",
+      failed: "could not write",
+    },
+    summary: {
+      pinning:
+        "Pinning the files as they are now — that is what every proposal will be measured against.",
+      unreadable: "This working set could not be read.",
+      idle: "Nothing proposed yet. No file has been touched.",
+      generating: "Round {{round}} — rewriting.",
+      accepting: "Writing the kept changes.",
+      acceptedOne: "Done — 1 file written.",
+      acceptedMany: "Done — {{count}} files written.",
+      partiallyAccepted: "{{written}} written, {{skipped}} left alone. Nothing was overwritten.",
+      reviewOne:
+        "Round {{round}} — {{kept}} of {{total}} change kept, +{{additions}} −{{removals}} lines. Nothing has been written yet.",
+      reviewMany:
+        "Round {{round}} — {{kept}} of {{total}} changes kept, +{{additions}} −{{removals}} lines. Nothing has been written yet.",
+      reviewOneScoped:
+        "Round {{round}} — {{kept}} of {{total}} change kept across {{changedFiles}}/{{proposedFiles}} files, +{{additions}} −{{removals}} lines. Nothing has been written yet.",
+      reviewManyScoped:
+        "Round {{round}} — {{kept}} of {{total}} changes kept across {{changedFiles}}/{{proposedFiles}} files, +{{additions}} −{{removals}} lines. Nothing has been written yet.",
+    },
   },
   refactor: {
     open: "Refactor with AI",
@@ -2382,6 +2725,12 @@ export const en = {
           inApp: "In Otto",
           external: "External browser",
         },
+      },
+      mountedWorkspaceLimit: {
+        label: "Workspaces kept loaded",
+        description:
+          "How many workspaces stay loaded so switching back to them is instant. Past this many, the one you used least recently is unloaded and reloads next time you open it. Set it to at least the number you actually switch between — below that, every switch unloads the workspace you are about to return to. Higher uses more memory.",
+        accessibilityLabel: "Workspaces kept loaded",
       },
       terminalScrollback: {
         label: "Terminal scrollback",

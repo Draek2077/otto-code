@@ -2,7 +2,7 @@
  * Domain types for Context Management — the daemon's model of everything a
  * provider sends before the user types a word.
  *
- * See `projects/context-management/context-management.md` §2 and §5. The two
+ * See `docs/context-management.md`. The two
  * ideas that make or break every number downstream:
  *
  * 1. **Edge kind.** `@path` imports are inlined into the request; markdown

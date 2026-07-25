@@ -1,4 +1,5 @@
 import { useCallback, useMemo, type ReactElement } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentPersonality } from "@otto-code/protocol/messages";
@@ -36,6 +37,7 @@ export function ContextPersonalitySelector({
   memoryCounts,
   onSelect,
 }: ContextPersonalitySelectorProps): ReactElement | null {
+  const { t } = useTranslation();
   // A host with no personalities has nothing to choose between, and an empty
   // selector would just be a label over a single dead chip.
   if (personalities.length === 0) {
@@ -43,10 +45,10 @@ export function ContextPersonalitySelector({
   }
   return (
     <View style={styles.section} testID="context-personality-selector">
-      <Text style={styles.sectionLabel}>Viewing context for</Text>
+      <Text style={styles.sectionLabel}>{t("contextManagement.personalitySelector.label")}</Text>
       <View style={styles.chipRow}>
         <PersonalityChip
-          label="Everyone"
+          label={t("contextManagement.personalitySelector.everyone")}
           personalityId={null}
           selected={selectedId === null}
           lessonCount={0}
@@ -82,13 +84,21 @@ function PersonalityChip({
   lessonCount,
   onSelect,
 }: PersonalityChipProps): ReactElement {
+  const { t } = useTranslation();
   const handlePress = useCallback(() => onSelect(personalityId), [onSelect, personalityId]);
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={accessibilityState}
-      accessibilityLabel={lessonCount > 0 ? `${label}, ${lessonCount} remembered lessons` : label}
+      accessibilityLabel={
+        lessonCount > 0
+          ? t("contextManagement.personalitySelector.withLessons", {
+              name: label,
+              count: lessonCount,
+            })
+          : label
+      }
       testID={`context-personality-${personalityId ?? "everyone"}`}
       onPress={handlePress}
       style={selected ? styles.chipSelected : styles.chip}

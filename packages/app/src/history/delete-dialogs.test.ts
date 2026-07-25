@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { i18n } from "@/i18n/i18next";
 import {
   resolveClearArchivedDialog,
   resolveClearArchivedEmptyDialog,
@@ -6,6 +7,10 @@ import {
   resolveDeleteAgentDialog,
   resolveProviderDisplayName,
 } from "./delete-dialogs";
+
+afterEach(async () => {
+  await i18n.changeLanguage("en");
+});
 
 describe("resolveProviderDisplayName", () => {
   it("names the providers Otto ships with", () => {
@@ -106,5 +111,31 @@ describe("outcome dialogs", () => {
     const dialog = resolveClearArchivedFailureDialog({ deleted: 12, failed: 3 });
     expect(dialog.message).toContain("Deleted 12.");
     expect(dialog.message).toContain("3 could not be deleted");
+  });
+});
+
+// The destructive-delete copy is the last place a user should have to read a
+// second language, so it follows the active locale like any other confirmation.
+// Provider names stay as shipped — they are product names, not copy.
+describe("active language", () => {
+  it("translates the delete confirm while keeping the provider name", async () => {
+    await i18n.changeLanguage("zh-CN");
+    const dialog = resolveDeleteAgentDialog({ title: "Ship it", provider: "claude" });
+
+    expect(dialog.title).toBe("删除此对话？");
+    expect(dialog.confirmLabel).toBe("删除");
+    expect(dialog.cancelLabel).toBe("取消");
+    expect(dialog.message).toContain("Claude Code");
+    expect(dialog.message).toContain('"Ship it"');
+    expect(dialog.destructive).toBe(true);
+  });
+
+  it("translates the bulk clear and its counts", async () => {
+    await i18n.changeLanguage("zh-CN");
+    const dialog = resolveClearArchivedDialog({ matched: 5 });
+
+    expect(dialog.title).toBe("清空 5 个已归档对话？");
+    expect(dialog.confirmLabel).toBe("清空");
+    expect(dialog.message).toContain("5");
   });
 });

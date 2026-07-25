@@ -11,12 +11,10 @@
  * Bookends (Welcome, Done) render their own full-brand layout with their own
  * buttons; the middle steps get the shared chrome here (progress, Back, Skip,
  * Continue).
- *
- * TODO(i18n): chrome strings are inline English, translated in a later pass
- * (matching the step components).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ScrollView, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -56,6 +54,7 @@ const MIDDLE_STEPS = new Set<WizardStep>(["mode", "providers", "team"]);
 const OFFLINE_HOST_GRACE_MS = 5000;
 
 export function SetupWizardScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [stepIndex, setStepIndex] = useState(0);
@@ -217,7 +216,7 @@ export function SetupWizardScreen() {
         <View style={headerStyle}>
           <StepProgress total={STEP_SEQUENCE.length} current={stepIndex} />
           <Button variant="ghost" size="sm" onPress={skipWizard} testID="setup-skip">
-            Skip setup
+            {t("setupWizard.chrome.skip")}
           </Button>
         </View>
 
@@ -231,7 +230,7 @@ export function SetupWizardScreen() {
 
         <View style={styles.footer}>
           <Button variant="outline" size="lg" onPress={goBack} testID="setup-back">
-            Back
+            {t("setupWizard.chrome.back")}
           </Button>
           <Button
             variant="default"
@@ -241,7 +240,7 @@ export function SetupWizardScreen() {
             disabled={!canContinue || isCommitting}
             testID="setup-continue"
           >
-            Continue
+            {t("setupWizard.chrome.continue")}
           </Button>
         </View>
       </View>

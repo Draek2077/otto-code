@@ -107,6 +107,12 @@ export const MAX_FONT_FAMILY_LENGTH = 200;
 export const DEFAULT_RULER_COLUMN = 120; // modern editor default width
 export const MIN_RULER_COLUMN = 80;
 export const MAX_RULER_COLUMN = 240;
+// How many workspace trees the deck keeps mounted. See `mountedWorkspaceLimit`.
+// The floor is 2, not 1: at 1 every switch is a cold mount, which makes the
+// deck's whole warm-switch path unreachable.
+export const DEFAULT_MOUNTED_WORKSPACE_LIMIT = 5;
+export const MIN_MOUNTED_WORKSPACE_LIMIT = 2;
+export const MAX_MOUNTED_WORKSPACE_LIMIT = 12;
 
 export interface AppSettings {
   colorSchemeMode: ColorSchemeMode;
@@ -204,6 +210,30 @@ export interface AppSettings {
   // worse than one that always does. Clamped to [WORKSPACE_TABS_RAIL_MIN_WIDTH,
   // WORKSPACE_TABS_RAIL_MAX_WIDTH]. Device-local presentation only.
   verticalTabRailWidth: number | null;
+  // How many workspace trees the workspace deck keeps mounted at once. Visiting
+  // a workspace mounts its tree and the deck retains it so switching back is
+  // instant; past this many, the least-recently-active one is unmounted and
+  // pays a remount plus a refetch when it is next opened.
+  //
+  // A retained tree costs +59 to +118 live `useQuery` observers and +76 to +169
+  // DOM nodes — a range, not a constant, because it depends on what that
+  // workspace has open. Reason about a cap from the range; a policy derived
+  // from one number is derived from one arrangement of tabs.
+  //
+  // The cost is memory, NOT frame rate. That was measured and it did not hold:
+  // 3 resident trees versus 6 is inside run-to-run noise on every frame metric
+  // the soak can produce. Do not reintroduce "higher means a worse frame rate"
+  // here — findings/client-performance/2026-07-25-workspace-tree-retention.md
+  // exists to keep that claim out.
+  //
+  // The real failure mode is the other direction: set below the number of
+  // workspaces actually in rotation, every switch evicts the tree the user is
+  // about to return to, and they pay a remount and a refetch each time.
+  //
+  // Device-local: retention is a property of this machine's memory and this
+  // user's habits, not of the project or the host. See
+  // docs/client-performance.md and `screens/workspace/workspace-deck-retention.ts`.
+  mountedWorkspaceLimit: number;
   chatWidth: ChatWidth;
   // Chat tabs + chat pane use a pure black background with dark-theme colors
   // in both light and dark modes (see the `black` scoped theme key).
@@ -456,6 +486,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   teamSwitcherPlacement: "sidebar",
   defaultTabOrientation: "horizontal",
   verticalTabRailWidth: null,
+  mountedWorkspaceLimit: DEFAULT_MOUNTED_WORKSPACE_LIMIT,
   chatWidth: "default",
   blackTabBackground: false,
   groupConsecutiveActions: true,
@@ -819,6 +850,10 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
   if (terminalScrollbackLines !== null) {
     result.terminalScrollbackLines = terminalScrollbackLines;
   }
+  const mountedWorkspaceLimit = parseMountedWorkspaceLimit(stored.mountedWorkspaceLimit);
+  if (mountedWorkspaceLimit !== null) {
+    result.mountedWorkspaceLimit = mountedWorkspaceLimit;
+  }
   if (
     typeof stored.workspaceTitleSource === "string" &&
     VALID_WORKSPACE_TITLE_SOURCES.has(stored.workspaceTitleSource)
@@ -1145,6 +1180,22 @@ export function parseTerminalScrollbackLines(value: unknown): number | null {
   return Math.min(
     MAX_TERMINAL_SCROLLBACK_LINES,
     Math.max(MIN_TERMINAL_SCROLLBACK_LINES, Math.floor(numericValue)),
+  );
+}
+
+export function parseMountedWorkspaceLimit(value: unknown): number | null {
+  let numericValue = NaN;
+  if (typeof value === "number") {
+    numericValue = value;
+  } else if (typeof value === "string" && value.trim().length > 0) {
+    numericValue = Number(value);
+  }
+  if (!Number.isFinite(numericValue)) {
+    return null;
+  }
+  return Math.min(
+    MAX_MOUNTED_WORKSPACE_LIMIT,
+    Math.max(MIN_MOUNTED_WORKSPACE_LIMIT, Math.floor(numericValue)),
   );
 }
 

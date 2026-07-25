@@ -69,6 +69,7 @@ An unlisted page is an invisible page.
 | [visualizer.md](visualizer.md)                                           | Visualizer — the vendored agent-flow render layer, the bridge contract, the Otto event adapter                                                                                                                                                                                                                               |
 | [activity-stats.md](activity-stats.md)                                   | Activity Stats — the daemon-wide usage counter store, day-bucketed rollups, **retention** (35-day buckets, 30-day ledger, all-time totals never trimmed), chokepoints, the `stats.activity.get` RPC, the itemized usage log                                                                                                  |
 | [terminal-activity.md](terminal-activity.md)                             | Terminal activity indicators — the source-agnostic tracker, agent hook reporting, adding a new hook provider                                                                                                                                                                                                                 |
+| [context-management.md](context-management.md)                           | Everything sent before you type — hard vs soft edges, the six-category inventory, % of context window as the severity unit, the three-pane tab, the Always load ↔ Link only control, deterministic findings                                                                                                                  |
 
 ## Workspaces, files and git
 
@@ -85,6 +86,7 @@ An unlisted page is an invisible page.
 | Page                                           | What's in it                                                                                                                                                                              |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [text-editor.md](text-editor.md)               | IDE-grade text editing — daemon file RPCs, the CM6 editor, AI Refactor, the unified file tab, the File Editor shortcut scope                                                              |
+| [refine.md](refine.md)                         | The reviewed AI rewrite — the propose-then-accept invariant, the job tab, the document/reference working set, and **why it is prose-only**                                                |
 | [code-intelligence.md](code-intelligence.md)   | The LSP client — go-to-definition, hover, references, rename, diagnostics; the pool's lifecycle obligation, the indexing-cost policy, language rows, why linters are language servers too |
 | [solution-view.md](solution-view.md)           | The Solution lens — the tree as the build system sees it (.NET first); why LSP gives no project structure, the sidecar, "disabled does no work", the out-of-workspace policy              |
 | [markdown-rendering.md](markdown-rendering.md) | The shared markdown pipeline — we translate embedded HTML rather than render it, and `remoteImages` decides which surfaces may fetch                                                      |
@@ -127,12 +129,12 @@ An unlisted page is an invisible page.
 
 ## Testing
 
-| Page                                                     | What's in it                                                                   |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [testing.md](testing.md)                                 | TDD workflow, determinism, real dependencies over mocks, test organization     |
-| [mobile-testing.md](mobile-testing.md)                   | Maestro and mobile test workflows                                              |
-| [ad-hoc-daemon-testing.md](ad-hoc-daemon-testing.md)     | The isolated in-process daemon test harness                                    |
-| [browser-capture-harness.md](browser-capture-harness.md) | The real-Electron browser screenshot harness and the compositor-surface gotcha |
+| Page                                                     | What's in it                                                                                                                                             |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [testing.md](testing.md)                                 | TDD workflow, determinism, real dependencies over mocks, test organization, **the three app E2E tiers** (mock / local-AI / real) and the coverage matrix |
+| [mobile-testing.md](mobile-testing.md)                   | Maestro and mobile test workflows                                                                                                                        |
+| [ad-hoc-daemon-testing.md](ad-hoc-daemon-testing.md)     | The isolated in-process daemon test harness                                                                                                              |
+| [browser-capture-harness.md](browser-capture-harness.md) | The real-Electron browser screenshot harness and the compositor-surface gotcha                                                                           |
 
 ## Build, release and operations
 
@@ -144,6 +146,7 @@ An unlisted page is an invisible page.
 | [android.md](android.md)                       | App variants, local and cloud builds, EAS workflows                                                                                                |
 | [desktop-linux.md](desktop-linux.md)           | Linux desktop — packaging (deb/rpm/AppImage), the sandbox profile, GPU fallback, diagnostics                                                       |
 | [docker.md](docker.md)                         | Running the daemon and bundled web UI in Docker — volumes, agent images, security                                                                  |
+| [site-demos.md](site-demos.md)                 | The marketing-site capture pipeline — one run/one feature, the whole-frame rule, the two lanes, resolution and zoom, isolation, the gotchas ledger |
 
 ## Reference
 

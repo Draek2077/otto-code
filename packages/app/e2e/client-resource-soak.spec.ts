@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { awaitAssistantMessage, expectAgentIdle } from "./helpers/agent-stream";
 import { expectComposerVisible, submitMessage } from "./helpers/composer";
@@ -16,6 +17,7 @@ import {
   takeResourceSample,
   waitForResourceMonitor,
 } from "./helpers/resource-monitor";
+import { getServerId } from "./helpers/server-id";
 import { selectWorkspaceInSidebar } from "./helpers/sidebar";
 
 // The instrument for "app-wide FPS degrades the longer Otto stays open".
@@ -35,12 +37,44 @@ import { selectWorkspaceInSidebar } from "./helpers/sidebar";
 //
 // Opt-in, like the terminal perf specs — it is slow by construction.
 //   OTTO_RESOURCE_SOAK_E2E=1 npx playwright test client-resource-soak
-//   OTTO_RESOURCE_SOAK_CYCLES=24   (default 12)
+//   OTTO_RESOURCE_SOAK_CYCLES=24       (default 12)
+//   OTTO_RESOURCE_SOAK_WORKSPACES=6    (default 4)
+//
+// The workspace count is a parameter because the deck has a retention cap
+// (`WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES`, 3). Seeding at or below the cap
+// measures a deck that never evicts, and "retained because nothing reclaims it"
+// then looks identical to "retained because the cap was never reached" — which
+// is exactly the mistake the 2026-07-25 finding made with three workspaces.
+// Default above the cap so the eviction path is exercised by default.
 const RUN_SOAK = process.env.OTTO_RESOURCE_SOAK_E2E === "1";
 const soakDescribe = RUN_SOAK ? test.describe : test.describe.skip;
 
 const CYCLES = Number(process.env.OTTO_RESOURCE_SOAK_CYCLES ?? "12");
-const WORKSPACE_COUNT = 3;
+const WORKSPACE_COUNT = Number(process.env.OTTO_RESOURCE_SOAK_WORKSPACES ?? "4");
+
+// How many workspace trees the deck is holding right now. This is the direct
+// read of whether retention is bounded — `query.observers` is the consequence,
+// this is the cause, and having both is what separates "eviction never ran"
+// from "eviction ran but released nothing".
+async function readMountedWorkspaceTreeCount(page: Page): Promise<number> {
+  return page.locator('[data-testid^="workspace-deck-entry-"]').count();
+}
+
+// Time until the *target* workspace is the one on screen. Deliberately not
+// `expectComposerVisible`: that resolves `.first()` across every retained
+// panel, and during a cold switch the outgoing workspace is still painted
+// (the deck defers a cold mount on purpose), so it can be satisfied by the
+// workspace being navigated away from. An inactive deck entry is
+// `display: none`, so its own visibility is the unambiguous signal.
+async function waitForWorkspaceOnScreen(page: Page, workspaceId: string): Promise<void> {
+  await expect(
+    page.getByTestId(`workspace-deck-entry-${getServerId()}:${workspaceId}`),
+  ).toBeVisible({ timeout: 30_000 });
+}
+
+function formatSeries(label: string, values: number[]): string {
+  return `  ${label.padEnd(20)} ${values.map((value) => String(value).padStart(6)).join("")}`;
+}
 
 soakDescribe("Client resource soak", () => {
   test.describe.configure({ timeout: 180_000 + CYCLES * 45_000 });
@@ -152,16 +186,33 @@ soakDescribe("Client resource soak", () => {
         Object.fromEntries(hotspots.map((hotspot) => [hotspot.key, hotspot.observers])),
       );
     };
+    // The deck's mounted-tree count, sampled at the same cadence. Read the
+    // series, not the endpoints: a count that climbs to the cap and stops is
+    // eviction working, and is indistinguishable from an unbounded one in any
+    // summary that reports only first/last.
+    const mountedTreeSeries: number[] = [];
+    const distinctWorkspacesVisited = new Set<string>([home.workspaceId]);
+    // The other half of the retention trade-off. A lower cap buys a smaller
+    // resident set and pays for it here: returning to an evicted workspace is a
+    // cold mount, not a visibility toggle. Reported alongside the resource
+    // series so the cap is never argued from one side only.
+    const switchBackMs: number[] = [];
     await recordHotspots();
+    mountedTreeSeries.push(await readMountedWorkspaceTreeCount(page));
 
     for (let cycle = 0; cycle < CYCLES; cycle += 1) {
       const away = workspaces[(cycle % (workspaces.length - 1)) + 1];
+      distinctWorkspacesVisited.add(away.workspaceId);
       await selectWorkspaceInSidebar(page, away.workspaceId);
       await page.waitForTimeout(500);
+      const switchBackStartedAt = Date.now();
       await selectWorkspaceInSidebar(page, home.workspaceId);
+      await waitForWorkspaceOnScreen(page, home.workspaceId);
+      switchBackMs.push(Date.now() - switchBackStartedAt);
       await expectComposerVisible(page);
       await takeResourceSample(page);
       await recordHotspots();
+      mountedTreeSeries.push(await readMountedWorkspaceTreeCount(page));
     }
 
     const trend = await readResourceTrend(page);
@@ -196,6 +247,47 @@ soakDescribe("Client resource soak", () => {
         `  ${row.key.padEnd(34)} ${String(row.first).padStart(5)} -> ${String(row.last).padStart(5)}  (${row.delta > 0 ? "+" : ""}${row.delta})`,
       );
     }
+
+    // The cap-boundary readout. Everything above summarises; this is the series
+    // the diagnosis has to be read off.
+    console.log(
+      `\nCap boundary: ${WORKSPACE_COUNT} workspaces seeded, ${distinctWorkspacesVisited.size} visited, ${CYCLES} cycles`,
+    );
+    console.log(formatSeries("mounted trees", mountedTreeSeries));
+    console.log(formatSeries("switch-back ms", switchBackMs));
+    const sortedSwitchBackMs = [...switchBackMs].sort((left, right) => left - right);
+    console.log(
+      `  switch-back median ${sortedSwitchBackMs[Math.floor(sortedSwitchBackMs.length / 2)]}ms, worst ${sortedSwitchBackMs[sortedSwitchBackMs.length - 1]}ms`,
+    );
+    console.log(
+      formatSeries(
+        "query.observers",
+        samples.map((sample) => sample.metrics["query.observers"] ?? 0),
+      ),
+    );
+    console.log(
+      formatSeries(
+        "dom.nodes",
+        samples.map((sample) => sample.metrics["dom.nodes"] ?? 0),
+      ),
+    );
+    console.log(
+      formatSeries(
+        "frames.fps",
+        samples.map((sample) => Math.round(sample.metrics["frames.fps"] ?? 0)),
+      ),
+    );
+    console.log(
+      formatSeries(
+        "frames.p95FrameMs",
+        samples.map((sample) => Math.round(sample.metrics["frames.p95FrameMs"] ?? 0)),
+      ),
+    );
+
+    await testInfo.attach("navigation-mounted-tree-series", {
+      body: JSON.stringify(mountedTreeSeries, null, 2),
+      contentType: "application/json",
+    });
 
     await testInfo.attach("navigation-trend", {
       body: JSON.stringify(trend, null, 2),

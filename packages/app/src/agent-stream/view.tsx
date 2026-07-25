@@ -54,6 +54,7 @@ import type {
 } from "@otto-code/protocol/agent-types";
 import type { AgentScreenAgent } from "@/hooks/use-agent-screen-state-machine";
 import { useSessionStore } from "@/stores/session-store";
+import { useAgentStreamRetention } from "@/timeline/use-agent-stream-retention";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { useLoadOlderAgentHistory } from "@/hooks/use-load-older-agent-history";
 import { useSettings } from "@/hooks/use-settings";
@@ -393,6 +394,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? agent.serverId ?? "";
+
+    // Every mount of this view is a live reader of the agent's stream buffers,
+    // whichever surface hosts it (chat panel, transcript dialog, draft tab), so
+    // retention is declared here rather than at each call site.
+    useAgentStreamRetention(resolvedServerId, agentId);
 
     const client = useSessionStore((state) => state.sessions[resolvedServerId]?.client ?? null);
     const streamHead = useSessionStore((state) =>

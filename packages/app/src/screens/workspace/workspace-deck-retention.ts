@@ -1,11 +1,17 @@
 import type { ActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 
-export const WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES = 3;
-
 interface PruneMountedWorkspaceSelectionsInput {
   currentSelections: ActiveWorkspaceSelection[];
   activeSelection: ActiveWorkspaceSelection | null;
-  maxMountedWorkspaces?: number;
+  /**
+   * How many workspace trees stay mounted — the user's `mountedWorkspaceLimit`.
+   * Required, and this module deliberately holds no default of its own: the
+   * limit is a user setting now, and a fallback constant here would be a second
+   * cap that can silently disagree with the one in Settings. Keeping the module
+   * free of the settings import also keeps it pure, which is what lets it be
+   * unit-tested without the app's module graph.
+   */
+  maxMountedWorkspaces: number;
 }
 
 interface WorkspaceDeckEntryMountInput {
@@ -40,7 +46,7 @@ export function areWorkspaceSelectionListsEqual(
 export function pruneMountedWorkspaceSelections({
   currentSelections,
   activeSelection,
-  maxMountedWorkspaces = WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES,
+  maxMountedWorkspaces,
 }: PruneMountedWorkspaceSelectionsInput): ActiveWorkspaceSelection[] {
   if (!activeSelection) {
     return currentSelections;

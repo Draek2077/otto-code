@@ -1576,3 +1576,26 @@ Otto-side counterpart: `buildContextUpdateEvent` in
 `packages/app/src/visualizer/visualizer-event-adapter.ts` sends `costUsd` from
 the daemon's per-agent `cumulativeUsage.costUsd`; see
 `projects/total-token-accounting/` and `docs/subagent-accounting.md`.
+
+## 2026-07-25 — discovery type `error`: failure cards render red, not green
+
+Failed commands and failed test runs were typed `finding`, and `finding` renders
+green — so an agent's node grew a *green* "Command failed" / "Tests failed" card
+right next to the red failed tool-call card. Green there reads as success; the
+user called it out. Failure-shaped discoveries now carry their own fifth type,
+`error`, drawn in the existing themed error red (`COLORS.error`, already bridged
+from the host theme — no new color key).
+
+- `web/lib/agent-types.ts` — `Discovery['type']` union gains `'error'`.
+- `web/hooks/simulation/handle-tool-events.ts` — `pushDiscovery` whitelist
+  accepts `'error'` (an unknown type is silently dropped, so this gate is the
+  one that matters).
+- `web/lib/colors.ts` — `getDiscoveryTypeColor` maps `'error'` → `COLORS.error`.
+- `web/components/agent-visualizer/discovery-detail-popup.tsx` — chip label
+  `ERROR`.
+
+Host-side counterpart: `deriveToolCallDiscovery` in
+`packages/app/src/visualizer/visualizer-event-adapter.ts` types "Command failed"
+and "Tests failed" as `error`; "Tests pass", web results, and fetches stay
+`finding` (green keeps meaning "an insight that isn't bad news"). Needs
+`npm run build:visualizer`.
