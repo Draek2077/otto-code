@@ -2060,6 +2060,12 @@ export class HostRuntimeStore {
     return this.controllers.get(serverId)?.getSnapshot() ?? null;
   }
 
+  /** Every live host controller's snapshot. Used by the resource monitor to sum
+   * per-connection traffic without needing to know which hosts exist. */
+  getSnapshots(): HostRuntimeSnapshot[] {
+    return [...this.controllers.values()].map((controller) => controller.getSnapshot());
+  }
+
   getVersion(): number {
     return this.version;
   }

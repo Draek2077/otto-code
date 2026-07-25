@@ -6,6 +6,7 @@ import type { AgentLifecycleStatus } from "@otto-code/protocol/agent-lifecycle";
 import { deriveObservedSubagentTitle } from "@otto-code/protocol/observed-subagent-title";
 import { getToolDisplayName } from "@otto-code/protocol/tool-call-display";
 import type {
+  AgentContextCategory,
   AgentTimelineItem,
   AgentUsage,
   ContextComposition,
@@ -331,67 +332,128 @@ export function buildPermissionRequestedEvent(input: {
   };
 }
 
-/** The vendor page's 5-category context breakdown (`ContextBreakdown`). All
- * five keys must be present as numbers — the page only accepts a breakdown
- * whose object literally carries `systemPrompt` (`'systemPrompt' in raw`). */
-interface VisualizerContextBreakdown {
-  systemPrompt: number;
-  userMessages: number;
-  toolResults: number;
-  reasoning: number;
-  subagentResults: number;
+/** One labeled slice of the context window as the page draws it. The label is a
+ * display string, NOT a key from a fixed set: the authoritative source is the
+ * provider's own open-ended category list, so anything that pins this to an
+ * enum would silently drop categories a provider actually reports. */
+interface VisualizerContextSegment {
+  label: string;
+  tokens: number;
 }
 
-/** Turn the daemon's estimated {@link ContextComposition} into the page
- * breakdown, scaled so the segments sum to the authoritative occupancy — the
- * ring draws each arc as `value / tokensMax` and the bar as `value / tokensUsed`,
- * so the proportions must total the real fill. Missing categories default to 0
- * (Otto doesn't track `systemPrompt`, so it's typically 0). Returns null when
- * the composition is empty (nothing to color). */
-function buildContextBreakdown(
-  composition: ContextComposition,
+/** The `breakdown` payload the page consumes. Wrapped in an object (rather than
+ * a bare array) so the shape stays extensible and is trivially distinguishable
+ * from the old fixed-key form. */
+interface VisualizerContextBreakdown {
+  segments: VisualizerContextSegment[];
+}
+
+/** Display labels for the daemon's coarse {@link ContextComposition} estimate.
+ * Worded to match the vocabulary the natively-reporting providers already use
+ * ("Messages", "System prompt"), so a user switching providers doesn't see the
+ * same slice renamed. */
+const COMPOSITION_SEGMENT_LABELS: { key: keyof ContextComposition; label: string }[] = [
+  { key: "systemPrompt", label: "System prompt" },
+  { key: "userMessages", label: "Messages" },
+  { key: "toolResults", label: "Tool results" },
+  { key: "reasoning", label: "Reasoning" },
+  { key: "subagentResults", label: "Subagent results" },
+];
+
+/** Scale segments so they total the authoritative occupancy. The ring draws each
+ * arc as `tokens / tokensMax` and the bar as `tokens / tokensUsed`, so the parts
+ * must sum to the real fill or the ring reads as a different number than the
+ * `x / y tokens` label right beside it. Returns null when there's nothing to
+ * color. */
+function scaleSegmentsToOccupancy(
+  segments: VisualizerContextSegment[],
   occupancyTokens: number | undefined,
 ): VisualizerContextBreakdown | null {
-  const raw: VisualizerContextBreakdown = {
-    systemPrompt: composition.systemPrompt ?? 0,
-    userMessages: composition.userMessages ?? 0,
-    toolResults: composition.toolResults ?? 0,
-    reasoning: composition.reasoning ?? 0,
-    subagentResults: composition.subagentResults ?? 0,
-  };
-  const sum =
-    raw.systemPrompt + raw.userMessages + raw.toolResults + raw.reasoning + raw.subagentResults;
-  if (sum <= 0) return null;
-  if (occupancyTokens == null || occupancyTokens <= 0) return raw;
+  const positive = segments.filter((segment) => segment.tokens > 0);
+  if (positive.length === 0) {
+    return null;
+  }
+  const sum = positive.reduce((total, segment) => total + segment.tokens, 0);
+  if (occupancyTokens == null || occupancyTokens <= 0) {
+    return { segments: positive };
+  }
   const scale = occupancyTokens / sum;
   return {
-    systemPrompt: Math.round(raw.systemPrompt * scale),
-    userMessages: Math.round(raw.userMessages * scale),
-    toolResults: Math.round(raw.toolResults * scale),
-    reasoning: Math.round(raw.reasoning * scale),
-    subagentResults: Math.round(raw.subagentResults * scale),
+    segments: positive.map((segment) => ({
+      label: segment.label,
+      tokens: Math.round(segment.tokens * scale),
+    })),
   };
+}
+
+/** The provider's OWN reported split — the same numbers the context meter
+ * shows. Deferred categories are dropped: they are not counted in the window
+ * total (the meter renders them separately with no percentage), so including
+ * them would over-fill the ring. */
+function segmentsFromCategories(
+  categories: readonly AgentContextCategory[],
+): VisualizerContextSegment[] {
+  return categories
+    .filter((category) => !category.isDeferred)
+    .map((category) => ({ label: category.name, tokens: category.tokens }));
+}
+
+/** The daemon's coarse timeline estimate — the fallback tier for providers that
+ * can't report their real split. */
+function segmentsFromComposition(composition: ContextComposition): VisualizerContextSegment[] {
+  return COMPOSITION_SEGMENT_LABELS.map(({ key, label }) => ({
+    label,
+    tokens: composition[key] ?? 0,
+  }));
+}
+
+/**
+ * Resolve ONE breakdown for the page from whichever accounting the agent has.
+ * Preference order is the point of this function: the provider's own categories
+ * beat the daemon's estimate, so the visualizer and the context meter agree
+ * whenever the provider can answer at all.
+ */
+function buildContextBreakdown(
+  usage: AgentUsage | undefined,
+  occupancyTokens: number | undefined,
+): VisualizerContextBreakdown | null {
+  if (usage?.contextCategories && usage.contextCategories.length > 0) {
+    return scaleSegmentsToOccupancy(
+      segmentsFromCategories(usage.contextCategories),
+      occupancyTokens,
+    );
+  }
+  if (usage?.contextComposition) {
+    return scaleSegmentsToOccupancy(
+      segmentsFromComposition(usage.contextComposition),
+      occupancyTokens,
+    );
+  }
+  return null;
 }
 
 /** `tokens`/`tokensMax` are context OCCUPANCY (drives the ring/bar fill);
  * `cumulativeTokens` is the agent's honest lifetime total (drives the page's
- * token/cost sums — Otto vendor patch); `breakdown` is the daemon's estimated
- * context composition (drives the colored ring/bar segments — absent when the
- * provider couldn't attribute anything, so the page shows occupancy only).
+ * token sums — Otto vendor patch); `costUsd` is the provider's OWN reported
+ * cost for that lifetime, which the page uses instead of pricing tokens from a
+ * rate table — absent means unpriceable and the page shows no dollar figure at
+ * all, which is the honest answer for a local model; `breakdown` is the agent's
+ * context split (drives the colored ring/bar segments), preferring the
+ * provider's own reported categories over the daemon's estimate and absent when
+ * neither exists, so the page shows occupancy only.
  * Returns null when no reading is present (nothing worth emitting). */
 export function buildContextUpdateEvent(input: {
   ctx: AgentNodeContext;
   usage?: AgentUsage;
   cumulativeTokens?: number;
+  costUsd?: number;
   time: number;
 }): SimulationEvent | null {
   const contextTokens = input.usage?.contextWindowUsedTokens;
-  if (contextTokens == null && input.cumulativeTokens == null) {
+  if (contextTokens == null && input.cumulativeTokens == null && input.costUsd == null) {
     return null;
   }
-  const breakdown = input.usage?.contextComposition
-    ? buildContextBreakdown(input.usage.contextComposition, contextTokens ?? undefined)
-    : null;
+  const breakdown = buildContextBreakdown(input.usage, contextTokens ?? undefined);
   return {
     time: input.time,
     sessionId: input.ctx.sessionId,
@@ -403,6 +465,7 @@ export function buildContextUpdateEvent(input: {
         ? { tokensMax: input.usage.contextWindowMaxTokens }
         : {}),
       ...(input.cumulativeTokens != null ? { cumulativeTokens: input.cumulativeTokens } : {}),
+      ...(input.costUsd != null ? { costUsd: input.costUsd } : {}),
       ...(breakdown ? { breakdown } : {}),
     },
   };

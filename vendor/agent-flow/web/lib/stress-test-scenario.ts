@@ -70,7 +70,7 @@ export function generateStressScenario(config: Partial<StressConfig> = {}): Simu
   // Spawn orchestrator
   emit('agent_spawn', { name: 'orchestrator', isMain: true, task: 'Stress test: multi-wave parallel agent work' })
   emit('message', { agent: 'orchestrator', role: 'user', content: 'Run comprehensive analysis and refactoring across the entire codebase with parallel agents' })
-  emit('context_update', { agent: 'orchestrator', tokens: 3000, breakdown: { systemPrompt: 1500, userMessages: 1500, toolResults: 0, reasoning: 0, subagentResults: 0 } })
+  emit('context_update', { agent: 'orchestrator', tokens: 3000, breakdown: { segments: [{ label: 'System prompt', tokens: 1500 }, { label: 'Messages', tokens: 1500 }, { label: 'Tool results', tokens: 0 }, { label: 'Reasoning', tokens: 0 }, { label: 'Subagent results', tokens: 0 }] } })
 
   let subagentCounter = 0
 
@@ -90,12 +90,7 @@ export function generateStressScenario(config: Partial<StressConfig> = {}): Simu
     emit('context_update', {
       agent: 'orchestrator',
       tokens: 3000 + wave * 5000,
-      breakdown: {
-        systemPrompt: 1500, userMessages: 1500,
-        toolResults: 1000 * (wave + 1),
-        reasoning: 500 * (wave + 1),
-        subagentResults: wave * 3000,
-      },
+      breakdown: { segments: [{ label: 'System prompt', tokens: 1500 }, { label: 'Messages', tokens: 1500 }, { label: 'Tool results', tokens: 1000 * (wave + 1) }, { label: 'Reasoning', tokens: 500 * (wave + 1) }, { label: 'Subagent results', tokens: wave * 3000 }] },
     }, 0.1)
 
     // Spawn subagents for this wave
@@ -111,7 +106,7 @@ export function generateStressScenario(config: Partial<StressConfig> = {}): Simu
       emit('context_update', {
         agent: name,
         tokens: 1800,
-        breakdown: { systemPrompt: 1400, userMessages: 400, toolResults: 0, reasoning: 0, subagentResults: 0 },
+        breakdown: { segments: [{ label: 'System prompt', tokens: 1400 }, { label: 'Messages', tokens: 400 }, { label: 'Tool results', tokens: 0 }, { label: 'Reasoning', tokens: 0 }, { label: 'Subagent results', tokens: 0 }] },
       }, 0.05)
     }
 
@@ -147,12 +142,7 @@ export function generateStressScenario(config: Partial<StressConfig> = {}): Simu
       emit('context_update', {
         agent: waveAgents[s],
         tokens: 1800 + cfg.toolCallsPerSubagent * 300,
-        breakdown: {
-          systemPrompt: 1400, userMessages: 400,
-          toolResults: cfg.toolCallsPerSubagent * 200,
-          reasoning: cfg.toolCallsPerSubagent * 100,
-          subagentResults: 0,
-        },
+        breakdown: { segments: [{ label: 'System prompt', tokens: 1400 }, { label: 'Messages', tokens: 400 }, { label: 'Tool results', tokens: cfg.toolCallsPerSubagent * 200 }, { label: 'Reasoning', tokens: cfg.toolCallsPerSubagent * 100 }, { label: 'Subagent results', tokens: 0 }] },
       }, 0.02)
     }
 
@@ -171,7 +161,7 @@ export function generateStressScenario(config: Partial<StressConfig> = {}): Simu
   emit('context_update', {
     agent: 'orchestrator',
     tokens: 80000,
-    breakdown: { systemPrompt: 1500, userMessages: 1500, toolResults: 15000, reasoning: 22000, subagentResults: 40000 },
+    breakdown: { segments: [{ label: 'System prompt', tokens: 1500 }, { label: 'Messages', tokens: 1500 }, { label: 'Tool results', tokens: 15000 }, { label: 'Reasoning', tokens: 22000 }, { label: 'Subagent results', tokens: 40000 }] },
   }, 0.2)
   emit('agent_complete', { name: 'orchestrator' }, 1.0)
 

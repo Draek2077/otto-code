@@ -108,6 +108,34 @@ function canMerge(a: SteerQueueEntry, b: SteerQueueEntry): boolean {
   return a.source === "user" && b.source === "user";
 }
 
+/**
+ * Move one entry to a new position, keeping every other entry's relative order.
+ * Returns null when the id is gone (the turn drained it while the gesture was
+ * in flight) or the move is a no-op, so the caller can skip the state emit.
+ *
+ * `toIndex` is clamped rather than rejected: the client renders a snapshot that
+ * may already be one drain behind, and a move that lands at the end of a
+ * shorter queue is what the user meant.
+ */
+export function moveSteerQueueEntry(
+  queue: readonly SteerQueueEntry[],
+  entryId: string,
+  toIndex: number,
+): SteerQueueEntry[] | null {
+  const fromIndex = queue.findIndex((entry) => entry.id === entryId);
+  if (fromIndex === -1) {
+    return null;
+  }
+  const target = Math.min(Math.max(toIndex, 0), queue.length - 1);
+  if (target === fromIndex) {
+    return null;
+  }
+  const next = [...queue];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(target, 0, moved!);
+  return next;
+}
+
 export interface SteerQueueBatch {
   entries: SteerQueueEntry[];
   rest: SteerQueueEntry[];

@@ -93,6 +93,7 @@ import {
 } from "@otto-code/protocol/browser-automation/capabilities";
 import type { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { LspService } from "./lsp/service.js";
+import { SolutionService } from "./solution-model/service.js";
 
 const WS_CLOSE_DAEMON_AUTH_FAILED = 4401;
 
@@ -474,6 +475,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly agentAutoTitle: AgentAutoTitle | null;
   private readonly downloadTokenStore: DownloadTokenStore;
   private readonly lspService: LspService;
+  private readonly solutionService: SolutionService;
   private readonly ottoHome: string;
   private readonly worktreesRoot: string | undefined;
   private readonly daemonConfigStore: DaemonConfigStore;
@@ -656,6 +658,16 @@ export class VoiceAssistantWebSocketServer {
         }),
       );
     });
+    // Daemon-scoped for the same reason the language-server pool is: the sidecar holds an MSBuild
+    // project model keyed by solution, so every client session shares one rather than spawning
+    // its own. Constructed unconditionally and cheaply — nothing happens inside it until the
+    // switch is on, and `applySettings` below is what turns it on.
+    this.solutionService = new SolutionService({ logger: this.logger });
+    void this.solutionService
+      .applySettings(daemonConfigStore.get().dotnetSolutionManagement)
+      .catch((err: unknown) => {
+        this.logger.warn({ err }, "Failed to apply solution-management settings");
+      });
     this.ottoHome = ottoHome;
     this.worktreesRoot = daemonRuntimeConfig?.worktreesRoot;
     this.daemonConfigStore = daemonConfigStore;
@@ -696,6 +708,14 @@ export class VoiceAssistantWebSocketServer {
       void this.lspService.applySettings(config.lsp).catch((err: unknown) => {
         this.logger.warn({ err }, "Failed to apply language-server settings");
       });
+      // Same rule, and it matters more here: turning the switch off has to stop the sidecar and
+      // drop the cached model now. A feature that keeps a process alive after being disabled is
+      // not disabled.
+      void this.solutionService
+        .applySettings(config.dotnetSolutionManagement)
+        .catch((err: unknown) => {
+          this.logger.warn({ err }, "Failed to apply solution-management settings");
+        });
       this.broadcastDaemonConfigChanged(config);
     });
 
@@ -840,6 +860,12 @@ export class VoiceAssistantWebSocketServer {
     const lspIdleReapInterval = setInterval(() => {
       void this.lspService.reapIdle().catch((err: unknown) => {
         this.logger.warn({ err }, "Failed to reap idle language servers");
+      });
+      // The solution sidecar rides the same tick. Its own reap is a no-op while the feature is
+      // off, and giving it a second interval would mean a second thing to forget to wire — which
+      // is exactly how the language-server reap ended up with no caller at all.
+      void this.solutionService.reapIdle().catch((err: unknown) => {
+        this.logger.warn({ err }, "Failed to reap idle solution sidecars");
       });
     }, LSP_IDLE_REAP_INTERVAL_MS);
     this.lspIdleReapInterval = lspIdleReapInterval;
@@ -1044,6 +1070,11 @@ export class VoiceAssistantWebSocketServer {
     await this.lspService.stopAll().catch((err: unknown) => {
       this.logger.warn({ err }, "Failed to stop language servers during shutdown");
     });
+    // Same reasoning for the solution sidecars: spawned by us, outliving every session, and
+    // nothing else would ever stop them.
+    await this.solutionService.stopAll().catch((err: unknown) => {
+      this.logger.warn({ err }, "Failed to stop solution sidecars during shutdown");
+    });
     this.providerSnapshotManager.destroy();
     this.checkoutDiffManager.dispose();
     this.workspaceGitService.dispose();
@@ -1205,6 +1236,7 @@ export class VoiceAssistantWebSocketServer {
       logger: connectionLogger.child({ module: "session" }),
       downloadTokenStore: this.downloadTokenStore,
       lspService: this.lspService,
+      solutionService: this.solutionService,
       pushTokenStore: this.pushTokenStore,
       ottoHome: this.ottoHome,
       worktreesRoot: this.worktreesRoot,
@@ -1457,6 +1489,8 @@ export class VoiceAssistantWebSocketServer {
         providerRemove: true,
         // COMPAT(agentContextUsage): added in v0.3.4, drop the gate when daemon floor >= v0.3.4.
         agentContextUsage: true,
+        // COMPAT(cumulativeUsage): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
+        cumulativeUsage: true,
         // COMPAT(artifacts): added in v0.4.1, drop the gate when daemon floor >= v0.4.1.
         artifacts: true,
         // COMPAT(observedSubagents): added in v0.4.3, drop the gate when daemon floor >= v0.4.3.
@@ -1473,6 +1507,11 @@ export class VoiceAssistantWebSocketServer {
         codeIndex: true,
         // COMPAT(lsp): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
         lsp: true,
+        // COMPAT(solutionView): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+        // Serving the RPCs, not the feature being on: the switch lives in the daemon
+        // config and the client reads it there. A flag that folded in the setting would
+        // make turning the feature off look like an old host to every client.
+        solutionView: true,
         // COMPAT(artifactsToolGroup): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
         artifactsToolGroup: true,
         // COMPAT(speechSettings): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
@@ -1570,6 +1609,12 @@ export class VoiceAssistantWebSocketServer {
         // COMPAT(statsReset): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         // Set when the daemon handles stats.activity.reset (wipe counters + ledger).
         statsReset: this.resetActivityStats !== undefined,
+        // COMPAT(historyDelete): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
+        // Hard delete for chat records — per-row `delete_agent_request` (which has
+        // always existed) plus the bulk `history.agents.clear_archived` sweep.
+        // Unconditionally true: both handlers hang off agentStorage/agentManager,
+        // which every daemon wires, so there is nothing to derive from.
+        historyDelete: true,
       },
     };
   }

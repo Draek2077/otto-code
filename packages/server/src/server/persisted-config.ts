@@ -388,6 +388,14 @@ export const PersistedConfigSchema = z
           .optional(),
         autoArchiveAfterMerge: z.boolean().optional(),
         hideMergeIntoBaseAction: z.boolean().optional(),
+        // "Microsoft .NET Solution Management" — the Solution view's switch. Persisted so the
+        // opt-in survives a daemon restart; absent reads as off, which is the default.
+        dotnetSolutionManagement: z
+          .object({
+            enabled: z.boolean().optional(),
+          })
+          .passthrough()
+          .optional(),
         enableTerminalAgentHooks: z.boolean().optional(),
         appendSystemPrompt: z.string().optional(),
         terminalProfiles: z.array(TerminalProfileSchema).optional(),

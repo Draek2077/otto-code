@@ -21,10 +21,14 @@ export function resolveClearCompletedDialog(count: number): ConfirmDialogInput {
   };
 }
 
-/** A row that can be cleared — its id and (optional) running token total. */
+/**
+ * A row that can be cleared — its id plus whatever spend it carried, so the
+ * tally can preserve both the token total and the real cost.
+ */
 export interface ClearableSubagentRow {
   id: string;
   cumulativeTokens?: number;
+  cumulativeUsage?: { costUsd?: number };
 }
 
 export interface ClearCompletedSubagentsDeps {

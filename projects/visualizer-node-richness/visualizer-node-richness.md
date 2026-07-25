@@ -5,12 +5,16 @@ because the adapter never feeds them data. This project lights them up,
 provider-neutrally, following the fork's leveling-up pattern (Claude as the
 trend-setting proof, graceful degradation for everyone else).
 
-- **A. Context composition** — the main node's context **ring** and every node's
-  context **bar** draw colored blocks from a 5-way breakdown
-  (`systemPrompt · userMessages · toolResults · reasoning · subagentResults`).
-  Today both are blank because the adapter omits `contextBreakdown` — see
-  [docs/visualizer.md](../../docs/visualizer.md) "Context ring". Locked decision:
-  **real daemon accounting** with a provider fallback ladder.
+- **A. Context composition — ✅ SHIPPED, and the 5-way model described below is
+  superseded.** The ring and bar draw real colored blocks. Two corrections to the
+  original framing, both already landed (see "Phasing / order" below and
+  [docs/visualizer.md](../../docs/visualizer.md) "Context ring"):
+  - The adapter has not omitted `contextBreakdown` since 2026-07-17; the
+    "today both are blank" statement below was stale.
+  - The breakdown is **no longer a fixed 5-way enum**. Otto's authoritative
+    source is the provider's own context accounting, whose categories are
+    open-ended display labels that differ per provider, so the wire and the page
+    both carry a labeled segment list. Do not reintroduce a fixed enum.
 - **B. Discovery cards** — notable tool outcomes render as floating labeled cards
   (`file · pattern · finding · code`) near the node. The whole render subsystem
   exists (draw, hit-detection, popup, theming) and the mock scenario emits
@@ -158,11 +162,42 @@ agent node, push to `state.discoveries` (reusing the existing draw / hit-test /
      occupancy (`buildContextBreakdown`, 3 unit tests). The page requires the
      object to carry `systemPrompt`, so all five keys are always present.
    - No vendor build needed — the page already consumed `payload.breakdown`.
-3. **Remaining (next):** live verification of the ring on a real Claude session
-   (bridge-log loop); optional per-provider enrichment where a provider can report
-   a truer split or the system-prompt size (fills the field directly, Tier-1+).
-   Known approximation: the timeline is full history while the window is post-
-   compaction — proportions can skew; the scale-to-occupancy keeps the total honest.
+3. **Unified onto the provider's own accounting — ✅ SHIPPED (uncommitted 2026-07-25).**
+   The estimate above shipped as a _parallel_ accounting: the visualizer drew a
+   timeline-derived 5-way guess while the chat footer's context meter and Context
+   Management drew the provider-authoritative `agent.context.get_usage`
+   (`AgentContextUsage`, open-ended labels). Two surfaces, two numbers, one claim.
+   Collapsed onto one:
+   - Protocol: `AgentContextCategory` + optional `AgentUsage.contextCategories`
+     (`agent-types.ts` + `messages.ts` zod, additive leaf, no capability flag —
+     absence is the degrade signal, same as `contextComposition`). Structurally
+     identical to `AgentContextUsageCategory` on the pull path _by design_.
+   - Daemon: `AgentManager.refreshContextCategories` calls the provider's
+     `getContextUsage()` at each turn boundary, **fire-and-forget** (a display
+     read must never delay or fail a turn) and re-emits state when it lands;
+     `carryContextComposition` carries it across mid-turn `usage_updated` deltas
+     so the labels don't blink. `sanitizeUsage` carries the open-ended list to
+     the wire, validating entries individually.
+   - Adapter: `buildContextBreakdown` resolves ONE breakdown — provider
+     categories, then the estimate — scaled to occupancy, deferred categories
+     excluded (they aren't in the window total).
+   - Vendor page: `ContextBreakdown` became a labeled segment list; colors derive
+     from the label (ordered well-known rules + an index-cycled palette) so a
+     slice keeps its meaning across providers. Needs `build:visualizer`;
+     `OTTO-PATCHES.md` entry 2026-07-25.
+   - Provider coverage: **Claude** and **openai-compat** report a real split.
+     **Codex, Copilot, OpenCode** report occupancy only (a total + a model
+     window) and never hand Otto a categorized split or the prompt, so they stay
+     on the tier-2 estimate — degrade, don't fake.
+
+   Known approximation, now confined to tier 2: the timeline is full history while
+   the window is post-compaction, so proportions can skew after a compaction;
+   scaling to occupancy keeps the total honest. Tier 1 has no such skew.
+
+4. **Remaining (next):** live verification of the ring on a real Claude session
+   (bridge-log loop). The usage log's **View B** (per-row context composition) is
+   tracked in [projects/README.md](../README.md) and is _not_ covered by this
+   accounting — see the note there.
 
 ## Verification
 

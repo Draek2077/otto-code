@@ -257,6 +257,19 @@ export interface ContextComposition {
   subagentResults?: number;
 }
 
+/**
+ * One provider-reported context-window category, with the provider's OWN
+ * display label (open-ended, never an enum). Mirrors the protocol
+ * `AgentContextCategory`, and is structurally the same as
+ * {@link AgentContextUsageCategory} on the pull path — the two carry one
+ * accounting, pushed and pulled.
+ */
+export interface AgentContextCategory {
+  name: string;
+  tokens: number;
+  isDeferred?: boolean;
+}
+
 export interface AgentUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
@@ -274,6 +287,13 @@ export interface AgentUsage {
   contextWindowMaxTokens?: number;
   contextWindowUsedTokens?: number;
   contextComposition?: ContextComposition;
+  /**
+   * The provider's own labelled context split (see {@link AgentContextCategory}),
+   * refreshed from `AgentSession.getContextUsage()` at turn boundaries. Preferred
+   * over {@link ContextComposition} by every consumer; the estimate stays the
+   * coarse tier for providers that can't report one.
+   */
+  contextCategories?: AgentContextCategory[];
   /**
    * Server-internal only (WP-G): how much of this turn's billed input/output was
    * spent by the mid-turn auto-compaction summarizer, so the activity ledger can

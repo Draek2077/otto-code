@@ -625,9 +625,15 @@ function maxFiniteNumber(left: number | undefined, right: number): number {
   return left === undefined ? right : Math.max(left, right);
 }
 
-function addUsageNumber(usage: AgentUsage, key: keyof AgentUsage, value: number | undefined) {
+/** Only the counter fields are summable — `AgentUsage` also carries the context
+ * breakdown (an object and a list), which must never land here. */
+type AgentUsageNumericKey = {
+  [K in keyof AgentUsage]-?: NonNullable<AgentUsage[K]> extends number ? K : never;
+}[keyof AgentUsage];
+
+function addUsageNumber(usage: AgentUsage, key: AgentUsageNumericKey, value: number | undefined) {
   if (value !== undefined) {
-    usage[key] = ((usage[key] as number | undefined) ?? 0) + value;
+    usage[key] = (usage[key] ?? 0) + value;
   }
 }
 

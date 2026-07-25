@@ -224,6 +224,29 @@ const MutableLspConfigSchema = z
   })
   .passthrough();
 
+/**
+ * "Microsoft .NET Solution Management" — the Solution view's own switch.
+ *
+ * **A sibling of `lsp`, not a member of it.** Turning C# code intelligence off does not turn
+ * this off and vice versa: they are independent capabilities that happen to share a language,
+ * and nesting this inside the LSP settings object would imply exactly the coupling that
+ * decision rejects. (It would also be wrong on the facts — LSP has no project-structure
+ * request, so nothing here rides on a language server.)
+ *
+ * Defaults **off**: the feature spawns a process and evaluates MSBuild. Disabled is genuinely
+ * off, not merely hidden — no discovery walk, no `.sln` read, no `.csproj` parse, no sidecar,
+ * no cache, no watcher, and no view switcher. The daemon reads this before scheduling any work,
+ * so a disabled feature costs exactly one boolean check.
+ */
+const MutableDotnetSolutionConfigSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    /** Hard cap on simultaneously running sidecars, across all workspaces. */
+    maxRunningProbes: z.number().int().positive().default(2),
+    idleMinutes: z.number().int().positive().default(10),
+  })
+  .passthrough();
+
 // Speech engine ids and model ids stay plain strings on the wire so adding an
 // engine or model never breaks an older peer; the daemon validates values
 // against its own catalog when applying a patch.
@@ -601,6 +624,14 @@ export const MutableDaemonConfigSchema = z
       idleMinutes: 10,
       backgroundIdleMinutes: 2,
     }),
+    // The Solution view's switch. Gated by server_info features.solutionView; the default
+    // section is well-formed and OFF, so a new client parsing an old daemon's config renders
+    // the row without ever implying the feature is running.
+    dotnetSolutionManagement: MutableDotnetSolutionConfigSchema.default({
+      enabled: false,
+      maxRunningProbes: 2,
+      idleMinutes: 10,
+    }),
   })
   .passthrough();
 
@@ -645,6 +676,8 @@ export const MutableDaemonConfigPatchSchema = z
     // Gated by server_info features.lsp; patches deep-merge, so a `languages`
     // patch replaces only the keys it names.
     lsp: MutableLspConfigSchema.partial().optional(),
+    // Gated by server_info features.solutionView; patches deep-merge.
+    dotnetSolutionManagement: MutableDotnetSolutionConfigSchema.partial().optional(),
   })
   .partial()
   .passthrough();
@@ -666,6 +699,7 @@ import type {
   ToolCallDetail,
   ToolCallTimelineItem,
   AgentUsage,
+  AgentContextCategory,
   ContextComposition,
 } from "./agent-types.js";
 
@@ -800,6 +834,15 @@ const ContextCompositionSchema: z.ZodType<ContextComposition> = z.object({
   subagentResults: z.number().optional(),
 });
 
+// Declared above AgentUsageSchema on purpose: a schema referenced before its
+// declaration is a build-time ReferenceError in the zod-aot output.
+const AgentContextCategorySchema: z.ZodType<AgentContextCategory> = z.object({
+  /** Provider-supplied display label, not translated and not an enum. */
+  name: z.string(),
+  tokens: z.number(),
+  isDeferred: z.boolean().optional(),
+});
+
 const AgentUsageSchema: z.ZodType<AgentUsage> = z.object({
   inputTokens: z.number().optional(),
   cachedInputTokens: z.number().optional(),
@@ -812,6 +855,10 @@ const AgentUsageSchema: z.ZodType<AgentUsage> = z.object({
   // Provider-graded context breakdown for the visualizer ring/bar; absent ⇒
   // occupancy only (pre-composition behavior). See ContextComposition.
   contextComposition: ContextCompositionSchema.optional(),
+  // The provider's own labelled split — same accounting as
+  // `agent.context.get_usage`, pushed on the snapshot. Preferred over
+  // contextComposition; absent ⇒ fall back to the estimate, then to occupancy.
+  contextCategories: z.array(AgentContextCategorySchema).optional(),
 });
 
 const AgentSessionConfigSchema = z.object({
@@ -1202,6 +1249,42 @@ export const QueuedAgentMessagePayloadSchema = z.object({
   attachmentCount: z.number().int().nonnegative().optional(),
 });
 
+/**
+ * An agent's LIFETIME SPEND, kept as the real token split plus the provider's
+ * own cost — the raw material for "what did this chat cost".
+ *
+ * Deliberately distinct from context-window occupancy (`agent.context.get_usage`
+ * and `lastUsage.contextWindow*`), which answers "how full am I" and shares no
+ * units with this. Conflating the two is why the numbers used to feel wrong; the
+ * UI must never mix them. See docs/glossary.md.
+ *
+ * `costUsd` is only ever a provider's OWN reported cost, already de-inflated so
+ * a parent never carries what its sub-agents reported. It is NEVER derived from
+ * a $/M rate table — a rate keyed off a model id misprices a gateway serving
+ * that model at its own prices (docs/subagent-accounting.md, pricing invariant).
+ * `costCoverage` says how far it can be trusted, so a surface can show a floor
+ * or an honest blank rather than a confident wrong figure.
+ *
+ * Declared above AgentSnapshotPayloadSchema — zod-aot emits schemas in source
+ * order, so a forward reference is a build-time ReferenceError.
+ */
+export const AgentCumulativeUsageSchema = z.object({
+  inputTokens: z.number().optional(),
+  cachedInputTokens: z.number().optional(),
+  cacheCreationInputTokens: z.number().optional(),
+  outputTokens: z.number().optional(),
+  /** Provider-reported cost booked so far. Absent ⇒ nothing was priceable. */
+  costUsd: z.number().optional(),
+  /**
+   * `complete` — every token-bearing turn was priced; `costUsd` is the total.
+   * `partial` — some turns were unpriced; `costUsd` is a FLOOR, present it as
+   * one. `none` — nothing priceable; show tokens and a blank, never an estimate.
+   */
+  costCoverage: z.enum(["complete", "partial", "none"]).optional(),
+});
+
+export type AgentCumulativeUsage = z.infer<typeof AgentCumulativeUsageSchema>;
+
 export const AgentSnapshotPayloadSchema = z.object({
   id: z.string(),
   provider: AgentProviderSchema,
@@ -1229,6 +1312,15 @@ export const AgentSnapshotPayloadSchema = z.object({
   // additive; absent ⇒ no readout. Old clients ignore it.
   // See docs/agent-lifecycle.md (Item 3).
   cumulativeTokens: z.number().optional(),
+  // The same lifetime spend as `cumulativeTokens`, but as the REAL split plus
+  // the provider's own cost, so a chat total can be priced honestly instead of
+  // flattened to one scalar and multiplied by a guessed rate. Its token leaves
+  // sum to `cumulativeTokens`; a client that ignores this loses only the split
+  // and the cost. Absent ⇒ the daemon predates the field or reported nothing.
+  // COMPAT(cumulativeUsage): added in v0.7.0; gated on
+  // server_info.features.cumulativeUsage, drop the gate when floor >= v0.7.0.
+  // See docs/subagent-accounting.md (Chat totals).
+  cumulativeUsage: AgentCumulativeUsageSchema.optional(),
   // Liveness signals for the sub-agents track: how much work this agent has done
   // (`toolUseCount`, cumulative and monotonic) and what it is doing right now
   // (`currentTool`, the latest tool name, cleared once the agent is terminal —
@@ -1363,6 +1455,47 @@ export const CloseItemsRequestMessageSchema = z.object({
   agentIds: z.array(z.string()).default([]),
   terminalIds: z.array(z.string()).default([]),
   requestId: z.string(),
+});
+
+// ── History management ──────────────────────────────────────────────────────
+// Bulk counterpart to the existing flat `delete_agent_request`: hard-delete
+// every archived chat record at or past a cutoff in one server-side pass. It has
+// to be server-side because the history list is cursor-paginated across hosts,
+// so the client never holds the whole archived set.
+//
+// Deleting a chat removes OTTO's record only. The provider's own on-disk
+// transcript (Claude's `~/.claude/projects/**/<sessionId>.jsonl`, Codex threads,
+// OpenCode sessions) is deliberately left in place: Otto never created it,
+// another tool still reads it, and silently deleting another tool's state is not
+// ours to do. There is intentionally **no** opt-in flag for provider data on the
+// wire — the UI discloses what stays behind instead. See docs/chat-lifecycle.md.
+// Gated by server_info.features.historyDelete.
+export const HistoryAgentsClearArchivedRequestSchema = z.object({
+  type: z.literal("history.agents.clear_archived.request"),
+  // 0 = every archived chat. N = only chats archived at least N days ago.
+  olderThanDays: z.number().int().min(0).default(0),
+  // Safe by default: a request that omits the flag previews instead of deleting.
+  // The client always sends it explicitly.
+  dryRun: z.boolean().default(true),
+  requestId: z.string(),
+});
+
+export const HistoryAgentsClearArchivedResponseSchema = z.object({
+  type: z.literal("history.agents.clear_archived.response"),
+  payload: z.object({
+    // How many archived records the cutoff selected — the number the confirm
+    // dialog quotes back after a dry run.
+    matched: z.number().int().nonnegative(),
+    deleted: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    // Ids actually deleted, so the client drops exactly those rows from its
+    // caches. Empty on a dry run. Unlike close_items_response, a destructive
+    // batch reports per-item outcome rather than silently omitting failures.
+    agentIds: z.array(z.string()),
+    dryRun: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
 });
 
 export const UpdateAgentRequestMessageSchema = z.object({
@@ -4227,6 +4360,54 @@ export const LspServerStopRequestSchema = z.object({
 });
 
 /**
+ * The Solution view (projects/solution-view). A second lens on the Files module showing the tree
+ * as the build system sees it rather than as the filesystem lays it out.
+ *
+ * **Independent of the LSP family above, despite sharing the `code.` domain.** There is no
+ * project-structure request in the Language Server Protocol — not one Otto has yet to wire, one
+ * that does not exist — so this subsystem builds its own model through Microsoft's solution
+ * libraries. Turning C# code intelligence off does not turn this off, and vice versa.
+ *
+ * Discovery is separate from loading on purpose: `list` decides whether the switcher appears at
+ * all, so it runs for every workspace and must stay cheap (a directory walk, no process). Only
+ * `get_tree` reaches the .NET sidecar.
+ *
+ * COMPAT(solutionView): added in v0.6.8; gate lives in features.solutionView.
+ */
+export const CodeSolutionListRequestSchema = z.object({
+  type: z.literal("code.solution.list.request"),
+  cwd: z.string(),
+  requestId: z.string(),
+});
+
+/**
+ * One solution's organisation: folders, the projects inside them, and the configurations. No file
+ * membership — that is `load_project`, paid per project on expand, because evaluating fifty
+ * projects to render a collapsed tree is the cost this design exists to avoid.
+ */
+export const CodeSolutionGetTreeRequestSchema = z.object({
+  type: z.literal("code.solution.get_tree.request"),
+  cwd: z.string(),
+  /** Workspace-relative, as reported by `list`. */
+  solutionPath: z.string(),
+  requestId: z.string(),
+});
+
+/**
+ * One project's evaluated file membership. `solutionPath` scopes the sidecar instance so two
+ * solutions in one repo never share a warm `ProjectCollection` — and so Phase 4 has the selection
+ * it needs for `--solution`.
+ */
+export const CodeSolutionLoadProjectRequestSchema = z.object({
+  type: z.literal("code.solution.load_project.request"),
+  cwd: z.string(),
+  solutionPath: z.string(),
+  /** Workspace-relative, or absolute when the solution names a project outside the workspace. */
+  projectPath: z.string(),
+  requestId: z.string(),
+});
+
+/**
  * Project-wide search ("Find in Files" semantics: explicit search, not
  * per-keystroke). Results stream as file.search.result events correlated by
  * searchId (= this requestId); a new search from the same session supersedes
@@ -4439,6 +4620,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   DeleteAgentRequestMessageSchema,
   ArchiveAgentRequestMessageSchema,
   CloseItemsRequestMessageSchema,
+  HistoryAgentsClearArchivedRequestSchema,
   UpdateAgentRequestMessageSchema,
   ProjectRenameRequestSchema,
   ProjectRemoveRequestSchema,
@@ -4601,6 +4783,9 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CodeRenameUndoRequestSchema,
   LspServersListRequestSchema,
   LspServerStopRequestSchema,
+  CodeSolutionListRequestSchema,
+  CodeSolutionGetTreeRequestSchema,
+  CodeSolutionLoadProjectRequestSchema,
   ClearAgentAttentionMessageSchema,
   ClientHeartbeatMessageSchema,
   PingMessageSchema,
@@ -4875,6 +5060,13 @@ export const ServerInfoStatusPayloadSchema = z
         // without this the move controls are absent (the queue still works).
         // COMPAT(steerQueueReorder): added in v0.6.9, drop the gate when daemon floor >= v0.6.9.
         steerQueueReorder: z.boolean().optional(),
+        // Daemon reports `cumulativeUsage` (the lifetime in/cached/out split
+        // plus its own booked cost) on every agent snapshot, so a chat's total
+        // spend can be summed and priced honestly. Without it the client shows
+        // token totals only and no cost — NOT an estimated cost, which is the
+        // behavior this feature exists to remove.
+        // COMPAT(cumulativeUsage): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
+        cumulativeUsage: z.boolean().optional(),
         // Daemon can resolve and evaluate the provider's context graph, serve
         // context.report.* and push context_report_changed. Without it the
         // client hides both the Context Management tab and the composer
@@ -4907,6 +5099,15 @@ export const ServerInfoStatusPayloadSchema = z
         // the outline/fuzzy-finder source and the no-server fallback.
         // COMPAT(lsp): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
         lsp: z.boolean().optional(),
+        // The Solution view — the daemon can discover solutions and serve
+        // `code.solution.*`. Deliberately NOT implied by `lsp`: there is no
+        // project-structure request in LSP, so this subsystem is independent of
+        // language servers and of the C# row's on/off state. Without the flag the
+        // client never shows the view switcher and never asks — there is no
+        // client-side substitute for reading a solution, and a hand-parsed
+        // half-tree is exactly the mistake this design exists to avoid.
+        // COMPAT(solutionView): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+        solutionView: z.boolean().optional(),
         // COMPAT(artifactsToolGroup): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
         artifactsToolGroup: z.boolean().optional(),
         // COMPAT(speechSettings): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
@@ -5034,6 +5235,15 @@ export const ServerInfoStatusPayloadSchema = z
         // counters + the itemized ledger). The client gates the Metrics screen's
         // "Reset" button on this; an old daemon simply doesn't offer it.
         statsReset: z.boolean().optional(),
+        // COMPAT(historyDelete): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
+        // Set when the daemon offers hard delete for chat records: per-row via
+        // the existing `delete_agent_request`, and in bulk via
+        // `history.agents.clear_archived`. Archive has always been a soft delete
+        // with no counterpart; this is the counterpart. Deleting removes Otto's
+        // record only — provider transcripts are never touched (see the
+        // clear_archived schema). The client hides both affordances when this is
+        // absent rather than shipping a degraded path.
+        historyDelete: z.boolean().optional(),
       })
       .optional(),
   })
@@ -7709,6 +7919,150 @@ export const LspServerStopResponseSchema = z.object({
   }),
 });
 
+/**
+ * Solution view responses (projects/solution-view).
+ *
+ * COMPAT(solutionView): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+ */
+export const SolutionFormatSchema = z.enum(["sln", "slnx"]);
+
+/** One solution a workspace contains. Enough to populate the switcher's picker, nothing more. */
+export const SolutionRefSchema = z.object({
+  /** Workspace-relative, forward slashes — the identity used by every later request. */
+  path: z.string(),
+  /** File name without the extension, which is what a .NET developer calls the solution. */
+  name: z.string(),
+  format: SolutionFormatSchema,
+});
+
+export const CodeSolutionListResponseSchema = z.object({
+  type: z.literal("code.solution.list.response"),
+  payload: z.object({
+    cwd: z.string(),
+    /**
+     * Empty means the switcher never appears and the Files tab behaves exactly as it does today.
+     * That is also what a disabled feature, a host with no .NET SDK, and a workspace with no
+     * solution all return — the client has one silent case to handle, not four.
+     */
+    solutions: z.array(SolutionRefSchema),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+/**
+ * Solution structure is flat on the wire with parent links, not nested.
+ *
+ * A recursive payload would have to be walked to be used, and every consumer would write that
+ * walk again; the file explorer already turns a flat listing plus an expanded-path set into rows,
+ * so this hands it the same shape it already consumes.
+ */
+export const SolutionTreeFolderSchema = z.object({
+  /** Solution-internal, e.g. `/Src/`. Folders are virtual: they have no filesystem location. */
+  path: z.string(),
+  name: z.string(),
+  parentPath: z.string().nullable(),
+});
+
+export const SolutionTreeProjectSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  /**
+   * Workspace-relative when the project sits inside the workspace, absolute (forward-slashed)
+   * when it does not. `outsideWorkspace` says which, so nothing has to guess by inspecting the
+   * string.
+   */
+  path: z.string(),
+  /**
+   * A project the solution names outside the workspace root. Shown and opened like any other —
+   * the solution file is the authority naming it, so this is not free browsing — but editing one
+   * warns, and it is absent from every git surface. See docs/solution-view.md.
+   */
+  outsideWorkspace: z.boolean(),
+  /** The solution folder containing it, or null for a project at the solution root. */
+  folderPath: z.string().nullable(),
+  /** Project type GUID, lowercased. Absent on old daemons. */
+  typeId: z.string().optional(),
+});
+
+export const CodeSolutionGetTreeResponseSchema = z.object({
+  type: z.literal("code.solution.get_tree.response"),
+  payload: z.object({
+    cwd: z.string(),
+    solutionPath: z.string(),
+    name: z.string().default(""),
+    format: SolutionFormatSchema.default("sln"),
+    folders: z.array(SolutionTreeFolderSchema),
+    projects: z.array(SolutionTreeProjectSchema),
+    /** Solution configurations and platforms — first-class .NET concepts no CLI surfaces. */
+    buildTypes: z.array(z.string()),
+    platforms: z.array(z.string()),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+/**
+ * Three-valued for the same reason the code-intelligence family is: "the host cannot supply
+ * this", "MSBuild refused this project", and "here are its files" are different things to tell a
+ * user, and reporting the first two as an empty file list is how a working feature reads as
+ * broken. One project that fails must not blank the tree, so this status is per project.
+ */
+export const SolutionProjectStatusSchema = z.enum(["ok", "failed", "unavailable"]);
+
+/**
+ * One entry in a project's evaluated membership, flat with parent links like the folders above.
+ *
+ * `isImplicit` is what a filesystem tree structurally cannot show and what Phase 2 turns on: an
+ * item contributed by the SDK's default globs is one that creating the file already adds, while
+ * an item the project file itself declares needs a real `.csproj` edit.
+ */
+export const SolutionProjectNodeSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("directory"),
+    id: z.string(),
+    parentId: z.string().nullable(),
+    name: z.string(),
+    path: z.string(),
+    outsideWorkspace: z.boolean(),
+  }),
+  z.object({
+    kind: z.literal("file"),
+    id: z.string(),
+    parentId: z.string().nullable(),
+    name: z.string(),
+    path: z.string(),
+    outsideWorkspace: z.boolean(),
+    /** `Compile`, `Content`, `EmbeddedResource`, … — MSBuild's own item type. */
+    itemType: z.string(),
+    isImplicit: z.boolean(),
+  }),
+]);
+
+export const SolutionPackageReferenceSchema = z.object({
+  name: z.string(),
+  version: z.string().nullable(),
+});
+
+export const CodeSolutionLoadProjectResponseSchema = z.object({
+  type: z.literal("code.solution.load_project.response"),
+  payload: z.object({
+    cwd: z.string(),
+    solutionPath: z.string(),
+    projectPath: z.string(),
+    status: SolutionProjectStatusSchema,
+    nodes: z.array(SolutionProjectNodeSchema),
+    projectReferences: z.array(z.string()),
+    packageReferences: z.array(SolutionPackageReferenceSchema),
+    targetFrameworks: z.array(z.string()),
+    outputType: z.string().nullable(),
+    isSdkStyle: z.boolean(),
+    /** MSBuild's own message when `status` is `failed`, verbatim. */
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
 export const CodeOutlineResponseSchema = z.object({
   type: z.literal("code.outline.response"),
   payload: z.object({
@@ -8249,6 +8603,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AgentPermissionRequestMessageSchema,
   AgentPermissionResolvedMessageSchema,
   AgentDeletedMessageSchema,
+  HistoryAgentsClearArchivedResponseSchema,
   AgentArchivedMessageSchema,
   CloseItemsResponseSchema,
   CheckoutStatusResponseSchema,
@@ -8337,6 +8692,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CodeRenameUndoResponseSchema,
   LspServersListResponseSchema,
   LspServerStopResponseSchema,
+  CodeSolutionListResponseSchema,
+  CodeSolutionGetTreeResponseSchema,
+  CodeSolutionLoadProjectResponseSchema,
   ListProviderModelsResponseMessageSchema,
   ListProviderModesResponseMessageSchema,
   ListProviderFeaturesResponseMessageSchema,
@@ -8958,6 +9316,20 @@ export type LspServerStopResponse = z.infer<typeof LspServerStopResponseSchema>;
 export type LspLanguageState = z.infer<typeof LspLanguageStateSchema>;
 export type LspRunningServer = z.infer<typeof LspRunningServerSchema>;
 export type MutableLspConfig = z.infer<typeof MutableLspConfigSchema>;
+export type MutableDotnetSolutionConfig = z.infer<typeof MutableDotnetSolutionConfigSchema>;
+export type SolutionFormat = z.infer<typeof SolutionFormatSchema>;
+export type SolutionRef = z.infer<typeof SolutionRefSchema>;
+export type SolutionTreeFolder = z.infer<typeof SolutionTreeFolderSchema>;
+export type SolutionTreeProject = z.infer<typeof SolutionTreeProjectSchema>;
+export type SolutionProjectStatus = z.infer<typeof SolutionProjectStatusSchema>;
+export type SolutionProjectNode = z.infer<typeof SolutionProjectNodeSchema>;
+export type SolutionPackageReference = z.infer<typeof SolutionPackageReferenceSchema>;
+export type CodeSolutionListRequest = z.infer<typeof CodeSolutionListRequestSchema>;
+export type CodeSolutionListResponse = z.infer<typeof CodeSolutionListResponseSchema>;
+export type CodeSolutionGetTreeRequest = z.infer<typeof CodeSolutionGetTreeRequestSchema>;
+export type CodeSolutionGetTreeResponse = z.infer<typeof CodeSolutionGetTreeResponseSchema>;
+export type CodeSolutionLoadProjectRequest = z.infer<typeof CodeSolutionLoadProjectRequestSchema>;
+export type CodeSolutionLoadProjectResponse = z.infer<typeof CodeSolutionLoadProjectResponseSchema>;
 export type LspActivityChangedStatusPayload = z.infer<typeof LspActivityChangedStatusPayloadSchema>;
 export type CodeDiagnosticSeverity = z.infer<typeof CodeDiagnosticSeveritySchema>;
 export type CodeDiagnostic = z.infer<typeof CodeDiagnosticSchema>;
@@ -8999,6 +9371,12 @@ export type TerminalCursor = z.infer<typeof TerminalCursorSchema>;
 export type TerminalState = z.infer<typeof TerminalStateSchema>;
 export type CloseItemsRequest = z.infer<typeof CloseItemsRequestMessageSchema>;
 export type CloseItemsResponse = z.infer<typeof CloseItemsResponseSchema>;
+export type HistoryAgentsClearArchivedRequest = z.infer<
+  typeof HistoryAgentsClearArchivedRequestSchema
+>;
+export type HistoryAgentsClearArchivedResponse = z.infer<
+  typeof HistoryAgentsClearArchivedResponseSchema
+>;
 export type KillTerminalRequest = z.infer<typeof KillTerminalRequestSchema>;
 export type KillTerminalResponse = z.infer<typeof KillTerminalResponseSchema>;
 export type CaptureTerminalRequest = z.infer<typeof CaptureTerminalRequestSchema>;

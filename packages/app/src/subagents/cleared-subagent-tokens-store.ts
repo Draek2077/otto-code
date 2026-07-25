@@ -1,4 +1,6 @@
+import equal from "fast-deep-equal";
 import { create } from "zustand";
+import { useStoreWithEqualityFn } from "zustand/traditional";
 
 /**
  * Per-parent tally of `cumulativeTokens` from sub-agent rows that have been
@@ -19,6 +21,13 @@ import { create } from "zustand";
  */
 interface ClearedParentEntry {
   total: number;
+  /**
+   * Provider-reported cost from the same cleared rows, so the chat total (see
+   * chat-totals.ts) does not silently get cheaper when rows are tidied away.
+   * Only ever a real reported figure — a row the provider could not price adds
+   * tokens here and nothing to the cost.
+   */
+  costUsd: number;
   countedIds: Set<string>;
 }
 
@@ -31,6 +40,7 @@ interface ClearedSubagentTokensState {
 export interface ClearedSubagentTokensRow {
   id: string;
   cumulativeTokens?: number;
+  cumulativeUsage?: { costUsd?: number };
 }
 
 export interface RecordClearedInput {
@@ -54,6 +64,7 @@ export const useClearedSubagentTokensStore = create<ClearedSubagentTokensState>(
       const existing = state.byParent.get(key);
       const countedIds = new Set(existing?.countedIds);
       let total = existing?.total ?? 0;
+      let costUsd = existing?.costUsd ?? 0;
       let changed = false;
       for (const row of rows) {
         if (countedIds.has(row.id)) {
@@ -64,12 +75,16 @@ export const useClearedSubagentTokensStore = create<ClearedSubagentTokensState>(
         if (typeof row.cumulativeTokens === "number" && Number.isFinite(row.cumulativeTokens)) {
           total += Math.max(0, row.cumulativeTokens);
         }
+        const rowCost = row.cumulativeUsage?.costUsd;
+        if (typeof rowCost === "number" && Number.isFinite(rowCost)) {
+          costUsd += Math.max(0, rowCost);
+        }
       }
       if (!changed) {
         return state;
       }
       const byParent = new Map(state.byParent);
-      byParent.set(key, { total, countedIds });
+      byParent.set(key, { total, costUsd, countedIds });
       return { byParent };
     });
   },
@@ -90,5 +105,34 @@ export const useClearedSubagentTokensStore = create<ClearedSubagentTokensState>(
 export function useClearedSubagentTokens(serverId: string, parentAgentId: string): number {
   return useClearedSubagentTokensStore(
     (state) => state.byParent.get(parentKey(serverId, parentAgentId))?.total ?? 0,
+  );
+}
+
+export interface ClearedSubagentTotals {
+  tokens: number;
+  costUsd: number;
+}
+
+const NO_CLEARED_TOTALS: ClearedSubagentTotals = { tokens: 0, costUsd: 0 };
+
+/**
+ * Reactive tokens AND cost from cleared rows, for the chat total. Selects a
+ * fresh object, so it needs a value-equality comparator — the default reference
+ * check would re-render on every unrelated store write.
+ */
+export function useClearedSubagentTotals(
+  serverId: string,
+  parentAgentId: string,
+): ClearedSubagentTotals {
+  return useStoreWithEqualityFn(
+    useClearedSubagentTokensStore,
+    (state) => {
+      const entry = state.byParent.get(parentKey(serverId, parentAgentId));
+      if (!entry || (entry.total <= 0 && entry.costUsd <= 0)) {
+        return NO_CLEARED_TOTALS;
+      }
+      return { tokens: entry.total, costUsd: entry.costUsd };
+    },
+    equal,
   );
 }

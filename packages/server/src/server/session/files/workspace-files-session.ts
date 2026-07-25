@@ -19,6 +19,10 @@ import type {
   CodeRenameApplyRequest,
   CodeRenameUndoRequest,
   CodeRenamePreviewRequest,
+  CodeSolutionListRequest,
+  CodeSolutionGetTreeRequest,
+  CodeSolutionLoadProjectRequest,
+  SolutionRef,
   LspServersListRequest,
   LspServerStopRequest,
   FileDownloadTokenRequest,
@@ -51,6 +55,7 @@ import {
   WorkspaceSymbolIndex,
 } from "../../file-explorer/code-index.js";
 import type { LspService } from "../../lsp/service.js";
+import type { SolutionService } from "../../solution-model/service.js";
 import { getProjectIcon } from "../../../utils/project-icon.js";
 import { expandUserPath, isSameOrDescendantPath } from "../../path-utils.js";
 
@@ -86,6 +91,11 @@ export interface WorkspaceFilesSessionOptions {
   host: WorkspaceFilesSessionHost;
   downloadTokenStore: DownloadTokenStore;
   lspService: LspService;
+  /**
+   * Daemon-scoped like `lspService`, and separate from it on purpose: the Solution view is not an
+   * LSP feature, because LSP has no project-structure request to build one on.
+   */
+  solutionService: SolutionService;
   ottoHome: string;
   logger: pino.Logger;
   /**
@@ -122,12 +132,14 @@ export class WorkspaceFilesSession {
   private readonly fileWatcher: SessionFileWatcher;
   private readonly symbolIndex = new WorkspaceSymbolIndex();
   private readonly lspService: LspService;
+  private readonly solutionService: SolutionService;
   private activeSearchSignal: { superseded: boolean } | null = null;
 
   constructor(options: WorkspaceFilesSessionOptions) {
     this.host = options.host;
     this.downloadTokenStore = options.downloadTokenStore;
     this.lspService = options.lspService;
+    this.solutionService = options.solutionService;
     this.logger = options.logger;
     this.resolveAllowedRoots = options.resolveAllowedRoots;
     this.fileUploads = new FileUploadStore({ ottoHome: options.ottoHome });
@@ -135,6 +147,11 @@ export class WorkspaceFilesSession {
       logger: options.logger,
       emitEvent: (event) => {
         this.host.emit({ type: "file.watch.event", payload: event });
+        // Bonus signal, not the correctness mechanism. This watcher only sees files a client has
+        // open in a tab, and a `Directory.Build.props` rarely does — the solution cache's own
+        // read-side freshness check is what keeps the tree honest. When a tab *is* open on one,
+        // this drops the affected evaluations immediately instead of at the next read.
+        this.solutionService.invalidatePath(resolvePath(event.cwd, event.path));
       },
       ...options.watchOptions,
     });
@@ -881,6 +898,121 @@ export class WorkspaceFilesSession {
           rootPath: request.rootPath,
           serverId: request.serverId,
           ok: false,
+          error: getErrorMessage(error),
+          requestId: request.requestId,
+        },
+      });
+    }
+  }
+
+  /**
+   * The Solution view's discovery request, and the reason the whole feature can be transparent.
+   *
+   * It never throws and never reports an error the client has to render: a workspace with no
+   * solution, a host with no .NET SDK, and a disabled feature all come back as an empty list,
+   * which the client reads as "no switcher". Four states collapsed into one silent case, because
+   * a user who has never opened a .NET project should not learn that this subsystem exists.
+   */
+  async handleCodeSolutionListRequest(request: CodeSolutionListRequest): Promise<void> {
+    const cwd = request.cwd.trim();
+    let solutions: SolutionRef[] = [];
+    try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
+      solutions = await this.solutionService.listSolutions(cwd);
+    } catch (error) {
+      this.logger.debug({ err: error, cwd }, "solution discovery unavailable");
+    }
+    this.host.emit({
+      type: "code.solution.list.response",
+      payload: { cwd: request.cwd, solutions, error: null, requestId: request.requestId },
+    });
+  }
+
+  async handleCodeSolutionGetTreeRequest(request: CodeSolutionGetTreeRequest): Promise<void> {
+    const cwd = request.cwd.trim();
+    try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
+      const tree = await this.solutionService.getTree({
+        root: cwd,
+        solutionPath: request.solutionPath,
+      });
+      this.host.emit({
+        type: "code.solution.get_tree.response",
+        payload: { cwd: request.cwd, ...tree, error: null, requestId: request.requestId },
+      });
+    } catch (error) {
+      this.logger.error(
+        { err: error, cwd, solutionPath: request.solutionPath },
+        `Failed to read solution ${request.solutionPath}`,
+      );
+      this.host.emit({
+        type: "code.solution.get_tree.response",
+        payload: {
+          cwd: request.cwd,
+          solutionPath: request.solutionPath,
+          name: "",
+          format: "sln",
+          folders: [],
+          projects: [],
+          buildTypes: [],
+          platforms: [],
+          error: getErrorMessage(error),
+          requestId: request.requestId,
+        },
+      });
+    }
+  }
+
+  /**
+   * One project's evaluated membership.
+   *
+   * Note the deliberate asymmetry with every other file RPC here: the project path is **not**
+   * re-contained inside the workspace. A solution may name a project outside the root, and the
+   * settled policy is to stay out of the way — the solution file itself is the authority naming
+   * that path, so this is following a declaration rather than free-browsing the disk. The `cwd`
+   * guard above still applies, so a client cannot use this to read an arbitrary directory: it can
+   * only reach what a solution Otto already knows about points at.
+   */
+  async handleCodeSolutionLoadProjectRequest(
+    request: CodeSolutionLoadProjectRequest,
+  ): Promise<void> {
+    const cwd = request.cwd.trim();
+    try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
+      const project = await this.solutionService.loadProject({
+        root: cwd,
+        solutionPath: request.solutionPath,
+        projectPath: request.projectPath,
+      });
+      this.host.emit({
+        type: "code.solution.load_project.response",
+        payload: {
+          cwd: request.cwd,
+          solutionPath: request.solutionPath,
+          ...project,
+          requestId: request.requestId,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        { err: error, cwd, projectPath: request.projectPath },
+        `Failed to evaluate project ${request.projectPath}`,
+      );
+      this.host.emit({
+        type: "code.solution.load_project.response",
+        payload: {
+          cwd: request.cwd,
+          solutionPath: request.solutionPath,
+          projectPath: request.projectPath,
+          // `unavailable`, not `failed`: the host could not answer at all, which is a different
+          // thing from MSBuild reading the project and refusing it.
+          status: "unavailable",
+          nodes: [],
+          projectReferences: [],
+          packageReferences: [],
+          targetFrameworks: [],
+          outputType: null,
+          isSdkStyle: false,
           error: getErrorMessage(error),
           requestId: request.requestId,
         },

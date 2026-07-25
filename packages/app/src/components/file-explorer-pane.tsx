@@ -73,7 +73,16 @@ import {
 } from "@/components/ui/context-menu";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { buildWorkspaceExplorerStateKey } from "@/hooks/use-file-explorer-actions";
-import { usePanelStore, type SortOption } from "@/stores/panel-store";
+import {
+  buildExplorerCheckoutKey,
+  resolveExplorerViewMode,
+  usePanelStore,
+  type ExplorerViewMode,
+  type SortOption,
+} from "@/stores/panel-store";
+import type { SolutionRef } from "@otto-code/client/internal/daemon-client";
+import { SolutionTreePane } from "@/solution/solution-tree-pane";
+import { useSolutionsQuery } from "@/solution/use-solution-queries";
 import { formatFileSize } from "@/utils/format-file-size";
 import { formatTimeAgo } from "@/utils/time";
 import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
@@ -1015,6 +1024,86 @@ export function FileExplorerPane({
     [],
   );
 
+  // The Solution lens. Discovery runs for every workspace whose host can serve it and is the
+  // whole cost when the answer is "none" — no solutions means no switcher, no probe, and a Files
+  // tab that behaves exactly as it does today.
+  const { solutions } = useSolutionsQuery({
+    serverId,
+    cwd: normalizedWorkspaceRoot,
+    enabled: hasWorkspaceScope,
+  });
+  const explorerViewModeByCheckout = usePanelStore((state) => state.explorerViewModeByCheckout);
+  const explorerSolutionByCheckout = usePanelStore((state) => state.explorerSolutionByCheckout);
+  const setExplorerViewModeForCheckout = usePanelStore(
+    (state) => state.setExplorerViewModeForCheckout,
+  );
+  const setExplorerSolutionForCheckout = usePanelStore(
+    (state) => state.setExplorerSolutionForCheckout,
+  );
+  const viewMode = resolveExplorerViewMode({
+    serverId,
+    cwd: normalizedWorkspaceRoot,
+    hasSolutions: solutions.length > 0,
+    explorerViewModeByCheckout,
+  });
+  const selectedSolutionPath = useMemo(
+    () =>
+      resolveSelectedSolutionPath({
+        serverId,
+        cwd: normalizedWorkspaceRoot,
+        solutions,
+        explorerSolutionByCheckout,
+      }),
+    [explorerSolutionByCheckout, normalizedWorkspaceRoot, serverId, solutions],
+  );
+  const handleSelectViewMode = useCallback(
+    (mode: ExplorerViewMode) => {
+      setExplorerViewModeForCheckout({ serverId, cwd: normalizedWorkspaceRoot, mode });
+    },
+    [normalizedWorkspaceRoot, serverId, setExplorerViewModeForCheckout],
+  );
+  const handleSelectSolution = useCallback(
+    (solutionPath: string) => {
+      setExplorerSolutionForCheckout({ serverId, cwd: normalizedWorkspaceRoot, solutionPath });
+      setExplorerViewModeForCheckout({ serverId, cwd: normalizedWorkspaceRoot, mode: "solution" });
+    },
+    [
+      normalizedWorkspaceRoot,
+      serverId,
+      setExplorerSolutionForCheckout,
+      setExplorerViewModeForCheckout,
+    ],
+  );
+  // Opening a file from the Solution lens goes through the SAME path the Files lens uses. No new
+  // tab machinery: the wire carries a workspace-relative path precisely so this can be verbatim.
+  const handleOpenSolutionFile = useCallback(
+    (path: string) => {
+      selectExplorerEntry(path);
+      onOpenFile?.(path);
+    },
+    [onOpenFile, selectExplorerEntry],
+  );
+  // A render callback rather than an element prop, so the lens is constructed where it is used and
+  // nothing builds it on a render that will not show it.
+  const renderSolutionPane = useCallback(
+    () => (
+      <SolutionTreePane
+        serverId={serverId}
+        cwd={normalizedWorkspaceRoot}
+        solutionPath={selectedSolutionPath}
+        onOpenFile={handleOpenSolutionFile}
+        selectedPath={selectedEntryPath}
+      />
+    ),
+    [
+      handleOpenSolutionFile,
+      normalizedWorkspaceRoot,
+      selectedEntryPath,
+      selectedSolutionPath,
+      serverId,
+    ],
+  );
+
   // The fuzzy finder is `code.list_files`, so it rides the code-index gate —
   // not the project-search one. Today's daemon ships both together; they are
   // separate flags precisely so a future one need not.
@@ -1074,6 +1163,12 @@ export function FileExplorerPane({
         onOpenFinder={canIndexCode ? openFinder : undefined}
         sortTriggerStyle={sortTriggerStyle}
         iconButtonStyle={iconButtonStyle}
+        solutions={solutions}
+        viewMode={viewMode}
+        selectedSolutionPath={selectedSolutionPath}
+        onSelectViewMode={handleSelectViewMode}
+        onSelectSolution={handleSelectSolution}
+        renderSolutionPane={renderSolutionPane}
       />
       {canIndexCode ? (
         <FileFinderOverlay
@@ -1123,6 +1218,14 @@ interface FileExplorerPaneContentProps {
   onOpenFinder?: () => void;
   sortTriggerStyle: (state: PressableStateCallbackType) => StyleProp<ViewStyle>;
   iconButtonStyle: (state: PressableStateCallbackType) => StyleProp<ViewStyle>;
+  /** Empty ⇒ no switcher, and this pane is exactly what it was before the feature existed. */
+  solutions: readonly SolutionRef[];
+  viewMode: ExplorerViewMode;
+  selectedSolutionPath: string | null;
+  onSelectViewMode: (mode: ExplorerViewMode) => void;
+  onSelectSolution: (solutionPath: string) => void;
+  /** Rendered in place of the file tree while the Solution lens is active. */
+  renderSolutionPane: () => ReactElement;
 }
 
 function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
@@ -1151,6 +1254,12 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
     onOpenFinder,
     sortTriggerStyle: sortTriggerStyleProp,
     iconButtonStyle: iconButtonStyleProp,
+    solutions,
+    viewMode,
+    selectedSolutionPath,
+    onSelectViewMode,
+    onSelectSolution,
+    renderSolutionPane,
   } = props;
 
   const showHiddenFiles = usePanelStore((state) => state.explorerShowHiddenFiles);
@@ -1173,7 +1282,12 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
     [showHiddenFiles],
   );
 
-  if (error) {
+  const isSolutionLens = viewMode === "solution";
+
+  // The Files tree's own error and loading states are about the filesystem listing, which the
+  // Solution lens does not use — showing them there would report a failure the user is not
+  // looking at.
+  if (error && !isSolutionLens) {
     return (
       <View style={styles.centerState}>
         <Text style={styles.errorText}>{error}</Text>
@@ -1191,7 +1305,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
     );
   }
 
-  if (showInitialLoading) {
+  if (showInitialLoading && !isSolutionLens) {
     return (
       <View style={styles.centerState}>
         <ActivityIndicator size="small" />
@@ -1203,10 +1317,25 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
   return (
     <View style={TREE_PANE_CONTAINER_STYLE}>
       <View style={styles.paneHeader} testID="files-pane-header">
-        <Pressable onPress={handleSortCycle} style={sortTriggerStyleProp}>
-          <Text style={styles.sortTriggerText}>{currentSortLabel}</Text>
-          <ChevronDown size={iconSize.xs} color={theme.colors.foregroundMuted} />
-        </Pressable>
+        <View style={styles.headerLeading}>
+          <ExplorerLensSwitcher
+            solutions={solutions}
+            viewMode={viewMode}
+            selectedSolutionPath={selectedSolutionPath}
+            onSelectViewMode={onSelectViewMode}
+            onSelectSolution={onSelectSolution}
+            triggerStyle={sortTriggerStyleProp}
+          />
+          {/* Sorting is a property of the filesystem listing. The Solution lens is ordered by the
+              solution's own folders, which is the point of it, so the control is absent rather
+              than present and inert. */}
+          {isSolutionLens ? null : (
+            <Pressable onPress={handleSortCycle} style={sortTriggerStyleProp}>
+              <Text style={styles.sortTriggerText}>{currentSortLabel}</Text>
+              <ChevronDown size={iconSize.xs} color={theme.colors.foregroundMuted} />
+            </Pressable>
+          )}
+        </View>
         <View style={styles.headerActions}>
           {onOpenFinder ? (
             <Tooltip delayDuration={300}>
@@ -1225,25 +1354,29 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
               </TooltipContent>
             </Tooltip>
           ) : null}
-          <Tooltip delayDuration={300}>
-            <TooltipTrigger
-              onPress={handleToggleHiddenFiles}
-              hitSlop={8}
-              style={hiddenFilesToggleStyle}
-              accessibilityRole="button"
-              accessibilityLabel={hiddenFilesToggleAccessibilityLabel}
-              accessibilityState={hiddenFilesToggleAccessibilityState}
-            >
-              {showHiddenFiles ? (
-                <Eye size={iconSize.sm} color={theme.colors.foregroundMuted} />
-              ) : (
-                <EyeOff size={iconSize.sm} color={theme.colors.foregroundMuted} />
-              )}
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="center" offset={8}>
-              <Text style={styles.tooltipText}>{hiddenFilesToggleAccessibilityLabel}</Text>
-            </TooltipContent>
-          </Tooltip>
+          {/* Hidden files are a filesystem idea. The Solution lens shows what the build system
+              says is in the project, where "hidden" has no meaning at all. */}
+          {isSolutionLens ? null : (
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger
+                onPress={handleToggleHiddenFiles}
+                hitSlop={8}
+                style={hiddenFilesToggleStyle}
+                accessibilityRole="button"
+                accessibilityLabel={hiddenFilesToggleAccessibilityLabel}
+                accessibilityState={hiddenFilesToggleAccessibilityState}
+              >
+                {showHiddenFiles ? (
+                  <Eye size={iconSize.sm} color={theme.colors.foregroundMuted} />
+                ) : (
+                  <EyeOff size={iconSize.sm} color={theme.colors.foregroundMuted} />
+                )}
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="center" offset={8}>
+                <Text style={styles.tooltipText}>{hiddenFilesToggleAccessibilityLabel}</Text>
+              </TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip delayDuration={300}>
             <TooltipTrigger
               onPress={handleRefresh}
@@ -1271,33 +1404,174 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
           </Tooltip>
         </View>
       </View>
-      {treeRows.length === 0 ? (
-        <View style={styles.centerState}>
-          <Text style={styles.emptyText}>{emptyLabel}</Text>
-        </View>
+      {isSolutionLens ? (
+        renderSolutionPane()
       ) : (
-        <FlatList
-          ref={treeListRef}
-          style={styles.treeList}
-          data={treeRows}
-          renderItem={renderTreeRow}
-          keyExtractor={treeRowKeyExtractor}
-          testID="file-explorer-tree-scroll"
-          contentContainerStyle={styles.entriesContent}
-          onLayout={scrollbar.onLayout}
-          onScroll={scrollbar.onScroll}
-          onContentSizeChange={scrollbar.onContentSizeChange}
-          onScrollToIndexFailed={handleScrollToIndexFailed}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={!showWebScrollbar}
-          initialNumToRender={24}
-          maxToRenderPerBatch={40}
-          windowSize={12}
+        <FileTreeBody
+          treeRows={treeRows}
+          emptyLabel={emptyLabel}
+          treeListRef={treeListRef}
+          renderTreeRow={renderTreeRow}
+          scrollbar={scrollbar}
+          showWebScrollbar={showWebScrollbar}
+          handleScrollToIndexFailed={handleScrollToIndexFailed}
         />
       )}
-      {treeRows.length > 0 ? scrollbar.overlay : null}
     </View>
   );
+}
+
+/** The filesystem lens's list, extracted so the lens branch above reads as one choice. */
+function FileTreeBody({
+  treeRows,
+  emptyLabel,
+  treeListRef,
+  renderTreeRow,
+  scrollbar,
+  showWebScrollbar,
+  handleScrollToIndexFailed,
+}: {
+  treeRows: TreeRow[];
+  emptyLabel: string;
+  treeListRef: RefObject<FlatList<TreeRow> | null>;
+  renderTreeRow: (info: ListRenderItemInfo<TreeRow>) => ReactElement;
+  scrollbar: ReturnType<typeof useWebScrollViewScrollbar>;
+  showWebScrollbar: boolean;
+  handleScrollToIndexFailed: (info: { index: number; averageItemLength: number }) => void;
+}) {
+  if (treeRows.length === 0) {
+    return (
+      <View style={styles.centerState}>
+        <Text style={styles.emptyText}>{emptyLabel}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <FlatList
+        ref={treeListRef}
+        style={styles.treeList}
+        data={treeRows}
+        renderItem={renderTreeRow}
+        keyExtractor={treeRowKeyExtractor}
+        testID="file-explorer-tree-scroll"
+        contentContainerStyle={styles.entriesContent}
+        onLayout={scrollbar.onLayout}
+        onScroll={scrollbar.onScroll}
+        onContentSizeChange={scrollbar.onContentSizeChange}
+        onScrollToIndexFailed={handleScrollToIndexFailed}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={!showWebScrollbar}
+        initialNumToRender={24}
+        maxToRenderPerBatch={40}
+        windowSize={12}
+      />
+      {scrollbar.overlay}
+    </>
+  );
+}
+
+/**
+ * Files vs Solution, and — when a repository has more than one — which solution.
+ *
+ * One control rather than two: a lens toggle beside a solution picker would make the common case
+ * (one solution) show a picker with a single entry, and the two choices are really one question.
+ * **Absent entirely when there are no solutions**, which is what makes the feature transparent: a
+ * workspace that is not a .NET repository looks exactly as it did before this shipped.
+ */
+function ExplorerLensSwitcher({
+  solutions,
+  viewMode,
+  selectedSolutionPath,
+  onSelectViewMode,
+  onSelectSolution,
+  triggerStyle,
+}: {
+  solutions: readonly SolutionRef[];
+  viewMode: ExplorerViewMode;
+  selectedSolutionPath: string | null;
+  onSelectViewMode: (mode: ExplorerViewMode) => void;
+  onSelectSolution: (solutionPath: string) => void;
+  triggerStyle: (state: PressableStateCallbackType) => StyleProp<ViewStyle>;
+}) {
+  const { t } = useTranslation();
+  const { theme } = useUnistyles();
+  const iconSize = useIconSize();
+
+  const selectFiles = useCallback(() => onSelectViewMode("files"), [onSelectViewMode]);
+
+  if (solutions.length === 0) {
+    return null;
+  }
+
+  const activeSolution = solutions.find((solution) => solution.path === selectedSolutionPath);
+  const label =
+    viewMode === "solution" && activeSolution !== undefined
+      ? activeSolution.name
+      : t("workspace.solution.lens.files");
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger style={triggerStyle} testID="explorer-lens-switcher">
+        <Text style={styles.sortTriggerText} numberOfLines={1}>
+          {label}
+        </Text>
+        <ChevronDown size={iconSize.xs} color={theme.colors.foregroundMuted} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" width={240}>
+        <DropdownMenuItem onSelect={selectFiles} testID="explorer-lens-files">
+          {t("workspace.solution.lens.files")}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {solutions.map((solution) => (
+          <SolutionPickerItem key={solution.path} solution={solution} onSelect={onSelectSolution} />
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function SolutionPickerItem({
+  solution,
+  onSelect,
+}: {
+  solution: SolutionRef;
+  onSelect: (solutionPath: string) => void;
+}) {
+  const handleSelect = useCallback(() => onSelect(solution.path), [onSelect, solution.path]);
+  return (
+    <DropdownMenuItem onSelect={handleSelect} testID={`explorer-lens-solution-${solution.path}`}>
+      {solution.name}
+    </DropdownMenuItem>
+  );
+}
+
+/**
+ * Which solution the lens is showing. The remembered choice wins while it still exists; otherwise
+ * the first one, so a repository that renames or drops a solution opens on something real instead
+ * of on nothing.
+ */
+function resolveSelectedSolutionPath({
+  serverId,
+  cwd,
+  solutions,
+  explorerSolutionByCheckout,
+}: {
+  serverId: string;
+  cwd: string;
+  solutions: readonly SolutionRef[];
+  explorerSolutionByCheckout: Record<string, string>;
+}): string | null {
+  if (solutions.length === 0) {
+    return null;
+  }
+  const key = buildExplorerCheckoutKey(serverId, cwd);
+  const remembered = key === null ? undefined : explorerSolutionByCheckout[key];
+  if (remembered !== undefined && solutions.some((solution) => solution.path === remembered)) {
+    return remembered;
+  }
+  return solutions[0].path;
 }
 
 function sortEntries(entries: ExplorerEntry[], sortOption: SortOption): ExplorerEntry[] {
@@ -1736,6 +2010,15 @@ const styles = StyleSheet.create((theme) => ({
     paddingRight: theme.spacing[3],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+  },
+  // The lens switcher sits beside the sort cycle, both left-aligned, so the header keeps its
+  // corner-pinned space-between at every breakpoint.
+  headerLeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    flexShrink: 1,
+    minWidth: 0,
   },
   sortTrigger: {
     flexDirection: "row",

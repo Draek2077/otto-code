@@ -1,0 +1,9 @@
+id,name,role,model,tokens_in,tokens_out,cost_usd,notes
+1,Scout,researcher,claude-sonnet-5,18432,2210,0.0741,"Reads broadly, reports narrowly"
+2,Mason,coder,claude-opus-5,52108,8934,0.6120,"Writes the patch, runs the tests"
+3,Quill,writer,claude-haiku-4-5,9820,3140,0.0188,"Docs and release notes"
+4,Ledger,auditor,claude-sonnet-5,31007,1180,0.1004,"Counts tokens, trusts nothing"
+5,Relay,router,claude-haiku-4-5,4021,612,0.0061,"Decides who gets the task"
+6,Atlas,architect,claude-opus-5,44190,11208,0.6633,"Draws the boxes and the arrows"
+7,Sable,reviewer,claude-sonnet-5,27744,3902,0.1266,"Adversarial by default"
+8,Pilot,orchestrator,claude-opus-5,60318,5471,0.5884,"Holds the graph, not the code"

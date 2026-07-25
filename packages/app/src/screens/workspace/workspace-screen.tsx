@@ -502,11 +502,19 @@ function getFallbackTabOptionDescription(
   if (tab.target.kind === "orchestrationGraph") {
     return "Graph";
   }
-  // A refine job is named for the document it is about — its primary path.
+  // A refine job is named for the document it is about. Its paths are absolute
+  // (a working set can span the project and `~/.claude`), so this takes the file
+  // name rather than printing a drive letter and an account name into the tab
+  // switcher.
   if (tab.target.kind === "refine") {
-    return tab.target.paths[0] ?? "";
+    return fileNameOf(tab.target.paths[0] ?? "");
   }
   return tab.target.path;
+}
+
+function fileNameOf(absolutePath: string): string {
+  const normalized = absolutePath.replace(/\\/g, "/");
+  return normalized.slice(normalized.lastIndexOf("/") + 1);
 }
 
 interface MobileWorkspaceTabSwitcherProps {

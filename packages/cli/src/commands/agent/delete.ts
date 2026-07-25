@@ -5,10 +5,14 @@ import { isSameOrDescendantPath } from "../../utils/paths.js";
 
 export function addDeleteOptions(cmd: Command): Command {
   return cmd
-    .description("Delete an agent (interrupt if running, then hard-delete)")
+    .description(
+      "Delete an agent (interrupt if running, then hard-delete). Removes Otto's record only - the agent provider's own transcript is left on disk.",
+    )
     .argument("[id]", "Agent ID (or prefix) - optional if --all or --cwd specified")
     .option("--all", "Delete all agents")
-    .option("--cwd <path>", "Delete all agents in directory");
+    .option("--cwd <path>", "Delete all agents in directory")
+    .option("--archived", "Only archived agents (use with --all or --cwd)")
+    .option("--include-archived", "Include archived agents (use with --all or --cwd)");
 }
 import type {
   CommandOptions,
@@ -30,9 +34,55 @@ export const deleteSchema: OutputSchema<DeleteResult> = {
 export interface AgentDeleteOptions extends CommandOptions {
   all?: boolean;
   cwd?: string;
+  archived?: boolean;
+  includeArchived?: boolean;
 }
 
 export type AgentDeleteResult = SingleResult<DeleteResult>;
+
+/** Which side of the archive line a bulk delete is allowed to touch. */
+export type AgentDeleteScope = "active" | "archived" | "both";
+
+/**
+ * Bulk delete used to filter `!a.archivedAt` unconditionally, so the one command
+ * that could clear the archive deliberately skipped exactly the rows a user most
+ * wants gone. The flags open it up without moving anyone's muscle memory: bare
+ * `--all` / `--cwd` still mean active-only.
+ *
+ * Both flags at once is contradictory ("only archived" and "also archived"), so
+ * it is refused rather than guessed — this command is irreversible.
+ */
+export function resolveAgentDeleteScope(options: {
+  archived?: boolean;
+  includeArchived?: boolean;
+}): AgentDeleteScope {
+  if (options.archived && options.includeArchived) {
+    const error: CommandError = {
+      code: "CONFLICTING_OPTIONS",
+      message: "--archived and --include-archived cannot be combined",
+      details: "--archived deletes only archived agents; --include-archived deletes both",
+    };
+    throw error;
+  }
+  if (options.archived) {
+    return "archived";
+  }
+  if (options.includeArchived) {
+    return "both";
+  }
+  return "active";
+}
+
+export function matchesAgentDeleteScope(
+  agent: { archivedAt?: Date | string | null },
+  scope: AgentDeleteScope,
+): boolean {
+  if (scope === "both") {
+    return true;
+  }
+  const isArchived = agent.archivedAt != null && agent.archivedAt !== "";
+  return scope === "archived" ? isArchived : !isArchived;
+}
 
 export async function runDeleteCommand(
   id: string | undefined,
@@ -49,6 +99,10 @@ export async function runDeleteCommand(
     };
     throw error;
   }
+
+  // Resolved before connecting: a contradictory flag pair should fail fast, not
+  // after opening a socket.
+  const scope = resolveAgentDeleteScope(options);
 
   let client: DaemonClient;
   try {
@@ -69,12 +123,11 @@ export async function runDeleteCommand(
     const deletedIds: string[] = [];
 
     if (options.all) {
-      agents = agents.filter((a) => !a.archivedAt);
+      agents = agents.filter((a) => matchesAgentDeleteScope(a, scope));
     } else if (options.cwd) {
-      agents = agents.filter((a) => {
-        if (a.archivedAt) return false;
-        return isSameOrDescendantPath(options.cwd!, a.cwd);
-      });
+      agents = agents.filter(
+        (a) => matchesAgentDeleteScope(a, scope) && isSameOrDescendantPath(options.cwd!, a.cwd),
+      );
     } else if (id) {
       const fetchResult = await client.fetchAgent({ agentId: id });
       if (!fetchResult) {

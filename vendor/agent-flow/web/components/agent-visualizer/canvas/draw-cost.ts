@@ -1,26 +1,36 @@
 import { Agent, ToolCallNode, NODE } from '@/lib/agent-types'
 import { COLORS } from '@/lib/colors'
-import { COST_RATE, MODEL_FAMILY_COST, COST_DRAW, STATS_OVERLAY, MIN_VISIBLE_OPACITY } from '@/lib/canvas-constants'
+import { COST_DRAW, STATS_OVERLAY, MIN_VISIBLE_OPACITY } from '@/lib/canvas-constants'
 // OTTO PATCH (OTTO-PATCHES.md): the top-right cost SUMMARY panel moved to the
 // DOM (../cost-panel.tsx). Only the on-node cost pills (drawCostLabels) remain
 // on the canvas, so drawCostSummaryPanel and its formatTokens/truncateText/
-// COST_PANEL imports were removed here. agentCost/toolTypeColor are still
-// exported and are now reused by the DOM cost panel.
+// COST_PANEL imports were removed here. toolTypeColor is still exported and is
+// reused by the DOM cost panel.
 
-/** Blended $/M-token rate for a model ID — first matching family wins,
- *  unknown models fall back to the Sonnet-class rate. */
-export function modelCostRate(model?: string): number {
-  if (model) {
-    const id = model.toLowerCase()
-    for (const { pattern, rate } of MODEL_FAMILY_COST) {
-      if (pattern.test(id)) return rate
-    }
-  }
-  return COST_RATE
+// OTTO PATCH (OTTO-PATCHES.md): cost is REPORTED, never estimated.
+//
+// This used to be `tokens × a hardcoded blended $/M rate` (modelCostRate over
+// MODEL_FAMILY_COST, falling back to a Sonnet-class 6). That figure was wrong
+// three ways at once and the errors multiplied: the rate table drifted from
+// list pricing, a cache read (~10% of input price) was charged as fresh input,
+// and a model served by a gateway at its own prices was charged Anthropic's.
+//
+// Otto's daemon already computes the real thing — the provider's own reported
+// cost, cache-aware and de-inflated so a parent never carries what its
+// sub-agents reported — and ships it on `context_update`. So: use it, or show
+// nothing. See docs/subagent-accounting.md.
+
+/** The agent's real reported cost in USD, or null when nothing can be known.
+ *  Never falls back to an estimate — a blank is the honest answer. */
+export function agentCost(agent: Pick<Agent, 'costUsd'>): number | null {
+  const cost = agent.costUsd
+  return typeof cost === 'number' && Number.isFinite(cost) && cost > 0 ? cost : null
 }
 
-export function agentCost(tokensUsed: number, model?: string): number {
-  return (tokensUsed / 1_000_000) * modelCostRate(model)
+/** Shared money formatting for every cost surface, so a pill and a panel can
+ *  never disagree about how the same number reads. */
+export function formatCost(cost: number): string {
+  return `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}`
 }
 
 /** Tool name -> color for mini cost bar */
@@ -56,9 +66,11 @@ export function drawCostLabels(
 
   for (const [, agent] of agents) {
     if (agent.opacity < MIN_VISIBLE_OPACITY) continue
-    // OTTO PATCH (OTTO-PATCHES.md): cost pills prefer the honest lifetime total.
-    const cost = agentCost(agent.cumulativeTokens ?? agent.tokensUsed, agent.model)
-    if (cost < COST_DRAW.minDisplayCost) continue
+    // OTTO PATCH (OTTO-PATCHES.md): the pill draws only when the host reported a
+    // real cost. An unpriceable agent (local model) gets no pill at all rather
+    // than a made-up one.
+    const cost = agentCost(agent)
+    if (cost === null || cost < COST_DRAW.minDisplayCost) continue
 
     const r = agent.isMain ? NODE.radiusMain : NODE.radiusSub
     // Mini tool-type bar draws below the pill only when this agent has tools
@@ -80,7 +92,7 @@ export function drawCostLabels(
     const pillY = agent.y - r - pillYOffset
 
     // Floating cost pill
-    const label = `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}`
+    const label = formatCost(cost)
     ctx.font = 'bold 9px monospace'
     const labelW = ctx.measureText(label).width
     const pillW = labelW + COST_DRAW.pillPadding

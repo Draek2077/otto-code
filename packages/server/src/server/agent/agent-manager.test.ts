@@ -7734,8 +7734,72 @@ test("cumulativeTokens sums each turn's usage across turns, the same way for eve
   expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBe(185);
 });
 
-test("cumulativeTokens takes Pi's already-cumulative session usage directly instead of summing it", async () => {
+test("a provider reporting lifetime session stats is differenced, not re-booked every turn", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-cumulative-tokens-pi-"));
+  let capturedSession: TestAgentSession | null = null;
+  class CapturingClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      capturedSession = new TestAgentSession(config);
+      return capturedSession;
+    }
+  }
+
+  const activity: Array<[string, number]> = [];
+  const manager = new AgentManager({
+    clients: { codex: new CapturingClient() },
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000202",
+    onActivity: (field, by) => {
+      activity.push([field, by ?? 1]);
+    },
+  });
+
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  // Pi's session stats ARE the lifetime figures — tokens and cost alike — so
+  // each turn's report includes everything the previous ones already reported.
+  capturedSession?.pushEvent({
+    type: "turn_completed",
+    provider: "pi",
+    turnId: "turn-1",
+    usage: { inputTokens: 100, outputTokens: 50, totalCostUsd: 0.2 },
+  });
+  await manager.flush();
+  expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBe(150);
+
+  capturedSession?.pushEvent({
+    type: "turn_completed",
+    provider: "pi",
+    turnId: "turn-2",
+    usage: { inputTokens: 130, outputTokens: 70, totalCostUsd: 0.5 },
+  });
+  await manager.flush();
+  // The lifetime total tracks the provider's own final figure — not 350, which
+  // is what adding both reports would give.
+  expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBe(200);
+
+  // ...and the same differencing reaches the cost ledger, which used to book the
+  // running session total again on every turn ($0.20 + $0.50 = $0.70 for a
+  // session that actually cost $0.50).
+  const cost = activity
+    .filter(([field]) => field === "costMicroUsd")
+    .reduce((sum, [, by]) => sum + by, 0);
+  expect(cost).toBe(500_000);
+
+  // The lifetime split carries the same story, priced honestly.
+  expect(manager.getAgent(snapshot.id)?.cumulativeUsage).toMatchObject({
+    inputTokens: 130,
+    outputTokens: 70,
+    turns: 2,
+    costedTurns: 2,
+  });
+  expect(manager.getAgent(snapshot.id)?.cumulativeUsage?.costUsd).toBeCloseTo(0.5);
+});
+
+test("cumulativeUsage keeps the in/cached/out split and the provider's own cost", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-cumulative-usage-"));
   let capturedSession: TestAgentSession | null = null;
   class CapturingClient extends TestAgentClient {
     override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
@@ -7747,32 +7811,83 @@ test("cumulativeTokens takes Pi's already-cumulative session usage directly inst
   const manager = new AgentManager({
     clients: { codex: new CapturingClient() },
     logger,
-    idFactory: () => "00000000-0000-4000-8000-000000000202",
+    idFactory: () => "00000000-0000-4000-8000-000000000203",
   });
 
   const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
     workspaceId: undefined,
   });
 
-  // Pi's own session stats already report the agent's lifetime total, so each
-  // turn's number replaces (via monotonic max) rather than adds to the last.
+  // A cache-heavy shape: a big stable prefix re-read each turn, small deltas.
+  // Flattening this to one scalar is what made the old cost estimate wrong.
   capturedSession?.pushEvent({
     type: "turn_completed",
-    provider: "pi",
+    provider: "claude",
     turnId: "turn-1",
-    usage: { inputTokens: 100, outputTokens: 50 },
+    usage: {
+      inputTokens: 300,
+      cachedInputTokens: 40_000,
+      cacheCreationInputTokens: 1_200,
+      outputTokens: 500,
+      totalCostUsd: 0.03,
+    },
   });
   await manager.flush();
-  expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBe(150);
-
   capturedSession?.pushEvent({
     type: "turn_completed",
-    provider: "pi",
+    provider: "claude",
     turnId: "turn-2",
-    usage: { inputTokens: 130, outputTokens: 70 },
+    usage: { inputTokens: 120, cachedInputTokens: 41_500, outputTokens: 700, totalCostUsd: 0.02 },
   });
   await manager.flush();
-  expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBe(200);
+
+  const usage = manager.getAgent(snapshot.id)?.cumulativeUsage;
+  expect(usage).toMatchObject({
+    inputTokens: 420,
+    cachedInputTokens: 81_500,
+    cacheCreationInputTokens: 1_200,
+    outputTokens: 1_200,
+    turns: 2,
+    costedTurns: 2,
+  });
+  expect(usage?.costUsd).toBeCloseTo(0.05);
+  // The split's token leaves still sum to the scalar every existing surface reads.
+  expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBe(84_320);
+});
+
+test("a turn the provider could not price leaves the cost absent rather than estimated", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-unpriced-usage-"));
+  let capturedSession: TestAgentSession | null = null;
+  class CapturingClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      capturedSession = new TestAgentSession(config);
+      return capturedSession;
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: { codex: new CapturingClient() },
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000204",
+  });
+
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  // A local model served over an OpenAI-compatible endpoint: real tokens, no
+  // cost anyone can know. The honest answer is a blank, not a rate-table guess.
+  capturedSession?.pushEvent({
+    type: "turn_completed",
+    provider: "openai-compatible",
+    turnId: "turn-1",
+    usage: { inputTokens: 4_000, outputTokens: 600 },
+  });
+  await manager.flush();
+
+  const usage = manager.getAgent(snapshot.id)?.cumulativeUsage;
+  expect(usage).toMatchObject({ inputTokens: 4_000, outputTokens: 600, turns: 1, costedTurns: 0 });
+  expect(usage?.costUsd).toBeUndefined();
 });
 
 // A native (create_agent) sub-agent gets no provider task report, so its own

@@ -1,0 +1,37 @@
+THE WRECK OF THE BUILD PIPELINE
+A field report, in plain text, with no markup at all.
+
+  Tuesday
+  -------
+  The daemon came up clean on the first try. Nobody believed it.
+  We restarted it twice more just to be sure, which is of course
+  how we lost Tuesday.
+
+  Wednesday
+  ---------
+  Found the bug. It was not the cache. It is never the cache,
+  and yet the cache is always the first place we look, because
+  the cache cannot defend itself.
+
+  Thursday
+  --------
+  It was the cache.
+
+Notes on this file
+==================
+
+This document exists to prove that a .txt file renders as monospaced
+source with no highlighting and no markdown interpretation. The
+*asterisks* here should stay asterisks. The `backticks` should stay
+backticks. This # is not a heading, and this - is not a bullet.
+
+Trailing whitespace, tabs, and box drawing should all survive:
+
+	tab-indented line
+	┌──────────────┬───────────────┐
+	│ column one   │ column two    │
+	├──────────────┼───────────────┤
+	│ 42           │ still 42      │
+	└──────────────┴───────────────┘
+
+End of file.

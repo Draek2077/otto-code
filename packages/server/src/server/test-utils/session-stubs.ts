@@ -81,7 +81,7 @@ export function asDaemonConfigStore(stub: {
  */
 export function createDaemonConfigStoreStub(): {
   onChange: () => () => void;
-  get: () => { lsp: Record<string, unknown> };
+  get: () => { lsp: Record<string, unknown>; dotnetSolutionManagement: Record<string, unknown> };
 } {
   return {
     onChange: vi.fn(() => () => {}),
@@ -93,6 +93,9 @@ export function createDaemonConfigStoreStub(): {
         idleMinutes: 10,
         backgroundIdleMinutes: 2,
       },
+      // Off, matching the shipped default — a harness must not accidentally exercise a feature
+      // that spawns a .NET process.
+      dotnetSolutionManagement: { enabled: false, maxRunningProbes: 2, idleMinutes: 10 },
     })),
   };
 }

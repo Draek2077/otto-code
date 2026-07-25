@@ -1,0 +1,19 @@
+---
+title: Agent turn lifecycle
+---
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Thinking: user prompt
+    Thinking --> ToolCall: needs a tool
+    ToolCall --> Thinking: tool result
+    Thinking --> Streaming: has an answer
+    Streaming --> Idle: turn finalized
+    Thinking --> Interrupted: user interrupts
+    ToolCall --> Interrupted: user interrupts
+    Interrupted --> Idle: state flushed
+    Idle --> [*]: chat archived
+
+    note right of ToolCall
+        Queued steering messages
+        drain here, not mid-tool.
+    end note

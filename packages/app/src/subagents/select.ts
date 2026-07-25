@@ -13,6 +13,7 @@ export interface SubagentRow {
   updatedAt: Agent["updatedAt"];
   attend?: Agent["attend"];
   cumulativeTokens?: Agent["cumulativeTokens"];
+  cumulativeUsage?: Agent["cumulativeUsage"];
   toolUseCount?: Agent["toolUseCount"];
   currentTool?: Agent["currentTool"];
   personalityName?: Agent["personalityName"];
@@ -39,6 +40,7 @@ function toSubagentRow(agent: Agent): SubagentRow {
     updatedAt: agent.updatedAt,
     attend: agent.attend,
     cumulativeTokens: agent.cumulativeTokens,
+    cumulativeUsage: agent.cumulativeUsage,
     toolUseCount: agent.toolUseCount,
     currentTool: agent.currentTool,
     personalityName: agent.personalityName,
@@ -58,7 +60,7 @@ const MAX_PARENT_WALK_DEPTH = 8;
  * chain on purpose — an attended child is its own chat with its own track,
  * and its children are not this chat's rows.
  */
-function isTrackDescendantOf(
+export function isTrackDescendantOf(
   agent: Agent,
   parentAgentId: string,
   agentsById: ReadonlyMap<string, Agent>,

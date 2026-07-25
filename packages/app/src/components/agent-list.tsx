@@ -23,6 +23,15 @@ import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useQueryClient } from "@tanstack/react-query";
 import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
+import { useDeleteAgent } from "@/history/use-delete-agent";
+import { isHistoryDeleteSupported } from "@/history/use-history-delete-feature";
+import {
+  resolveDeleteAgentDialog,
+  resolveHistoryDeleteUnsupportedDialog,
+} from "@/history/delete-dialogs";
+import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
+import { useToast } from "@/contexts/toast-context";
+import { toErrorMessage } from "@/utils/error-messages";
 
 interface AgentListProps {
   agents: AggregatedAgent[];
@@ -374,6 +383,8 @@ export function AgentList({
   const [actionAgent, setActionAgent] = useState<AggregatedAgent | null>(null);
   const isMobile = useIsCompactFormFactor();
   const { archiveAgent } = useArchiveAgent();
+  const { deleteAgent } = useDeleteAgent();
+  const toast = useToast();
   const queryClient = useQueryClient();
 
   const actionClient = useSessionStore((state) =>
@@ -422,6 +433,38 @@ export function AgentList({
     [isActionSheetVisible, onAgentSelect, queryClient],
   );
 
+  /**
+   * Long-press means "remove this from my list", and what that means depends on
+   * where the row already is. An unarchived chat archives (the fast path this has
+   * always had). An **already archived** chat has nowhere further to go by
+   * archiving — re-archiving it is a no-op that reads as a broken gesture — so it
+   * offers the hard delete instead, behind a destructive confirm that says what
+   * delete does and does not touch.
+   *
+   * Two-step destruction is deliberate: delete is unreachable for a chat that has
+   * not been archived first.
+   */
+  const requestDeleteAgent = useCallback(
+    async (agent: AggregatedAgent) => {
+      if (!isHistoryDeleteSupported(agent.serverId)) {
+        await alertDialog(resolveHistoryDeleteUnsupportedDialog());
+        return;
+      }
+      const confirmed = await confirmDialog(
+        resolveDeleteAgentDialog({ title: agent.title, provider: agent.provider }),
+      );
+      if (!confirmed) {
+        return;
+      }
+      try {
+        await deleteAgent({ serverId: agent.serverId, agentId: agent.id });
+      } catch (error) {
+        toast.error(toErrorMessage(error));
+      }
+    },
+    [deleteAgent, toast],
+  );
+
   const handleAgentLongPress = useCallback(
     (agent: AggregatedAgent) => {
       const isRunning = agent.status === "running";
@@ -435,9 +478,13 @@ export function AgentList({
         setActionAgent(agent);
         return;
       }
+      if (agent.archivedAt) {
+        void requestDeleteAgent(agent);
+        return;
+      }
       void archiveAgent({ serverId: agent.serverId, agentId: agent.id }).catch(() => {});
     },
-    [archiveAgent],
+    [archiveAgent, requestDeleteAgent],
   );
 
   const handleCloseActionSheet = useCallback(() => {

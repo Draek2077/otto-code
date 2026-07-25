@@ -603,8 +603,11 @@ function PreviewOnlyView({
         <FileGitToolbarGroup
           onOpenHistory={handleOpenHistory}
           onViewChanges={onViewChanges}
-          onRefine={onRefine}
           showLeadingSeparator={false}
+        />
+        <FileAiToolbarGroup
+          onRefine={onRefine}
+          showLeadingSeparator={Boolean(handleOpenHistory || onViewChanges)}
         />
         <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
         <ToolbarSeparator />
@@ -681,6 +684,53 @@ function PreviewOnlyView({
 }
 
 /**
+ * The AI cluster: every action that hands this document to a model.
+ *
+ * Its own fenced section rather than a button loose among the git tools — this
+ * is the part of the toolbar where a model sees your file, and that is worth
+ * marking even while Refine is the only thing in it.
+ *
+ * Everything here is about THIS file. A surface's own model-facing action goes
+ * here only if that is true of it too; Context Management's "Compact with AI"
+ * is not — it opens a job carrying the whole context graph — so it lives beside
+ * the graph's tabs instead. Two AI buttons in one bar, one file-scoped and one
+ * graph-scoped, read as the same button rendered twice.
+ *
+ * Last of the file's own clusters, after git. Reading what a document already is
+ * comes before asking for it to be rewritten, and putting the model-facing
+ * action at the far end of the file group keeps it out of the path of the ones
+ * you reach for without thinking.
+ *
+ * What is deliberately absent is an AI button that edits in place. The old
+ * "Refactor with AI" handed a prompt to a full agent with complete tool access
+ * and no diff; everything in this group can only ever propose, and the proposal
+ * is reviewed before a byte is written.
+ */
+function FileAiToolbarGroup({
+  onRefine,
+  showLeadingSeparator,
+}: {
+  onRefine: (() => void) | null;
+  showLeadingSeparator: boolean;
+}) {
+  const { t } = useTranslation();
+  if (!onRefine) {
+    return null;
+  }
+  return (
+    <>
+      {showLeadingSeparator ? <ToolbarSeparator /> : null}
+      <ToolbarIconButton
+        label={t("refine.open")}
+        testID="file-refine-open"
+        Icon={ThemedWandStars}
+        onPress={onRefine}
+      />
+    </>
+  );
+}
+
+/**
  * The git-investigation cluster: this file's history, and its diff in the
  * Changes tab. Shown once the host serves the local-git file RPCs; "view
  * changes" additionally requires the file to be in the current diff, since it
@@ -688,47 +738,26 @@ function PreviewOnlyView({
  *
  * A component rather than an inline conditional so both toolbars (editor and
  * preview) spell it the same way. `showLeadingSeparator` fences the cluster off
- * from the buffer actions before it — save and revert act on what you typed,
- * these ask what git knows. The preview toolbar opens with this cluster, so it
- * passes false: a separator with nothing on its left divides nothing.
- */
-/**
- * The per-file jobs this document can be sent to: git investigation, the
- * Changes view, and Refine.
- *
- * Refine sits here rather than being an "AI action" of its own because it is
- * the same kind of thing as the other two — a job about THIS file that opens in
- * its own tab and reports back. What is deliberately absent is an AI button
- * that edits in place: the old "Refactor with AI" handed a prompt to a full
- * agent with complete tool access and no diff. Refine can only ever propose,
- * and the proposal is reviewed before a byte is written.
+ * from whatever precedes it — save and revert act on what you typed, these ask
+ * what git knows. A separator with nothing on its left divides nothing, so the
+ * caller passes false when this cluster opens the bar.
  */
 function FileGitToolbarGroup({
   onOpenHistory,
   onViewChanges,
-  onRefine,
   showLeadingSeparator,
 }: {
   onOpenHistory: (() => void) | null;
   onViewChanges: (() => void) | null;
-  onRefine: (() => void) | null;
   showLeadingSeparator: boolean;
 }) {
   const { t } = useTranslation();
-  if (!onOpenHistory && !onViewChanges && !onRefine) {
+  if (!onOpenHistory && !onViewChanges) {
     return null;
   }
   return (
     <>
       {showLeadingSeparator ? <ToolbarSeparator /> : null}
-      {onRefine ? (
-        <ToolbarIconButton
-          label={t("refine.open")}
-          testID="file-refine-open"
-          Icon={ThemedWandStars}
-          onPress={onRefine}
-        />
-      ) : null}
       {onOpenHistory ? (
         <ToolbarIconButton
           label={t("gitFileHistory.open")}
@@ -1483,7 +1512,7 @@ function EditorModeView({
 
   // No AI action edits *in this editor*. The one AI entry point in the toolbar
   // is Refine, and it opens a job tab that can only propose — see
-  // FileGitToolbarGroup. The `@/editor/refactor-*` modules stay on disk but
+  // FileAiToolbarGroup. The `@/editor/refactor-*` modules stay on disk but
   // remain unwired: they hand a prompt to a full agent with complete tool
   // access and no diff, which is exactly what Refine replaced.
 
@@ -1682,9 +1711,9 @@ function EditorModeView({
         <FileGitToolbarGroup
           onOpenHistory={handleOpenHistory}
           onViewChanges={onViewChanges}
-          onRefine={onRefine}
           showLeadingSeparator
         />
+        <FileAiToolbarGroup onRefine={onRefine} showLeadingSeparator />
         <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
         {/* Save/revert/history act on the FILE; outline and find navigate WITHIN
             it. The separator is the line between those two jobs, and both groups
@@ -1903,8 +1932,8 @@ export function FileTabPane({
   location: WorkspaceFileLocation;
   /** How editing this file is gated (in-/linked-project = free; else warns). */
   editGate: EditGate;
-  /** Host-supplied toolbar controls, placed just after save/revert. Lets a
-   *  surface that opens files for a purpose (Context Management) put its own
+  /** Host-supplied toolbar controls, placed just after the file's own jobs. Lets
+   *  a surface that opens files for a purpose (Context Management) put its own
    *  action in the existing bar instead of stacking a second one above it. */
   toolbarLeadingSlot?: ReactNode;
 }) {

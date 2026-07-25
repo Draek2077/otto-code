@@ -27,4 +27,20 @@ describe("toRenderedDocument", () => {
     expect(result.frontmatter).toBeNull();
     expect(result.body).toContain("title: Flow");
   });
+
+  it("converts an asciidoc document and lifts its header attributes", () => {
+    const result = toRenderedDocument("asciidoc", "= Guide\n:version: 2\n\n== Setup\n\nDo *this*.");
+
+    expect(result.frontmatter).toBe("version: 2");
+    expect(result.body).toBe("# Guide\n\n## Setup\n\nDo **this**.");
+    // The converter already resolved AsciiDoc's own passthrough markup, so the
+    // HTML translation has nothing left to do.
+    expect(result.enableHtmlish).toBe(false);
+  });
+
+  it("routes an asciidoc [mermaid] block to the same fence a .md would use", () => {
+    const result = toRenderedDocument("asciidoc", "[mermaid]\n----\ngraph TD\n  A --> B\n----");
+
+    expect(result.body).toBe("```mermaid\ngraph TD\n  A --> B\n```");
+  });
 });

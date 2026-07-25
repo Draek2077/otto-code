@@ -229,6 +229,7 @@ function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDa
       idleMinutes: 10,
       backgroundIdleMinutes: 2,
     },
+    dotnetSolutionManagement: { enabled: false, maxRunningProbes: 2, idleMinutes: 10 },
     providers,
     metadataGeneration: { providers: [], enabled: true, preferWriterPersonalities: false },
     savedProviderEndpoints: [],

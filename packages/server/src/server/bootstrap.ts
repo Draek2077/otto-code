@@ -661,6 +661,25 @@ function buildInitialMetadataGeneration(
   };
 }
 
+/**
+ * "Microsoft .NET Solution Management" — off by default, and a **separate row** from `lsp` rather
+ * than a member of it. The Solution view spawns a process and evaluates MSBuild, so it is opted
+ * into; and turning C# code intelligence off does not turn this off, because the Language Server
+ * Protocol has no project-structure request for it to have been built on.
+ *
+ * Only `enabled` round-trips through disk. The caps are daemon policy, not a user preference:
+ * persisting them would freeze today's defaults into every existing install.
+ */
+function buildInitialDotnetSolutionManagement(
+  persistedConfig: PersistedConfig,
+): MutableDaemonConfig["dotnetSolutionManagement"] {
+  return {
+    enabled: persistedConfig.daemon?.dotnetSolutionManagement?.enabled ?? false,
+    maxRunningProbes: 2,
+    idleMinutes: 10,
+  };
+}
+
 type MutableSavedProviderEndpoint = MutableDaemonConfig["savedProviderEndpoints"][number];
 
 function withSavedEndpointApiKey(
@@ -697,6 +716,7 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
       idleMinutes: 10,
       backgroundIdleMinutes: 2,
     },
+    dotnetSolutionManagement: buildInitialDotnetSolutionManagement(persistedConfig),
     agentBehaviors: buildInitialAgentBehaviors(config),
     providers,
     metadataGeneration: buildInitialMetadataGeneration(config),
@@ -2082,6 +2102,10 @@ export async function createOttoDaemon(
     await agentManager.flushForShutdown().catch(() => undefined);
     detachAgentStoragePersistence();
     await agentStorage.flush().catch(() => undefined);
+    // The ledger's write timer is coalesced and unref()'d, so without this every
+    // daemon exit dropped up to WRITE_COALESCE_MS of appended rows. `flush()` was
+    // always documented as the graceful-shutdown hook; nothing called it.
+    await usageLogStore.flush().catch(() => undefined);
     await providerSnapshotManager.shutdown();
     terminalManager.killAll();
     unsubscribeSpeechConfigChange();

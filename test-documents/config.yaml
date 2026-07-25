@@ -1,0 +1,48 @@
+# A fictional observatory's nightly run configuration.
+# Exercises anchors, aliases, block scalars, flow collections and multi-doc.
+---
+observatory: &site
+  name: Cerro Tololo
+  latitude: -30.169
+  longitude: -70.806
+  elevation_m: 2207
+
+defaults: &exposure
+  iso: 800
+  aperture: f/2.8
+  format: fits
+
+session:
+  <<: *exposure
+  site: *site
+  date: 2026-07-25
+  seeing_arcsec: 0.82
+  targets:
+    - name: M42
+      common: Orion Nebula
+      exposure_s: 120
+      filters: [Ha, OIII, SII]
+    - name: NGC 5139
+      common: Omega Centauri
+      exposure_s: 45
+      filters: [L, R, G, B]
+
+  notes: |
+    Thin cirrus after 02:00. The third Omega Cen stack is unusable —
+    keep it anyway, it makes a good example of what to throw away.
+
+  summary: >
+    Ten hours of clear sky, one hour of cloud, and exactly one cable
+    that came loose at the worst possible moment.
+
+  flags:
+    dithering: true
+    autoguide: true
+    plate_solve: false
+    retries: 3
+    temperature_c: -12.5
+    empty_value: null
+---
+# A second document in the same file.
+checksum: "sha256:9f2c1e0a"
+verified: yes

@@ -16,6 +16,16 @@
 //
 // Strings are literal English pending the pre-release i18n sweep.
 
+/**
+ * What the tab calls itself.
+ *
+ * Compaction is the same loop with a different seed, but to the user it is its
+ * own job — they pressed "Compact with AI" and a tab titled "Refine" is a tab
+ * they did not ask for. The job is fixed at open, like the rename tab's symbol:
+ * editing the instruction afterwards does not rename the thing you started.
+ */
+export type RefineJobKind = "refine" | "compact";
+
 export interface RefinePreset {
   id: string;
   /** Button label. Short — these sit in a row above the instruction box. */
@@ -24,6 +34,8 @@ export interface RefinePreset {
   description: string;
   /** Seeded into the instruction box, editable from there. */
   instruction: string;
+  /** Which job a tab opened on this preset presents itself as. */
+  job: RefineJobKind;
 }
 
 export const REFINE_PRESETS: readonly RefinePreset[] = [
@@ -36,6 +48,7 @@ export const REFINE_PRESETS: readonly RefinePreset[] = [
       "Preserve the structure and the headings. Do not add or invent content.",
       "The instructions in this file are load-bearing — never drop a rule.",
     ].join(" "),
+    job: "compact",
   },
   {
     id: "compact-memory-index",
@@ -45,6 +58,7 @@ export const REFINE_PRESETS: readonly RefinePreset[] = [
       "Compress this index to one line per entry, moving detail out of the index and into the entry it points at.",
       "Preserve every entry — an index that drops a pointer has lost the thing it pointed to.",
     ].join(" "),
+    job: "compact",
   },
   {
     id: "tighten-prose",
@@ -52,8 +66,14 @@ export const REFINE_PRESETS: readonly RefinePreset[] = [
     description: "Shorter, same meaning, no new claims.",
     instruction:
       "Reduce the length of this document without losing meaning. Do not introduce any new claim, fact or recommendation.",
+    job: "refine",
   },
 ] as const;
+
+/** How a tab opened on this preset names itself; plain Refine when it has none. */
+export function refineJobFor(presetId: string | undefined): RefineJobKind {
+  return findRefinePreset(presetId)?.job ?? "refine";
+}
 
 export function findRefinePreset(id: string | undefined): RefinePreset | null {
   if (!id) {

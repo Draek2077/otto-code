@@ -6,10 +6,11 @@ A lightweight "how much has Otto done" dashboard: daemon-tracked lifetime usage 
 
 `ActivityStatsStore` (`packages/server/src/server/activity-stats/activity-stats-store.ts`) follows the "tiny file-backed daemon-wide counter" pattern — cf. `PushTokenStore` (`push/token-store.ts`) and `PersonalityStatsStore` (`agent/personality-stats-store.ts`). Persisted at `$OTTO_HOME/activity-stats.json`, atomic writes via `writeJsonFileAtomic`, with a serialized in-memory queue so concurrent increments never lose counts.
 
-Stats are bucketed by **calendar day** (`YYYY-MM-DD`, local daemon date) plus running all-time totals — no session start/end lifecycle and no crash-recovery bookkeeping. The day bucket is decided at increment time, so counting survives daemon restarts, multiple concurrent clients, and the phone app backgrounding/foregrounding. The `daily` map is trimmed to ~35 days on each persist (comfortably covers the 30-day rollup).
+Stats are bucketed by **calendar day** (`YYYY-MM-DD`, local daemon date) plus running all-time totals — no session start/end lifecycle and no crash-recovery bookkeeping. The day bucket is decided at increment time, so counting survives daemon restarts, multiple concurrent clients, and the phone app backgrounding/foregrounding.
 
 ```ts
 interface ActivityCounters {
+  // Activity tallies (cost-free counts)
   messagesSent: number;
   messagesReceived: number;
   tokensSent: number;
@@ -22,6 +23,22 @@ interface ActivityCounters {
   toolsCalled: number;
   artifactsCreated: number;
   schedulesExecuted: number;
+  // Usage & cost, by category. Cost is an integer count of micro-USD (usd × 1e6)
+  // so it stays summable; it is only populated for turns a provider prices.
+  costMicroUsd: number;
+  mainChatTokensIn: number;
+  mainChatTokensOut: number;
+  mainChatCostMicroUsd: number;
+  generationsTokensIn: number;
+  generationsTokensOut: number;
+  generationsCostMicroUsd: number;
+  subagentTokensIn: number;
+  subagentTokensOut: number;
+  subagentCostMicroUsd: number;
+  compactionTokensIn: number;
+  compactionTokensOut: number;
+  claudeTokensIn: number;
+  claudeTokensOut: number;
 }
 
 interface ActivityStatsFile {
@@ -31,7 +48,23 @@ interface ActivityStatsFile {
 }
 ```
 
-Each of the 12 counters is an individually optional, additive leaf on both the stored JSON and the protocol schema, so new counters can be added — or existing ones dropped from the UI — in later passes without a migration or a breaking change. `increment(field, by = 1)` bumps both `allTime[field]` and today's bucket, then persists; `getRollups()` sums the map into the preset windows on read.
+Each of the 26 counters is an individually optional, additive leaf on both the stored JSON and the protocol schema, so new counters can be added — or existing ones dropped from the UI — in later passes without a migration or a breaking change. `increment(field, by = 1)` bumps both `allTime[field]` and today's bucket, then persists; `getRollups()` sums the map into the preset windows on read. The category leaves are gated on the wire by `features.usageCostCategories` — an old daemon leaves them all at 0, and the client hides the grid rather than presenting zeros as accounting.
+
+### Retention
+
+Two stores, two windows, one principle: **detail is a bounded window, cumulative totals are forever.**
+
+| Store                       | Rule                                                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `daily` day buckets         | `DAILY_RETENTION_DAYS = 35` — buckets older than the window are dropped, and the map is additionally capped at 35 buckets             |
+| `allTime` counters          | **Never trimmed.** They are the cumulative record and must outlive every trimmed bucket                                               |
+| `UsageLogStore` ledger rows | 30-day age window, **no row cap** — every row inside 30 days is kept, however many there are. Test-locked (`usage-log-store.test.ts`) |
+
+Retention applies **at rest, not only on write**, in both stores. Trimming only inside the write path meant a daemon that booted and then recorded nothing kept serving data from outside its own window — the window silently stopped existing the moment the machine went quiet. So `load()` trims in both: the ledger persists the trim, the counter store corrects its in-memory view and lets the next `increment()` persist it.
+
+The bucket trim is **age-first, count-second**. Counting buckets alone was not retention: a daemon idle for months kept its last 35 _non-empty_ day keys even if all of them were a year old. `getRollups()` never read them, so nothing was wrong on screen — but "retained forever because nothing happened" is the opposite of a window. The count pass stays as the backstop for keys the age pass cannot judge, i.e. future-dated buckets from clock skew.
+
+Neither window is configurable, and neither ever deletes an agent record — chat records have their own, separate story in [chat-lifecycle.md](chat-lifecycle.md#delete).
 
 ## The usage log
 
@@ -39,7 +72,9 @@ Sibling store to the counters: `UsageLogStore` (`packages/server/src/server/acti
 
 **One event, two sinks.** At the existing `AgentManager.recordUsageActivity` chokepoint the daemon builds one `UsageEvent`, then (1) appends it to the capped log and (2) folds it into the day-bucketed counters above. The tiles are therefore the log's rollup **by construction** — one source event, so the two surfaces cannot structurally disagree. The dual-write is **best-effort, with no transactional coupling** between the two files: if they drift by a row, that is accepted rather than defended against.
 
-**Why the counters stay their own durable store** (rather than being recomputed from the log on read): the log is rotated to a **30-day age window**, while the cumulative "All Time" tiles must outlive trimmed rows. Row = bounded detail; counter = cumulative summary, persisted forever as tiny running totals. Retention is the age window only — there is no row cap, so every row inside 30 days is kept.
+**Why the counters stay their own durable store** (rather than being recomputed from the log on read): the log is rotated to a **30-day age window**, while the cumulative "All Time" tiles must outlive trimmed rows. Row = bounded detail; counter = cumulative summary, persisted forever as tiny running totals. Retention is the age window only — there is no row cap, so every row inside 30 days is kept. See [Retention](#retention) above for where the window is enforced.
+
+Appends are coalesced onto a ~2s timer whose handle is `unref()`'d, so the daemon's shutdown path calls `usageLogStore.flush()` alongside `agentStorage.flush()`. Without it every daemon exit silently dropped up to one coalesce window of rows.
 
 **What earns a row:** only the token/cost-_bearing_ activities — chat turns, sub-agent turns, and generations (bare completions: titles, names, commit/PR messages, summaries). Compaction is a slice _within_ a turn's usage (openai-compat folds it into the turn's reported usage, so billing it separately would double-count), so it rides its turn's row as a sub-figure rather than standing as its own row. The pure tallies — `messagesSent`, `agentsCreated`, `toolsCalled`, `artifactsCreated`, `schedulesExecuted` — are cost-free counts and are never log rows.
 

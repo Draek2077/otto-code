@@ -17,6 +17,7 @@ import { useToast } from "@/contexts/toast-context";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import { useSolutionViewFeature } from "@/solution/use-solution-view-feature";
 import { useWorkspace } from "@/stores/session-store-hooks";
 
 /**
@@ -53,6 +54,10 @@ export function CodeIntelligenceSection({ serverId }: { serverId: string }) {
   const queryClient = useQueryClient();
   const client = useHostRuntimeClient(serverId);
   const { config, patchConfig } = useDaemonConfig(serverId);
+
+  // The row is absent, not disabled, on a host that cannot serve the feature — there is nothing
+  // for a switch to turn on.
+  const solutionViewSupported = useSolutionViewFeature(serverId);
 
   const selection = useActiveWorkspaceSelection();
   const workspaceId = selection?.serverId === serverId ? selection.workspaceId : null;
@@ -107,7 +112,19 @@ export function CodeIntelligenceSection({ serverId }: { serverId: string }) {
     [client, toast],
   );
 
+  const setSolutionManagementEnabled = useCallback(
+    (enabled: boolean) => {
+      void patchConfig({ dotnetSolutionManagement: { enabled } }).catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : String(error));
+      });
+    },
+    [patchConfig, toast],
+  );
+
   const masterEnabled = config?.lsp?.enabled ?? true;
+  // Defaults OFF, and reads off on any daemon that has never heard of the setting. A feature that
+  // spawns a process and evaluates MSBuild is opted into.
+  const solutionManagementEnabled = config?.dotnetSolutionManagement?.enabled === true;
   const languages = servers.data?.languages ?? EMPTY_LANGUAGES;
   const running = servers.data?.running ?? EMPTY_RUNNING;
 
@@ -127,6 +144,11 @@ export function CodeIntelligenceSection({ serverId }: { serverId: string }) {
               testID="lsp-master-toggle-switch"
             />
           </View>
+          <SolutionManagementRow
+            supported={solutionViewSupported}
+            enabled={solutionManagementEnabled}
+            onValueChange={setSolutionManagementEnabled}
+          />
           {cwd === null ? (
             <Text style={EMPTY_WITH_BORDER}>{t("settings.host.code.needsWorkspace")}</Text>
           ) : null}
@@ -145,6 +167,43 @@ export function CodeIntelligenceSection({ serverId }: { serverId: string }) {
         </>
       )}
     </>
+  );
+}
+
+/**
+ * "Microsoft .NET Solution Management" — a **separate row** from code intelligence, not a member
+ * of it.
+ *
+ * Turning C# language-server support off does not turn this off and vice versa. That is not a
+ * stylistic choice: the Language Server Protocol has no project-structure request, so the Solution
+ * view builds its own model and shares nothing with the rows below except a language. Nesting it
+ * under the master switch would assert a dependency that does not exist.
+ *
+ * Absent, not disabled, on a host that cannot serve it — there is nothing for a switch to do.
+ */
+function SolutionManagementRow(props: {
+  supported: boolean;
+  enabled: boolean;
+  onValueChange: (enabled: boolean) => void;
+}) {
+  const { t } = useTranslation();
+
+  if (!props.supported) {
+    return null;
+  }
+  return (
+    <View style={ROW_WITH_BORDER} testID="dotnet-solution-toggle">
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{t("settings.host.code.solution")}</Text>
+        <Text style={settingsStyles.rowHint}>{t("settings.host.code.solutionHint")}</Text>
+      </View>
+      <Switch
+        value={props.enabled}
+        onValueChange={props.onValueChange}
+        accessibilityLabel={t("settings.host.code.solution")}
+        testID="dotnet-solution-toggle-switch"
+      />
+    </View>
   );
 }
 

@@ -224,6 +224,11 @@ export class ActivityStatsStore {
       }
       this.cache = { version: 1, allTime: zeroCounters(), daily: {} };
     }
+    // Apply the window at rest as well, so a daemon that boots and never
+    // increments still reports a trimmed `daily` map. Only the in-memory view is
+    // corrected here — the next increment persists it. `allTime` is untouched by
+    // design: cumulative totals outlive trimmed buckets.
+    trimOldDays(this.cache.daily, new Date());
     return this.cache;
   }
 
@@ -234,11 +239,12 @@ export class ActivityStatsStore {
     }
     this.queue = this.queue.then(async () => {
       const state = await this.load();
-      const today = dayKey(new Date());
+      const now = new Date();
+      const today = dayKey(now);
       state.allTime[field] += by;
       state.daily[today] = state.daily[today] ?? zeroCounters();
       state.daily[today][field] += by;
-      trimOldDays(state.daily);
+      trimOldDays(state.daily, now);
       this.scheduleChangeNotification();
       try {
         await writeJsonFileAtomic(this.filePath, state);
@@ -299,7 +305,26 @@ export class ActivityStatsStore {
   }
 }
 
-function trimOldDays(daily: Record<string, ActivityCounters>): void {
+/**
+ * Drop day buckets outside the retention window. Age first, then bucket count.
+ *
+ * Counting buckets alone was not retention: a daemon idle for months kept its
+ * last 35 **non-empty** day keys even if every one of them was a year old.
+ * `getRollups()` never reads them (it only walks back DAILY_RETENTION_DAYS from
+ * today), so they were inert — but "retained forever because nothing happened"
+ * is the opposite of a window. The count pass stays as the backstop for keys the
+ * age pass cannot judge, i.e. future-dated buckets from clock skew.
+ *
+ * Day keys are `YYYY-MM-DD`, so lexical order is chronological order.
+ */
+function trimOldDays(daily: Record<string, ActivityCounters>, now: Date): void {
+  const cutoffKey = daysAgoKey(now, DAILY_RETENTION_DAYS - 1);
+  for (const key of Object.keys(daily)) {
+    if (key < cutoffKey) {
+      delete daily[key];
+    }
+  }
+
   const keys = Object.keys(daily).sort();
   const excess = keys.length - DAILY_RETENTION_DAYS;
   for (let i = 0; i < excess; i++) {

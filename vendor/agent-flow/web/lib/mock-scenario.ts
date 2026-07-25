@@ -27,15 +27,15 @@ const NORMAL_MOCK_SCENARIO: SimulationEvent[] = [
   // ── Agent Spawn & User Prompt ─────────────────────────────────────────────
   { time: 0.0, type: 'agent_spawn', payload: { name: 'orchestrator', isMain: true, task: 'Waiting for instructions...' } },
   { time: 0.2, type: 'message', payload: { agent: 'orchestrator', role: 'user', content: 'Refactor the payment system to support Stripe and PayPal, add webhook handling, and write integration tests' } },
-  { time: 0.4, type: 'context_update', payload: { agent: 'orchestrator', tokens: 2200, breakdown: { systemPrompt: 1500, userMessages: 700, toolResults: 0, reasoning: 0, subagentResults: 0 } } },
+  { time: 0.4, type: 'context_update', payload: { agent: 'orchestrator', tokens: 2200, breakdown: { segments: [{ label: 'System prompt', tokens: 1500 }, { label: 'Messages', tokens: 700 }, { label: 'Tool results', tokens: 0 }, { label: 'Reasoning', tokens: 0 }, { label: 'Subagent results', tokens: 0 }] } } },
   { time: 1.0, type: 'message', payload: { agent: 'orchestrator', role: 'thinking', content: 'This is a multi-part task: refactor payments, add Stripe + PayPal, webhooks, and tests. I should start by understanding the existing payment code before planning the implementation.' } },
   { time: 2.5, type: 'message', payload: { agent: 'orchestrator', content: 'I\'ll analyze the codebase and plan the payment system refactoring. Let me start by understanding the current structure.' } },
-  { time: 3.0, type: 'context_update', payload: { agent: 'orchestrator', tokens: 3000, breakdown: { systemPrompt: 1500, userMessages: 700, toolResults: 0, reasoning: 800, subagentResults: 0 } } },
+  { time: 3.0, type: 'context_update', payload: { agent: 'orchestrator', tokens: 3000, breakdown: { segments: [{ label: 'System prompt', tokens: 1500 }, { label: 'Messages', tokens: 700 }, { label: 'Tool results', tokens: 0 }, { label: 'Reasoning', tokens: 800 }, { label: 'Subagent results', tokens: 0 }] } } },
 
   // ── Phase 1: Codebase Exploration ─────────────────────────────────────────
   { time: 4.0, type: 'tool_call_start', payload: { agent: 'orchestrator', tool: 'Glob', args: 'src/**/*.ts', inputData: { pattern: 'src/**/*.ts' } } },
   { time: 4.3, type: 'tool_call_end', payload: { agent: 'orchestrator', tool: 'Glob', result: '47 files matched', tokenCost: 500 } },
-  { time: 4.3, type: 'context_update', payload: { agent: 'orchestrator', tokens: 4200, breakdown: { systemPrompt: 1500, userMessages: 700, toolResults: 500, reasoning: 1500, subagentResults: 0 } } },
+  { time: 4.3, type: 'context_update', payload: { agent: 'orchestrator', tokens: 4200, breakdown: { segments: [{ label: 'System prompt', tokens: 1500 }, { label: 'Messages', tokens: 700 }, { label: 'Tool results', tokens: 500 }, { label: 'Reasoning', tokens: 1500 }, { label: 'Subagent results', tokens: 0 }] } } },
 
   { time: 4.5, type: 'tool_call_start', payload: { agent: 'orchestrator', tool: 'Read', args: 'src/services/payment.ts', inputData: { file_path: 'src/services/payment.ts' } } },
   { time: 4.8, type: 'tool_call_end', payload: { agent: 'orchestrator', tool: 'Read', result: 'payment.ts — 234 lines, legacy payment processor with direct Stripe v2 API calls', tokenCost: 3500, discovery: { type: 'file', label: 'src/services/payment.ts', content: 'Legacy processor, 234 lines\nDirect Stripe v2 calls (outdated)\nNo PayPal support' } } },
@@ -45,7 +45,7 @@ const NORMAL_MOCK_SCENARIO: SimulationEvent[] = [
 
   { time: 5.5, type: 'tool_call_start', payload: { agent: 'orchestrator', tool: 'Grep', args: '"stripe|paypal|payment" --type ts', inputData: { pattern: 'stripe|paypal|payment', type: 'ts' } } },
   { time: 5.8, type: 'tool_call_end', payload: { agent: 'orchestrator', tool: 'Grep', result: '28 matches in 9 files — concentrated in services/ and routes/', tokenCost: 700, discovery: { type: 'pattern', label: 'Payment references', content: '28 matches across 9 files\nConcentrated in services/ and routes/\nNo webhook handling found' } } },
-  { time: 6.0, type: 'context_update', payload: { agent: 'orchestrator', tokens: 11500, breakdown: { systemPrompt: 1500, userMessages: 700, toolResults: 6500, reasoning: 2800, subagentResults: 0 } } },
+  { time: 6.0, type: 'context_update', payload: { agent: 'orchestrator', tokens: 11500, breakdown: { segments: [{ label: 'System prompt', tokens: 1500 }, { label: 'Messages', tokens: 700 }, { label: 'Tool results', tokens: 6500 }, { label: 'Reasoning', tokens: 2800 }, { label: 'Subagent results', tokens: 0 }] } } },
 
   // ── Phase 2: Planning (thinking — deciding on approach) ───────────────────
   { time: 8.0, type: 'tool_call_start', payload: { agent: 'orchestrator', tool: 'TodoWrite', args: 'planning implementation', inputData: {
@@ -68,8 +68,8 @@ const NORMAL_MOCK_SCENARIO: SimulationEvent[] = [
   { time: 9.9, type: 'subagent_dispatch', payload: { parent: 'orchestrator', child: 'research-agent', task: 'Research Stripe & PayPal API patterns' } },
   { time: 10.2, type: 'agent_spawn', payload: { name: 'explore-agent', parent: 'orchestrator', task: 'Analyze payment flow and database schema' } },
   { time: 10.2, type: 'agent_spawn', payload: { name: 'research-agent', parent: 'orchestrator', task: 'Research Stripe & PayPal integration patterns' } },
-  { time: 10.5, type: 'context_update', payload: { agent: 'explore-agent', tokens: 1800, breakdown: { systemPrompt: 1400, userMessages: 400, toolResults: 0, reasoning: 0, subagentResults: 0 } } },
-  { time: 10.5, type: 'context_update', payload: { agent: 'research-agent', tokens: 1800, breakdown: { systemPrompt: 1400, userMessages: 400, toolResults: 0, reasoning: 0, subagentResults: 0 } } },
+  { time: 10.5, type: 'context_update', payload: { agent: 'explore-agent', tokens: 1800, breakdown: { segments: [{ label: 'System prompt', tokens: 1400 }, { label: 'Messages', tokens: 400 }, { label: 'Tool results', tokens: 0 }, { label: 'Reasoning', tokens: 0 }, { label: 'Subagent results', tokens: 0 }] } } },
+  { time: 10.5, type: 'context_update', payload: { agent: 'research-agent', tokens: 1800, breakdown: { segments: [{ label: 'System prompt', tokens: 1400 }, { label: 'Messages', tokens: 400 }, { label: 'Tool results', tokens: 0 }, { label: 'Reasoning', tokens: 0 }, { label: 'Subagent results', tokens: 0 }] } } },
 
   // explore-agent: reads model file (1.5s initial thinking)
   { time: 12.0, type: 'tool_call_start', payload: { agent: 'explore-agent', tool: 'Read', args: 'src/models/payment.model.ts', inputData: { file_path: 'src/models/payment.model.ts' } } },
@@ -82,7 +82,7 @@ const NORMAL_MOCK_SCENARIO: SimulationEvent[] = [
   // explore-agent: grep for error handling (immediate)
   { time: 13.0, type: 'tool_call_start', payload: { agent: 'explore-agent', tool: 'Grep', args: '"catch|error|throw" src/services/', inputData: { pattern: 'catch|error|throw', path: 'src/services/' } } },
   { time: 13.3, type: 'tool_call_end', payload: { agent: 'explore-agent', tool: 'Grep', result: '15 matches — minimal error handling, no retry logic', tokenCost: 500, discovery: { type: 'finding', label: 'Weak error handling', content: 'No retry logic in payment flow\nGeneric catch blocks only\nNo idempotency keys' } } },
-  { time: 13.5, type: 'context_update', payload: { agent: 'explore-agent', tokens: 6500, breakdown: { systemPrompt: 1400, userMessages: 400, toolResults: 2500, reasoning: 2200, subagentResults: 0 } } },
+  { time: 13.5, type: 'context_update', payload: { agent: 'explore-agent', tokens: 6500, breakdown: { segments: [{ label: 'System prompt', tokens: 1400 }, { label: 'Messages', tokens: 400 }, { label: 'Tool results', tokens: 2500 }, { label: 'Reasoning', tokens: 2200 }, { label: 'Subagent results', tokens: 0 }] } } },
   { time: 14.0, type: 'subagent_return', payload: { child: 'explore-agent', parent: 'orchestrator', summary: 'Legacy Stripe v2 direct calls, Prisma Payment model, weak error handling, no webhooks' } },
   { time: 14.0, type: 'agent_complete', payload: { name: 'explore-agent' } },
 
@@ -97,12 +97,12 @@ const NORMAL_MOCK_SCENARIO: SimulationEvent[] = [
   // research-agent: second search for PayPal (immediate — slow: network)
   { time: 18.4, type: 'tool_call_start', payload: { agent: 'research-agent', tool: 'WebSearch', args: 'PayPal Orders API v2 Node.js SDK', inputData: { query: 'PayPal Orders API v2 Node.js SDK 2026' } } },
   { time: 20.7, type: 'tool_call_end', payload: { agent: 'research-agent', tool: 'WebSearch', result: '8 results — PayPal Checkout Server SDK with Orders API v2', tokenCost: 2000 } },
-  { time: 21.0, type: 'context_update', payload: { agent: 'research-agent', tokens: 12000, breakdown: { systemPrompt: 1400, userMessages: 400, toolResults: 8500, reasoning: 1700, subagentResults: 0 } } },
+  { time: 21.0, type: 'context_update', payload: { agent: 'research-agent', tokens: 12000, breakdown: { segments: [{ label: 'System prompt', tokens: 1400 }, { label: 'Messages', tokens: 400 }, { label: 'Tool results', tokens: 8500 }, { label: 'Reasoning', tokens: 1700 }, { label: 'Subagent results', tokens: 0 }] } } },
   { time: 21.5, type: 'subagent_return', payload: { child: 'research-agent', parent: 'orchestrator', summary: 'Stripe PaymentIntents + webhooks, PayPal Orders API v2, both have Node.js SDKs' } },
   { time: 21.5, type: 'agent_complete', payload: { name: 'research-agent' } },
 
   // ── Phase 4: Implementation (thinking — planning implementation) ──────────
-  { time: 22.0, type: 'context_update', payload: { agent: 'orchestrator', tokens: 25000, breakdown: { systemPrompt: 1500, userMessages: 700, toolResults: 6500, reasoning: 6300, subagentResults: 10000 } } },
+  { time: 22.0, type: 'context_update', payload: { agent: 'orchestrator', tokens: 25000, breakdown: { segments: [{ label: 'System prompt', tokens: 1500 }, { label: 'Messages', tokens: 700 }, { label: 'Tool results', tokens: 6500 }, { label: 'Reasoning', tokens: 6300 }, { label: 'Subagent results', tokens: 10000 }] } } },
   { time: 22.5, type: 'message', payload: { agent: 'orchestrator', role: 'thinking', content: 'Both agents returned. I\'ll use the strategy pattern — a PaymentGateway with adapters for Stripe (PaymentIntents) and PayPal (Orders API v2). Need to install SDKs first, then write the abstraction layer.' } },
   { time: 23.5, type: 'message', payload: { agent: 'orchestrator', content: 'Research complete. Installing dependencies and implementing the payment gateway...' } },
 
@@ -134,13 +134,13 @@ const NORMAL_MOCK_SCENARIO: SimulationEvent[] = [
   { time: 31.7, type: 'tool_call_start', payload: { agent: 'orchestrator', tool: 'Edit', args: 'src/routes/checkout.ts', inputData: { file_path: 'src/routes/checkout.ts', old_string: "router.post('/checkout')", new_string: "router.post('/checkout')\nrouter.post('/webhooks/stripe', stripeWebhook)\nrouter.post('/webhooks/paypal', paypalWebhook)" } } },
   { time: 32.0, type: 'tool_call_end', payload: { agent: 'orchestrator', tool: 'Edit', result: 'Added webhook routes to checkout.ts', tokenCost: 180 } },
 
-  { time: 32.2, type: 'context_update', payload: { agent: 'orchestrator', tokens: 38000, breakdown: { systemPrompt: 1500, userMessages: 700, toolResults: 12500, reasoning: 13300, subagentResults: 10000 } } },
+  { time: 32.2, type: 'context_update', payload: { agent: 'orchestrator', tokens: 38000, breakdown: { segments: [{ label: 'System prompt', tokens: 1500 }, { label: 'Messages', tokens: 700 }, { label: 'Tool results', tokens: 12500 }, { label: 'Reasoning', tokens: 13300 }, { label: 'Subagent results', tokens: 10000 }] } } },
   { time: 33.0, type: 'message', payload: { agent: 'orchestrator', content: 'Core implementation done. Dispatching test agent for comprehensive testing...' } },
 
   // ── Phase 5: Testing ──────────────────────────────────────────────────────
   { time: 33.5, type: 'subagent_dispatch', payload: { parent: 'orchestrator', child: 'test-runner', task: 'Write and run integration tests for payment adapters and webhooks' } },
   { time: 33.8, type: 'agent_spawn', payload: { name: 'test-runner', parent: 'orchestrator', task: 'Write and run payment integration tests' } },
-  { time: 34.0, type: 'context_update', payload: { agent: 'test-runner', tokens: 2000, breakdown: { systemPrompt: 1400, userMessages: 600, toolResults: 0, reasoning: 0, subagentResults: 0 } } },
+  { time: 34.0, type: 'context_update', payload: { agent: 'test-runner', tokens: 2000, breakdown: { segments: [{ label: 'System prompt', tokens: 1400 }, { label: 'Messages', tokens: 600 }, { label: 'Tool results', tokens: 0 }, { label: 'Reasoning', tokens: 0 }, { label: 'Subagent results', tokens: 0 }] } } },
 
   // Write test files (1.5s initial thinking, then chain immediately)
   { time: 35.5, type: 'tool_call_start', payload: { agent: 'test-runner', tool: 'Write', args: 'src/__tests__/stripe-adapter.test.ts', inputData: { file_path: 'src/__tests__/stripe-adapter.test.ts' } } },
@@ -182,12 +182,12 @@ const NORMAL_MOCK_SCENARIO: SimulationEvent[] = [
   { time: 51.5, type: 'tool_call_start', payload: { agent: 'test-runner', tool: 'Bash', args: 'npm test -- --coverage 2>&1 | tail -30', inputData: { command: 'npm test -- --coverage 2>&1 | tail -30', description: 'Final test run' } } },
   { time: 56.0, type: 'tool_call_end', payload: { agent: 'test-runner', tool: 'Bash', result: 'Test Suites: 3 passed, 3 total\nTests: 18 passed, 18 total\nCoverage: 91.3% stmts, 87.2% branches', tokenCost: 400, discovery: { type: 'finding', label: 'All 18 tests pass', content: '18/18 tests passing\n91.3% statement coverage\n87.2% branch coverage' } } },
 
-  { time: 56.3, type: 'context_update', payload: { agent: 'test-runner', tokens: 8500, breakdown: { systemPrompt: 1400, userMessages: 600, toolResults: 3500, reasoning: 3000, subagentResults: 0 } } },
+  { time: 56.3, type: 'context_update', payload: { agent: 'test-runner', tokens: 8500, breakdown: { segments: [{ label: 'System prompt', tokens: 1400 }, { label: 'Messages', tokens: 600 }, { label: 'Tool results', tokens: 3500 }, { label: 'Reasoning', tokens: 3000 }, { label: 'Subagent results', tokens: 0 }] } } },
   { time: 56.5, type: 'subagent_return', payload: { child: 'test-runner', parent: 'orchestrator', summary: '18 tests passing with 91% coverage, fixed webhook error classification' } },
   { time: 56.5, type: 'agent_complete', payload: { name: 'test-runner' } },
 
   // ── Phase 6: Final Verification (thinking — deciding on final steps) ──────
-  { time: 57.0, type: 'context_update', payload: { agent: 'orchestrator', tokens: 48000, breakdown: { systemPrompt: 1500, userMessages: 700, toolResults: 12500, reasoning: 16800, subagentResults: 16500 } } },
+  { time: 57.0, type: 'context_update', payload: { agent: 'orchestrator', tokens: 48000, breakdown: { segments: [{ label: 'System prompt', tokens: 1500 }, { label: 'Messages', tokens: 700 }, { label: 'Tool results', tokens: 12500 }, { label: 'Reasoning', tokens: 16800 }, { label: 'Subagent results', tokens: 16500 }] } } },
   { time: 58.0, type: 'message', payload: { agent: 'orchestrator', content: 'Tests passing. Running type check and final verification...' } },
 
   { time: 58.5, type: 'tool_call_start', payload: { agent: 'orchestrator', tool: 'Bash', args: 'npx tsc --noEmit 2>&1', inputData: { command: 'npx tsc --noEmit 2>&1', description: 'TypeScript type checking' } } },
@@ -207,7 +207,7 @@ const NORMAL_MOCK_SCENARIO: SimulationEvent[] = [
   } } },
   { time: 62.4, type: 'tool_call_end', payload: { agent: 'orchestrator', tool: 'TodoWrite', result: 'All 8 tasks completed', tokenCost: 80 } },
 
-  { time: 62.7, type: 'context_update', payload: { agent: 'orchestrator', tokens: 50000, breakdown: { systemPrompt: 1500, userMessages: 700, toolResults: 12780, reasoning: 18520, subagentResults: 16500 } } },
+  { time: 62.7, type: 'context_update', payload: { agent: 'orchestrator', tokens: 50000, breakdown: { segments: [{ label: 'System prompt', tokens: 1500 }, { label: 'Messages', tokens: 700 }, { label: 'Tool results', tokens: 12780 }, { label: 'Reasoning', tokens: 18520 }, { label: 'Subagent results', tokens: 16500 }] } } },
   { time: 64.0, type: 'message', payload: { agent: 'orchestrator', content: 'Payment system refactored successfully. Created Stripe and PayPal adapters with a unified gateway using the strategy pattern, added webhook handling with signature verification, and all 18 integration tests pass with 91% coverage.' } },
   { time: 65.0, type: 'agent_complete', payload: { name: 'orchestrator' } },
 ]

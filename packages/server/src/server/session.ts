@@ -154,6 +154,7 @@ import {
 } from "./agent/agent-teams.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
+import { selectArchivedForDeletion } from "./agent/history-retention.js";
 import {
   ImportSessionsRequestError,
   importProviderSession,
@@ -245,6 +246,7 @@ import type pino from "pino";
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { LoopService } from "./loop-service.js";
 import type { LspService } from "./lsp/service.js";
+import { SolutionService } from "./solution-model/service.js";
 import { ScheduleService } from "./schedule/service.js";
 import type { RunService } from "./orchestration/run-service.js";
 import type { GraphStore } from "./orchestration/graph-store.js";
@@ -528,6 +530,18 @@ function resolveProjectLinkStore(store: ProjectLinkStore | undefined): ProjectLi
   return store ?? createNoopProjectLinkStore();
 }
 
+/**
+ * Same reason as above. A service with the feature off is the correct fallback for a harness that
+ * constructs none: it reports no solutions, which is exactly what a daemon with the switch off
+ * does, so nothing downstream has to distinguish the two.
+ */
+function resolveSolutionService(
+  service: SolutionService | undefined,
+  logger: pino.Logger,
+): SolutionService {
+  return service ?? new SolutionService({ logger });
+}
+
 export interface SessionOptions {
   clientId: string;
   appVersion?: string | null;
@@ -545,6 +559,12 @@ export interface SessionOptions {
   downloadTokenStore: DownloadTokenStore;
   /** Daemon-scoped: one language-server pool shared by every client session. */
   lspService: LspService;
+  /**
+   * Daemon-scoped: one solution-sidecar pool and model cache shared by every client session.
+   * Optional so the many test harnesses need not construct one; production always supplies it and
+   * the fallback is a service with the feature off, which is the correct default anyway.
+   */
+  solutionService?: SolutionService;
   pushTokenStore: PushTokenStore;
   ottoHome: string;
   worktreesRoot?: string;
@@ -713,6 +733,8 @@ export class Session {
   private readonly worktreesRoot: string | undefined;
   /** Daemon-scoped, shared with every other session. Held here for archive teardown. */
   private readonly lspService: LspService;
+  /** Same, for the solution sidecars — a directory nobody points at any more must not keep one. */
+  private readonly solutionService: SolutionService;
 
   private agentManager: AgentManager;
   private readonly runService: RunService | null | undefined;
@@ -814,6 +836,7 @@ export class Session {
       logger,
       downloadTokenStore,
       lspService,
+      solutionService,
       pushTokenStore,
       ottoHome,
       worktreesRoot,
@@ -891,6 +914,7 @@ export class Session {
       clientId: this.clientId,
       sessionId: this.sessionId,
     });
+    this.solutionService = resolveSolutionService(solutionService, this.sessionLogger);
     this.workspaceFilesSession = new WorkspaceFilesSession({
       host: {
         emit: (msg) => this.emit(msg),
@@ -899,6 +923,10 @@ export class Session {
       },
       downloadTokenStore,
       lspService,
+      // A service with the feature off is the correct fallback: a harness that constructs no
+      // solution service gets a Solution view that reports no solutions, which is exactly what a
+      // daemon with the switch off does.
+      solutionService: this.solutionService,
       ottoHome,
       logger: this.sessionLogger,
       // Cross-workspace file access is bounded to the distinct paths of every
@@ -2240,6 +2268,8 @@ export class Session {
         return this.handleArchiveAgentRequest(msg.agentId, msg.requestId);
       case "close_items_request":
         return this.handleCloseItemsRequest(msg);
+      case "history.agents.clear_archived.request":
+        return this.handleHistoryAgentsClearArchivedRequest(msg);
       case "update_agent_request":
         return this.handleUpdateAgentRequest(msg.agentId, msg.name, msg.labels, msg.requestId);
       case "project.rename.request":
@@ -2973,6 +3003,15 @@ export class Session {
         return this.workspaceFilesSession.handleLspServerStopRequest(msg);
       case "code.outline.request":
         return this.workspaceFilesSession.handleCodeOutlineRequest(msg);
+      // The Solution view. Under `code.` and dispatched here, but independent of everything
+      // above it: LSP has no project-structure request, so this reads solutions through its own
+      // subsystem and is unaffected by the C# row's on/off state.
+      case "code.solution.list.request":
+        return this.workspaceFilesSession.handleCodeSolutionListRequest(msg);
+      case "code.solution.get_tree.request":
+        return this.workspaceFilesSession.handleCodeSolutionGetTreeRequest(msg);
+      case "code.solution.load_project.request":
+        return this.workspaceFilesSession.handleCodeSolutionLoadProjectRequest(msg);
       default:
         return undefined;
     }
@@ -3542,9 +3581,23 @@ export class Session {
     }
   }
 
-  private async handleDeleteAgentRequest(agentId: string, requestId: string): Promise<void> {
-    this.sessionLogger.info({ agentId }, `Deleting agent ${agentId} from registry`);
-
+  /**
+   * Hard-delete one chat's Otto record: fence, close the runtime, drain queued
+   * persistence, unlink the JSON, drop the committed timeline. Shared by the
+   * single-row `delete_agent_request` and the bulk archived sweep, so the two can
+   * never diverge on what "delete" means.
+   *
+   * It deletes **Otto's record only.** The provider's own transcript on disk
+   * (Claude's `<projects>/<sessionId>.jsonl` and its sibling subagent tree, Codex
+   * threads, OpenCode sessions) is left in place by design — Otto never created
+   * it, `claude --resume` still reads it, and deleting another tool's state is
+   * not ours to do. The UI discloses that rather than staying silent about it.
+   * See docs/chat-lifecycle.md — Delete.
+   *
+   * Returns the workspace id the record belonged to, so the caller can refresh
+   * workspace counts once per affected workspace instead of once per chat.
+   */
+  private async deleteAgentRecord(agentId: string): Promise<string | null> {
     const knownWorkspaceId =
       this.agentManager.getAgent(agentId)?.workspaceId ??
       (await this.agentStorage.get(agentId))?.workspaceId ??
@@ -3566,9 +3619,20 @@ export class Session {
     // durable snapshot, otherwise an in-flight background write can recreate it.
     await this.agentManager.flush();
 
+    await this.agentStorage.remove(agentId);
+    await this.agentManager.deleteCommittedTimeline(agentId);
+
+    this.agentUpdates.removeAgent(agentId);
+
+    return knownWorkspaceId;
+  }
+
+  private async handleDeleteAgentRequest(agentId: string, requestId: string): Promise<void> {
+    this.sessionLogger.info({ agentId }, `Deleting agent ${agentId} from registry`);
+
+    let knownWorkspaceId: string | null = null;
     try {
-      await this.agentStorage.remove(agentId);
-      await this.agentManager.deleteCommittedTimeline(agentId);
+      knownWorkspaceId = await this.deleteAgentRecord(agentId);
     } catch (error) {
       this.sessionLogger.error({ err: error, agentId }, `Failed to fully delete agent ${agentId}`);
     }
@@ -3581,11 +3645,98 @@ export class Session {
       },
     });
 
-    this.agentUpdates.removeAgent(agentId);
-
     if (knownWorkspaceId) {
       await this.emitWorkspaceUpdateForWorkspaceId(knownWorkspaceId);
     }
+  }
+
+  /**
+   * Bulk clear of archived chats. Server-side because the client's history list
+   * is cursor-paginated across hosts and never holds the whole archived set, so
+   * a client-side loop would silently clear only the pages it happened to have.
+   *
+   * `dryRun` exists so the confirm dialog can quote a real number back to the
+   * user before anything is destroyed. Same rule as the single delete: Otto's
+   * records only, never a provider's transcript — clearing in bulk is not a back
+   * door around that.
+   */
+  private async handleHistoryAgentsClearArchivedRequest(
+    msg: Extract<SessionInboundMessage, { type: "history.agents.clear_archived.request" }>,
+  ): Promise<void> {
+    const emitResult = (payload: {
+      matched: number;
+      deleted: number;
+      failed: number;
+      agentIds: string[];
+      error: string | null;
+    }) => {
+      this.emit({
+        type: "history.agents.clear_archived.response",
+        payload: { ...payload, dryRun: msg.dryRun, requestId: msg.requestId },
+      });
+    };
+
+    let agentIds: string[];
+    try {
+      agentIds = selectArchivedForDeletion({
+        records: await this.agentStorage.list(),
+        olderThanDays: msg.olderThanDays,
+        now: Date.now(),
+      });
+    } catch (error) {
+      const message = getErrorMessageOr(error, "Failed to list archived chats");
+      this.sessionLogger.error({ err: error, requestId: msg.requestId }, message);
+      emitResult({ matched: 0, deleted: 0, failed: 0, agentIds: [], error: message });
+      return;
+    }
+
+    if (msg.dryRun) {
+      emitResult({
+        matched: agentIds.length,
+        deleted: 0,
+        failed: 0,
+        agentIds: [],
+        error: null,
+      });
+      return;
+    }
+
+    this.sessionLogger.info(
+      { count: agentIds.length, olderThanDays: msg.olderThanDays, requestId: msg.requestId },
+      "Clearing archived chat records",
+    );
+
+    // Sequential on purpose: each delete closes a runtime, flushes the agent
+    // manager, and unlinks files. Hundreds of those in parallel would thrash the
+    // shared write queue for no wall-clock gain on a rare, explicit action.
+    const deleted: string[] = [];
+    const affectedWorkspaceIds = new Set<string>();
+    let failed = 0;
+    for (const agentId of agentIds) {
+      try {
+        const workspaceId = await this.deleteAgentRecord(agentId);
+        deleted.push(agentId);
+        if (workspaceId) {
+          affectedWorkspaceIds.add(workspaceId);
+        }
+      } catch (error) {
+        failed += 1;
+        this.sessionLogger.warn(
+          { err: error, agentId, requestId: msg.requestId },
+          "Failed to delete archived chat during clear",
+        );
+      }
+    }
+
+    emitResult({
+      matched: agentIds.length,
+      deleted: deleted.length,
+      failed,
+      agentIds: deleted,
+      error: null,
+    });
+
+    await this.emitWorkspaceUpdatesForWorkspaceIds(affectedWorkspaceIds, { skipReconcile: true });
   }
 
   private async handleArchiveAgentRequest(agentId: string, requestId: string): Promise<void> {
@@ -3960,7 +4111,7 @@ export class Session {
         await stopLanguageServersForArchivedDirectories(
           {
             listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
-            stopLanguageServers: (rootPath) => this.lspService.stopWorkspace(rootPath),
+            stopLanguageServers: (rootPath) => this.stopWorkspaceProcesses(rootPath),
             sessionLogger: this.sessionLogger,
           },
           {
@@ -5407,7 +5558,7 @@ export class Session {
         clearWorkspaceArchiving: (workspaceIds) => this.clearWorkspaceArchiving(workspaceIds),
         killTerminalsForWorkspace: (workspaceId) =>
           this.terminalController.killTerminalsForWorkspace(workspaceId),
-        stopLanguageServers: (rootPath) => this.lspService.stopWorkspace(rootPath),
+        stopLanguageServers: (rootPath) => this.stopWorkspaceProcesses(rootPath),
         sessionLogger: this.sessionLogger,
       },
       msg,
@@ -6207,6 +6358,19 @@ export class Session {
       );
     });
     return result;
+  }
+
+  /**
+   * Every long-lived process this daemon keeps per workspace directory, released together.
+   *
+   * Named for what it does rather than for the language servers it started as: the archive
+   * teardown's last-reference rule is the same for both subsystems, and a second parallel hook
+   * would be a second thing to forget when a third subsystem starts a process. Never throws — a
+   * child that refuses to die must not fail an archive that has already happened.
+   */
+  private async stopWorkspaceProcesses(rootPath: string): Promise<void> {
+    await this.lspService.stopWorkspace(rootPath);
+    await this.solutionService.stopWorkspace(rootPath);
   }
 
   private async listActiveWorkspaceRefs(): Promise<ActiveWorkspaceRef[]> {
@@ -7182,7 +7346,7 @@ export class Session {
           clearWorkspaceArchiving: (workspaceIds) => this.clearWorkspaceArchiving(workspaceIds),
           killTerminalsForWorkspace: (workspaceId) =>
             this.terminalController.killTerminalsForWorkspace(workspaceId),
-          stopLanguageServers: (rootPath) => this.lspService.stopWorkspace(rootPath),
+          stopLanguageServers: (rootPath) => this.stopWorkspaceProcesses(rootPath),
           sessionLogger: this.sessionLogger,
         },
         {

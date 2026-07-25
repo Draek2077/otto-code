@@ -13,11 +13,14 @@ import type { AgentManagerEvent, ManagedAgent } from "./agent-manager.js";
 
 interface FinishNotificationScenarioOptions {
   childLastAssistantMessage?: string | null;
+  /** Whether the parent is mid-turn when the child settles. */
+  parentBusy?: boolean;
 }
 
 interface FinishNotificationScenario {
   startWatchingChild(): void;
   finishChildAndReadParentPrompt(): Promise<string>;
+  queuedPrompts: string[];
 }
 
 function createFinishNotificationScenario(
@@ -25,6 +28,7 @@ function createFinishNotificationScenario(
 ): FinishNotificationScenario {
   let subscriber: ((event: AgentManagerEvent) => void) | null = null;
   let resolveParentPrompt: ((prompt: string) => void) | null = null;
+  const queuedPrompts: string[] = [];
 
   const childAgent: ManagedAgent = Object.create(null);
   Reflect.set(childAgent, "id", "child-agent");
@@ -56,7 +60,24 @@ function createFinishNotificationScenario(
     return options?.childLastAssistantMessage ?? null;
   });
   Reflect.set(agentManager, "tryRunOutOfBand", () => false);
-  Reflect.set(agentManager, "hasInFlightRun", () => false);
+  Reflect.set(agentManager, "hasInFlightRun", () => Boolean(options?.parentBusy));
+  // Notify-on-finish sends `delivery: "queue"`, so the enqueue attempt is part
+  // of the path now. An idle parent reports "not queued" and falls through to a
+  // normal dispatch; a busy one takes the prompt.
+  Reflect.set(agentManager, "enqueueSteerMessage", (_agentId: string, prompt: string) => {
+    if (!options?.parentBusy) {
+      return { queued: false };
+    }
+    queuedPrompts.push(prompt);
+    const entry = {
+      id: "queued-1",
+      prompt,
+      enqueuedAt: "2026-07-25T00:00:00.000Z",
+      source: "system",
+    };
+    resolveParentPrompt?.(prompt);
+    return { queued: true, entry };
+  });
   Reflect.set(agentManager, "streamAgent", (_agentId: string, prompt: string) => {
     resolveParentPrompt?.(prompt);
     return (async function* noop() {})();
@@ -99,6 +120,7 @@ function createFinishNotificationScenario(
 
       return parentPrompt;
     },
+    queuedPrompts,
   };
 }
 
@@ -159,6 +181,25 @@ test("finish notifications tell the parent the child's last assistant message", 
       "Agent child-agent (Child Agent) finished.\n\n<agent-response>\nImplemented the cleanup and all checks pass.\n</agent-response>",
     ),
   );
+});
+
+test("a busy parent gets the finish notification queued, not interrupted", async () => {
+  const scenario = createFinishNotificationScenario({
+    childLastAssistantMessage: "Done.",
+    parentBusy: true,
+  });
+
+  scenario.startWatchingChild();
+  await scenario.finishChildAndReadParentPrompt();
+
+  // The whole point: the parent's in-flight turn survives its child reporting
+  // back. With a fan-out this is the difference between the orchestrator
+  // finishing a turn and being interrupted once per child.
+  expect(scenario.queuedPrompts).toEqual([
+    formatSystemNotificationPrompt(
+      "Agent child-agent (Child Agent) finished.\n\n<agent-response>\nDone.\n</agent-response>",
+    ),
+  ]);
 });
 
 it("does not notify archived callers", async () => {

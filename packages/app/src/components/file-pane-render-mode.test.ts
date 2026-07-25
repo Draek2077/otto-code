@@ -43,7 +43,13 @@ describe("renderedDocumentKind", () => {
   it("names the pipeline a file renders through", () => {
     expect(renderedDocumentKind("README.md")).toBe("markdown");
     expect(renderedDocumentKind("docs/flow.mmd")).toBe("mermaid");
+    expect(renderedDocumentKind("archdocs/pages/01-overview.adoc")).toBe("asciidoc");
+    expect(renderedDocumentKind("notes.asciidoc")).toBe("asciidoc");
     expect(renderedDocumentKind("src/index.ts")).toBeNull();
+  });
+
+  it("leaves PGP armored files as source", () => {
+    expect(renderedDocumentKind("release.asc")).toBeNull();
   });
 });
 
@@ -53,6 +59,7 @@ describe("defaultFileViewMode", () => {
     expect(defaultFileViewMode("docs/guide.markdown")).toBe("preview");
     expect(defaultFileViewMode("docs/flow.mmd")).toBe("preview");
     expect(defaultFileViewMode("docs/arch.mermaid")).toBe("preview");
+    expect(defaultFileViewMode("archdocs/pages/01-overview.adoc")).toBe("preview");
     expect(defaultFileViewMode("assets/logo.svg")).toBe("preview");
     expect(defaultFileViewMode("shots/screen.PNG")).toBe("preview");
     expect(defaultFileViewMode("build/app.zip")).toBe("preview");

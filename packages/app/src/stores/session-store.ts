@@ -23,6 +23,7 @@ import type {
   AgentPersistenceHandle,
 } from "@otto-code/protocol/agent-types";
 import type {
+  AgentCumulativeUsage,
   QueuedAgentMessagePayload,
   ServerInfoStatusPayload,
   ProjectPlacementPayload,
@@ -119,6 +120,15 @@ export interface Agent {
    * provider that doesn't report it). See docs/agent-lifecycle.md.
    */
   cumulativeTokens?: number;
+  /**
+   * The same lifetime spend as `cumulativeTokens`, as the real in / cached /
+   * cache-write / out split plus the provider's OWN cost — never a rate-table
+   * estimate. Feeds the chat total (see chat-totals.ts). Absent ⇒ an old daemon
+   * or a provider that reported nothing; `costUsd` absent ⇒ genuinely
+   * unpriceable, which surfaces as a blank rather than a guess.
+   * COMPAT(cumulativeUsage): gated on `features.cumulativeUsage`.
+   */
+  cumulativeUsage?: AgentCumulativeUsage;
   /**
    * Sub-agents-track liveness: how much work this agent has done
    * (`toolUseCount`, cumulative — it survives on a finished row) and what it is

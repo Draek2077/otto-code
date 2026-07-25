@@ -104,6 +104,10 @@ interface TrackedNode {
    * token/cost sums — subagents have this even when they carry no context
    * usage reading). */
   lastCumulativeTokens: number | null;
+  /** Last REAL reported cost pushed to the page. Stays null for a provider
+   * that reports none, which is what keeps the page's dollar figure absent
+   * rather than estimated. */
+  lastCostUsd: number | null;
   /** In-flight streaming message accumulation. The daemon streams assistant/
    * reasoning/user text as DELTAS (Claude's emitNewContent slices off the
    * already-emitted length; other providers chunk similarly), keyed by a
@@ -360,6 +364,7 @@ function ensureNode(
     subAgentDispatchLabels: new Map(),
     lastContextTokens: null,
     lastCumulativeTokens: null,
+    lastCostUsd: null,
     streamingMessage: null,
   };
   state.nodes.set(agentId, node);
@@ -518,25 +523,35 @@ function reconcileAgents(state: AdapterState, agents: readonly Agent[]): void {
 /** Context ring + honest totals: the page draws the main node's context
  * -window ring from context_update `tokens`, and sums each node's
  * `cumulativeTokens` (lifetime total, Otto vendor patch) for the top-bar
- * token/cost readout — context occupancy alone omitted every subagent's
+ * token readout — context occupancy alone omitted every subagent's
  * spend. The live source (turn_completed usage) fires once per turn AND
- * never on backfill, so push from the snapshot whenever either reading moves
- * (subagents typically carry only cumulativeTokens). */
+ * never on backfill, so push from the snapshot whenever any reading moves
+ * (subagents typically carry only cumulativeTokens).
+ *
+ * `costUsd` is the daemon's REAL per-agent cost (`cumulativeUsage.costUsd`),
+ * de-inflated so a parent never carries its sub-agents' spend. It replaces the
+ * page's old tokens × blended-rate estimate outright: a provider that reports
+ * no cost sends nothing here and the page shows no dollar figure, rather than a
+ * confident wrong one. See docs/subagent-accounting.md. */
 function reconcileNodeTokens(state: AdapterState, node: TrackedNode, agent: Agent): void {
   const contextTokens = agent.lastUsage?.contextWindowUsedTokens ?? null;
   const cumulativeTokens = agent.cumulativeTokens ?? null;
+  const costUsd = agent.cumulativeUsage?.costUsd ?? null;
   const contextMoved = contextTokens != null && contextTokens !== node.lastContextTokens;
   const cumulativeMoved =
     cumulativeTokens != null && cumulativeTokens !== node.lastCumulativeTokens;
-  if (!contextMoved && !cumulativeMoved) {
+  const costMoved = costUsd != null && costUsd !== node.lastCostUsd;
+  if (!contextMoved && !cumulativeMoved && !costMoved) {
     return;
   }
   node.lastContextTokens = contextTokens ?? node.lastContextTokens;
   node.lastCumulativeTokens = cumulativeTokens ?? node.lastCumulativeTokens;
+  node.lastCostUsd = costUsd ?? node.lastCostUsd;
   const contextEvent = buildContextUpdateEvent({
     ctx: nodeCtx(node),
     ...(agent.lastUsage ? { usage: agent.lastUsage } : {}),
     ...(cumulativeTokens != null ? { cumulativeTokens } : {}),
+    ...(costUsd != null ? { costUsd } : {}),
     time: toSimTime(state, agent.lastActivityAt.getTime(), node.sessionId),
   });
   if (contextEvent) {

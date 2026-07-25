@@ -17,6 +17,7 @@ import {
   redactAppDiagnosticReport,
 } from "@/diagnostics/app-diagnostic-report";
 import { collectDesktopDiagnosticSections } from "@/diagnostics/desktop-diagnostic-report";
+import { collectResourceDiagnosticSection } from "@/diagnostics/resource-report/start-resource-monitor";
 import { getHostRuntimeStore, useHosts, type HostRuntimeSnapshot } from "@/runtime/host-runtime";
 import type { Theme } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
@@ -101,6 +102,7 @@ export function AppDiagnosticSheet({
           hostCount: hosts.length,
         }),
       );
+      sections.push(collectResourceDiagnosticSection());
       updateRunProgress("client", t("settings.diagnostics.app.progress.client"), "done");
 
       if (isDesktopApp) {

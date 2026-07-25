@@ -1,0 +1,86 @@
+/*
+ * A small design system for a fictional field notebook.
+ * Exercises custom properties, media queries, nesting-free selectors,
+ * keyframes, container queries and modern color functions.
+ */
+
+@layer reset, tokens, components;
+
+@layer tokens {
+  :root {
+    --ink-900: #10161f;
+    --ink-500: #4a5a6e;
+    --paper: #fdfaf3;
+    --accent: oklch(62% 0.14 220);
+    --danger: #c0392b;
+
+    --step-0: clamp(0.95rem, 0.9rem + 0.25vw, 1.05rem);
+    --step-3: clamp(1.8rem, 1.5rem + 1.5vw, 2.6rem);
+
+    --radius: 10px;
+    --shadow: 0 1px 2px rgb(0 0 0 / 8%), 0 8px 24px rgb(0 0 0 / 6%);
+  }
+}
+
+@layer components {
+  .card {
+    background: var(--paper);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.25rem 1.5rem;
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  }
+
+  .card__title {
+    font-size: var(--step-3);
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  .card:has(> .card__badge) {
+    border-inline-start: 4px solid var(--accent);
+  }
+
+  .card__badge::after {
+    content: " ✳";
+    color: var(--accent);
+  }
+
+  .card a:hover,
+  .card a:focus-visible {
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+  }
+}
+
+@container (inline-size < 30rem) {
+  .card {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .card {
+    animation: settle 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  @keyframes settle {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+@media print {
+  .card {
+    box-shadow: none;
+    border: 1px solid var(--ink-500);
+  }
+}

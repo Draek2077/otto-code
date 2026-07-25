@@ -564,6 +564,9 @@ interface ClaudeOptionsLogSummary {
   fastMode: boolean | null;
 }
 
+/** Cap on the submitted-uuid set the interrupt receipt is reconciled against. */
+const SUBMITTED_USER_MESSAGE_ID_LIMIT = 64;
+
 const MAX_RECENT_STDERR_CHARS = 4000;
 const STDERR_FLUSH_WAIT_MS = 150;
 const STDERR_FLUSH_POLL_INTERVAL_MS = 10;
@@ -2347,6 +2350,13 @@ class ClaudeAgentSession implements AgentSession {
   private activeTurnHasAssistantText = false;
   private readonly contextUsage: ClaudeContextUsageState;
   private userMessageIds: string[] = [];
+  /**
+   * Uuids this session stamped onto prompts it pushed into the SDK input
+   * stream. Only used to reconcile the `interrupt_receipt_v1` receipt, whose
+   * `still_queued` list also carries ids the CLI enqueued itself; bounded
+   * because it only needs to cover messages recent enough to still be queued.
+   */
+  private readonly submittedUserMessageIds = new Set<string>();
   private readonly emittedUserMessageIds = new Set<string>();
   private readonly rewindTurnAnchors: ClaudeRewindTurnAnchor[] = [];
   private pendingFreshSessionId: string | null = null;
@@ -3232,6 +3242,22 @@ class ClaudeAgentSession implements AgentSession {
     this.userMessageIds.push(messageId);
   }
 
+  /**
+   * A message can only appear in an interrupt receipt while it is still
+   * queued, so this set only has to cover the recent tail. Evicting oldest-first
+   * past the cap keeps it from growing across a long session.
+   */
+  private rememberSubmittedUserMessageId(messageId: string): void {
+    this.submittedUserMessageIds.add(messageId);
+    while (this.submittedUserMessageIds.size > SUBMITTED_USER_MESSAGE_ID_LIMIT) {
+      const oldest = this.submittedUserMessageIds.values().next();
+      if (oldest.done) {
+        break;
+      }
+      this.submittedUserMessageIds.delete(oldest.value);
+    }
+  }
+
   private rememberEmittedUserMessageId(messageId: string | null | undefined): void {
     if (typeof messageId !== "string" || messageId.length === 0) {
       return;
@@ -3735,6 +3761,7 @@ class ClaudeAgentSession implements AgentSession {
 
     const messageId = randomUUID();
     this.rememberUserMessageId(messageId);
+    this.rememberSubmittedUserMessageId(messageId);
 
     return {
       type: "user",
@@ -4283,21 +4310,45 @@ class ClaudeAgentSession implements AgentSession {
     this.pendingInterruptAbort = true;
     try {
       // interrupt_receipt_v1 CLIs resolve interrupt() with the uuids of queued
-      // async user messages that survive this interrupt and WILL still run
-      // unless cancelled. Nothing consumes it yet — logged for the steer-queue
-      // charter, which needs exactly this to reconcile its queue after an
-      // interrupt. See projects/steer-queue/steer-queue.md.
-      const interruptAndLogReceipt = async (): Promise<void> => {
+      // async user messages that survive this interrupt and WILL still run.
+      // Reconcile it against what THIS session actually submitted: the receipt
+      // also lists ids the CLI enqueued itself (cron triggers, auto-resume
+      // continuations), and the SDK's own guidance is to ignore unknown uuids
+      // rather than treat them as an error. What survives the filter is the
+      // honest answer to "did our interrupt actually withdraw our message?".
+      //
+      // The reconcile is deliberately diagnostic, not corrective. Otto's steer
+      // queue is daemon-owned and sits above every adapter, so the daemon
+      // already decides what runs next for every provider — there is no
+      // provider-side queue for it to re-sync against. And the SDK exposes no
+      // `cancel_async_message` on Query, so a survivor cannot be withdrawn even
+      // if we wanted to. A non-empty list means an interrupt Otto reported as
+      // complete left one of Otto's own messages live in the CLI, which is a
+      // fault worth seeing in daemon.log rather than a state to repair.
+      const interruptAndReadReceipt = async (): Promise<void> => {
         const receipt = await queryToInterrupt.interrupt();
-        if (receipt && receipt.still_queued.length > 0) {
-          this.logger.debug(
-            { agentId: this.agentId, stillQueued: receipt.still_queued },
+        if (!receipt) {
+          return;
+        }
+        const ours = receipt.still_queued.filter((uuid) => this.submittedUserMessageIds.has(uuid));
+        for (const uuid of ours) {
+          this.submittedUserMessageIds.delete(uuid);
+        }
+        if (ours.length > 0) {
+          this.logger.warn(
+            {
+              agentId: this.agentId,
+              provider: "claude",
+              sessionId: this.claudeSessionId,
+              survivingSubmitted: ours,
+              stillQueued: receipt.still_queued,
+            },
             "provider.claude.interrupt.still_queued",
           );
         }
       };
       await this.awaitWithTimeout(
-        interruptAndLogReceipt(),
+        interruptAndReadReceipt(),
         "interruptActiveTurn query.interrupt()",
       );
     } catch (error) {

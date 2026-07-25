@@ -18,6 +18,7 @@ import { useIsFocused } from "@react-navigation/native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { ActivityCounters } from "@otto-code/protocol/messages";
 import type { Theme } from "@/styles/theme";
+import { ClientResourceBar } from "@/components/client-resource-bar";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { formatTokenCount } from "@/components/context-window-meter.utils";
@@ -318,6 +319,10 @@ function StatsScreenContent(): ReactElement {
               divided={index > 0}
             />
           ))}
+          {/* Client-side resource readout, pinned below the host sections: the
+              daemon counters above say what Otto did, this says what it is
+              currently costing the machine it is running on. */}
+          <ClientResourceBar />
           {pinned.length > 0 && (
             <View style={styles.pinnedTotals}>
               {/* Bounded like the rows it totals, so the bar lines up with the

@@ -86,6 +86,7 @@ import {
 } from "@/subagents";
 import { useAutoClearCompletedSubagentsSetting } from "@/hooks/use-auto-clear-completed-subagents";
 import { SubagentsTrack } from "@/subagents/track";
+import { ChatMetricsBar } from "@/subagents/chat-metrics-bar";
 import {
   useBackgroundShellTasksForParent,
   useClearCompletedBackgroundTasks,
@@ -1284,6 +1285,11 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     <RewindComposerRestoreProvider text={agentInputDraft.text} setText={agentInputDraft.setText}>
       <View style={styles.root} onLayout={onPaneLayout}>
         <FileDropZone style={styles.container} disabled={isArchivingCurrentAgent}>
+          {/* Above the transcript, at toolbar weight: this chat's total spend
+              and everything spawned under it. Off unless switched on in
+              Settings. See subagents/chat-metrics-bar.tsx. */}
+          <ChatMetricsBar serverId={serverId} agentId={agentId} />
+
           {contentContainer}
 
           {composerSection}

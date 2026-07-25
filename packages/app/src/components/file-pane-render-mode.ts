@@ -12,14 +12,25 @@ export function isRenderedMermaidFile(filePath: string): boolean {
 }
 
 /**
+ * An AsciiDoc document. `.asc` is deliberately excluded — it collides with PGP
+ * armored files, and `.adoc`/`.asciidoc` are what the highlight package already
+ * names (packages/highlight/src/language-names.ts).
+ */
+export function isRenderedAsciiDocFile(filePath: string): boolean {
+  const normalizedPath = filePath.trim().toLowerCase();
+  return normalizedPath.endsWith(".adoc") || normalizedPath.endsWith(".asciidoc");
+}
+
+/**
  * Which kind of document the viewer renders through the markdown pipeline
  * instead of showing as highlighted source. `null` means "show the source".
  */
-export type RenderedDocumentKind = "markdown" | "mermaid";
+export type RenderedDocumentKind = "markdown" | "mermaid" | "asciidoc";
 
 export function renderedDocumentKind(filePath: string): RenderedDocumentKind | null {
   if (isRenderedMarkdownFile(filePath)) return "markdown";
   if (isRenderedMermaidFile(filePath)) return "mermaid";
+  if (isRenderedAsciiDocFile(filePath)) return "asciidoc";
   return null;
 }
 
@@ -90,7 +101,7 @@ function fileExtension(filePath: string): string {
  * the editor. An explicit choice, remembered per file, always wins.
  */
 export function defaultFileViewMode(filePath: string): FileViewMode {
-  if (isRenderedMarkdownFile(filePath) || isRenderedMermaidFile(filePath)) {
+  if (renderedDocumentKind(filePath) !== null) {
     return "preview";
   }
   return PREVIEW_FIRST_EXTENSIONS.has(fileExtension(filePath)) ? "preview" : "editor";

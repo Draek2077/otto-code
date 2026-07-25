@@ -154,6 +154,7 @@ const APP_SETTINGS_UPDATE_KEYS = [
   "suggestedTasksEnabled",
   "suggestedTasksDefaultMode",
   "verticalTabRailWidth",
+  "resourceMonitorEnabled",
 ] as const satisfies readonly (keyof AppSettings)[];
 
 function collectAppSettingsUpdates(updates: Partial<Settings>): Partial<AppSettings> {

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { HighlightToken } from "@otto-code/highlight";
@@ -47,12 +47,19 @@ export function CodeResultGroupHeader({
   count,
   collapsed,
   onToggle,
+  trailing,
   testID,
 }: {
   path: string;
   count: number;
   collapsed: boolean;
   onToggle: (path: string) => void;
+  /**
+   * Per-file control parked at the end of the heading — Refine's keep/drop
+   * switch. Inside the heading's own Pressable, so anything rendered here must
+   * stop its own press from reaching the fold (`Switch` already does).
+   */
+  trailing?: ReactNode;
   testID?: string;
 }) {
   const { head, tail } = useMemo(() => splitPath(path), [path]);
@@ -77,6 +84,7 @@ export function CodeResultGroupHeader({
       </Text>
       <View style={styles.spacer} />
       <Text style={styles.groupCount}>{count}</Text>
+      {trailing}
     </Pressable>
   );
 }

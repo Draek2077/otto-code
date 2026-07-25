@@ -116,12 +116,13 @@ describe("translation resources", () => {
 
   it("keeps non-English supported languages translated beyond fallback labels", () => {
     const totalStrings = Object.keys(flattenStrings(en)).length;
-    // 0.3 (was 0.29, before that 0.28 and 0.25): each English-mirrored batch
-    // (chat wording unification, git action descriptions, text-effect themes,
-    // git file history) adds untranslated keys per the i18n convention
-    // (translation happens in a later pass). Tighten back down once that
-    // translation pass lands.
-    const maxFallbackStrings = Math.floor(totalStrings * 0.3);
+    // 0.08 after the Batch 5B full translation pass drained the backlog (peak
+    // was 0.30). What still matches English is deliberate: brand and product
+    // names (GitHub, Bitbucket Cloud, OpenAI, Otto), quote attributions, code
+    // placeholders (`sk-…`, `claude`, `my-project`), and pure-interpolation
+    // strings. Raise this only for a genuine mid-flight batch, and lower it
+    // again in the pass that translates that batch.
+    const maxFallbackStrings = Math.floor(totalStrings * 0.08);
     expect(countMatchingEnglishStrings(ar)).toBeLessThan(maxFallbackStrings);
     expect(countMatchingEnglishStrings(es)).toBeLessThan(maxFallbackStrings);
     expect(countMatchingEnglishStrings(fr)).toBeLessThan(maxFallbackStrings);

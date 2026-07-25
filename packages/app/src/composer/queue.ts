@@ -5,6 +5,7 @@ import type { AttachmentMetadata, ComposerAttachment } from "@/attachments/types
 import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
 import {
   editQueuedComposerMessage,
+  moveQueuedComposerMessage,
   queueComposerMessage,
   type QueueWriter,
 } from "@/composer/actions";
@@ -25,6 +26,12 @@ export interface ComposerQueueController {
   enqueue: (text: string, attachments: ComposerAttachment[]) => Promise<void>;
   /** Pull a message back out (to edit it, or to send it right now). */
   take: (id: string) => Promise<ComposerQueueItem | null>;
+  /**
+   * Move a message one place earlier or later. Null when this host cannot
+   * re-order, which is what hides the controls — order is still meaningful,
+   * there is just no way to change it here.
+   */
+  move: ((id: string, direction: "up" | "down") => Promise<void>) | null;
 }
 
 const EMPTY_ITEMS: readonly ComposerQueueItem[] = [];
@@ -55,6 +62,7 @@ export function useComposerQueue(input: {
 }): ComposerQueueController {
   const { serverId, agentId, client, encodeImages } = input;
   const daemonOwnsQueue = useHostFeature(serverId, "steerQueue");
+  const daemonCanReorder = useHostFeature(serverId, "steerQueueReorder");
 
   const setQueuedMessages = useSessionStore((state) => state.setQueuedMessages);
   const localItems = useSessionStore(
@@ -142,5 +150,32 @@ export function useComposerQueue(input: {
     [agentId, client, daemonOwnsQueue, queueWriter],
   );
 
-  return { items, enqueue, take };
+  // A daemon that owns the queue but predates agent.queue.reorder has no way to
+  // move an entry, so the controls are absent rather than faked client-side —
+  // the order the daemon holds is the one that runs.
+  const canReorder = daemonOwnsQueue ? daemonCanReorder && Boolean(client) : true;
+
+  const move = useCallback(
+    async (id: string, direction: "up" | "down") => {
+      const from = items.findIndex((item) => item.id === id);
+      if (from === -1) {
+        return;
+      }
+      const toIndex = direction === "up" ? from - 1 : from + 1;
+      if (toIndex < 0 || toIndex >= items.length) {
+        return;
+      }
+      if (!daemonOwnsQueue) {
+        moveQueuedComposerMessage({ agentId, messageId: id, toIndex, queue: queueWriter });
+        return;
+      }
+      if (!client) {
+        throw new Error("Not connected");
+      }
+      await client.reorderQueuedAgentMessage(agentId, id, toIndex);
+    },
+    [agentId, client, daemonOwnsQueue, items, queueWriter],
+  );
+
+  return { items, enqueue, take, move: canReorder ? move : null };
 }

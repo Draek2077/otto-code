@@ -137,6 +137,16 @@ export class UsageLogStore {
       }
       this.cache = { version: 1, events: [] };
     }
+    // Retention is an *age* window, so it has to apply at rest too. Trimming
+    // only inside append() meant a daemon that booted and recorded no new usage
+    // served rows arbitrarily older than the window — the window silently
+    // stopped existing the moment the machine went quiet. Doing it here rather
+    // than in getPage() keeps reads pure in-memory slices.
+    const trimmed = trim(this.cache.events, Date.now());
+    if (trimmed.length !== this.cache.events.length) {
+      this.cache.events = trimmed;
+      this.scheduleWrite();
+    }
     return this.cache;
   }
 

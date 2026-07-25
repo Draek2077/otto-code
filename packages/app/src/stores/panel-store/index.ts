@@ -33,6 +33,7 @@ import {
   setMobilePanelTarget,
   selectPanelVisibility,
   type DesktopSidebarState,
+  type ExplorerViewMode,
   type ExplorerPanelIntent,
   type MobilePanelView,
   type MobilePanelSelection,
@@ -46,12 +47,14 @@ export type { ExplorerCheckoutContext } from "../explorer-checkout-context";
 export type {
   DesktopSidebarState,
   ExplorerPanelIntent,
+  ExplorerViewMode,
   MobilePanelView,
   MobilePanelSelection,
   PanelLayoutInput,
   PanelVisibilityState,
   SortOption,
 } from "./state";
+export { buildExplorerCheckoutKey, resolveExplorerViewMode } from "./state";
 export {
   DEFAULT_CONTEXT_SIDEBAR_WIDTH,
   DEFAULT_EXPLORER_FILES_SPLIT_RATIO,
@@ -80,6 +83,14 @@ export interface PanelState {
   // File explorer settings (shared between mobile/desktop)
   explorerTab: ExplorerTab;
   explorerTabByCheckout: Record<string, ExplorerTab>;
+  /**
+   * Files vs Solution, remembered per checkout the way `explorerTabByCheckout` is. Sparse: a
+   * checkout with no entry gets `files`, which is also what a checkout with no solutions gets
+   * regardless of what is stored. See `resolveExplorerViewMode`.
+   */
+  explorerViewModeByCheckout: Record<string, ExplorerViewMode>;
+  /** Which solution the Solution lens is showing, per checkout. Phase 4 reads this for `--solution`. */
+  explorerSolutionByCheckout: Record<string, string>;
   expandedPathsByWorkspace: Record<string, string[]>;
   diffExpandedPathsByWorkspace: Record<string, string[]>;
   // Changes-view folder tree. Inverted semantics vs the fields above:
@@ -144,6 +155,16 @@ export interface PanelState {
   // File explorer settings actions
   setExplorerTab: (tab: ExplorerTab) => void;
   setExplorerTabForCheckout: (params: ExplorerCheckoutContext & { tab: ExplorerTab }) => void;
+  setExplorerViewModeForCheckout: (params: {
+    serverId: string;
+    cwd: string;
+    mode: ExplorerViewMode;
+  }) => void;
+  setExplorerSolutionForCheckout: (params: {
+    serverId: string;
+    cwd: string;
+    solutionPath: string;
+  }) => void;
   setExpandedPathsForWorkspace: (workspaceKey: string, paths: string[]) => void;
   setDiffExpandedPathsForWorkspace: (workspaceKey: string, paths: string[]) => void;
   setDiffCollapsedFoldersForWorkspace: (workspaceKey: string, dirPaths: string[]) => void;
@@ -192,6 +213,8 @@ export const usePanelStore = create<PanelState>()(
       // File explorer defaults
       explorerTab: "changes",
       explorerTabByCheckout: {},
+      explorerViewModeByCheckout: {},
+      explorerSolutionByCheckout: {},
       expandedPathsByWorkspace: {},
       diffExpandedPathsByWorkspace: {},
       diffCollapsedFoldersByWorkspace: {},
@@ -310,6 +333,29 @@ export const usePanelStore = create<PanelState>()(
           }
           return nextState;
         }),
+      setExplorerViewModeForCheckout: ({ serverId, cwd, mode }) =>
+        set((state) => {
+          const key = buildExplorerCheckoutKey(serverId, cwd);
+          if (key === null || state.explorerViewModeByCheckout[key] === mode) {
+            return state;
+          }
+          return {
+            explorerViewModeByCheckout: { ...state.explorerViewModeByCheckout, [key]: mode },
+          };
+        }),
+      setExplorerSolutionForCheckout: ({ serverId, cwd, solutionPath }) =>
+        set((state) => {
+          const key = buildExplorerCheckoutKey(serverId, cwd);
+          if (key === null || state.explorerSolutionByCheckout[key] === solutionPath) {
+            return state;
+          }
+          return {
+            explorerSolutionByCheckout: {
+              ...state.explorerSolutionByCheckout,
+              [key]: solutionPath,
+            },
+          };
+        }),
       setExpandedPathsForWorkspace: (workspaceKey, paths) =>
         set((state) => ({
           expandedPathsByWorkspace: { ...state.expandedPathsByWorkspace, [workspaceKey]: paths },
@@ -387,6 +433,8 @@ export const usePanelStore = create<PanelState>()(
         desktop: state.desktop,
         explorerTab: state.explorerTab,
         explorerTabByCheckout: state.explorerTabByCheckout,
+        explorerViewModeByCheckout: state.explorerViewModeByCheckout,
+        explorerSolutionByCheckout: state.explorerSolutionByCheckout,
         expandedPathsByWorkspace: state.expandedPathsByWorkspace,
         diffExpandedPathsByWorkspace: state.diffExpandedPathsByWorkspace,
         diffCollapsedFoldersByWorkspace: state.diffCollapsedFoldersByWorkspace,
