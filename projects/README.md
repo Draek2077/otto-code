@@ -160,11 +160,30 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
 
 ### Performance
 
-- 🔴 **App-wide FPS degrades over time.** The Visualizer stays smooth while the rest degrades, which
-  points at the JS thread, a leak, or daemon backpressure — **not** the GPU. Measure first.
-- 🟡 **No resource reporting at all.** Memory and handle accounting across workspaces, chats, tabs,
-  visualizers and diffs, plus overload protection. This is the instrument for the FPS item, so it
-  comes first.
+- ✅ **Resource reporting.** Built 2026-07-25 — `packages/app/src/diagnostics/resource-report/`:
+  frame timing, a retained-state census over every store, react-query cache and DOM counts, live
+  timer counts, and daemon-traffic accounting (including main-thread handler time). Surfaced live
+  along the bottom of the Metrics screen, in the app diagnostic report, and to the soak harness via
+  `window.__ottoResourceMonitor`. Off switch: `Settings › Diagnostics › Performance monitoring`.
+  Soak: `packages/app/e2e/client-resource-soak.spec.ts` (`OTTO_RESOURCE_SOAK_E2E=1`). Documented in
+  [docs/client-performance.md](../docs/client-performance.md).
+- 🔴 **App-wide FPS degrades over time — measured, not yet fixed.** Findings in
+  [docs/client-performance.md](../docs/client-performance.md#what-the-client-actually-does-with-resources).
+  Retired by measurement: timer leak, query-cache growth, observer leak, message-decode cost (0.25%
+  of wall clock). Confirmed: **mounted workspace trees are never released** — 1 → 3 workspaces costs
+  ~35% of the frame rate and never comes back. The remaining sub-items are below.
+- 🔴 **Decide workspace-tree retention.** Evict cold workspace trees (LRU, remount on switch-back),
+  or keep today's retain-everything trade? Product decision; it blocks the main FPS fix.
+- 🟡 **Instrument render cost per inbound daemon message.** The one gap keeping "daemon volume is the
+  bottleneck" alive: `traffic.handlerMs` covers decode, validate and dispatch, **not** the React
+  re-render each store write triggers. Cost is plausibly `push rate × mounted subscriber count`, and
+  both factors grow over a session.
+- 🟡 **Navigation refetches state the client already holds.** Four `fetch_agent_timeline` calls per
+  workspace round-trip plus `terminals_changed` fan-out. Cheapest concrete win, and it is what the
+  connection indicator is reacting to.
+- 🟡 **`agentStreamTail`/`agentStreamHead` have no per-agent eviction.** Cleared only by
+  `clearSession`, so every timeline item for every agent opened this session is retained. Needs a cap
+  or a release path on chat close/archive.
 
 ### Onboarding & UX
 
@@ -306,19 +325,24 @@ the reasoning, and the charter has drained to `archive/`.
 
 ### Wave 4 — provider parity and continuity
 
-**Readiness checked 2026-07-25: not started, and ready.** No Wave 4 identifier exists in the tree —
-no `server/solution-model/`, no convergence work beyond its charter, no exact-injected context
-accounting. Wave 3's last item (FPS) does not block any of it; they touch different code.
+**Dispatched 2026-07-25 without item 1**, which the product owner delayed. Items 2, 3 and 4 all
+went out in parallel; they touch different code and none of them waits on the FPS tail.
 
-**Item 1 should start now rather than when Wave 3 closes.** Trap 1's cost is monotonically
-increasing, and Wave 3 just widened the gap on purpose — personality memory has no upstream
-counterpart to merge against, and the Wave 5 candidate would widen it much further. It is the last
-item whose whole point is reducing divergence cost, so every wave it waits, it buys less.
+**Standing note on item 1.** Its cost is monotonically increasing, and Wave 3 widened the gap on
+purpose — personality memory has no upstream counterpart to merge against, and the Wave 5 candidate
+would widen it much further. It is the last item whose whole point is reducing divergence cost, so
+every wave it waits, it buys less. Delaying it is a legitimate call; forgetting it is not. Note its
+own charter still records itself as blocked on upstream `v0.2.0` being untagged — **that is stale**,
+upstream has since tagged `v0.2.0` and `v0.2.1`. There is also a setup step: this checkout has no
+`upstream` remote (only `origin` and `agentflow`).
 
-1. **Upstream merge → subagent convergence → provider adapters** (trap 1, non-negotiable order).
-   Impact is conditional: transformative for OpenCode/Codex/Pi users, invisible to Claude users.
-2. Shared context instrumentation → the Visualizer ring + usage-log View B (trap 3).
-3. **total-token-accounting** and **history-management** — trust and tidiness.
+1. ⏸️ **Upstream merge → subagent convergence → provider adapters** (trap 1, non-negotiable
+   order) — **delayed by the product owner, 2026-07-25.** Not being taken this wave. Its cost keeps
+   rising while it waits, so it is the first thing to reconsider when the wave reopens.
+2. **Shared context instrumentation** — the Visualizer readout and the usage log (trap 3). **Trap 3
+   is largely already discharged**; see the correction below.
+3. **total-token-accounting** and **history-management** — trust and tidiness. The
+   history-management decision gate is now answered, below.
 4. **solution-view Phase 1** — the read-only Solution lens. Impact is provider-shaped in the same way
    the adapters are: a 5 for .NET developers, a 1 for everyone else. Phase 2 (general file mutations)
    is not .NET work and enables mutation paths beyond it.
@@ -326,6 +350,37 @@ item whose whole point is reducing divergence cost, so every wave it waits, it b
    deliberately Claude-only, which would have blurred the meaning of a wave whose whole theme is
    provider parity, and it would have competed for the same hours as item 1 without item 1's compounding
    cost. See its treatment under Wave 5 below.
+
+#### Correction: the context instrumentation is mostly built (2026-07-25)
+
+The [visualizer-node-richness](visualizer-node-richness/visualizer-node-richness.md) charter says the
+ring and bar are blank because the adapter omits `contextBreakdown`, over a fixed 5-way breakdown
+(`systemPrompt · userMessages · toolResults · reasoning · subagentResults`). **Both halves of that are
+now wrong**, and the charter needs correcting:
+
+- **The accounting exists.** `agent.context.get_usage` (`COMPAT(agentContextUsage)`, v0.3.4) returns
+  `{ categories: [{ name, tokens, isDeferred? }], totalTokens, maxTokens }`. Categories are
+  **provider-supplied display labels**, an open-ended list — not a fixed enum. Three providers report
+  it (Claude, openai-compat, Pi); Codex, Copilot and OpenCode do not. Two surfaces already render it:
+  `context-window-meter.tsx` and `context-management/summary.tsx`
+- **The display changed.** `contextDisplay` is `'ring' | 'bar'` (default `ring`) and draws **one**
+  readout, not both — the page used to show the same number twice. Sub-agent nodes never had a ring
+
+So trap 3's "build the hard part once" is **already discharged**. What remains is narrower than the
+charter implies: wire `breakdown` through `use-visualizer-event-adapter.ts` (which never sends it),
+give the usage log the same numbers rather than a second path, and extend provider coverage.
+
+#### Decided: what delete does to provider data (2026-07-25)
+
+history-management's `[PROPOSED]` gate is answered by the product owner. **Deleting a chat removes
+Otto's record only; the provider's own transcript is left in place.** An opt-in switch to also delete
+provider data was considered and **rejected** — _"that seems dangerous grounds."_ It is not being
+built, and no disabled placeholder for it should exist.
+
+Two consequences ride with that decision: the UI must be **honest that the provider still has its
+transcript** (leaving data recoverable is worthless if nobody knows it is there), and **bulk clear
+carries the same rule** rather than becoming a back door in aggregate. The CLI's `agent delete` gets
+the same semantics — a CLI that deletes more than the app would be the worst kind of surprise.
 
 #### Readiness, item by item (checked 2026-07-25)
 
