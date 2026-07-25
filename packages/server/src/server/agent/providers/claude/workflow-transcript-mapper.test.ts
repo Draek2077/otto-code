@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { WorkflowSubagentTranscriptMapper } from "./workflow-transcript-mapper.js";
 
 // Real on-disk workflow-subagent transcript shapes (see the captured run in
-// projects/workflow-decomposition/workflow-decomposition.md): a rich envelope
+// docs/subagent-accounting.md, "Workflow decomposition"): a rich envelope
 // plus a nested `message`. One assistant turn is split across lines sharing one
 // message.id; tool_use (name+input) and tool_result (output, keyed by
 // tool_use_id) live on separate lines.

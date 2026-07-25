@@ -1,3 +1,4 @@
+import { i18n } from "@/i18n/i18next";
 import type { ConfirmDialogInput } from "@/utils/confirm-dialog";
 
 /**
@@ -12,13 +13,19 @@ import type { ConfirmDialogInput } from "@/utils/confirm-dialog";
  * data the user cannot find is not recoverable data. So the dialog says where the
  * conversation still lives, and it says the Otto side cannot be undone.
  *
- * Pure on purpose — copy this exact is worth asserting on.
+ * Still pure — it just reads its sentences from `sessions.dialogs.*` rather than
+ * holding them. These are confirmations, which docs/i18n.md puts squarely inside
+ * the translation scope, and a destructive dialog is the last place to make the
+ * user read a second language. Resolvers are pure helpers, so they call
+ * `i18n.t(...)` directly (docs/i18n.md, Batch 4Y); tests assert the English
+ * because `en` is the default language.
  */
 
 // Display names for the providers Otto ships with, so the dialog can name the
-// place the transcript survives rather than gesturing at "the provider". An
-// unknown id falls back to neutral wording; a stale entry here costs a generic
-// sentence, never a wrong claim.
+// place the transcript survives rather than gesturing at "the provider". Product
+// names, so they are the same in every locale. An unknown id falls back to
+// neutral wording; a stale entry here costs a generic sentence, never a wrong
+// claim.
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   claude: "Claude Code",
   codex: "Codex",
@@ -27,14 +34,12 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   pi: "Pi",
 };
 
-const GENERIC_PROVIDER_NAME = "The agent provider";
-
 export function resolveProviderDisplayName(provider: string | null | undefined): string {
   const id = provider?.trim().toLowerCase();
   if (!id) {
-    return GENERIC_PROVIDER_NAME;
+    return i18n.t("sessions.dialogs.genericProvider");
   }
-  return PROVIDER_DISPLAY_NAMES[id] ?? GENERIC_PROVIDER_NAME;
+  return PROVIDER_DISPLAY_NAMES[id] ?? i18n.t("sessions.dialogs.genericProvider");
 }
 
 export interface DeleteAgentDialogInput {
@@ -52,18 +57,18 @@ export interface DeleteAgentDialogInput {
  */
 export function resolveDeleteAgentDialog(input: DeleteAgentDialogInput): ConfirmDialogInput {
   const title = input.title?.trim();
-  const subject = title ? `"${title}"` : "this chat";
+  const subject = title ? `"${title}"` : i18n.t("sessions.dialogs.deleteAgent.subjectFallback");
   const providerName = resolveProviderDisplayName(input.provider);
 
   return {
-    title: "Delete this chat?",
+    title: i18n.t("sessions.dialogs.deleteAgent.title"),
     message: [
-      `Otto's record of ${subject} is deleted permanently — the row, its title, and its metadata.`,
-      `${providerName}'s own transcript on the host is left in place, so the conversation itself stays on disk and can still be read or resumed outside Otto.`,
-      "Otto's side of this can't be undone.",
+      i18n.t("sessions.dialogs.deleteAgent.recordLine", { subject }),
+      i18n.t("sessions.dialogs.deleteAgent.transcriptLine", { provider: providerName }),
+      i18n.t("sessions.dialogs.deleteAgent.undoLine"),
     ].join("\n\n"),
-    confirmLabel: "Delete",
-    cancelLabel: "Cancel",
+    confirmLabel: i18n.t("sessions.dialogs.deleteAgent.confirm"),
+    cancelLabel: i18n.t("common.actions.cancel"),
     destructive: true,
   };
 }
@@ -76,17 +81,21 @@ export function resolveDeleteAgentDialog(input: DeleteAgentDialogInput): Confirm
  */
 export function resolveClearArchivedDialog(input: { matched: number }): ConfirmDialogInput {
   const count = input.matched;
-  const noun = count === 1 ? "archived chat" : "archived chats";
+  const one = count === 1;
 
   return {
-    title: count === 1 ? "Clear 1 archived chat?" : `Clear ${count} archived chats?`,
+    title: one
+      ? i18n.t("sessions.dialogs.clearArchived.titleOne")
+      : i18n.t("sessions.dialogs.clearArchived.titleMany", { count }),
     message: [
-      `Permanently deletes Otto's records for ${count} ${noun}. Chats you haven't archived are untouched.`,
-      "The agent providers' own transcripts on the host are left in place — this clears Otto's history, not the conversations on disk.",
-      "Otto's side of this can't be undone.",
+      one
+        ? i18n.t("sessions.dialogs.clearArchived.recordLineOne")
+        : i18n.t("sessions.dialogs.clearArchived.recordLineMany", { count }),
+      i18n.t("sessions.dialogs.clearArchived.transcriptLine"),
+      i18n.t("sessions.dialogs.clearArchived.undoLine"),
     ].join("\n\n"),
-    confirmLabel: "Clear",
-    cancelLabel: "Cancel",
+    confirmLabel: i18n.t("sessions.dialogs.clearArchived.confirm"),
+    cancelLabel: i18n.t("common.actions.cancel"),
     destructive: true,
   };
 }
@@ -94,9 +103,9 @@ export function resolveClearArchivedDialog(input: { matched: number }): ConfirmD
 /** Nothing matched the sweep. An acknowledge-only dialog, not a confirm. */
 export function resolveClearArchivedEmptyDialog(): Omit<ConfirmDialogInput, "kind"> {
   return {
-    title: "Nothing to clear",
-    message: "There are no archived chats on the selected hosts.",
-    confirmLabel: "OK",
+    title: i18n.t("sessions.dialogs.nothingToClear.title"),
+    message: i18n.t("sessions.dialogs.nothingToClear.message"),
+    confirmLabel: i18n.t("common.actions.ok"),
   };
 }
 
@@ -107,9 +116,9 @@ export function resolveClearArchivedEmptyDialog(): Omit<ConfirmDialogInput, "kin
  */
 export function resolveClearArchivedNoHostDialog(): Omit<ConfirmDialogInput, "kind"> {
   return {
-    title: "No host available",
-    message: "Connect to a host that supports deleting chats, then try clearing the archive again.",
-    confirmLabel: "OK",
+    title: i18n.t("sessions.dialogs.noHost.title"),
+    message: i18n.t("sessions.dialogs.noHost.message"),
+    confirmLabel: i18n.t("common.actions.ok"),
   };
 }
 
@@ -122,9 +131,12 @@ export function resolveClearArchivedFailureDialog(input: {
   failed: number;
 }): Omit<ConfirmDialogInput, "kind"> {
   return {
-    title: "Some chats could not be cleared",
-    message: `Deleted ${input.deleted}. ${input.failed} could not be deleted and are still in your history. Try again, or check the host's logs.`,
-    confirmLabel: "OK",
+    title: i18n.t("sessions.dialogs.partialFailure.title"),
+    message: i18n.t("sessions.dialogs.partialFailure.message", {
+      deleted: input.deleted,
+      failed: input.failed,
+    }),
+    confirmLabel: i18n.t("common.actions.ok"),
   };
 }
 
@@ -136,8 +148,8 @@ export function resolveClearArchivedFailureDialog(input: {
  */
 export function resolveHistoryDeleteUnsupportedDialog(): Omit<ConfirmDialogInput, "kind"> {
   return {
-    title: "Delete not available",
-    message: "Update the host to delete chats from your history.",
-    confirmLabel: "OK",
+    title: i18n.t("sessions.dialogs.unsupported.title"),
+    message: i18n.t("sessions.dialogs.unsupported.message"),
+    confirmLabel: i18n.t("common.actions.ok"),
   };
 }

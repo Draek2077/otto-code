@@ -43,6 +43,7 @@ import { CLIENT_CAPS } from "@otto-code/protocol/client-capabilities";
 import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@otto-code/protocol/browser-automation/rpc-schemas";
 import { replaceFetchedAgentDirectory } from "@/utils/agent-directory-sync";
 import { useSessionStore } from "@/stores/session-store";
+import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import {
   fetchLegacyDaemonWorkspaceDirectory,
   shouldUseLegacyDaemonWorkspaceDirectory,
@@ -1993,6 +1994,11 @@ export class HostRuntimeStore {
       // queries refetch now and evicted ones on their next mount.
       void invalidateCheckoutGitQueriesForServer(queryClient, serverId);
       invalidateServerDataQueriesAfterReconnect({ queryClient, serverId });
+      // Workspace setup status is push-driven the same way, and the client
+      // caches "this workspace has no setup" so navigation stops re-asking.
+      // A reconnect is the one event that can have dropped the push that would
+      // have invalidated it, so re-arm those workspaces for one more ask.
+      useWorkspaceSetupStore.getState().clearResolvedEmpty(serverId);
       void queryClient.invalidateQueries({ queryKey: schedulesQueryBaseKey });
       // The cached local desktop-daemon serverId (["desktop-daemon-server-id"]) never
       // refetches on its own — staleTime: Infinity, refetchOnMount/Reconnect false. If the

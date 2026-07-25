@@ -11,6 +11,7 @@ export const zhCN: TranslationResources = {
       close: "关闭",
       copy: "复制",
       dismiss: "关闭",
+      ok: "确定",
       retry: "重试",
       search: "搜索",
       select: "选择",
@@ -192,6 +193,61 @@ export const zhCN: TranslationResources = {
       context: "上下文",
       findings: "值得修复",
       findingsCount: "值得修复 ({{count}})",
+      memory: "记忆",
+      memoryCount: "记忆 ({{count}})",
+    },
+    personalitySelector: {
+      label: "正在查看谁的上下文",
+      everyone: "所有人",
+      withLessons: "{{name}}，已记住 {{count}} 条经验",
+    },
+    memory: {
+      noPersonality:
+        "在上方选择一个人格，即可看到它学到了什么，以及这些内容会为它的每次请求增加什么。",
+      loading: "正在读取该人格记住的内容…",
+      failed: "无法读取该人格的记忆：{{error}}",
+      emptyNamed:
+        "{{name}} 还没有记录任何内容。它会在工作过程中自行记录经验，你也可以手动添加一条。",
+      emptyFallbackName: "该人格",
+      add: "添加一条经验",
+      brief: {
+        title: "为 {{name}} 注入的内容",
+        nothing: "无",
+        everyRequest: "每次请求 {{tokens}}",
+        disabled: "该人格的记忆已关闭，因此这些内容都不会发送。经验仍然保留。",
+        empty: "在此项目中，没有任何内容被加入该人格的上下文。",
+        omitted: "下面有 {{count}} 条经验超出注入预算，未被发送。",
+      },
+      scope: {
+        global: "所有地方",
+        project: "此项目",
+        change: "范围：{{scope}}。点按可更改。",
+      },
+      row: {
+        reinforced: "已学习 {{count}} 次",
+        transferredFrom: "来自 {{name}}",
+        edit: "编辑这条经验",
+        forget: "忘记这条经验",
+      },
+      forgetDialog: {
+        title: "忘记这条经验？",
+        message: "“{{lesson}}”将从该人格的记忆中移除。",
+        confirm: "忘记",
+      },
+      composer: {
+        placeholder: "你希望该人格记住什么？",
+        save: "保存这条经验",
+      },
+      transfer: {
+        title: "删除 {{name}}",
+        subtitleOne: "它记住了 1 条经验。请决定如何处理。",
+        subtitleMany: "它记住了 {{count}} 条经验。请决定如何处理。",
+        discard: "删除这些经验",
+        confirm: "转移",
+        giveThemTo: "交给：",
+        noCandidates: "没有其他人格可以接收这些经验。删除 {{name}} 会一并丢弃它们。",
+        sameRole: "相同角色",
+      },
     },
     findings: {
       empty: "目前没有需要修复的内容。",
@@ -354,7 +410,6 @@ export const zhCN: TranslationResources = {
   sessions: {
     title: "历史",
     empty: "还没有会话",
-    // i18n lag: English until the translation pass (history management, 2026-07-25).
     emptyForHost: "此主机没有会话",
     emptyActive: "没有进行中的对话",
     emptyArchived: "没有已归档的对话",
@@ -367,6 +422,45 @@ export const zhCN: TranslationResources = {
       loadMore: "加载更多",
       clearArchived: "清空归档",
       clearingArchived: "正在清空…",
+    },
+    dialogs: {
+      genericProvider: "该 Agent 提供方",
+      deleteAgent: {
+        title: "删除此对话？",
+        subjectFallback: "此对话",
+        recordLine: "Otto 中关于{{subject}}的记录将被永久删除——包括该条目、标题和元数据。",
+        transcriptLine:
+          "{{provider}} 在主机上自己的记录会原样保留，因此对话本身仍在磁盘上，在 Otto 之外依然可以阅读或继续。",
+        undoLine: "Otto 这一侧的操作无法撤销。",
+        confirm: "删除",
+      },
+      clearArchived: {
+        titleOne: "清空 1 个已归档对话？",
+        titleMany: "清空 {{count}} 个已归档对话？",
+        recordLineOne: "将永久删除 Otto 中 1 个已归档对话的记录。你未归档的对话不受影响。",
+        recordLineMany: "将永久删除 Otto 中 {{count}} 个已归档对话的记录。你未归档的对话不受影响。",
+        transcriptLine:
+          "各 Agent 提供方在主机上自己的记录会原样保留——这清空的是 Otto 的历史，而不是磁盘上的对话。",
+        undoLine: "Otto 这一侧的操作无法撤销。",
+        confirm: "清空",
+      },
+      nothingToClear: {
+        title: "没有可清空的内容",
+        message: "所选主机上没有已归档的对话。",
+      },
+      noHost: {
+        title: "没有可用的 Host",
+        message: "请连接到支持删除对话的 Host，然后再次尝试清空归档。",
+      },
+      partialFailure: {
+        title: "部分对话无法清空",
+        message:
+          "已删除 {{deleted}} 个。有 {{failed}} 个无法删除，仍留在你的历史中。请重试，或查看该 Host 的日志。",
+      },
+      unsupported: {
+        title: "删除不可用",
+        message: "升级 Host 后即可从历史中删除对话。",
+      },
     },
   },
   agentList: {
@@ -512,12 +606,12 @@ export const zhCN: TranslationResources = {
     },
     solution: {
       lens: {
-        files: "Files",
+        files: "文件",
       },
-      loading: "Reading the solution…",
-      empty: "This solution has no projects.",
-      outsideWorkspace: "outside workspace",
-      projectFailed: "This project could not be evaluated.",
+      loading: "正在读取解决方案…",
+      empty: "此解决方案没有项目。",
+      outsideWorkspace: "在 Workspace 之外",
+      projectFailed: "无法计算此项目。",
     },
     fileExplorer: {
       sort: {
@@ -1792,6 +1886,117 @@ export const zhCN: TranslationResources = {
       settings: "设置",
     },
   },
+  setupWizard: {
+    chrome: {
+      skip: "跳过设置",
+      back: "返回",
+      continue: "继续",
+    },
+    welcome: {
+      headline: "欢迎使用 Otto",
+      subtitle: "一个有个性的 Agent 式编程助手，适配每一个模型，云端或本地都一样。",
+      start: "开始",
+    },
+    mode: {
+      title: "你想怎样使用 Otto？",
+      subtitle: "随时可以在设置中切换。",
+      user: {
+        title: "用户",
+        tagline: "与 AI Agent 对话，整理项目，把事情做完。",
+        bulletInterface: "专注而友好的界面",
+        bulletNoTooling: "不必在开发者工具里穿行",
+      },
+      developer: {
+        title: "开发者",
+        tagline: "完整的开发环境。",
+        bulletTools: "文件、差异、终端、搜索",
+        bulletGit: "Git、Pull Request，Otto 能做的一切",
+      },
+    },
+    providers: {
+      title: "你的提供方",
+      subtitlePick: "选择 Agent 默认使用的提供方。以后可以在设置中添加更多。",
+      subtitleNone: "Otto 会自动检测你的 Agent 提供方。以后可以在设置中添加。",
+      detecting: "正在检测提供方…",
+      waitingForHost: "正在等待 Host…",
+      empty: "尚未检测到任何提供方。你仍可以继续，稍后再设置。",
+      status: {
+        available: "可用",
+        availableWithModels: "可用 · {{count}} 个模型",
+        detecting: "检测中…",
+        error: "错误",
+        notInstalled: "未安装",
+      },
+    },
+    team: {
+      title: "你想要什么样的团队？",
+      subtitle:
+        "选一个团队，Otto 就为你组建一支完整、均衡的班底——每位成员都有名字和自己的性格。不合适？重新洗牌。也可以用你自己的 Agent 组建。",
+      unsupportedTitle: "组建你的团队",
+      unsupportedBody:
+        "此 Host 尚不支持 Agent 团队。升级 Host 后 Otto 就能为你组建团队——现在可以先跳过。",
+      blueprints: {
+        application: {
+          name: "应用团队",
+          tagline: "一支全栈班底，用于构建并交付真正的应用。",
+        },
+        game: {
+          name: "游戏团队",
+          tagline: "一支做游戏的工作室小组——玩法、手感和那点讲究。",
+        },
+        web: {
+          name: "Web 团队",
+          tagline: "一支 Web 班底，做快速、无障碍、打磨到位的网站与应用。",
+        },
+        creative: {
+          name: "创意工作室",
+          tagline: "一间用于写作、美术和创意的工作室——无需写代码。",
+        },
+        management: {
+          name: "管理团队",
+          tagline: "一支负责推进项目、跟进状态和做决策的团队。",
+        },
+        planning: {
+          name: "规划团队",
+          tagline: "一支负责调研、路线图和把事情想透的团队。",
+        },
+      },
+      custom: {
+        name: "自己组建",
+        tagline: "用你自己的 Agent，按你的方式组建团队。",
+      },
+      providerNoModels: "该提供方还没有模型——请在设置中刷新，然后再回来。",
+      providerMissing: "请先（在上一步）选择一个提供方，好让 Otto 知道该用哪些模型。",
+      memberCountOne: "1 名成员",
+      memberCountMany: "{{count}} 名成员",
+      reshuffle: "重新洗牌",
+      added: "已添加 ✓",
+      addTeam: "添加此团队",
+      noRoles: "没有角色",
+      builder: {
+        nameLabel: "团队名称",
+        defaultName: "我的团队",
+        members: "成员",
+        membersWithCount: "成员 ({{count}})",
+        empty:
+          "还没有可选的 Agent。请在上方生成一个团队（那会添加可在此处混编的 Agent），或在“设置 → Agent”中添加你自己的，然后再回来。",
+        covers: "覆盖：{{roles}}",
+        orchestratorTip: "  ·  提示：加入一个 Orchestrator，团队就有了主导者。",
+        addedNamed: "已添加“{{name}}” ✓",
+      },
+    },
+    done: {
+      headline: "一切就绪",
+      subtitle: "Otto 已准备好。我们设置了这些：",
+      finish: "开始使用",
+      interfaceMode: "界面模式",
+      provider: "提供方",
+      agents: "Agent",
+      agentCountOne: "1 个 Agent",
+      agentCountMany: "{{count}} 个 Agent",
+      activeTeam: "当前团队",
+    },
+  },
   modelSelector: {
     title: "选择 provider",
     selectModel: "选择模型",
@@ -2015,15 +2220,10 @@ export const zhCN: TranslationResources = {
     cancel: "取消",
     wordWrap: "自动换行",
     outOfProject: {
-      badge: "项目外 · {{project}}",
-      badgeNoProject: "不属于任何项目",
-      editOutsideTitle: "编辑不属于任何项目的文件？",
-      editOutsideMessage:
-        "此文件不属于任何项目。编辑它会直接写入磁盘上的文件。此警告每次都会显示。",
-      editConfirm: "仍然编辑",
-      editOtherTitle: "编辑另一个项目的文件？",
-      editOtherMessage: "此文件属于 {{project}}。你在此处所做的更改不会包含在此项目的提交中。",
-      editOtherSuppress: "不再就其他项目提醒我",
+      badge:
+        "正在项目 ({{project}}) 之外编辑 — 不属于 Agent 的上下文，也不在此 Workspace 的 Git 变更中。",
+      badgeNoProject:
+        "正在项目之外编辑 — 不属于 Agent 的上下文，也不在此 Workspace 的 Git 变更中。",
     },
     contextMenu: {
       cut: "剪切",
@@ -2082,12 +2282,102 @@ export const zhCN: TranslationResources = {
     loading: "正在加载文件...",
     noResults: "无文件",
   },
-  // Refine — the reviewed AI rewrite (projects/refine/refine.md). Only the two
+  // Refine — the reviewed AI rewrite (docs/refine.md). Only the two
   // entry-point strings are translated here; the Refine tab itself is literal
   // English pending the pre-release i18n sweep, like the rename/references tabs.
   refine: {
     open: "用 AI 润色",
     saveFirst: "请先保存或还原你的更改——润色基于磁盘上的文件进行。",
+    compactOpen: "用 AI 压缩",
+    unsupported: "升级 Host 后即可使用润色。",
+    job: {
+      refine: "润色",
+      compact: "压缩",
+    },
+    tab: {
+      title: "{{job}}：{{file}}",
+      moreFile: "另有 {{count}} 个文件",
+      moreFiles: "另有 {{count}} 个文件",
+      fallbackSubtitle: "AI 重写",
+    },
+    toolbar: {
+      discard: "丢弃此方案并重新读取所有文件",
+      writing: "正在写入…",
+      acceptOne: "接受 — 写入保留的更改",
+      acceptMany: "接受 — 写入 {{count}} 个文件",
+      dropAll: "丢弃全部更改",
+      keepAll: "保留全部更改",
+    },
+    workingSet: {
+      single: "此集合中只有一个文件。它链接到的内容都将作为只读上下文。",
+      allWritable: "这 {{count}} 个文件都可以被重写。",
+      someWritable: "{{total}} 个文件中有 {{writable}} 个可被重写；其余为只读上下文。",
+      allChipLabel: "所有文件",
+      allChipText: "全部",
+      allOnHint: "所有文件都可被重写。点按可退回到只有第一个，其余作为只读上下文。",
+      allOffHint: "让重写作用于此集合中的所有文件，而不只是第一个。",
+      writableHint: "可被重写。点按可改为只读上下文。",
+      referenceHint: "只读上下文——模型能读取，但永远无法更改。点按可允许重写。",
+    },
+    instruction: {
+      placeholder: "要改什么？例如：保留每一条规则，删掉重复的部分",
+      startOver: "重新开始",
+      refining: "正在润色…",
+      compacting: "正在压缩…",
+      again: "再次{{job}}",
+    },
+    presets: {
+      compactContextFile: {
+        label: "压缩上下文文件",
+        description: "在不丢失任何一条规则的前提下，删掉指令文件里的重复内容。",
+      },
+      compactMemoryIndex: {
+        label: "压缩记忆索引",
+        description: "每条记录一行；细节移入各自的条目文件。",
+      },
+      tightenProse: {
+        label: "精简文字",
+        description: "更短、意思不变、不引入新的说法。",
+      },
+    },
+    body: {
+      pinning: "正在读取文件…",
+      generating: "正在构思重写方案…",
+      idle: "说明要改什么，然后点击“{{job}}”。在你接受之前不会写入任何内容。",
+    },
+    file: {
+      keptCount: "保留 {{count}} 处",
+      keepEveryChangeIn: "保留 {{file}} 中的所有更改",
+    },
+    hunk: {
+      title: "更改 {{ordinal}}",
+      keeping: "保留",
+      dropped: "已丢弃",
+      keepAccessibility: "保留更改 {{ordinal}}",
+    },
+    outcome: {
+      written: "已写入",
+      stale: "保持原样",
+      failed: "无法写入",
+    },
+    summary: {
+      pinning: "正在按当前状态固定这些文件——每个方案都会以此为基准衡量。",
+      unreadable: "无法读取此工作集合。",
+      idle: "尚未提出任何方案。没有任何文件被改动。",
+      generating: "第 {{round}} 轮 — 正在重写。",
+      accepting: "正在写入保留的更改。",
+      acceptedOne: "完成 — 已写入 1 个文件。",
+      acceptedMany: "完成 — 已写入 {{count}} 个文件。",
+      partiallyAccepted: "已写入 {{written}} 个，{{skipped}} 个保持原样。没有覆盖任何内容。",
+      reviewOne:
+        "第 {{round}} 轮 — {{total}} 处更改中保留了 {{kept}} 处，+{{additions}} −{{removals}} 行。尚未写入任何内容。",
+      reviewMany:
+        "第 {{round}} 轮 — {{total}} 处更改中保留了 {{kept}} 处，+{{additions}} −{{removals}} 行。尚未写入任何内容。",
+      reviewOneScoped:
+        "第 {{round}} 轮 — 在 {{proposedFiles}} 个文件中的 {{changedFiles}} 个里，{{total}} 处更改中保留了 {{kept}} 处，+{{additions}} −{{removals}} 行。尚未写入任何内容。",
+      reviewManyScoped:
+        "第 {{round}} 轮 — 在 {{proposedFiles}} 个文件中的 {{changedFiles}} 个里，{{total}} 处更改中保留了 {{kept}} 处，+{{additions}} −{{removals}} 行。尚未写入任何内容。",
+    },
   },
   refactor: {
     open: "用 AI 重构",
@@ -2184,6 +2474,30 @@ export const zhCN: TranslationResources = {
     clearCompletedTooltip: "归档所有已完成的 subagent",
     stopNothingRunning: "子代理未在运行，没有可停止的任务。",
     daemonUnavailable: "守护进程不可用",
+    dialogs: {
+      subjectFallback: "此子 Agent",
+      subjectFallbackCapitalized: "此子 Agent",
+      archive: {
+        titleRunning: "归档正在运行的子 Agent？",
+        title: "归档子 Agent？",
+        messageRunning: "{{subject}}仍在运行。归档它会停止该子 Agent 并将其从轨道中移除。",
+        message: "把{{subject}}从轨道中移除。该子 Agent 将被归档。",
+        confirm: "归档",
+      },
+      detach: {
+        title: "分离子 Agent？",
+        message: "{{subject}}将离开此轨道，并作为独立 Agent 继续运行。",
+        confirm: "分离",
+      },
+      clearCompleted: {
+        titleOne: "清理已完成的子 Agent？",
+        titleMany: "清理 {{count}} 个已完成的子 Agent？",
+        messageOne: "归档 1 个已完成的子 Agent 并将其从轨道中移除。正在运行的子 Agent 不受影响。",
+        messageMany:
+          "归档 {{count}} 个已完成的子 Agent 并将它们从轨道中移除。正在运行的子 Agent 不受影响。",
+        confirm: "清理",
+      },
+    },
   },
   panels: {
     draft: {
@@ -2336,6 +2650,12 @@ export const zhCN: TranslationResources = {
           inApp: "在 Otto 内",
           external: "外部浏览器",
         },
+      },
+      mountedWorkspaceLimit: {
+        label: "保持加载的 Workspace 数量",
+        description:
+          "有多少个 Workspace 保持加载状态，以便切回时立即可用。超过这个数量后，最久未使用的那个会被卸载，下次打开时重新加载。请至少设为你实际来回切换的数量——低于这个数，每次切换都会卸载你正要返回的那个 Workspace。设得越高，占用内存越多。",
+        accessibilityLabel: "保持加载的 Workspace 数量",
       },
       terminalScrollback: {
         label: "终端回滚",
@@ -2822,9 +3142,9 @@ export const zhCN: TranslationResources = {
         enabled: "启用代码智能",
         enabledHint:
           "为每个项目运行一个语言服务器，使“转到定义”能够解析光标处的符号。在你使用之前不会启动任何进程；关闭后会停止所有服务器并退回到基于名称的索引。",
-        solution: "Microsoft .NET Solution Management",
+        solution: "Microsoft .NET 解决方案管理",
         solutionHint:
-          "Adds a Solution view to the Files tab, showing your .sln or .slnx as the build system sees it. Independent of code intelligence above. Off by default: it runs a .NET helper process and evaluates MSBuild, and it needs the .NET SDK on this host.",
+          "在文件标签页中添加解决方案视图，按构建系统看到的方式展示你的 .sln 或 .slnx。与上面的代码智能相互独立。默认关闭：它会运行一个 .NET 辅助进程并计算 MSBuild，且需要此主机上安装 .NET SDK。",
         languages: "语言",
         installed: "{{bin}} — 已找到（{{rung}}）",
         notInstalled: "{{bin}} — 此主机上未安装",

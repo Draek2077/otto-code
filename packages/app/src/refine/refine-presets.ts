@@ -4,7 +4,7 @@
 // instruction".
 //
 // This is the seam Context Management's deferred AI compaction lands on
-// (projects/context-management/context-management.md §7.4): compaction is the
+// (docs/context-management.md): compaction is the
 // first two rows below, not a second feature. A surface that knows what it is
 // asking for opens the Refine tab with a preset id; the user still sees the
 // instruction, still reviews the diff, and still has to accept it.
@@ -14,7 +14,12 @@
 // to every round regardless of preset, so a user-authored instruction is
 // exactly as guarded as a preset one.
 //
-// Strings are literal English pending the pre-release i18n sweep.
+// The split between what is translated and what is not follows who reads it:
+// the chip label and its one-line description are UI and live in i18n; the
+// `instruction` is seeded into the box and sent to the model, so it stays
+// English like every other prompt. A user who edits it owns whatever they type.
+
+import { i18n } from "@/i18n/i18next";
 
 /**
  * What the tab calls itself.
@@ -28,21 +33,28 @@ export type RefineJobKind = "refine" | "compact";
 
 export interface RefinePreset {
   id: string;
-  /** Button label. Short — these sit in a row above the instruction box. */
-  label: string;
-  /** One line under the instruction box once picked, so the ask stays visible. */
-  description: string;
+  /** Sub-key under `refine.presets.*` holding this preset's label + description. */
+  i18nKey: string;
   /** Seeded into the instruction box, editable from there. */
   instruction: string;
   /** Which job a tab opened on this preset presents itself as. */
   job: RefineJobKind;
 }
 
+/** Button label. Short — these sit in a row above the instruction box. */
+export function refinePresetLabel(preset: RefinePreset): string {
+  return i18n.t(`refine.presets.${preset.i18nKey}.label`);
+}
+
+/** One line under the instruction box once picked, so the ask stays visible. */
+export function refinePresetDescription(preset: RefinePreset): string {
+  return i18n.t(`refine.presets.${preset.i18nKey}.description`);
+}
+
 export const REFINE_PRESETS: readonly RefinePreset[] = [
   {
     id: "compact-context-file",
-    label: "Compact context file",
-    description: "Cuts repetition out of an instruction file without losing a single rule.",
+    i18nKey: "compactContextFile",
     instruction: [
       "Compress this file: remove redundancy and duplicated guidance, and keep every distinct instruction, fact and convention intact in meaning.",
       "Preserve the structure and the headings. Do not add or invent content.",
@@ -52,8 +64,7 @@ export const REFINE_PRESETS: readonly RefinePreset[] = [
   },
   {
     id: "compact-memory-index",
-    label: "Compact memory index",
-    description: "One line per entry; detail moves into the entry files.",
+    i18nKey: "compactMemoryIndex",
     instruction: [
       "Compress this index to one line per entry, moving detail out of the index and into the entry it points at.",
       "Preserve every entry — an index that drops a pointer has lost the thing it pointed to.",
@@ -62,8 +73,7 @@ export const REFINE_PRESETS: readonly RefinePreset[] = [
   },
   {
     id: "tighten-prose",
-    label: "Tighten prose",
-    description: "Shorter, same meaning, no new claims.",
+    i18nKey: "tightenProse",
     instruction:
       "Reduce the length of this document without losing meaning. Do not introduce any new claim, fact or recommendation.",
     job: "refine",

@@ -47,6 +47,12 @@ import {
   buildWorkspaceAgentActivityIndex,
   type WorkspaceAgentActivity,
 } from "@/utils/workspace-agent-activity";
+import { planAgentStreamEviction } from "@/timeline/agent-stream-retention";
+
+// Ordering-only clock for stream-buffer retention. Global rather than
+// per-session because it only ever has to increase; comparisons are always
+// within one session's map.
+let agentStreamTouchTick = 0;
 
 // Re-export types that were in session-context
 export type MessageEntry =
@@ -416,6 +422,17 @@ export interface SessionState {
   historySyncGeneration: number;
   agentHistorySyncGeneration: Map<string, number>;
   agentAuthoritativeHistoryApplied: Map<string, boolean>;
+  // Ref counts, not a flag set: two panes can show the same chat, and the
+  // second unmount must not release buffers the first pane is still rendering.
+  // See timeline/agent-stream-retention.ts for what this gates.
+  agentStreamRetainers: Map<string, number>;
+  /**
+   * Write order of each agent's buffers, newest highest. Drives eviction order.
+   * A monotonic tick rather than `Date.now()` on purpose: a burst of stream
+   * flushes lands inside one millisecond, and wall-clock ties would collapse
+   * "least recently used" into "lowest agent id".
+   */
+  agentStreamTouchSeq: Map<string, number>;
 
   // Initializing agents (used for UI loading state)
   initializingAgents: Map<string, boolean>;
@@ -558,6 +575,22 @@ interface SessionStoreActions {
     agentId: string,
     applied: boolean,
   ) => void;
+  /**
+   * Mark an agent's stream buffers as in use by a mounted surface. Returns the
+   * matching release; call it on unmount. Prefer `useAgentStreamRetention`.
+   */
+  retainAgentStream: (serverId: string, agentId: string) => () => void;
+  /**
+   * Drop an agent's stream buffers *and* the resume state that would otherwise
+   * make the next open a no-op catch-up. The two always move together — see
+   * timeline/agent-stream-retention.ts.
+   */
+  releaseAgentStreams: (serverId: string, agentIds: readonly string[]) => void;
+  /**
+   * Apply the retention cap, plus any agents the caller knows have left the
+   * session. Called where the buffer key set can grow and on departure events.
+   */
+  sweepAgentStreams: (serverId: string, departedAgentIds?: readonly string[]) => void;
 
   // Initializing agents
   setInitializingAgents: (
@@ -713,6 +746,8 @@ function createInitialSessionState(serverId: string, client: DaemonClient): Sess
     historySyncGeneration: 0,
     agentHistorySyncGeneration: new Map(),
     agentAuthoritativeHistoryApplied: new Map(),
+    agentStreamRetainers: new Map(),
+    agentStreamTouchSeq: new Map(),
     initializingAgents: new Map(),
     agents: new Map(),
     workspaceAgentActivity: new Map(),
@@ -1060,11 +1095,18 @@ export const useSessionStore = create<SessionStore>()(
       },
 
       setAgentStreamState: (serverId, agentId, state) => {
+        // The cap can only be crossed when a *new* agent starts holding
+        // buffers, so the sweep runs there rather than on every stream flush
+        // (~1400 per session in a 2-minute soak — a per-event sweep would cost
+        // more than the retention it reclaims).
+        let addedAgent = false;
         set((prev) => {
           const session = prev.sessions[serverId];
           if (!session) {
             return prev;
           }
+          addedAgent =
+            !session.agentStreamTail.has(agentId) && !session.agentStreamHead.has(agentId);
 
           let nextTail = session.agentStreamTail;
           let nextHead = session.agentStreamHead;
@@ -1100,6 +1142,12 @@ export const useSessionStore = create<SessionStore>()(
             return prev;
           }
 
+          // Recency for the retention cap. Written on the same chokepoint the
+          // buffers grow through, so it can never drift from what is buffered.
+          agentStreamTouchTick += 1;
+          const nextTouchSeq = new Map(session.agentStreamTouchSeq);
+          nextTouchSeq.set(agentId, agentStreamTouchTick);
+
           return {
             ...prev,
             sessions: {
@@ -1108,10 +1156,144 @@ export const useSessionStore = create<SessionStore>()(
                 ...session,
                 agentStreamTail: nextTail,
                 agentStreamHead: nextHead,
+                agentStreamTouchSeq: nextTouchSeq,
               },
             },
           };
         });
+        if (addedAgent) {
+          get().sweepAgentStreams(serverId);
+        }
+      },
+
+      retainAgentStream: (serverId, agentId) => {
+        let released = false;
+        const adjust = (delta: number) => {
+          set((prev) => {
+            const session = prev.sessions[serverId];
+            if (!session) {
+              return prev;
+            }
+            const current = session.agentStreamRetainers.get(agentId) ?? 0;
+            const next = current + delta;
+            const nextRetainers = new Map(session.agentStreamRetainers);
+            if (next > 0) {
+              nextRetainers.set(agentId, next);
+            } else {
+              nextRetainers.delete(agentId);
+            }
+            return {
+              ...prev,
+              sessions: {
+                ...prev.sessions,
+                [serverId]: { ...session, agentStreamRetainers: nextRetainers },
+              },
+            };
+          });
+        };
+
+        adjust(1);
+        return () => {
+          // Guard the release rather than the retain: React can re-run an
+          // effect cleanup path in StrictMode, and a double decrement would
+          // release buffers a still-mounted sibling pane is rendering.
+          if (released) {
+            return;
+          }
+          released = true;
+          adjust(-1);
+          // Closing the last pane on a chat that is no longer a live agent —
+          // archived, deleted, or removed while it was open — is the "release
+          // on chat close" half of the rule. Membership in `agents` is only
+          // consulted here, at unmount, where nothing can be rendering it: the
+          // planner still filters by retainers, so a copy open elsewhere is
+          // safe. A live chat stays cached, so re-opening it is instant.
+          const isLiveAgent = Boolean(get().sessions[serverId]?.agents.has(agentId));
+          get().sweepAgentStreams(serverId, isLiveAgent ? undefined : [agentId]);
+        };
+      },
+
+      releaseAgentStreams: (serverId, agentIds) => {
+        if (agentIds.length === 0) {
+          return;
+        }
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) {
+            return prev;
+          }
+
+          const nextTail = new Map(session.agentStreamTail);
+          const nextHead = new Map(session.agentStreamHead);
+          const nextCursor = new Map(session.agentTimelineCursor);
+          const nextHasOlder = new Map(session.agentTimelineHasOlder);
+          const nextOlderInFlight = new Map(session.agentTimelineOlderFetchInFlight);
+          const nextApplied = new Map(session.agentAuthoritativeHistoryApplied);
+          const nextTouchSeq = new Map(session.agentStreamTouchSeq);
+
+          let changed = false;
+          for (const agentId of agentIds) {
+            // The cursor and the applied flag are dropped with the buffers on
+            // purpose: leaving them would tell planInitialAgentTimelineSync the
+            // client is caught up, so the next open would issue an `after`
+            // catch-up that returns nothing onto an empty tail — a blank chat.
+            // Clearing them makes the next open plan a full `tail` fetch.
+            changed =
+              [
+                nextTail.delete(agentId),
+                nextHead.delete(agentId),
+                nextCursor.delete(agentId),
+                nextHasOlder.delete(agentId),
+                nextOlderInFlight.delete(agentId),
+                nextApplied.delete(agentId),
+                nextTouchSeq.delete(agentId),
+              ].some(Boolean) || changed;
+          }
+          if (!changed) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: {
+                ...session,
+                agentStreamTail: nextTail,
+                agentStreamHead: nextHead,
+                agentTimelineCursor: nextCursor,
+                agentTimelineHasOlder: nextHasOlder,
+                agentTimelineOlderFetchInFlight: nextOlderInFlight,
+                agentAuthoritativeHistoryApplied: nextApplied,
+                agentStreamTouchSeq: nextTouchSeq,
+              },
+            },
+          };
+        });
+      },
+
+      sweepAgentStreams: (serverId, departedAgentIds) => {
+        const session = get().sessions[serverId];
+        if (!session) {
+          return;
+        }
+        const bufferedAgentIds = [
+          ...new Set([...session.agentStreamTail.keys(), ...session.agentStreamHead.keys()]),
+        ];
+        const evicted = planAgentStreamEviction({
+          bufferedAgentIds,
+          displayedAgentIds: new Set(session.agentStreamRetainers.keys()),
+          // Departure is asserted by the caller that saw the event, never
+          // inferred from store membership: an agent absent from `agents` may
+          // still be a perfectly renderable chat opened by id into
+          // `agentDetails`, and guessing wrong here blanks it.
+          ...(departedAgentIds ? { departedAgentIds: new Set(departedAgentIds) } : {}),
+          lastActivityAtByAgentId: session.agentStreamTouchSeq,
+        });
+        if (evicted.length === 0) {
+          return;
+        }
+        get().releaseAgentStreams(serverId, evicted);
       },
 
       appendOptimisticUserMessageToAgentStream: (serverId, agentId, message, options) => {

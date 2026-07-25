@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import type { ContextNode, ContextReport } from "@otto-code/protocol/messages";
 import { Compress } from "@/components/icons/material-icons";
 import { ToolbarIconButton } from "@/components/ui/toolbar-icon-button";
@@ -15,9 +16,9 @@ const ThemedCompress = withUnistyles(Compress);
 
 /**
  * Context Management's compaction action — the call site
- * projects/context-management/context-management.md §7.4 was blocked on.
+ * docs/context-management.md's AI compaction was blocked on.
  *
- * §7.4's requirement was never "a compact button", it was **"a side-by-side
+ * The requirement was never "a compact button", it was **"a side-by-side
  * diff with per-hunk accept/reject before anything lands"**, for a file whose
  * entire purpose is behavioural rules. That is the Refine tab, so compaction is
  * a preset here rather than a feature of its own: this button picks the right
@@ -48,6 +49,7 @@ export function ContextRefineAction({
   report: ContextReport | null;
   selectedNode: ContextNode | null;
 }) {
+  const { t } = useTranslation();
   const hasRefine = useRefineFeature(serverId);
 
   // Budgeted, and smallest-first: the whole graph would routinely blow the
@@ -83,7 +85,7 @@ export function ContextRefineAction({
 
   return (
     <ToolbarIconButton
-      label="Compact with AI"
+      label={t("refine.compactOpen")}
       testID="context-refine-open"
       Icon={ThemedCompress}
       onPress={open}

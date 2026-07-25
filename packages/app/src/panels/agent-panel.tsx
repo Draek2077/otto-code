@@ -31,6 +31,8 @@ import { COMPACT_FORM_FACTOR_WIDTH, useIsCompactFormFactor } from "@/constants/l
 import { isNative, isWeb } from "@/constants/platform";
 import { useAgentAttentionClear } from "@/hooks/use-agent-attention-clear";
 import { useAgentInitialization } from "@/hooks/use-agent-initialization";
+import { shouldSyncAgentTimelineOnFocus } from "@/timeline/timeline-sync-plan";
+import { useAgentStreamRetention } from "@/timeline/use-agent-stream-retention";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useAgentInputDraft, type AgentInputDraft } from "@/composer/draft/input-draft";
 import {
@@ -900,13 +902,6 @@ function ChatAgentContent({
     }
   }, [connectionStatus, dismissToast, toastApi, t]);
 
-  useEffect(() => {
-    if (!isPaneFocused || !agentId || !isConnected || !hasSession) {
-      return;
-    }
-    ensureInitializedWithSyncErrorHandling("focus");
-  }, [agentId, ensureInitializedWithSyncErrorHandling, hasSession, isConnected, isPaneFocused]);
-
   const isArchivingCurrentAgent = Boolean(agentId && isArchivingAgent({ serverId, agentId }));
 
   useEffect(() => {
@@ -938,6 +933,32 @@ function ChatAgentContent({
     }
     return agentHistorySyncGeneration < historySyncGeneration;
   }, [agentHistorySyncGeneration, agentId, historySyncGeneration]);
+
+  // Focusing a pane only fetches when the client does not already hold the
+  // transcript — see `shouldSyncAgentTimelineOnFocus` for why an unconditional
+  // fetch here was the navigation path's most expensive redundant round-trip.
+  useEffect(() => {
+    if (!isPaneFocused || !agentId || !isConnected || !hasSession) {
+      return;
+    }
+    if (
+      !shouldSyncAgentTimelineOnFocus({
+        hasAuthoritativeHistory: hasAppliedAuthoritativeHistory,
+        needsAuthoritativeSync,
+      })
+    ) {
+      return;
+    }
+    ensureInitializedWithSyncErrorHandling("focus");
+  }, [
+    agentId,
+    ensureInitializedWithSyncErrorHandling,
+    hasAppliedAuthoritativeHistory,
+    hasSession,
+    isConnected,
+    isPaneFocused,
+    needsAuthoritativeSync,
+  ]);
 
   const agent = useMemo<AgentScreenAgent | null>(
     () => buildChatAgentFromState(agentState, projectPlacement),
@@ -1345,6 +1366,9 @@ const AgentStreamSection = memo(function AgentStreamSection({
   // flip re-renders this component and the selector closure reads the live
   // tail during that same render — reactive, not an imperative getState()
   // snapshot, so reactivation can't freeze on a stale value.
+  // This slot renders the tail even while hidden (it holds a frozen reference
+  // to it), so it retains for as long as it is mounted — not only while active.
+  useAgentStreamRetention(serverId, agentId ?? null);
   const isPanelActive = useRetainedPanelActive();
   const frozenStreamItemsRef = useRef<StreamItem[] | undefined>(undefined);
   const streamItemsRaw = useSessionStore((state) => {

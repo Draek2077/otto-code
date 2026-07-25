@@ -561,7 +561,7 @@ export function summarizeToolCallResult(detail: ToolCallDetail): string {
  * discovery card near the node (vendor `Discovery`; the page consumes this via
  * the OTTO-PATCHES "discovery cards" wire on `tool_call_end`). */
 export interface DerivedDiscovery {
-  type: "file" | "pattern" | "finding" | "code";
+  type: "file" | "pattern" | "finding" | "code" | "error";
   label: string;
   content: string;
 }
@@ -601,7 +601,9 @@ const TEST_RESULT_RE =
   /(\d+\s+(?:passed|failed|passing|failing))|(tests?:)|(\bpass(?:ed)?\b|\bfail(?:ed)?\b)|coverage|(\d+\s+of\s+\d+)/i;
 
 /** Pull the most informative test/coverage lines out of shell output. */
-function summarizeTestOutput(output: string): { label: string; content: string } | null {
+function summarizeTestOutput(
+  output: string,
+): { label: string; content: string; failed: boolean } | null {
   const lines = output
     .split("\n")
     .map((l) => l.trim())
@@ -610,7 +612,7 @@ function summarizeTestOutput(output: string): { label: string; content: string }
   if (hits.length === 0) return null;
   const failed = /fail/i.test(output) && !/0\s+fail/i.test(output);
   const label = failed ? "Tests failed" : "Tests pass";
-  return { label, content: hits.map((l) => discoveryLine(l)).join("\n") };
+  return { label, content: hits.map((l) => discoveryLine(l)).join("\n"), failed };
 }
 
 type RelFn = (p: string) => string;
@@ -663,11 +665,13 @@ function shellDiscovery(
   isError: boolean | undefined,
 ): DerivedDiscovery | null {
   const test = detail.output ? summarizeTestOutput(detail.output) : null;
-  if (test) return { type: "finding", label: test.label, content: test.content };
-  // A failed command is a finding even when it's not a test run.
+  if (test)
+    return { type: test.failed ? "error" : "finding", label: test.label, content: test.content };
+  // A failed command is still a card — but typed "error" so it renders red,
+  // matching the failed tool-call card it accompanies.
   if (!isError && !(detail.exitCode != null && detail.exitCode !== 0)) return null;
   return {
-    type: "finding",
+    type: "error",
     label: "Command failed",
     content: [
       discoveryLine(detail.command, DISCOVERY_LABEL_MAX),
@@ -699,7 +703,7 @@ function fetchDiscovery(
  * null for the ordinary majority. Deliberately excludes Read (the most frequent
  * tool — reads would spray low-value cards) and anything already represented as
  * its own node (sub_agent → subagent_return particle). Locked to "heuristic on
- * notable results" (projects/visualizer-node-richness). Pure over `detail`;
+ * notable results" (docs/visualizer.md, "Discovery cards"). Pure over `detail`;
  * paths are relativized to the agent cwd, matching the rest of the graph. */
 export function deriveToolCallDiscovery(
   detail: ToolCallDetail,

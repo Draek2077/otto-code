@@ -18,10 +18,15 @@
  * personalities + team to the host roster and activates the team if none is
  * active yet. Feature-gated on agentPersonalities + agentTeams.
  *
- * TODO(i18n): inline English, translated in a later pass.
+ * The blueprint *name* the card shows is also the name the team is saved under
+ * (see `resolveBlueprintName`), so both come from one key — a card reading "Équipe
+ * applicative" that installs a team called "Application Team" would be two
+ * different answers to the same question. The prompts and persona names inside
+ * `presets/` stay English: those are model input, not UI copy.
  */
 
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
@@ -34,12 +39,36 @@ import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useAgentPersonalitiesFeature } from "@/screens/settings/agent-personalities-section";
 import { useAgentTeamsFeature } from "@/screens/settings/agent-teams-section";
+import { i18n } from "@/i18n/i18next";
 import { ROLE_LABELS } from "@/provider-selection/role-labels";
 import { blueprintsForLens } from "./presets/blueprints";
 import { generateTeam, type GeneratedTeam } from "./presets/generate";
 import type { TeamBlueprint } from "./presets/types";
 
 const DEFAULT_TEAM_COLOR = "#4F46E5";
+
+/**
+ * A blueprint's user-facing name and tagline. Keyed by the blueprint's `key`
+ * (`application`, `game`, …) rather than its id, so the developer and user
+ * lenses can never collide. The name is what the card shows *and* what the
+ * installed team is called — one string, so they cannot disagree.
+ *
+ * `blueprint.name` stays in the preset data as the fallback: `presets/` is kept
+ * free of i18n so `generateTeam` remains a pure, testable provider-resolution
+ * step, and a key that ever goes missing then degrades to the English name
+ * rather than to a raw key on a first-run screen.
+ */
+function resolveBlueprintName(blueprint: TeamBlueprint): string {
+  return i18n.t(`setupWizard.team.blueprints.${blueprint.key}.name`, {
+    defaultValue: blueprint.name,
+  });
+}
+
+function blueprintTagline(blueprint: TeamBlueprint): string {
+  return i18n.t(`setupWizard.team.blueprints.${blueprint.key}.tagline`, {
+    defaultValue: blueprint.tagline,
+  });
+}
 
 // A random-ish local id for a hand-built team. These are user-owned (editable,
 // deletable) — not idempotent-restore targets, so a fresh token per team is fine.
@@ -68,6 +97,7 @@ export const TeamStep = forwardRef<TeamStepHandle, TeamStepProps>(function TeamS
   { serverId, provider, interfaceMode },
   ref,
 ) {
+  const { t } = useTranslation();
   const hasPersonalities = useAgentPersonalitiesFeature(serverId ?? "");
   const hasTeams = useAgentTeamsFeature(serverId ?? "");
   const { config, patchConfig } = useDaemonConfig(serverId);
@@ -93,12 +123,22 @@ export const TeamStep = forwardRef<TeamStepHandle, TeamStepProps>(function TeamS
       if (!provider) {
         return null;
       }
-      return generateTeam({
+      const generated = generateTeam({
         blueprint,
         provider,
         models: providerEntry?.models,
         modes: providerEntry?.modes,
       });
+      if (!generated) {
+        return null;
+      }
+      // The generator is provider-resolution only and stays language-free; the
+      // one user-facing string it produces is renamed here so the team is saved
+      // under the same name the card offered.
+      return {
+        personalities: generated.personalities,
+        team: { ...generated.team, name: resolveBlueprintName(blueprint) },
+      };
     },
     [provider, providerEntry],
   );
@@ -157,7 +197,10 @@ export const TeamStep = forwardRef<TeamStepHandle, TeamStepProps>(function TeamS
       try {
         await installTeam(preview);
       } catch (error) {
-        Alert.alert("Unable to save", error instanceof Error ? error.message : String(error));
+        Alert.alert(
+          i18n.t("common.errors.unableToSave"),
+          error instanceof Error ? error.message : String(error),
+        );
       } finally {
         setIsAdding(false);
       }
@@ -175,7 +218,10 @@ export const TeamStep = forwardRef<TeamStepHandle, TeamStepProps>(function TeamS
     try {
       await installTeam(preview);
     } catch (error) {
-      Alert.alert("Unable to save", error instanceof Error ? error.message : String(error));
+      Alert.alert(
+        i18n.t("common.errors.unableToSave"),
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }, [preview, selected, config, installedTeamIds, installTeam]);
 
@@ -185,11 +231,8 @@ export const TeamStep = forwardRef<TeamStepHandle, TeamStepProps>(function TeamS
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.title}>Build your team</Text>
-          <Text style={styles.subtitle}>
-            This host doesn&rsquo;t support agent teams yet. Update the host to have Otto build you
-            a team — you can skip this for now.
-          </Text>
+          <Text style={styles.title}>{t("setupWizard.team.unsupportedTitle")}</Text>
+          <Text style={styles.subtitle}>{t("setupWizard.team.unsupportedBody")}</Text>
         </View>
       </View>
     );
@@ -198,11 +241,8 @@ export const TeamStep = forwardRef<TeamStepHandle, TeamStepProps>(function TeamS
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>What kind of team do you want?</Text>
-        <Text style={styles.subtitle}>
-          Pick a team and Otto builds you a complete, balanced crew — named characters with their
-          own personalities. Not a fit? Reshuffle. Or build your own from your agents.
-        </Text>
+        <Text style={styles.title}>{t("setupWizard.team.title")}</Text>
+        <Text style={styles.subtitle}>{t("setupWizard.team.subtitle")}</Text>
       </View>
 
       <View style={styles.cards}>
@@ -221,7 +261,7 @@ export const TeamStep = forwardRef<TeamStepHandle, TeamStepProps>(function TeamS
 
       {!customOpen && preview && selected ? (
         <GeneratedPreview
-          blueprintName={selected.name}
+          blueprintName={resolveBlueprintName(selected)}
           team={preview.team}
           personalities={preview.personalities}
           installedTeamIds={installedTeamIds}
@@ -256,11 +296,10 @@ function buildAddTeamPatch(
 }
 
 function ProviderNotReadyNote({ provider }: { provider: AgentProvider | null }) {
+  const { t } = useTranslation();
   return (
     <Text style={styles.note}>
-      {provider
-        ? "This provider has no models yet — refresh it in Settings, then come back."
-        : "Pick a provider first (previous step) so Otto knows which models to use."}
+      {provider ? t("setupWizard.team.providerNoModels") : t("setupWizard.team.providerMissing")}
     </Text>
   );
 }
@@ -284,8 +323,12 @@ function GeneratedPreview({
   onRegenerate: () => void;
   onAdd: () => void;
 }) {
+  const { t } = useTranslation();
   const installed = installedTeamIds.has(team.id);
-  const memberLabel = personalities.length === 1 ? "1 member" : `${personalities.length} members`;
+  const memberLabel =
+    personalities.length === 1
+      ? t("setupWizard.team.memberCountOne")
+      : t("setupWizard.team.memberCountMany", { count: personalities.length });
   return (
     <View style={styles.previewCard}>
       <View style={styles.previewHeader}>
@@ -305,7 +348,7 @@ function GeneratedPreview({
           disabled={isAdding}
           testID="team-regenerate"
         >
-          Reshuffle
+          {t("setupWizard.team.reshuffle")}
         </Button>
         <Button
           variant="default"
@@ -316,7 +359,7 @@ function GeneratedPreview({
           style={styles.addButton}
           testID="team-add"
         >
-          {installed ? "Added ✓" : "Add this team"}
+          {installed ? t("setupWizard.team.added") : t("setupWizard.team.addTeam")}
         </Button>
       </View>
     </View>
@@ -349,16 +392,17 @@ function TeamTypeCard({
     >
       <View style={dotStyle} />
       <Text style={styles.cardName} numberOfLines={1}>
-        {blueprint.name}
+        {resolveBlueprintName(blueprint)}
       </Text>
       <Text style={styles.cardTagline} numberOfLines={2}>
-        {blueprint.tagline}
+        {blueprintTagline(blueprint)}
       </Text>
     </Pressable>
   );
 }
 
 function BuildYourOwnCard({ selected, onSelect }: { selected: boolean; onSelect: () => void }) {
+  const { t } = useTranslation();
   const cardStyle = useMemo(
     () => [styles.card, styles.customCard, selected && styles.cardSelected],
     [selected],
@@ -376,10 +420,10 @@ function BuildYourOwnCard({ selected, onSelect }: { selected: boolean; onSelect:
         <Text style={styles.customPlus}>+</Text>
       </View>
       <Text style={styles.cardName} numberOfLines={1}>
-        Build your own
+        {t("setupWizard.team.custom.name")}
       </Text>
       <Text style={styles.cardTagline} numberOfLines={2}>
-        Assemble a team from your agents, your way.
+        {t("setupWizard.team.custom.tagline")}
       </Text>
     </Pressable>
   );
@@ -398,7 +442,9 @@ function CustomTeamBuilder({
     () => config?.agentPersonalities?.personalities ?? [],
     [config?.agentPersonalities?.personalities],
   );
-  const [name, setName] = useState("My Team");
+  const { t } = useTranslation();
+  const defaultName = t("setupWizard.team.builder.defaultName");
+  const [name, setName] = useState(defaultName);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [isAdding, setIsAdding] = useState(false);
   const [addedName, setAddedName] = useState<string | null>(null);
@@ -446,22 +492,22 @@ function CustomTeamBuilder({
         onInstalled(team.id);
         setAddedName(team.name);
         setSelectedIds(new Set());
-        setName("My Team");
+        setName(defaultName);
       } catch (error) {
-        Alert.alert("Unable to save", error instanceof Error ? error.message : String(error));
+        Alert.alert(
+          i18n.t("common.errors.unableToSave"),
+          error instanceof Error ? error.message : String(error),
+        );
       } finally {
         setIsAdding(false);
       }
     })();
-  }, [canAdd, selectedMembers, trimmedName, config, patchConfig, onInstalled]);
+  }, [canAdd, selectedMembers, trimmedName, config, patchConfig, onInstalled, defaultName]);
 
   if (available.length === 0) {
     return (
       <View style={styles.previewCard}>
-        <Text style={styles.note}>
-          No agents to pick from yet. Generate a team above (that adds agents you can mix in here),
-          or add your own in Settings &rsquo; Agents — then come back.
-        </Text>
+        <Text style={styles.note}>{t("setupWizard.team.builder.empty")}</Text>
       </View>
     );
   }
@@ -469,11 +515,11 @@ function CustomTeamBuilder({
   return (
     <View style={styles.previewCard}>
       <View style={styles.builderField}>
-        <Text style={styles.builderLabel}>Team name</Text>
+        <Text style={styles.builderLabel}>{t("setupWizard.team.builder.nameLabel")}</Text>
         <TextInput
           value={name}
           onChangeText={setName}
-          placeholder="My Team"
+          placeholder={defaultName}
           style={styles.builderInput}
           testID="custom-team-name"
         />
@@ -481,7 +527,9 @@ function CustomTeamBuilder({
 
       <View style={styles.builderField}>
         <Text style={styles.builderLabel}>
-          Members {selectedIds.size > 0 ? `(${selectedIds.size})` : ""}
+          {selectedIds.size > 0
+            ? t("setupWizard.team.builder.membersWithCount", { count: selectedIds.size })
+            : t("setupWizard.team.builder.members")}
         </Text>
         <View style={styles.roster}>
           {available.map((personality) => (
@@ -497,12 +545,18 @@ function CustomTeamBuilder({
 
       {selectedIds.size > 0 ? (
         <Text style={styles.coverageHint}>
-          {`Covers: ${roleUnion.map((role) => ROLE_LABELS[role]).join(" · ")}`}
-          {hasOrchestrator ? "" : "  ·  Tip: add an Orchestrator to give the team a lead."}
+          {t("setupWizard.team.builder.covers", {
+            roles: roleUnion.map((role) => ROLE_LABELS[role]).join(" · "),
+          })}
+          {hasOrchestrator ? "" : t("setupWizard.team.builder.orchestratorTip")}
         </Text>
       ) : null}
 
-      {addedName ? <Text style={styles.addedHint}>Added “{addedName}” ✓</Text> : null}
+      {addedName ? (
+        <Text style={styles.addedHint}>
+          {t("setupWizard.team.builder.addedNamed", { name: addedName })}
+        </Text>
+      ) : null}
 
       <Button
         variant="default"
@@ -512,13 +566,14 @@ function CustomTeamBuilder({
         disabled={!canAdd}
         testID="custom-team-add"
       >
-        Add this team
+        {t("setupWizard.team.addTeam")}
       </Button>
     </View>
   );
 }
 
 function MemberRow({ personality }: { personality: AgentPersonality }) {
+  const { t } = useTranslation();
   const roles = useMemo(() => normalizePersonalityRoles(personality.roles), [personality]);
   const chipStyle = useMemo(
     () => [styles.memberChip, { backgroundColor: personality.spinner?.glowA ?? "#888888" }],
@@ -532,7 +587,7 @@ function MemberRow({ personality }: { personality: AgentPersonality }) {
           {personality.name}
         </Text>
         <Text style={styles.memberRoles} numberOfLines={1}>
-          {roles.map((role) => ROLE_LABELS[role]).join(" · ") || "No roles"}
+          {roles.map((role) => ROLE_LABELS[role]).join(" · ") || t("setupWizard.team.noRoles")}
         </Text>
       </View>
     </View>
@@ -548,6 +603,7 @@ function SelectableMemberRow({
   selected: boolean;
   onToggle: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const handlePress = useCallback(() => onToggle(personality.id), [onToggle, personality.id]);
   const roles = useMemo(() => normalizePersonalityRoles(personality.roles), [personality]);
   const rowStyle = useMemo(
@@ -577,7 +633,7 @@ function SelectableMemberRow({
           {personality.name}
         </Text>
         <Text style={styles.memberRoles} numberOfLines={1}>
-          {roles.map((role) => ROLE_LABELS[role]).join(" · ") || "No roles"}
+          {roles.map((role) => ROLE_LABELS[role]).join(" · ") || t("setupWizard.team.noRoles")}
         </Text>
       </View>
       <View style={checkStyle}>{selected ? <Text style={styles.checkMark}>✓</Text> : null}</View>

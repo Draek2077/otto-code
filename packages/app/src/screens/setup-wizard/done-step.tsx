@@ -5,10 +5,10 @@
  * goes home (the shell owns that on the callback).
  *
  * Presentational only — `onFinish` is wired by the shell.
- * TODO(i18n): inline English, translated in a later pass.
  */
 
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -37,6 +37,7 @@ export function DoneStep({
   activeTeamName,
   onFinish,
 }: DoneStepProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   const sizeForFormFactor = useSizeForFormFactor();
@@ -57,22 +58,31 @@ export function DoneStep({
 
   const summary = useMemo(() => {
     const rows: Array<{ label: string; value: string }> = [
-      { label: "Interface mode", value: interfaceMode === "user" ? "User" : "Developer" },
+      {
+        label: t("setupWizard.done.interfaceMode"),
+        value:
+          interfaceMode === "user"
+            ? t("setupWizard.mode.user.title")
+            : t("setupWizard.mode.developer.title"),
+      },
     ];
     if (primaryProviderLabel) {
-      rows.push({ label: "Provider", value: primaryProviderLabel });
+      rows.push({ label: t("setupWizard.done.provider"), value: primaryProviderLabel });
     }
     if (rosterCount > 0) {
       rows.push({
-        label: "Agents",
-        value: rosterCount === 1 ? "1 agent" : `${rosterCount} agents`,
+        label: t("setupWizard.done.agents"),
+        value:
+          rosterCount === 1
+            ? t("setupWizard.done.agentCountOne")
+            : t("setupWizard.done.agentCountMany", { count: rosterCount }),
       });
     }
     if (activeTeamName) {
-      rows.push({ label: "Active team", value: activeTeamName });
+      rows.push({ label: t("setupWizard.done.activeTeam"), value: activeTeamName });
     }
     return rows;
-  }, [interfaceMode, primaryProviderLabel, rosterCount, activeTeamName]);
+  }, [t, interfaceMode, primaryProviderLabel, rosterCount, activeTeamName]);
 
   return (
     <WizardBrandBackdrop>
@@ -88,11 +98,10 @@ export function DoneStep({
         </View>
 
         <View style={styles.copy}>
-          {/* TODO(i18n): extract */}
           <Text accessibilityRole="header" style={styles.headline}>
-            You&rsquo;re all set
+            {t("setupWizard.done.headline")}
           </Text>
-          <Text style={styles.subtitle}>Otto is ready. Here&rsquo;s what we set up:</Text>
+          <Text style={styles.subtitle}>{t("setupWizard.done.subtitle")}</Text>
         </View>
 
         <View style={styles.summary}>
@@ -106,8 +115,7 @@ export function DoneStep({
 
         <View style={styles.actions}>
           <Button variant="default" size="lg" onPress={onFinish}>
-            {/* TODO(i18n): extract */}
-            Get started
+            {t("setupWizard.done.finish")}
           </Button>
         </View>
       </View>

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState, type ReactElement } from "react";
+import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { PersonalityMemoryEntryPayload } from "@otto-code/protocol/messages";
@@ -6,6 +7,7 @@ import { Brain, Check, Pencil, Plus, Trash2, X } from "@/components/icons/materi
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
+import { i18n } from "@/i18n/i18next";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { formatTokens } from "./format";
 import type { PersonalityMemoryView } from "./use-personality-memory";
@@ -58,6 +60,7 @@ export function ContextMemoryList({
   onDropEntry,
   onAddEntry,
 }: ContextMemoryListProps): ReactElement {
+  const { t } = useTranslation();
   const listRef = useRef<ScrollView>(null);
   const scrollbar = useWebScrollViewScrollbar(listRef, { enabled: isWeb });
   const [adding, setAdding] = useState(false);
@@ -77,10 +80,7 @@ export function ContextMemoryList({
   if (!hasPersonalitySelected) {
     return (
       <View style={styles.empty} testID="context-memory-no-personality">
-        <Text style={styles.emptyText}>
-          Pick a personality above to see what it has learned, and what that adds to every request
-          it makes.
-        </Text>
+        <Text style={styles.emptyText}>{t("contextManagement.memory.noPersonality")}</Text>
       </View>
     );
   }
@@ -90,7 +90,7 @@ export function ContextMemoryList({
       <View style={styles.empty}>
         <View style={styles.loadingRow} testID="context-memory-loading">
           <ActivityIndicator size="small" />
-          <Text style={styles.emptyText}>Reading what this personality remembers…</Text>
+          <Text style={styles.emptyText}>{t("contextManagement.memory.loading")}</Text>
         </View>
       </View>
     );
@@ -100,7 +100,7 @@ export function ContextMemoryList({
     return (
       <View style={styles.empty}>
         <Text style={styles.errorText} testID="context-memory-error">
-          {`Could not read this personality's memory: ${error}`}
+          {t("contextManagement.memory.failed", { error })}
         </Text>
       </View>
     );
@@ -130,8 +130,9 @@ export function ContextMemoryList({
 
         {entries.length === 0 ? (
           <Text style={styles.emptyText} testID="context-memory-empty">
-            {`${view?.personalityName ?? "This personality"} has not recorded anything yet. It ` +
-              "records lessons itself as it works; you can also add one by hand."}
+            {t("contextManagement.memory.emptyNamed", {
+              name: view?.personalityName ?? t("contextManagement.memory.emptyFallbackName"),
+            })}
           </Text>
         ) : (
           entries.map((entry) => (
@@ -155,13 +156,13 @@ export function ContextMemoryList({
         ) : (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Add a lesson"
+            accessibilityLabel={t("contextManagement.memory.add")}
             onPress={startAdding}
             style={styles.addButton}
             testID="context-memory-add"
           >
             <ThemedPlus size={ROW_ICON_SIZE} style={styles.addIcon} />
-            <Text style={styles.addLabel}>Add a lesson</Text>
+            <Text style={styles.addLabel}>{t("contextManagement.memory.add")}</Text>
           </Pressable>
         )}
       </ScrollView>
@@ -176,37 +177,38 @@ export function ContextMemoryList({
  * actually sent.
  */
 function InjectedBrief({ view }: { view: PersonalityMemoryView }): ReactElement {
+  const { t } = useTranslation();
   return (
     <View style={styles.briefCard} testID="context-memory-brief">
       <View style={styles.briefHeader}>
         <ThemedBrain size={ROW_ICON_SIZE} style={styles.briefIcon} />
-        <Text style={styles.briefTitle}>{`Injected for ${view.personalityName}`}</Text>
+        <Text style={styles.briefTitle}>
+          {t("contextManagement.memory.brief.title", { name: view.personalityName })}
+        </Text>
         <Text style={styles.briefTokens}>
-          {view.brief.length === 0 ? "nothing" : `${formatTokens(view.briefTokens)} every request`}
+          {view.brief.length === 0
+            ? t("contextManagement.memory.brief.nothing")
+            : t("contextManagement.memory.brief.everyRequest", {
+                tokens: formatTokens(view.briefTokens),
+              })}
         </Text>
       </View>
       {view.enabled ? null : (
         // A personality with memory switched off still HAS lessons; they are just
         // not sent. Saying nothing here would make the stored rows below look
         // like they were reaching the model.
-        <Text style={styles.briefMuted}>
-          Memory is switched off for this personality, so none of this is sent. The lessons are
-          kept.
-        </Text>
+        <Text style={styles.briefMuted}>{t("contextManagement.memory.brief.disabled")}</Text>
       )}
       {view.brief.length > 0 ? (
         <Text style={styles.briefText} selectable>
           {view.brief}
         </Text>
       ) : (
-        <Text style={styles.briefMuted}>
-          Nothing is added to this personality&apos;s context in this project.
-        </Text>
+        <Text style={styles.briefMuted}>{t("contextManagement.memory.brief.empty")}</Text>
       )}
       {view.briefOmittedCount > 0 ? (
         <Text style={styles.briefMuted}>
-          {`${view.briefOmittedCount} of the lessons below did not fit the injection budget and ` +
-            "are not being sent."}
+          {t("contextManagement.memory.brief.omitted", { count: view.briefOmittedCount })}
         </Text>
       ) : null}
     </View>
@@ -221,6 +223,7 @@ interface MemoryRowProps {
 }
 
 function MemoryRow({ entry, onSave, onDrop, onWriteError }: MemoryRowProps): ReactElement {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const isCompact = useIsCompactFormFactor();
@@ -240,10 +243,12 @@ function MemoryRow({ entry, onSave, onDrop, onWriteError }: MemoryRowProps): Rea
   const handleDrop = useCallback(() => {
     void (async () => {
       const confirmed = await confirmDialog({
-        title: "Forget this lesson?",
-        message: `"${truncate(entry.text)}" will be removed from this personality's memory.`,
-        confirmLabel: "Forget",
-        cancelLabel: "Cancel",
+        title: i18n.t("contextManagement.memory.forgetDialog.title"),
+        message: i18n.t("contextManagement.memory.forgetDialog.message", {
+          lesson: truncate(entry.text),
+        }),
+        confirmLabel: i18n.t("contextManagement.memory.forgetDialog.confirm"),
+        cancelLabel: i18n.t("common.actions.cancel"),
         destructive: true,
       });
       if (!confirmed) return;
@@ -280,20 +285,26 @@ function MemoryRow({ entry, onSave, onDrop, onWriteError }: MemoryRowProps): Rea
       <Text style={styles.rowText}>{entry.text}</Text>
       <View style={styles.rowMeta}>
         <Text style={styles.rowScope}>
-          {entry.scope === "global" ? "Everywhere" : "This project"}
+          {entry.scope === "global"
+            ? t("contextManagement.memory.scope.global")
+            : t("contextManagement.memory.scope.project")}
         </Text>
         {(entry.reinforcedCount ?? 1) > 1 ? (
-          <Text style={styles.rowScope}>{`Learned ${entry.reinforcedCount} times`}</Text>
+          <Text style={styles.rowScope}>
+            {t("contextManagement.memory.row.reinforced", { count: entry.reinforcedCount })}
+          </Text>
         ) : null}
         {entry.transferredFrom ? (
-          <Text style={styles.rowScope}>{`From ${entry.transferredFrom}`}</Text>
+          <Text style={styles.rowScope}>
+            {t("contextManagement.memory.row.transferredFrom", { name: entry.transferredFrom })}
+          </Text>
         ) : null}
         <View style={styles.rowSpacer} />
         {showActions ? (
           <>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Edit this lesson"
+              accessibilityLabel={t("contextManagement.memory.row.edit")}
               onPress={startEditing}
               hitSlop={8}
               testID={`context-memory-edit-${entry.id}`}
@@ -302,7 +313,7 @@ function MemoryRow({ entry, onSave, onDrop, onWriteError }: MemoryRowProps): Rea
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Forget this lesson"
+              accessibilityLabel={t("contextManagement.memory.row.forget")}
               onPress={handleDrop}
               hitSlop={8}
               testID={`context-memory-drop-${entry.id}`}
@@ -336,6 +347,7 @@ function MemoryComposer({
   onCommit,
   onCancel,
 }: MemoryComposerProps): ReactElement {
+  const { t } = useTranslation();
   const [text, setText] = useState(initialText);
   const [scope, setScope] = useState(initialScope === "global" ? "global" : "project");
   const canCommit = text.trim().length > 0;
@@ -345,7 +357,13 @@ function MemoryComposer({
     void onCommit(text.trim(), scope);
   }, [canCommit, onCommit, scope, text]);
 
-  const scopeLabel = useMemo(() => (scope === "global" ? "Everywhere" : "This project"), [scope]);
+  const scopeLabel = useMemo(
+    () =>
+      scope === "global"
+        ? t("contextManagement.memory.scope.global")
+        : t("contextManagement.memory.scope.project"),
+    [scope, t],
+  );
   const toggleScope = useCallback(
     () => setScope((current) => (current === "global" ? "project" : "global")),
     [],
@@ -358,14 +376,14 @@ function MemoryComposer({
         onChangeText={setText}
         multiline
         autoFocus
-        placeholder="What should this personality remember?"
+        placeholder={t("contextManagement.memory.composer.placeholder")}
         style={styles.composerInput}
         testID="context-memory-composer-input"
       />
       <View style={styles.composerActions}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Scope: ${scopeLabel}. Tap to change.`}
+          accessibilityLabel={t("contextManagement.memory.scope.change", { scope: scopeLabel })}
           onPress={toggleScope}
           style={styles.scopeToggle}
           testID="context-memory-composer-scope"
@@ -375,7 +393,7 @@ function MemoryComposer({
         <View style={styles.rowSpacer} />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Cancel"
+          accessibilityLabel={t("common.actions.cancel")}
           onPress={onCancel}
           hitSlop={8}
           testID="context-memory-composer-cancel"
@@ -384,7 +402,7 @@ function MemoryComposer({
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Save this lesson"
+          accessibilityLabel={t("contextManagement.memory.composer.save")}
           disabled={!canCommit}
           onPress={handleCommit}
           hitSlop={8}

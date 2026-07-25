@@ -1075,15 +1075,12 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           return next;
         });
 
-        setAgentTimelineCursor(serverId, (prev) => {
-          if (!prev.has(agentId)) {
-            return prev;
-          }
-          const next = new Map(prev);
-          next.delete(agentId);
-          return next;
-        });
-        setAgentAuthoritativeHistoryApplied(serverId, agentId, false);
+        // The agent has left the session, so its stream buffers can no longer
+        // be rendered from anywhere — release them together with the cursor and
+        // the applied flag (this used to clear those two on its own and leave
+        // the tail behind as unreachable state). If a pane is still showing it,
+        // retention holds it and the cap collects it later.
+        useSessionStore.getState().sweepAgentStreams(serverId, [agentId]);
         return;
       }
 
@@ -1105,9 +1102,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       applyAuthoritativeAgentSnapshot,
       queryClient,
       serverId,
-      setAgentAuthoritativeHistoryApplied,
       setAgents,
-      setAgentTimelineCursor,
       setPendingPermissions,
       setQueuedMessages,
     ],
@@ -1699,23 +1694,10 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         };
       });
 
-      setAgentStreamTail(serverId, (prev) => {
-        if (!prev.has(agentId)) {
-          return prev;
-        }
-        const next = new Map(prev);
-        next.delete(agentId);
-        return next;
-      });
-      clearAgentStreamHead(serverId, agentId);
-      setAgentTimelineCursor(serverId, (prev) => {
-        if (!prev.has(agentId)) {
-          return prev;
-        }
-        const next = new Map(prev);
-        next.delete(agentId);
-        return next;
-      });
+      // Buffers, cursor and the applied flag go together — see
+      // timeline/agent-stream-retention.ts. Retention still applies: a pane
+      // that is mid-render on the deleted chat keeps what it has.
+      useSessionStore.getState().sweepAgentStreams(serverId, [agentId]);
 
       // Remove draft input
       clearDraftInput({
@@ -1763,6 +1745,13 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         });
         return next;
       });
+
+      // An archived chat leaves the working set: the workspace stops listing
+      // it, and reopening it from the Archive tab re-initializes from the
+      // daemon (the release clears `agentAuthoritativeHistoryApplied`, so the
+      // next open plans a full `tail` fetch rather than an empty catch-up).
+      // Holding its whole transcript for the rest of the session buys nothing.
+      useSessionStore.getState().sweepAgentStreams(serverId, [agentId]);
     });
 
     const unsubBackgroundShellTasksChanged = client.on(

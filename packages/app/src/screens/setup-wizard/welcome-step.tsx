@@ -33,6 +33,7 @@
  */
 
 import { useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { StyleSheet as RNStyleSheet, Text, View } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -165,6 +166,7 @@ function WinkingGlyph({ size }: { size: number }) {
 }
 
 export function WelcomeStep({ onStart, onSkip }: WelcomeStepProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   const sizeForFormFactor = useSizeForFormFactor();
@@ -204,24 +206,19 @@ export function WelcomeStep({ onStart, onSkip }: WelcomeStepProps) {
         </View>
 
         <View style={styles.copy}>
-          {/* TODO(i18n): extract — wizard strings are owned by the i18n pass. */}
           <Text accessibilityRole="header" style={styles.headline}>
-            Welcome to Otto
+            {t("setupWizard.welcome.headline")}
           </Text>
-          <Text style={styles.subtitle}>
-            An agentic coding assistant with personality, for every model, cloud or local.
-          </Text>
+          <Text style={styles.subtitle}>{t("setupWizard.welcome.subtitle")}</Text>
         </View>
 
         <View style={styles.actions}>
           <Button variant="default" size="lg" onPress={onStart}>
-            {/* TODO(i18n): extract */}
-            Start
+            {t("setupWizard.welcome.start")}
           </Button>
           {onSkip ? (
             <Button variant="ghost" size="md" onPress={onSkip}>
-              {/* TODO(i18n): extract */}
-              Skip setup
+              {t("setupWizard.chrome.skip")}
             </Button>
           ) : null}
         </View>

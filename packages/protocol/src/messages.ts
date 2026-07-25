@@ -2534,7 +2534,7 @@ export const SuggestedTasksChangedSchema = z.object({
 });
 
 // Context Management — the daemon's accounting of everything a provider sends
-// before the user types (see projects/context-management/context-management.md).
+// before the user types (see docs/context-management.md).
 //
 // Two distinctions carry the whole feature and must not be collapsed on the
 // wire: an `import` edge is inlined into the request while a `reference` edge

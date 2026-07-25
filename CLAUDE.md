@@ -60,6 +60,10 @@ Non-negotiable. Each one exists because someone got it wrong first.
 | WebSocket schemas or validation                                                       | [docs/protocol-validation.md](docs/protocol-validation.md) and [docs/rpc-namespacing.md](docs/rpc-namespacing.md)                        |
 | Go-to-definition, hover, references, rename, diagnostics                              | [docs/code-intelligence.md](docs/code-intelligence.md)                                                                                   |
 | Anything that rides in a model request                                                | [docs/token-economy.md](docs/token-economy.md) — the five structural multipliers                                                         |
+| Fixed context weight, the context graph, or the Context Management tab                | [docs/context-management.md](docs/context-management.md) — hard vs soft edges, % of window as the severity unit                          |
+| Refine, or widening what it may rewrite                                               | [docs/refine.md](docs/refine.md) — **prose only**: no parser, no symbol table, `refine-scope.ts` is the one gate                         |
+| App Playwright E2E, or adding a spec                                                  | [docs/testing.md](docs/testing.md) — the three tiers, and the coverage matrix a spec must be added to in the same change                 |
+| Marketing-site or store captures                                                      | [docs/site-demos.md](docs/site-demos.md) — the whole-frame rule, the gotchas ledger, and the resolution/zoom trap                        |
 | Terminology in UI copy                                                                | [docs/glossary.md](docs/glossary.md) — the UI label wins, no synonyms                                                                    |
 | A new agent provider                                                                  | [docs/providers.md](docs/providers.md)                                                                                                   |
 

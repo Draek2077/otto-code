@@ -525,7 +525,7 @@ describe("deriveToolCallDiscovery", () => {
     ).toEqual({ type: "code", label: "/a.ts", content: "+2 −1 lines" });
   });
 
-  test("shell test output → a Tests pass/failed finding", () => {
+  test("shell test output → a green finding when passing, a red error card when failing", () => {
     expect(
       deriveToolCallDiscovery({
         type: "shell",
@@ -544,16 +544,16 @@ describe("deriveToolCallDiscovery", () => {
         command: "npm test",
         output: "Tests: 2 failed, 16 passed",
       }),
-    ).toMatchObject({ label: "Tests failed" });
+    ).toMatchObject({ type: "error", label: "Tests failed" });
   });
 
   test("a plain successful shell command is not a discovery", () => {
     expect(deriveToolCallDiscovery({ type: "shell", command: "ls" })).toBeNull();
   });
 
-  test("a failed command becomes a finding", () => {
+  test("a failed command becomes a red error card", () => {
     expect(deriveToolCallDiscovery({ type: "shell", command: "make", exitCode: 2 })).toEqual({
-      type: "finding",
+      type: "error",
       label: "Command failed",
       content: "make\nexit 2",
     });
@@ -796,8 +796,8 @@ describe("timelineItemToSimulationEvents", () => {
           isError: true,
           // ~4 chars/token over the serialized detail (32 chars here).
           tokenCost: 8,
-          // A failed command surfaces a "Command failed" discovery card.
-          discovery: { type: "finding", label: "Command failed", content: "foo" },
+          // A failed command surfaces a red "Command failed" discovery card.
+          discovery: { type: "error", label: "Command failed", content: "foo" },
           errorMessage: "command not found",
         },
       },

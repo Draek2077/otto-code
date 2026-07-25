@@ -260,6 +260,9 @@ export function getDiscoveryTypeColor(type: string): string {
     case 'file': return COLORS.discoveryFile
     case 'pattern': return COLORS.discoveryPattern
     case 'finding': return COLORS.discoveryFinding
+    // OTTO PATCH (OTTO-PATCHES.md): failure-shaped discoveries (failed command /
+    // failed tests) render in the error red, not the green "finding" color.
+    case 'error': return COLORS.error
     default: return COLORS.discoveryCode
   }
 }

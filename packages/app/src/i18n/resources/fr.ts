@@ -11,6 +11,7 @@ export const fr: TranslationResources = {
       close: "Fermer",
       copy: "Copier",
       dismiss: "Ignorer",
+      ok: "OK",
       retry: "Réessayer",
       search: "Rechercher",
       select: "Sélectionner",
@@ -195,6 +196,64 @@ export const fr: TranslationResources = {
       context: "Contexte",
       findings: "À corriger",
       findingsCount: "À corriger ({{count}})",
+      memory: "Mémoire",
+      memoryCount: "Mémoire ({{count}})",
+    },
+    personalitySelector: {
+      label: "Contexte affiché pour",
+      everyone: "Tout le monde",
+      withLessons: "{{name}}, {{count}} leçons retenues",
+    },
+    memory: {
+      noPersonality:
+        "Choisissez une personnalité ci-dessus pour voir ce qu'elle a appris, et ce que cela ajoute à chacune de ses requêtes.",
+      loading: "Lecture de ce que cette personnalité retient…",
+      failed: "Impossible de lire la mémoire de cette personnalité : {{error}}",
+      emptyNamed:
+        "{{name}} n'a encore rien enregistré. Elle enregistre ses leçons elle-même au fil du travail ; vous pouvez aussi en ajouter une à la main.",
+      emptyFallbackName: "Cette personnalité",
+      add: "Ajouter une leçon",
+      brief: {
+        title: "Injecté pour {{name}}",
+        nothing: "rien",
+        everyRequest: "{{tokens}} à chaque requête",
+        disabled:
+          "La mémoire est désactivée pour cette personnalité, donc rien de tout cela n'est envoyé. Les leçons sont conservées.",
+        empty: "Rien n'est ajouté au contexte de cette personnalité dans ce projet.",
+        omitted:
+          "{{count}} des leçons ci-dessous n'entrent pas dans le budget d'injection et ne sont pas envoyées.",
+      },
+      scope: {
+        global: "Partout",
+        project: "Ce projet",
+        change: "Portée : {{scope}}. Touchez pour changer.",
+      },
+      row: {
+        reinforced: "Apprise {{count}} fois",
+        transferredFrom: "De {{name}}",
+        edit: "Modifier cette leçon",
+        forget: "Oublier cette leçon",
+      },
+      forgetDialog: {
+        title: "Oublier cette leçon ?",
+        message: "« {{lesson}} » sera retirée de la mémoire de cette personnalité.",
+        confirm: "Oublier",
+      },
+      composer: {
+        placeholder: "Que doit retenir cette personnalité ?",
+        save: "Enregistrer cette leçon",
+      },
+      transfer: {
+        title: "Supprimer {{name}}",
+        subtitleOne: "Elle a retenu 1 leçon. Décidez de ce qu'elle devient.",
+        subtitleMany: "Elle a retenu {{count}} leçons. Décidez de ce qu'elles deviennent.",
+        discard: "Supprimer les leçons",
+        confirm: "Transférer",
+        giveThemTo: "Les confier à :",
+        noCandidates:
+          "Il n'y a aucune autre personnalité à qui confier ces leçons. Supprimer {{name}} les abandonnera.",
+        sameRole: "même rôle",
+      },
     },
     findings: {
       empty: "Rien à corriger pour l'instant.",
@@ -360,7 +419,6 @@ export const fr: TranslationResources = {
   sessions: {
     title: "Historique",
     empty: "Aucune séance pour l'instant",
-    // i18n lag: English until the translation pass (history management, 2026-07-25).
     emptyForHost: "Aucune session pour cet hôte",
     emptyActive: "Aucune conversation active",
     emptyArchived: "Aucune conversation archivée",
@@ -373,6 +431,49 @@ export const fr: TranslationResources = {
       loadMore: "Charger plus",
       clearArchived: "Vider les archives",
       clearingArchived: "Suppression…",
+    },
+    dialogs: {
+      genericProvider: "Le fournisseur d'agent",
+      deleteAgent: {
+        title: "Supprimer cette conversation ?",
+        subjectFallback: "cette conversation",
+        recordLine:
+          "L'enregistrement d'Otto pour {{subject}} est supprimé définitivement — la ligne, son titre et ses métadonnées.",
+        transcriptLine:
+          "La transcription propre à {{provider}} sur l'hôte est laissée en place : la conversation reste sur le disque et peut encore être lue ou reprise en dehors d'Otto.",
+        undoLine: "Côté Otto, cela ne peut pas être annulé.",
+        confirm: "Supprimer",
+      },
+      clearArchived: {
+        titleOne: "Vider 1 conversation archivée ?",
+        titleMany: "Vider {{count}} conversations archivées ?",
+        recordLineOne:
+          "Supprime définitivement les enregistrements d'Otto pour 1 conversation archivée. Les conversations que vous n'avez pas archivées ne sont pas touchées.",
+        recordLineMany:
+          "Supprime définitivement les enregistrements d'Otto pour {{count}} conversations archivées. Les conversations que vous n'avez pas archivées ne sont pas touchées.",
+        transcriptLine:
+          "Les transcriptions propres aux fournisseurs d'agents sur l'hôte sont laissées en place — ceci vide l'historique d'Otto, pas les conversations sur le disque.",
+        undoLine: "Côté Otto, cela ne peut pas être annulé.",
+        confirm: "Vider",
+      },
+      nothingToClear: {
+        title: "Rien à vider",
+        message: "Il n'y a aucune conversation archivée sur les hôtes sélectionnés.",
+      },
+      noHost: {
+        title: "Aucun hôte disponible",
+        message:
+          "Connectez-vous à un hôte qui gère la suppression des conversations, puis réessayez de vider les archives.",
+      },
+      partialFailure: {
+        title: "Certaines conversations n'ont pas pu être vidées",
+        message:
+          "{{deleted}} supprimées. {{failed}} n'ont pas pu l'être et restent dans votre historique. Réessayez, ou consultez les journaux de l'hôte.",
+      },
+      unsupported: {
+        title: "Suppression indisponible",
+        message: "Mettez l'hôte à jour pour supprimer des conversations de votre historique.",
+      },
     },
   },
   agentList: {
@@ -519,12 +620,12 @@ export const fr: TranslationResources = {
     },
     solution: {
       lens: {
-        files: "Files",
+        files: "Fichiers",
       },
-      loading: "Reading the solution…",
-      empty: "This solution has no projects.",
-      outsideWorkspace: "outside workspace",
-      projectFailed: "This project could not be evaluated.",
+      loading: "Lecture de la solution…",
+      empty: "Cette solution ne contient aucun projet.",
+      outsideWorkspace: "hors du Workspace",
+      projectFailed: "Ce projet n'a pas pu être évalué.",
     },
     fileExplorer: {
       sort: {
@@ -1867,6 +1968,123 @@ export const fr: TranslationResources = {
       settings: "Paramètres",
     },
   },
+  setupWizard: {
+    chrome: {
+      skip: "Ignorer la configuration",
+      back: "Retour",
+      continue: "Continuer",
+    },
+    welcome: {
+      headline: "Bienvenue sur Otto",
+      subtitle:
+        "Un assistant de code agentique avec du caractère, pour tous les modèles, dans le cloud ou en local.",
+      start: "Commencer",
+    },
+    mode: {
+      title: "Comment voulez-vous utiliser Otto ?",
+      subtitle: "Vous pouvez changer à tout moment dans les Paramètres.",
+      user: {
+        title: "Utilisateur",
+        tagline: "Discutez avec des agents IA, organisez vos projets, avancez.",
+        bulletInterface: "Une interface simple et accueillante",
+        bulletNoTooling: "Aucun outil de développement à traverser",
+      },
+      developer: {
+        title: "Développeur",
+        tagline: "L'environnement de développement complet.",
+        bulletTools: "Fichiers, diffs, terminaux, recherche",
+        bulletGit: "Git, pull requests, tout ce qu'Otto sait faire",
+      },
+    },
+    providers: {
+      title: "Vos fournisseurs",
+      subtitlePick:
+        "Choisissez le fournisseur que vos agents utiliseront par défaut. Vous pourrez en ajouter d'autres dans les Paramètres.",
+      subtitleNone:
+        "Otto détecte automatiquement vos fournisseurs d'agents. Vous pourrez en ajouter un dans les Paramètres.",
+      detecting: "Détection des fournisseurs…",
+      waitingForHost: "En attente de l'hôte…",
+      empty:
+        "Aucun fournisseur détecté pour l'instant. Vous pouvez continuer et en configurer un plus tard.",
+      status: {
+        available: "Disponible",
+        availableWithModels: "Disponible · {{count}} modèles",
+        detecting: "Détection…",
+        error: "Erreur",
+        notInstalled: "Non installé",
+      },
+    },
+    team: {
+      title: "Quel genre d'équipe voulez-vous ?",
+      subtitle:
+        "Choisissez une équipe et Otto vous construit un groupe complet et équilibré — des personnages nommés, avec leur propre personnalité. Pas convaincu ? Rebrassez. Ou construisez la vôtre à partir de vos agents.",
+      unsupportedTitle: "Construisez votre équipe",
+      unsupportedBody:
+        "Cet hôte ne gère pas encore les équipes d'agents. Mettez-le à jour pour qu'Otto vous en construise une — vous pouvez ignorer cette étape pour l'instant.",
+      blueprints: {
+        application: {
+          name: "Équipe application",
+          tagline: "Un groupe full-stack pour construire et livrer de vraies applications.",
+        },
+        game: {
+          name: "Équipe jeu vidéo",
+          tagline: "Un studio pour créer des jeux — mécaniques, ressenti et petits plus.",
+        },
+        web: {
+          name: "Équipe web",
+          tagline: "Un groupe web pour des sites et applis rapides, accessibles et soignés.",
+        },
+        creative: {
+          name: "Studio créatif",
+          tagline: "Un studio pour écrire, créer et imaginer — sans écrire une ligne de code.",
+        },
+        management: {
+          name: "Équipe de gestion",
+          tagline: "Une équipe pour piloter les projets, les états d'avancement et les décisions.",
+        },
+        planning: {
+          name: "Équipe de planification",
+          tagline: "Une équipe pour la recherche, les feuilles de route et la réflexion de fond.",
+        },
+      },
+      custom: {
+        name: "Construire la vôtre",
+        tagline: "Assemblez une équipe à partir de vos agents, à votre façon.",
+      },
+      providerNoModels:
+        "Ce fournisseur n'a encore aucun modèle — actualisez-le dans les Paramètres, puis revenez.",
+      providerMissing:
+        "Choisissez d'abord un fournisseur (étape précédente) pour qu'Otto sache quels modèles utiliser.",
+      memberCountOne: "1 membre",
+      memberCountMany: "{{count}} membres",
+      reshuffle: "Rebrasser",
+      added: "Ajoutée ✓",
+      addTeam: "Ajouter cette équipe",
+      noRoles: "Aucun rôle",
+      builder: {
+        nameLabel: "Nom de l'équipe",
+        defaultName: "Mon équipe",
+        members: "Membres",
+        membersWithCount: "Membres ({{count}})",
+        empty:
+          "Aucun agent à choisir pour l'instant. Générez une équipe ci-dessus (cela ajoute des agents que vous pourrez mélanger ici), ou ajoutez les vôtres dans Paramètres → Agents, puis revenez.",
+        covers: "Couvre : {{roles}}",
+        orchestratorTip: "  ·  Astuce : ajoutez un Orchestrator pour donner un chef à l'équipe.",
+        addedNamed: "« {{name}} » ajoutée ✓",
+      },
+    },
+    done: {
+      headline: "Tout est prêt",
+      subtitle: "Otto est prêt. Voici ce qui a été mis en place :",
+      finish: "Commencer",
+      interfaceMode: "Mode d'interface",
+      provider: "Fournisseur",
+      agents: "Agents",
+      agentCountOne: "1 agent",
+      agentCountMany: "{{count}} agents",
+      activeTeam: "Équipe active",
+    },
+  },
   modelSelector: {
     title: "Sélectionnez le fournisseur",
     selectModel: "Sélectionnez le modèle",
@@ -2095,16 +2313,10 @@ export const fr: TranslationResources = {
     cancel: "Annuler",
     wordWrap: "Retour à la ligne",
     outOfProject: {
-      badge: "Hors du projet · {{project}}",
-      badgeNoProject: "En dehors de tout projet",
-      editOutsideTitle: "Modifier un fichier en dehors de tout projet ?",
-      editOutsideMessage:
-        "Ce fichier ne fait partie d'aucun projet. Le modifier écrit directement dans le fichier sur le disque. Cet avertissement s'affiche à chaque fois.",
-      editConfirm: "Modifier quand même",
-      editOtherTitle: "Modifier un fichier d'un autre projet ?",
-      editOtherMessage:
-        "Ce fichier appartient à {{project}}. Les modifications que vous faites ici ne feront pas partie du commit de ce projet.",
-      editOtherSuppress: "Ne plus m'avertir pour les autres projets",
+      badge:
+        "Modification hors du projet ({{project}}) — ne fait pas partie du contexte de l'agent ni des changements Git de ce Workspace.",
+      badgeNoProject:
+        "Modification hors du projet — ne fait pas partie du contexte de l'agent ni des changements Git de ce Workspace.",
     },
     contextMenu: {
       cut: "Couper",
@@ -2166,13 +2378,110 @@ export const fr: TranslationResources = {
     loading: "Chargement des fichiers...",
     noResults: "Aucun fichier",
   },
-  // Refine — the reviewed AI rewrite (projects/refine/refine.md). Only the two
+  // Refine — the reviewed AI rewrite (docs/refine.md). Only the two
   // entry-point strings are translated here; the Refine tab itself is literal
   // English pending the pre-release i18n sweep, like the rename/references tabs.
   refine: {
     open: "Affiner avec l'IA",
     saveFirst:
       "Enregistrez ou annulez d'abord vos modifications — Affiner travaille à partir du fichier sur le disque.",
+    compactOpen: "Compacter avec l'IA",
+    unsupported: "Mettez l'hôte à jour pour utiliser Affiner.",
+    job: {
+      refine: "Affiner",
+      compact: "Compacter",
+    },
+    tab: {
+      title: "{{job}} : {{file}}",
+      moreFile: "+{{count}} fichier de plus",
+      moreFiles: "+{{count}} fichiers de plus",
+      fallbackSubtitle: "Réécriture par l'IA",
+    },
+    toolbar: {
+      discard: "Abandonner cette proposition et relire tous les fichiers",
+      writing: "Écriture…",
+      acceptOne: "Accepter — écrire les changements conservés",
+      acceptMany: "Accepter — écrire {{count}} fichiers",
+      dropAll: "Abandonner tous les changements",
+      keepAll: "Conserver tous les changements",
+    },
+    workingSet: {
+      single:
+        "Un seul fichier dans cet ensemble. Tout ce qu'il référence resterait du contexte en lecture seule.",
+      allWritable: "Ces {{count}} fichiers peuvent tous être réécrits.",
+      someWritable:
+        "{{writable}} fichiers sur {{total}} peuvent être réécrits ; les autres sont du contexte en lecture seule.",
+      allChipLabel: "Tous les fichiers",
+      allChipText: "Tous",
+      allOnHint:
+        "Tous les fichiers peuvent être réécrits. Touchez pour revenir au premier seulement, les autres en contexte lecture seule.",
+      allOffHint:
+        "Laisser la réécriture modifier tous les fichiers de cet ensemble, pas seulement le premier.",
+      writableHint: "Peut être réécrit. Touchez pour le passer en contexte lecture seule.",
+      referenceHint:
+        "Contexte en lecture seule — le modèle le lit mais ne peut jamais le modifier. Touchez pour autoriser la réécriture.",
+    },
+    instruction: {
+      placeholder: "Que faut-il changer ? Ex. : garder chaque règle, couper les répétitions",
+      startOver: "Tout recommencer",
+      refining: "Affinage…",
+      compacting: "Compactage…",
+      again: "{{job}} de nouveau",
+    },
+    presets: {
+      compactContextFile: {
+        label: "Compacter le fichier de contexte",
+        description:
+          "Supprime les répétitions d'un fichier d'instructions sans perdre la moindre règle.",
+      },
+      compactMemoryIndex: {
+        label: "Compacter l'index de mémoire",
+        description: "Une ligne par entrée ; le détail part dans les fichiers d'entrée.",
+      },
+      tightenProse: {
+        label: "Resserrer le texte",
+        description: "Plus court, même sens, aucune affirmation nouvelle.",
+      },
+    },
+    body: {
+      pinning: "Lecture des fichiers…",
+      generating: "Élaboration d'une réécriture…",
+      idle: "Dites ce qui doit changer, puis appuyez sur {{job}}. Rien n'est écrit tant que vous n'avez pas accepté.",
+    },
+    file: {
+      keptCount: "{{count}} conservés",
+      keepEveryChangeIn: "Conserver tous les changements dans {{file}}",
+    },
+    hunk: {
+      title: "Changement {{ordinal}}",
+      keeping: "Conservé",
+      dropped: "Abandonné",
+      keepAccessibility: "Conserver le changement {{ordinal}}",
+    },
+    outcome: {
+      written: "écrit",
+      stale: "laissé tel quel",
+      failed: "écriture impossible",
+    },
+    summary: {
+      pinning:
+        "Les fichiers sont figés dans leur état actuel — c'est ce à quoi chaque proposition sera comparée.",
+      unreadable: "Cet ensemble de travail n'a pas pu être lu.",
+      idle: "Aucune proposition pour l'instant. Aucun fichier n'a été touché.",
+      generating: "Tour {{round}} — réécriture.",
+      accepting: "Écriture des changements conservés.",
+      acceptedOne: "Terminé — 1 fichier écrit.",
+      acceptedMany: "Terminé — {{count}} fichiers écrits.",
+      partiallyAccepted: "{{written}} écrits, {{skipped}} laissés tels quels. Rien n'a été écrasé.",
+      reviewOne:
+        "Tour {{round}} — {{kept}} changement conservé sur {{total}}, +{{additions}} −{{removals}} lignes. Rien n'a encore été écrit.",
+      reviewMany:
+        "Tour {{round}} — {{kept}} changements conservés sur {{total}}, +{{additions}} −{{removals}} lignes. Rien n'a encore été écrit.",
+      reviewOneScoped:
+        "Tour {{round}} — {{kept}} changement conservé sur {{total}}, dans {{changedFiles}}/{{proposedFiles}} fichiers, +{{additions}} −{{removals}} lignes. Rien n'a encore été écrit.",
+      reviewManyScoped:
+        "Tour {{round}} — {{kept}} changements conservés sur {{total}}, dans {{changedFiles}}/{{proposedFiles}} fichiers, +{{additions}} −{{removals}} lignes. Rien n'a encore été écrit.",
+    },
   },
   refactor: {
     open: "Refactoriser avec l'IA",
@@ -2271,6 +2580,32 @@ export const fr: TranslationResources = {
     clearCompletedTooltip: "Archiver tous les sous-agents terminés",
     stopNothingRunning: "Le sous-agent n'est pas en cours d'exécution, rien à arrêter.",
     daemonUnavailable: "Démon indisponible",
+    dialogs: {
+      subjectFallback: "ce sous-agent",
+      subjectFallbackCapitalized: "Ce sous-agent",
+      archive: {
+        titleRunning: "Archiver le sous-agent en cours ?",
+        title: "Archiver le sous-agent ?",
+        messageRunning:
+          "{{subject}} est encore en cours. L'archiver arrêtera le sous-agent et le retirera de la piste.",
+        message: "Retire {{subject}} de la piste. Le sous-agent sera archivé.",
+        confirm: "Archiver",
+      },
+      detach: {
+        title: "Détacher le sous-agent ?",
+        message: "{{subject}} quittera cette piste et continuera comme agent autonome.",
+        confirm: "Détacher",
+      },
+      clearCompleted: {
+        titleOne: "Vider le sous-agent terminé ?",
+        titleMany: "Vider {{count}} sous-agents terminés ?",
+        messageOne:
+          "Archive 1 sous-agent terminé et le retire de la piste. Les sous-agents en cours ne sont pas touchés.",
+        messageMany:
+          "Archive {{count}} sous-agents terminés et les retire de la piste. Les sous-agents en cours ne sont pas touchés.",
+        confirm: "Vider",
+      },
+    },
   },
   panels: {
     draft: {
@@ -2427,6 +2762,12 @@ export const fr: TranslationResources = {
           inApp: "Dans Otto",
           external: "Navigateur externe",
         },
+      },
+      mountedWorkspaceLimit: {
+        label: "Workspaces gardés chargés",
+        description:
+          "Combien de Workspaces restent chargés pour qu'y revenir soit instantané. Au-delà, celui utilisé le moins récemment est déchargé et se recharge à la prochaine ouverture. Réglez-le au moins sur le nombre entre lesquels vous basculez vraiment — en dessous, chaque bascule décharge le Workspace où vous êtes sur le point de revenir. Plus la valeur est élevée, plus la mémoire utilisée augmente.",
+        accessibilityLabel: "Workspaces gardés chargés",
       },
       terminalScrollback: {
         label: "Défilement Terminal",
@@ -2920,9 +3261,9 @@ export const fr: TranslationResources = {
         enabled: "Activer l'intelligence du code",
         enabledHint:
           "Lance un serveur de langage par projet afin qu'« Aller à la définition » résolve le symbole sous le curseur. Rien ne démarre tant que vous ne l'utilisez pas ; désactivé, tous les serveurs s'arrêtent et l'index par noms prend le relais.",
-        solution: "Microsoft .NET Solution Management",
+        solution: "Gestion des solutions Microsoft .NET",
         solutionHint:
-          "Adds a Solution view to the Files tab, showing your .sln or .slnx as the build system sees it. Independent of code intelligence above. Off by default: it runs a .NET helper process and evaluates MSBuild, and it needs the .NET SDK on this host.",
+          "Ajoute une vue Solution à l'onglet des fichiers, qui affiche votre .sln ou .slnx tel que le système de build le voit. Indépendant de l'intelligence de code ci-dessus. Désactivé par défaut : cela lance un processus auxiliaire .NET et évalue MSBuild, et cela nécessite le SDK .NET sur cet hôte.",
         languages: "Langages",
         installed: "{{bin}} — trouvé ({{rung}})",
         notInstalled: "{{bin}} — non installé sur cet hôte",

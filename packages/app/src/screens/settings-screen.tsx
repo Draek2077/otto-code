@@ -60,6 +60,7 @@ import { VisualizerSection } from "@/screens/settings/visualizer-section";
 import {
   useAppSettings,
   useSettings,
+  parseMountedWorkspaceLimit,
   parseTerminalScrollbackLines,
   type AppSettings,
   type InterfaceMode,
@@ -430,6 +431,7 @@ interface GeneralSectionProps {
   handleLinkOpenBehaviorChange: (behavior: LinkOpenBehavior) => void;
   handleLanguageChange: (language: AppLanguage) => void;
   handleTerminalScrollbackLinesChange: (lines: number) => void;
+  handleMountedWorkspaceLimitChange: (limit: number) => void;
   handlePreviewServerCloseBehaviorChange: (behavior: PreviewServerCloseBehavior) => void;
   handlePreviewAutoStartOnRestoreChange: (enabled: boolean) => void;
 }
@@ -521,6 +523,7 @@ function GeneralSection({
   handleLinkOpenBehaviorChange,
   handleLanguageChange,
   handleTerminalScrollbackLinesChange,
+  handleMountedWorkspaceLimitChange,
   handlePreviewServerCloseBehaviorChange,
   handlePreviewAutoStartOnRestoreChange,
 }: GeneralSectionProps) {
@@ -559,6 +562,32 @@ function GeneralSection({
   const [terminalScrollbackValue, setTerminalScrollbackValue] = useState(
     String(settings.terminalScrollbackLines),
   );
+  const [mountedWorkspaceLimitValue, setMountedWorkspaceLimitValue] = useState(
+    String(settings.mountedWorkspaceLimit),
+  );
+
+  const handleMountedWorkspaceLimitChangeText = useCallback((value: string) => {
+    setMountedWorkspaceLimitValue(value.replace(/[^\d]/g, ""));
+  }, []);
+
+  const commitMountedWorkspaceLimit = useCallback(() => {
+    const parsed = parseMountedWorkspaceLimit(mountedWorkspaceLimitValue);
+    const nextValue = parsed ?? settings.mountedWorkspaceLimit;
+    // Echo the clamped value back into the field, so typing 99 visibly becomes
+    // the maximum rather than silently doing something else.
+    setMountedWorkspaceLimitValue(String(nextValue));
+    if (nextValue !== settings.mountedWorkspaceLimit) {
+      handleMountedWorkspaceLimitChange(nextValue);
+    }
+  }, [
+    handleMountedWorkspaceLimitChange,
+    mountedWorkspaceLimitValue,
+    settings.mountedWorkspaceLimit,
+  ]);
+
+  useEffect(() => {
+    setMountedWorkspaceLimitValue(String(settings.mountedWorkspaceLimit));
+  }, [settings.mountedWorkspaceLimit]);
 
   const handleTerminalScrollbackChangeText = useCallback((value: string) => {
     setTerminalScrollbackValue(value.replace(/[^\d]/g, ""));
@@ -700,6 +729,28 @@ function GeneralSection({
               </DropdownMenu>
             </View>
           ) : null}
+          <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.general.mountedWorkspaceLimit.label")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.general.mountedWorkspaceLimit.description")}
+              </Text>
+            </View>
+            <TextInput
+              value={mountedWorkspaceLimitValue}
+              onChangeText={handleMountedWorkspaceLimitChangeText}
+              onBlur={commitMountedWorkspaceLimit}
+              onSubmitEditing={commitMountedWorkspaceLimit}
+              keyboardType="number-pad"
+              inputMode="numeric"
+              selectTextOnFocus
+              style={styles.terminalScrollbackInput}
+              accessibilityLabel={t("settings.general.mountedWorkspaceLimit.accessibilityLabel")}
+              testID="settings-mounted-workspace-limit-input"
+            />
+          </View>
           {interfaceModeValue === "developer" ? (
             <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
               <View style={settingsStyles.rowContent}>
@@ -1931,6 +1982,13 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     [updateSettings],
   );
 
+  const handleMountedWorkspaceLimitChange = useCallback(
+    (mountedWorkspaceLimit: number) => {
+      void updateSettings({ mountedWorkspaceLimit });
+    },
+    [updateSettings],
+  );
+
   const handlePreviewServerCloseBehaviorChange = useCallback(
     (behavior: PreviewServerCloseBehavior) => {
       void updateSettings({ previewServerCloseBehavior: behavior });
@@ -2223,6 +2281,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               handleLinkOpenBehaviorChange={handleLinkOpenBehaviorChange}
               handleLanguageChange={handleLanguageChange}
               handleTerminalScrollbackLinesChange={handleTerminalScrollbackLinesChange}
+              handleMountedWorkspaceLimitChange={handleMountedWorkspaceLimitChange}
               handlePreviewServerCloseBehaviorChange={handlePreviewServerCloseBehaviorChange}
               handlePreviewAutoStartOnRestoreChange={handlePreviewAutoStartOnRestoreChange}
             />

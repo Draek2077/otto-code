@@ -28,8 +28,8 @@ import {
   orderWorkspaceSelectionsForStableRender,
   pruneMountedWorkspaceSelections,
   shouldKeepWorkspaceDeckEntryMounted,
-  WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES,
 } from "@/screens/workspace/workspace-deck-retention";
+import { useAppSettingValue, type AppSettings } from "@/hooks/use-settings";
 import {
   decodeWorkspaceIdFromPathSegment,
   parseWorkspaceOpenIntent,
@@ -183,7 +183,12 @@ function HostWorkspaceRouteContent() {
   return <WorkspaceDeck />;
 }
 
+// Module-level so the narrow subscription is stable: the deck must re-render
+// when the retention limit changes and on nothing else in settings.
+const selectMountedWorkspaceLimit = (settings: AppSettings) => settings.mountedWorkspaceLimit;
+
 function WorkspaceDeck() {
+  const mountedWorkspaceLimit = useAppSettingValue(selectMountedWorkspaceLimit);
   const liveSelection = useActiveWorkspaceSelection();
   // Stable identity per (serverId, workspaceId): the hook returns a fresh
   // object every render, and useDeferredValue compares with Object.is, so
@@ -225,14 +230,17 @@ function WorkspaceDeck() {
     );
   }, []);
 
+  // Lowering the limit prunes on the next render, so the trees the user just
+  // asked to stop retaining are released immediately rather than at the next
+  // workspace switch.
   const nextMountedSelections = useMemo(
     () =>
       pruneMountedWorkspaceSelections({
         currentSelections: mountedSelections,
         activeSelection,
-        maxMountedWorkspaces: WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES,
+        maxMountedWorkspaces: mountedWorkspaceLimit,
       }),
-    [activeSelection, mountedSelections],
+    [activeSelection, mountedSelections, mountedWorkspaceLimit],
   );
   const renderedSelections = useMemo(
     () => orderWorkspaceSelectionsForStableRender(nextMountedSelections),

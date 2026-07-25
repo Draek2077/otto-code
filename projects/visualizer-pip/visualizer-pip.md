@@ -4,8 +4,8 @@ Three related asks, all about the Visualizer being useful when you are _not_
 looking at its tab. They share the same underlying need — the Visualizer is
 currently only alive while its tab is focused — so they are scoped together.
 
-Related: [docs/visualizer.md](../../docs/visualizer.md),
-[projects/visualizer-node-richness](../visualizer-node-richness/visualizer-node-richness.md).
+Related: [docs/visualizer.md](../../docs/visualizer.md) — including "Context ring" and
+"Discovery cards", the two node-richness surfaces that shipped.
 
 ## Status (2026-07-20)
 

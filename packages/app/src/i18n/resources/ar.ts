@@ -11,6 +11,7 @@ export const ar: TranslationResources = {
       close: "يغلق",
       copy: "نسخ",
       dismiss: "تجاهل",
+      ok: "حسنًا",
       retry: "إعادة المحاولة",
       search: "بحث",
       select: "يختار",
@@ -194,6 +195,61 @@ export const ar: TranslationResources = {
       context: "السياق",
       findings: "يستحق الإصلاح",
       findingsCount: "يستحق الإصلاح ({{count}})",
+      memory: "الذاكرة",
+      memoryCount: "الذاكرة ({{count}})",
+    },
+    personalitySelector: {
+      label: "عرض السياق الخاص بـ",
+      everyone: "الجميع",
+      withLessons: "{{name}}، {{count}} درسًا محفوظًا",
+    },
+    memory: {
+      noPersonality: "اختر شخصية من الأعلى لترى ما تعلّمته، وما الذي يضيفه ذلك إلى كل طلب تقوم به.",
+      loading: "جارٍ قراءة ما تتذكّره هذه الشخصية…",
+      failed: "تعذّرت قراءة ذاكرة هذه الشخصية: {{error}}",
+      emptyNamed:
+        "لم تسجّل {{name}} أي شيء بعد. فهي تسجّل الدروس بنفسها أثناء العمل، ويمكنك أيضًا إضافة درس يدويًا.",
+      emptyFallbackName: "هذه الشخصية",
+      add: "إضافة درس",
+      brief: {
+        title: "ما يُحقن من أجل {{name}}",
+        nothing: "لا شيء",
+        everyRequest: "{{tokens}} في كل طلب",
+        disabled: "الذاكرة معطّلة لهذه الشخصية، لذا لا يُرسل أي من هذا. الدروس محفوظة على أي حال.",
+        empty: "لا يُضاف أي شيء إلى سياق هذه الشخصية في هذا المشروع.",
+        omitted: "{{count}} من الدروس أدناه لم تتّسع لها ميزانية الحقن ولا يجري إرسالها.",
+      },
+      scope: {
+        global: "في كل مكان",
+        project: "هذا المشروع",
+        change: "النطاق: {{scope}}. اضغط للتغيير.",
+      },
+      row: {
+        reinforced: "تم تعلّمه {{count}} مرات",
+        transferredFrom: "من {{name}}",
+        edit: "تحرير هذا الدرس",
+        forget: "نسيان هذا الدرس",
+      },
+      forgetDialog: {
+        title: "نسيان هذا الدرس؟",
+        message: "سيُزال «{{lesson}}» من ذاكرة هذه الشخصية.",
+        confirm: "نسيان",
+      },
+      composer: {
+        placeholder: "ما الذي يجب أن تتذكّره هذه الشخصية؟",
+        save: "حفظ هذا الدرس",
+      },
+      transfer: {
+        title: "حذف {{name}}",
+        subtitleOne: "تتذكّر درسًا واحدًا. قرّر ما سيحدث له.",
+        subtitleMany: "تتذكّر {{count}} درسًا. قرّر ما سيحدث لها.",
+        discard: "حذف الدروس",
+        confirm: "نقل",
+        giveThemTo: "نقلها إلى:",
+        noCandidates:
+          "لا توجد شخصية أخرى لتسليم هذه الدروس إليها. حذف {{name}} سيؤدي إلى التخلّص منها.",
+        sameRole: "الدور نفسه",
+      },
     },
     findings: {
       empty: "لا شيء يستحق الإصلاح الآن.",
@@ -356,7 +412,6 @@ export const ar: TranslationResources = {
   sessions: {
     title: "السجل",
     empty: "لا توجد جلسات بعد",
-    // i18n lag: English until the translation pass (history management, 2026-07-25).
     emptyForHost: "لا توجد جلسات لهذا المضيف",
     emptyActive: "لا توجد محادثات نشطة",
     emptyArchived: "لا توجد محادثات مؤرشفة",
@@ -369,6 +424,47 @@ export const ar: TranslationResources = {
       loadMore: "تحميل المزيد",
       clearArchived: "مسح المؤرشفة",
       clearingArchived: "جارٍ المسح…",
+    },
+    dialogs: {
+      genericProvider: "مزوّد الوكيل",
+      deleteAgent: {
+        title: "حذف هذه المحادثة؟",
+        subjectFallback: "هذه المحادثة",
+        recordLine: "يُحذف سجل Otto الخاص بـ {{subject}} نهائيًا — الصف وعنوانه وبياناته الوصفية.",
+        transcriptLine:
+          "يبقى نص {{provider}} الخاص على المضيف كما هو، فتظل المحادثة نفسها على القرص ويمكن قراءتها أو استئنافها خارج Otto.",
+        undoLine: "لا يمكن التراجع عن جانب Otto من هذا.",
+        confirm: "حذف",
+      },
+      clearArchived: {
+        titleOne: "مسح محادثة مؤرشفة واحدة؟",
+        titleMany: "مسح {{count}} محادثات مؤرشفة؟",
+        recordLineOne:
+          "يحذف نهائيًا سجلات Otto الخاصة بمحادثة مؤرشفة واحدة. المحادثات التي لم تؤرشفها لا تُمس.",
+        recordLineMany:
+          "يحذف نهائيًا سجلات Otto الخاصة بـ {{count}} محادثات مؤرشفة. المحادثات التي لم تؤرشفها لا تُمس.",
+        transcriptLine:
+          "تبقى النصوص الخاصة بمزوّدي الوكلاء على المضيف كما هي — هذا يمسح سجل Otto لا المحادثات الموجودة على القرص.",
+        undoLine: "لا يمكن التراجع عن جانب Otto من هذا.",
+        confirm: "مسح",
+      },
+      nothingToClear: {
+        title: "لا شيء لمسحه",
+        message: "لا توجد محادثات مؤرشفة على المضيفين المحدّدين.",
+      },
+      noHost: {
+        title: "لا يوجد مضيف متاح",
+        message: "اتصل بمضيف يدعم حذف المحادثات، ثم أعد محاولة مسح الأرشيف.",
+      },
+      partialFailure: {
+        title: "تعذّر مسح بعض المحادثات",
+        message:
+          "تم حذف {{deleted}}. وتعذّر حذف {{failed}} ولا تزال في سجلك. أعد المحاولة أو راجع سجلات المضيف.",
+      },
+      unsupported: {
+        title: "الحذف غير متاح",
+        message: "حدّث المضيف لحذف المحادثات من سجلك.",
+      },
     },
   },
   agentList: {
@@ -514,12 +610,12 @@ export const ar: TranslationResources = {
     },
     solution: {
       lens: {
-        files: "Files",
+        files: "ملفات",
       },
-      loading: "Reading the solution…",
-      empty: "This solution has no projects.",
-      outsideWorkspace: "outside workspace",
-      projectFailed: "This project could not be evaluated.",
+      loading: "جارٍ قراءة الحل…",
+      empty: "لا يحتوي هذا الحل على أي مشاريع.",
+      outsideWorkspace: "خارج Workspace",
+      projectFailed: "تعذّر تقييم هذا المشروع.",
     },
     fileExplorer: {
       sort: {
@@ -1813,6 +1909,118 @@ export const ar: TranslationResources = {
       settings: "إعدادات",
     },
   },
+  setupWizard: {
+    chrome: {
+      skip: "تخطّي الإعداد",
+      back: "رجوع",
+      continue: "متابعة",
+    },
+    welcome: {
+      headline: "مرحبا بكم في Otto",
+      subtitle: "مساعد برمجة وكيل بشخصية، لكل نموذج، في السحابة أو محليًا.",
+      start: "ابدأ",
+    },
+    mode: {
+      title: "كيف تريد استخدام Otto؟",
+      subtitle: "يمكنك التبديل في أي وقت من الإعدادات.",
+      user: {
+        title: "مستخدم",
+        tagline: "تحدّث مع وكلاء الذكاء الاصطناعي، ونظّم مشاريعك، وأنجز عملك.",
+        bulletInterface: "واجهة مركّزة وودّية",
+        bulletNoTooling: "بلا أدوات تطوير تضطر للخوض فيها",
+      },
+      developer: {
+        title: "مطوّر",
+        tagline: "بيئة التطوير الكاملة.",
+        bulletTools: "الملفات والفروقات والطرفيات والبحث",
+        bulletGit: "Git وطلبات السحب وكل ما يستطيع Otto فعله",
+      },
+    },
+    providers: {
+      title: "مزوّدوك",
+      subtitlePick:
+        "اختر المزوّد الذي سيستخدمه وكلاؤك افتراضيًا. يمكنك إضافة المزيد لاحقًا من الإعدادات.",
+      subtitleNone: "يكتشف Otto مزوّدي الوكلاء لديك تلقائيًا. يمكنك إضافة مزوّد لاحقًا من الإعدادات.",
+      detecting: "جارٍ اكتشاف المزوّدين…",
+      waitingForHost: "في انتظار المضيف…",
+      empty: "لم يُكتشف أي مزوّد بعد. يمكنك المتابعة وإعداد مزوّد لاحقًا.",
+      status: {
+        available: "متاح",
+        availableWithModels: "متاح · {{count}} نماذج",
+        detecting: "جارٍ الاكتشاف…",
+        error: "خطأ",
+        notInstalled: "غير مثبّت",
+      },
+    },
+    team: {
+      title: "أي نوع من الفِرق تريد؟",
+      subtitle:
+        "اختر فريقًا ويبني لك Otto طاقمًا كاملًا ومتوازنًا — شخصيات بأسماء وطباع خاصة بها. لا يناسبك؟ أعد الخلط. أو ابنِ فريقك من وكلائك.",
+      unsupportedTitle: "ابنِ فريقك",
+      unsupportedBody:
+        "هذا المضيف لا يدعم فِرق الوكلاء بعد. حدّث المضيف ليبني لك Otto فريقًا — يمكنك تخطّي هذه الخطوة الآن.",
+      blueprints: {
+        application: {
+          name: "فريق التطبيقات",
+          tagline: "طاقم متكامل لبناء تطبيقات حقيقية وإطلاقها.",
+        },
+        game: {
+          name: "فريق الألعاب",
+          tagline: "مجموعة أستوديو لصناعة الألعاب — الميكانيكيات والإحساس واللمسات المميزة.",
+        },
+        web: {
+          name: "فريق الويب",
+          tagline: "طاقم ويب لمواقع وتطبيقات سريعة وسهلة الوصول ومتقنة الصنع.",
+        },
+        creative: {
+          name: "أستوديو إبداعي",
+          tagline: "أستوديو للكتابة والفن والأفكار — بلا حاجة إلى برمجة.",
+        },
+        management: {
+          name: "فريق الإدارة",
+          tagline: "فريق لإدارة المشاريع والحالات والقرارات.",
+        },
+        planning: {
+          name: "فريق التخطيط",
+          tagline: "فريق للبحث وخرائط الطريق والتفكير المتأنّي.",
+        },
+      },
+      custom: {
+        name: "ابنِ فريقك",
+        tagline: "جمّع فريقًا من وكلائك، بطريقتك.",
+      },
+      providerNoModels: "لا توجد نماذج لهذا المزوّد بعد — حدّثه من الإعدادات ثم عد إلى هنا.",
+      providerMissing: "اختر مزوّدًا أولًا (في الخطوة السابقة) ليعرف Otto أي النماذج يستخدم.",
+      memberCountOne: "عضو واحد",
+      memberCountMany: "{{count}} أعضاء",
+      reshuffle: "إعادة الخلط",
+      added: "تمت الإضافة ✓",
+      addTeam: "إضافة هذا الفريق",
+      noRoles: "بلا أدوار",
+      builder: {
+        nameLabel: "اسم الفريق",
+        defaultName: "فريقي",
+        members: "الأعضاء",
+        membersWithCount: "الأعضاء ({{count}})",
+        empty:
+          "لا يوجد وكلاء للاختيار منهم بعد. أنشئ فريقًا في الأعلى (فذلك يضيف وكلاء يمكنك المزج بينهم هنا)، أو أضف وكلاءك من «الإعدادات ← الوكلاء»، ثم عد إلى هنا.",
+        covers: "يغطي: {{roles}}",
+        orchestratorTip: "  ·  نصيحة: أضف Orchestrator ليقود الفريق.",
+        addedNamed: "تمت إضافة «{{name}}» ✓",
+      },
+    },
+    done: {
+      headline: "كل شيء جاهز",
+      subtitle: "Otto جاهز. هذا ما أعددناه:",
+      finish: "ابدأ الآن",
+      interfaceMode: "وضع الواجهة",
+      provider: "المزوّد",
+      agents: "الوكلاء",
+      agentCountOne: "وكيل واحد",
+      agentCountMany: "{{count}} وكلاء",
+      activeTeam: "الفريق النشط",
+    },
+  },
   modelSelector: {
     title: "حدد المزود",
     selectModel: "حدد النموذج",
@@ -2038,16 +2246,10 @@ export const ar: TranslationResources = {
     cancel: "إلغاء",
     wordWrap: "التفاف النص",
     outOfProject: {
-      badge: "خارج المشروع · {{project}}",
-      badgeNoProject: "خارج أي مشروع",
-      editOutsideTitle: "تحرير ملف خارج أي مشروع؟",
-      editOutsideMessage:
-        "هذا الملف لا ينتمي إلى أي مشروع. تحريره يكتب مباشرةً في الملف على القرص. يظهر هذا التحذير في كل مرة.",
-      editConfirm: "تحرير على أي حال",
-      editOtherTitle: "تحرير ملف من مشروع آخر؟",
-      editOtherMessage:
-        "ينتمي هذا الملف إلى {{project}}. لن تكون التغييرات التي تجريها هنا جزءًا من التزام هذا المشروع.",
-      editOtherSuppress: "عدم تحذيري مرة أخرى بشأن المشاريع الأخرى",
+      badge:
+        "تحرير خارج المشروع ({{project}}) — ليس جزءًا من سياق الوكيل ولا من تغييرات Git في هذا الـ Workspace.",
+      badgeNoProject:
+        "تحرير خارج المشروع — ليس جزءًا من سياق الوكيل ولا من تغييرات Git في هذا الـ Workspace.",
     },
     contextMenu: {
       cut: "قص",
@@ -2106,12 +2308,105 @@ export const ar: TranslationResources = {
     loading: "جارٍ تحميل الملفات...",
     noResults: "لا توجد ملفات",
   },
-  // Refine — the reviewed AI rewrite (projects/refine/refine.md). Only the two
+  // Refine — the reviewed AI rewrite (docs/refine.md). Only the two
   // entry-point strings are translated here; the Refine tab itself is literal
   // English pending the pre-release i18n sweep, like the rename/references tabs.
   refine: {
     open: "تحسين بالذكاء الاصطناعي",
     saveFirst: "احفظ تغييراتك أو تراجع عنها أولًا — التحسين يعمل على الملف الموجود على القرص.",
+    compactOpen: "ضغط بالذكاء الاصطناعي",
+    unsupported: "حدّث المضيف لاستخدام التحسين.",
+    job: {
+      refine: "تحسين",
+      compact: "ضغط",
+    },
+    tab: {
+      title: "{{job}}: {{file}}",
+      moreFile: "+{{count}} ملف إضافي",
+      moreFiles: "+{{count}} ملفات إضافية",
+      fallbackSubtitle: "إعادة كتابة بالذكاء الاصطناعي",
+    },
+    toolbar: {
+      discard: "تجاهل هذا المقترح وإعادة قراءة كل الملفات",
+      writing: "جارٍ الكتابة…",
+      acceptOne: "قبول — كتابة التغييرات المحتفظ بها",
+      acceptMany: "قبول — كتابة {{count}} ملفات",
+      dropAll: "إسقاط كل التغييرات",
+      keepAll: "الاحتفاظ بكل التغييرات",
+    },
+    workingSet: {
+      single: "ملف واحد في هذه المجموعة. أي شيء يرتبط به سيكون سياقًا للقراءة فقط.",
+      allWritable: "يمكن إعادة كتابة هذه الملفات الـ {{count}} جميعها.",
+      someWritable:
+        "يمكن إعادة كتابة {{writable}} من أصل {{total}} ملفات؛ والبقية سياق للقراءة فقط.",
+      allChipLabel: "كل الملفات",
+      allChipText: "الكل",
+      allOnHint:
+        "يمكن إعادة كتابة كل ملف. اضغط للعودة إلى الملف الأول وحده، مع بقاء البقية سياقًا للقراءة فقط.",
+      allOffHint: "دع إعادة الكتابة تغيّر كل ملفات هذه المجموعة، لا الملف الأول فقط.",
+      writableHint: "يمكن إعادة كتابته. اضغط لجعله سياقًا للقراءة فقط.",
+      referenceHint:
+        "سياق للقراءة فقط — يقرؤه النموذج ولا يمكنه تغييره أبدًا. اضغط للسماح بإعادة كتابته.",
+    },
+    instruction: {
+      placeholder: "ما الذي يجب تغييره؟ مثال: احتفظ بكل قاعدة واحذف التكرار",
+      startOver: "البدء من جديد",
+      refining: "جارٍ التحسين…",
+      compacting: "جارٍ الضغط…",
+      again: "{{job}} مرة أخرى",
+    },
+    presets: {
+      compactContextFile: {
+        label: "ضغط ملف السياق",
+        description: "يحذف التكرار من ملف التعليمات دون فقدان قاعدة واحدة.",
+      },
+      compactMemoryIndex: {
+        label: "ضغط فهرس الذاكرة",
+        description: "سطر واحد لكل مدخل؛ وتنتقل التفاصيل إلى ملفات المدخلات.",
+      },
+      tightenProse: {
+        label: "إحكام النص",
+        description: "أقصر، بالمعنى نفسه، وبلا ادعاءات جديدة.",
+      },
+    },
+    body: {
+      pinning: "جارٍ قراءة الملفات…",
+      generating: "جارٍ إعداد إعادة كتابة…",
+      idle: "قل ما الذي يجب تغييره ثم اضغط «{{job}}». لا يُكتب أي شيء حتى تقبله.",
+    },
+    file: {
+      keptCount: "{{count}} محتفظ بها",
+      keepEveryChangeIn: "الاحتفاظ بكل التغييرات في {{file}}",
+    },
+    hunk: {
+      title: "التغيير {{ordinal}}",
+      keeping: "محتفظ به",
+      dropped: "مُسقَط",
+      keepAccessibility: "الاحتفاظ بالتغيير {{ordinal}}",
+    },
+    outcome: {
+      written: "تمت الكتابة",
+      stale: "تُرك كما هو",
+      failed: "تعذّرت الكتابة",
+    },
+    summary: {
+      pinning: "يجري تثبيت الملفات كما هي الآن — وهذا ما سيُقاس عليه كل مقترح.",
+      unreadable: "تعذّرت قراءة مجموعة العمل هذه.",
+      idle: "لا يوجد مقترح بعد. لم يُمَس أي ملف.",
+      generating: "الجولة {{round}} — جارٍ إعادة الكتابة.",
+      accepting: "جارٍ كتابة التغييرات المحتفظ بها.",
+      acceptedOne: "تم — كتابة ملف واحد.",
+      acceptedMany: "تم — كتابة {{count}} ملفات.",
+      partiallyAccepted: "{{written}} مكتوبة، و{{skipped}} تُركت كما هي. لم يُستبدل أي شيء.",
+      reviewOne:
+        "الجولة {{round}} — تم الاحتفاظ بـ {{kept}} من أصل {{total}} تغيير، +{{additions}} −{{removals}} سطرًا. لم يُكتب أي شيء بعد.",
+      reviewMany:
+        "الجولة {{round}} — تم الاحتفاظ بـ {{kept}} من أصل {{total}} تغييرات، +{{additions}} −{{removals}} سطرًا. لم يُكتب أي شيء بعد.",
+      reviewOneScoped:
+        "الجولة {{round}} — تم الاحتفاظ بـ {{kept}} من أصل {{total}} تغيير عبر {{changedFiles}}/{{proposedFiles}} ملفات، +{{additions}} −{{removals}} سطرًا. لم يُكتب أي شيء بعد.",
+      reviewManyScoped:
+        "الجولة {{round}} — تم الاحتفاظ بـ {{kept}} من أصل {{total}} تغييرات عبر {{changedFiles}}/{{proposedFiles}} ملفات، +{{additions}} −{{removals}} سطرًا. لم يُكتب أي شيء بعد.",
+    },
   },
   refactor: {
     open: "إعادة هيكلة بالذكاء الاصطناعي",
@@ -2209,6 +2504,32 @@ export const ar: TranslationResources = {
     clearCompletedTooltip: "أرشفة جميع الوكلاء الفرعيين المكتملين",
     stopNothingRunning: "الوكيل الفرعي غير قيد التشغيل، لا يوجد ما يمكن إيقافه.",
     daemonUnavailable: "الخادم الخلفي غير متاح",
+    dialogs: {
+      subjectFallback: "هذا الوكيل الفرعي",
+      subjectFallbackCapitalized: "هذا الوكيل الفرعي",
+      archive: {
+        titleRunning: "أرشفة وكيل فرعي قيد التشغيل؟",
+        title: "أرشفة الوكيل الفرعي؟",
+        messageRunning:
+          "{{subject}} لا يزال قيد التشغيل. أرشفته ستوقف الوكيل الفرعي وتزيله من المسار.",
+        message: "إزالة {{subject}} من المسار. ستتم أرشفة الوكيل الفرعي.",
+        confirm: "أرشفة",
+      },
+      detach: {
+        title: "فصل الوكيل الفرعي؟",
+        message: "سيغادر {{subject}} هذا المسار ويستمر كوكيل مستقل.",
+        confirm: "فصل",
+      },
+      clearCompleted: {
+        titleOne: "مسح الوكيل الفرعي المكتمل؟",
+        titleMany: "مسح {{count}} وكلاء فرعيين مكتملين؟",
+        messageOne:
+          "أرشفة وكيل فرعي مكتمل واحد وإزالته من المسار. الوكلاء الفرعيون قيد التشغيل لا يُمسّون.",
+        messageMany:
+          "أرشفة {{count}} وكلاء فرعيين مكتملين وإزالتهم من المسار. الوكلاء الفرعيون قيد التشغيل لا يُمسّون.",
+        confirm: "مسح",
+      },
+    },
   },
   panels: {
     draft: {
@@ -2362,6 +2683,12 @@ export const ar: TranslationResources = {
           inApp: "داخل Otto",
           external: "متصفح خارجي",
         },
+      },
+      mountedWorkspaceLimit: {
+        label: "عدد الـ Workspaces المُبقاة محمّلة",
+        description:
+          "عدد الـ Workspaces التي تبقى محمّلة ليكون التبديل إليها فوريًا. بعد هذا العدد، يُفرَّغ الـ Workspace الأقل استخدامًا مؤخرًا ويُعاد تحميله عند فتحه مجددًا. اضبطه على الأقل بعدد ما تتنقل بينه فعلًا — فدون ذلك، كل تبديل يفرّغ الـ Workspace الذي أنت على وشك العودة إليه. القيم الأعلى تستهلك ذاكرة أكبر.",
+        accessibilityLabel: "عدد الـ Workspaces المُبقاة محمّلة",
       },
       terminalScrollback: {
         label: "التمرير Terminal",
@@ -2849,9 +3176,9 @@ export const ar: TranslationResources = {
         enabled: "تفعيل ذكاء الكود",
         enabledHint:
           'يشغّل خادم لغة لكل مشروع بحيث يحلّ "الانتقال إلى التعريف" الرمز الموجود عند المؤشر. لا يبدأ شيء حتى تستخدمه؛ والإيقاف يوقف كل الخوادم ويعود إلى الفهرس القائم على الأسماء.',
-        solution: "Microsoft .NET Solution Management",
+        solution: "إدارة حلول Microsoft .NET",
         solutionHint:
-          "Adds a Solution view to the Files tab, showing your .sln or .slnx as the build system sees it. Independent of code intelligence above. Off by default: it runs a .NET helper process and evaluates MSBuild, and it needs the .NET SDK on this host.",
+          "يضيف عرض الحل إلى تبويب الملفات، ويعرض ملف ‎.sln أو ‎.slnx كما يراه نظام البناء. مستقل عن ذكاء الكود أعلاه. معطّل افتراضيًا: فهو يشغّل عملية مساعدة بـ .NET ويقيّم MSBuild، ويتطلب حزمة .NET SDK على هذا المضيف.",
         languages: "اللغات",
         installed: "{{bin}} — تم العثور عليه ({{rung}})",
         notInstalled: "{{bin}} — غير مثبّت على هذا المضيف",

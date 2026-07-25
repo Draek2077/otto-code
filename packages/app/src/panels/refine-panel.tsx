@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
@@ -27,6 +28,7 @@ import {
   splitPath,
   useCollapsedGroups,
 } from "@/editor/code-results/result-rows";
+import { i18n } from "@/i18n/i18next";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { useRefineFeature } from "@/refine/use-refine-feature";
@@ -41,6 +43,8 @@ import {
   findRefinePreset,
   isRefineInstructionValid,
   refineJobFor,
+  refinePresetDescription,
+  refinePresetLabel,
   type RefineJobKind,
   type RefinePreset,
 } from "@/refine/refine-presets";
@@ -75,8 +79,6 @@ import { compactFont, type Theme } from "@/styles/theme";
  * - The job **spans files**. The working-set strip is the blast radius, made
  *   editable: a file marked read-only goes to the model as context and can
  *   never come back as an edit.
- *
- * Strings are literal English pending the pre-release i18n sweep.
  */
 
 const ThemedRotateCw = withUnistyles(RotateCw);
@@ -105,20 +107,29 @@ function useRefinePanelDescriptor(target: RefineTarget): PanelDescriptor {
   const { tail } = splitPath(target.paths[0] ?? "");
   const extra = target.paths.length - 1;
   const job = refineJobFor(target.presetId);
+  const preset = findRefinePreset(target.presetId);
   return {
-    label: `${jobTitle(job)}: ${tail}`,
-    subtitle:
-      extra > 0
-        ? `+${extra} more ${extra === 1 ? "file" : "files"}`
-        : (findRefinePreset(target.presetId)?.label ?? "AI rewrite"),
+    label: i18n.t("refine.tab.title", { job: jobTitle(job), file: tail }),
+    subtitle: describeExtraFiles(extra, preset),
     titleState: "ready",
     icon: job === "compact" ? Compress : WandStars,
     statusBucket: null,
   };
 }
 
+/** The tab's second line: how much more it covers, or what it was opened for. */
+function describeExtraFiles(extra: number, preset: RefinePreset | null): string {
+  if (extra === 1) {
+    return i18n.t("refine.tab.moreFile", { count: extra });
+  }
+  if (extra > 1) {
+    return i18n.t("refine.tab.moreFiles", { count: extra });
+  }
+  return preset ? refinePresetLabel(preset) : i18n.t("refine.tab.fallbackSubtitle");
+}
+
 function jobTitle(job: RefineJobKind): string {
-  return job === "compact" ? "Compact" : "Refine";
+  return job === "compact" ? i18n.t("refine.job.compact") : i18n.t("refine.job.refine");
 }
 
 function RefinePanel() {
@@ -177,7 +188,7 @@ function RefinePanel() {
   if (!hasRefine) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.mutedText}>Update the host to use Refine.</Text>
+        <Text style={styles.mutedText}>{i18n.t("refine.unsupported")}</Text>
       </View>
     );
   }
@@ -263,7 +274,7 @@ function RefineToolbar({
       ) : null}
       {isFinished ? null : (
         <ToolbarIconButton
-          label="Discard this proposal and re-read every file"
+          label={i18n.t("refine.toolbar.discard")}
           Icon={ThemedRotateCw}
           onPress={session.repin}
           disabled={phase.kind === "generating" || phase.kind === "accepting"}
@@ -284,7 +295,7 @@ function RefineAction({ session, onClose }: { session: RefineSession; onClose: (
   if (phase.kind === "accepted" || phase.kind === "partiallyAccepted") {
     return (
       <ToolbarIconButton
-        label="Close"
+        label={i18n.t("common.actions.close")}
         Icon={ThemedX}
         tone="accent"
         onPress={onClose}
@@ -308,11 +319,11 @@ function RefineAction({ session, onClose }: { session: RefineSession; onClose: (
 /** Multi-file accept says how many files it is about to touch, before it does. */
 function acceptLabel(phase: RefinePhase, stats: RefineSetStats): string {
   if (phase.kind === "accepting") {
-    return "Writing…";
+    return i18n.t("refine.toolbar.writing");
   }
   return stats.changedFiles > 1
-    ? `Accept — write ${stats.changedFiles} files`
-    : "Accept — write the kept changes";
+    ? i18n.t("refine.toolbar.acceptMany", { count: stats.changedFiles })
+    : i18n.t("refine.toolbar.acceptOne");
 }
 
 /**
@@ -326,7 +337,7 @@ function KeepAllToggle({ session }: { session: RefineSession }) {
   const allKept = stats.totalHunks > 0 && stats.keptHunks === stats.totalHunks;
   return (
     <ToolbarIconButton
-      label={allKept ? "Drop every change" : "Keep every change"}
+      label={allKept ? i18n.t("refine.toolbar.dropAll") : i18n.t("refine.toolbar.keepAll")}
       Icon={ThemedCheckSquare}
       onPress={allKept ? session.dropAll : session.keepAll}
       selected={allKept}
@@ -383,12 +394,12 @@ function WorkingSetStrip({ session }: { session: RefineSession }) {
 
 function describeWorkingSet(writable: number, total: number): string {
   if (total === 1) {
-    return "One file in this set. Anything it links to would be read-only context.";
+    return i18n.t("refine.workingSet.single");
   }
   if (writable === total) {
-    return `Every one of these ${total} files may be rewritten.`;
+    return i18n.t("refine.workingSet.allWritable", { count: total });
   }
-  return `${writable} of ${total} files may be rewritten; the rest are read-only context.`;
+  return i18n.t("refine.workingSet.someWritable", { writable, total });
 }
 
 /**
@@ -409,6 +420,7 @@ function AllFilesChip({
   disabled: boolean;
   onToggle: (writable: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const handlePress = useCallback(() => onToggle(!allWritable), [allWritable, onToggle]);
   const chipStyle = useMemo(
     () => [styles.chip, allWritable ? styles.chipWritable : null],
@@ -419,20 +431,20 @@ function AllFilesChip({
     <Tooltip delayDuration={400}>
       <TooltipTrigger
         accessibilityRole="button"
-        accessibilityLabel="All files"
+        accessibilityLabel={t("refine.workingSet.allChipLabel")}
         accessibilityState={checkedState}
         onPress={handlePress}
         disabled={disabled}
         style={chipStyle}
         testID="refine-set-all"
       >
-        <Text style={allWritable ? styles.chipLabelWritable : styles.chipLabel}>All</Text>
+        <Text style={allWritable ? styles.chipLabelWritable : styles.chipLabel}>
+          {t("refine.workingSet.allChipText")}
+        </Text>
       </TooltipTrigger>
       <TooltipContent side="bottom" maxWidth={360}>
         <Text style={styles.tooltipText}>
-          {allWritable
-            ? "Every file may be rewritten. Tap to go back to just the first, with the rest as read-only context."
-            : "Let the rewrite change every file in this set, not only the first."}
+          {allWritable ? t("refine.workingSet.allOnHint") : t("refine.workingSet.allOffHint")}
         </Text>
       </TooltipContent>
     </Tooltip>
@@ -448,6 +460,7 @@ function WorkingSetChip({
   disabled: boolean;
   onToggle: (fileId: string, writable: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const handlePress = useCallback(
     () => onToggle(file.id, !file.writable),
     [file.id, file.writable, onToggle],
@@ -475,8 +488,8 @@ function WorkingSetChip({
       <TooltipContent side="bottom" maxWidth={360}>
         <Text style={styles.tooltipText}>
           {file.writable
-            ? "May be rewritten. Tap to make it read-only context instead."
-            : "Read-only context — the model reads it but can never change it. Tap to allow rewriting."}
+            ? t("refine.workingSet.writableHint")
+            : t("refine.workingSet.referenceHint")}
         </Text>
       </TooltipContent>
     </Tooltip>
@@ -503,6 +516,7 @@ function InstructionBar({
   onPickPreset: (preset: RefinePreset) => void;
   session: RefineSession;
 }) {
+  const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
   const { phase } = session;
   const busy = phase.kind === "generating";
@@ -543,7 +557,7 @@ function InstructionBar({
               style={styles.instructionInput}
               value={instruction}
               onChangeText={onChangeInstruction}
-              placeholder="What should change? e.g. keep every rule, cut the repetition"
+              placeholder={t("refine.instruction.placeholder")}
               editable={!busy}
               testID="refine-instruction"
             />
@@ -568,12 +582,14 @@ function InstructionBar({
               disabled={!canRun}
               testID="refine-start-over"
             >
-              Start over
+              {t("refine.instruction.startOver")}
             </Button>
           ) : null}
         </View>
       </View>
-      {activePreset ? <Text style={styles.presetNote}>{activePreset.description}</Text> : null}
+      {activePreset ? (
+        <Text style={styles.presetNote}>{refinePresetDescription(activePreset)}</Text>
+      ) : null}
     </View>
   );
 }
@@ -581,10 +597,12 @@ function InstructionBar({
 /** The job's own verb, then "again" once there is something to argue with. */
 function runLabel(phase: RefinePhase, job: RefineJobKind): string {
   if (phase.kind === "generating") {
-    return job === "compact" ? "Compacting…" : "Refining…";
+    return job === "compact"
+      ? i18n.t("refine.instruction.compacting")
+      : i18n.t("refine.instruction.refining");
   }
   const verb = jobTitle(job);
-  return phase.kind === "reviewing" ? `${verb} again` : verb;
+  return phase.kind === "reviewing" ? i18n.t("refine.instruction.again", { job: verb }) : verb;
 }
 
 function PresetChip({
@@ -605,17 +623,19 @@ function PresetChip({
     <Tooltip delayDuration={400}>
       <TooltipTrigger
         accessibilityRole="button"
-        accessibilityLabel={preset.label}
+        accessibilityLabel={refinePresetLabel(preset)}
         accessibilityState={selectedState}
         onPress={handlePress}
         disabled={disabled}
         style={chipStyle}
         testID={`refine-preset-${preset.id}`}
       >
-        <Text style={active ? styles.chipLabelWritable : styles.chipLabel}>{preset.label}</Text>
+        <Text style={active ? styles.chipLabelWritable : styles.chipLabel}>
+          {refinePresetLabel(preset)}
+        </Text>
       </TooltipTrigger>
       <TooltipContent side="bottom" maxWidth={360}>
-        <Text style={styles.tooltipText}>{preset.description}</Text>
+        <Text style={styles.tooltipText}>{refinePresetDescription(preset)}</Text>
       </TooltipContent>
     </Tooltip>
   );
@@ -633,7 +653,7 @@ function RefineBody({
   const { phase, proposals } = session;
 
   if (phase.kind === "pinning") {
-    return <CenteredNote text="Reading the files…" />;
+    return <CenteredNote text={i18n.t("refine.body.pinning")} />;
   }
   if (phase.kind === "unreadable") {
     return <CenteredNote text={phase.reason} tone="error" />;
@@ -642,14 +662,10 @@ function RefineBody({
     return <WriteReport outcomes={phase.outcomes} />;
   }
   if (phase.kind === "generating" && proposals.length === 0) {
-    return <CenteredNote text="Working out a rewrite…" />;
+    return <CenteredNote text={i18n.t("refine.body.generating")} />;
   }
   if (proposals.length === 0) {
-    return (
-      <CenteredNote
-        text={`Say what should change, then press ${jobTitle(job)}. Nothing is written until you accept it.`}
-      />
-    );
+    return <CenteredNote text={i18n.t("refine.body.idle", { job: jobTitle(job) })} />;
   }
   return <ProposalList session={session} groups={groups} />;
 }
@@ -726,11 +742,13 @@ function FileProposalGroup({
   const trailing = useMemo(
     () => (
       <View style={styles.fileTrailing}>
-        <Text style={styles.keptCount}>{keptCount} kept</Text>
+        <Text style={styles.keptCount}>
+          {i18n.t("refine.file.keptCount", { count: keptCount })}
+        </Text>
         <Switch
           value={allKept}
           onValueChange={toggleFile}
-          accessibilityLabel={`Keep every change in ${proposal.label}`}
+          accessibilityLabel={i18n.t("refine.file.keepEveryChangeIn", { file: proposal.label })}
           testID="refine-file-toggle"
         />
       </View>
@@ -786,6 +804,7 @@ function HunkGroup({
   kept: boolean;
   onToggle: (fileId: string, hunkId: string) => void;
 }) {
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
   const toggleCollapsed = useCallback(() => setCollapsed((current) => !current), []);
   const toggleKept = useCallback(() => onToggle(fileId, hunk.id), [fileId, hunk.id, onToggle]);
@@ -797,24 +816,24 @@ function HunkGroup({
       <Pressable
         accessibilityRole="button"
         accessibilityState={foldState}
-        accessibilityLabel={`Change ${ordinal}`}
+        accessibilityLabel={t("refine.hunk.title", { ordinal })}
         onPress={toggleCollapsed}
         style={styles.hunkHeader}
         testID="refine-hunk-fold"
       >
         <TreeChevron expanded={!collapsed} />
-        <Text style={styles.hunkName}>Change {ordinal}</Text>
+        <Text style={styles.hunkName}>{t("refine.hunk.title", { ordinal })}</Text>
         <Text style={styles.hunkStat}>
           +{hunk.additions} −{hunk.removals}
         </Text>
         <View style={styles.spacer} />
         <Text style={kept ? styles.decisionKept : styles.decisionDropped}>
-          {kept ? "Keeping" : "Dropped"}
+          {kept ? t("refine.hunk.keeping") : t("refine.hunk.dropped")}
         </Text>
         <Switch
           value={kept}
           onValueChange={toggleKept}
-          accessibilityLabel={`Keep change ${ordinal}`}
+          accessibilityLabel={t("refine.hunk.keepAccessibility", { ordinal })}
           testID="refine-hunk-keep"
         />
       </Pressable>
@@ -861,7 +880,9 @@ function OutcomeRow({ outcome }: { outcome: RefineWriteOutcome }) {
           {head}
         </Text>
         <View style={styles.spacer} />
-        <Text style={styles[OUTCOME_TEXT[outcome.kind]]}>{OUTCOME_STATUS[outcome.kind]}</Text>
+        <Text style={styles[OUTCOME_TEXT[outcome.kind]]}>
+          {i18n.t(OUTCOME_STATUS[outcome.kind])}
+        </Text>
       </View>
       {outcome.reason ? (
         <Text style={styles.outcomeReason} numberOfLines={2}>
@@ -875,9 +896,9 @@ function OutcomeRow({ outcome }: { outcome: RefineWriteOutcome }) {
 const OUTCOME_DOT = { written: "dotGood", stale: "dotWarn", failed: "dotBad" } as const;
 const OUTCOME_TEXT = { written: "statusGood", stale: "statusWarn", failed: "statusBad" } as const;
 const OUTCOME_STATUS = {
-  written: "written",
-  stale: "left as it is",
-  failed: "could not write",
+  written: "refine.outcome.written",
+  stale: "refine.outcome.stale",
+  failed: "refine.outcome.failed",
 } as const;
 
 function CenteredNote({ text, tone = "muted" }: { text: string; tone?: "muted" | "error" }) {
@@ -891,39 +912,54 @@ function CenteredNote({ text, tone = "muted" }: { text: string; tone?: "muted" |
 /** The one line that answers "what is this tab telling me" for every phase. */
 export function summarizePhase(phase: RefinePhase, stats: RefineSetStats): string {
   if (phase.kind === "pinning") {
-    return "Pinning the files as they are now — that is what every proposal will be measured against.";
+    return i18n.t("refine.summary.pinning");
   }
   if (phase.kind === "unreadable") {
-    return "This working set could not be read.";
+    return i18n.t("refine.summary.unreadable");
   }
   if (phase.kind === "idle") {
-    return "Nothing proposed yet. No file has been touched.";
+    return i18n.t("refine.summary.idle");
   }
   if (phase.kind === "generating") {
-    return `Round ${phase.round} — rewriting.`;
+    return i18n.t("refine.summary.generating", { round: phase.round });
   }
   if (phase.kind === "accepting") {
-    return "Writing the kept changes.";
+    return i18n.t("refine.summary.accepting");
   }
   if (phase.kind === "accepted") {
     const written = phase.outcomes.length;
-    return `Done — ${written} ${written === 1 ? "file" : "files"} written.`;
+    return written === 1
+      ? i18n.t("refine.summary.acceptedOne")
+      : i18n.t("refine.summary.acceptedMany", { count: written });
   }
   if (phase.kind === "partiallyAccepted") {
     const written = phase.outcomes.filter((outcome) => outcome.kind === "written").length;
     const skipped = phase.outcomes.length - written;
-    return `${written} written, ${skipped} left alone. Nothing was overwritten.`;
+    return i18n.t("refine.summary.partiallyAccepted", { written, skipped });
   }
   return summarizeReview(phase.round, stats);
 }
 
+/**
+ * Four whole sentences rather than one assembled from fragments: "1 change kept
+ * across 2/3 files" inflects differently in every locale we ship, and a
+ * translator handed `{{count}} {{noun}} kept` cannot fix that.
+ */
 function summarizeReview(round: number, stats: RefineSetStats): string {
-  const changes = `${stats.keptHunks} of ${stats.totalHunks} ${
-    stats.totalHunks === 1 ? "change" : "changes"
-  } kept`;
-  const scope =
-    stats.proposedFiles > 1 ? ` across ${stats.changedFiles}/${stats.proposedFiles} files` : "";
-  return `Round ${round} — ${changes}${scope}, +${stats.additions} −${stats.removals} lines. Nothing has been written yet.`;
+  const one = stats.totalHunks === 1;
+  const key =
+    stats.proposedFiles > 1
+      ? `refine.summary.review${one ? "One" : "Many"}Scoped`
+      : `refine.summary.review${one ? "One" : "Many"}`;
+  return i18n.t(key, {
+    round,
+    kept: stats.keptHunks,
+    total: stats.totalHunks,
+    changedFiles: stats.changedFiles,
+    proposedFiles: stats.proposedFiles,
+    additions: stats.additions,
+    removals: stats.removals,
+  });
 }
 
 export const refinePanelRegistration: PanelRegistration<"refine"> = {

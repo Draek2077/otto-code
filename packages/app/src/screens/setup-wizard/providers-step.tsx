@@ -7,15 +7,15 @@
  * The primary-provider pick is lifted to the shell (it will feed the later
  * personality/preset steps). When the snapshot loads and nothing is chosen yet,
  * this auto-selects the first available provider by a fixed preference order.
- *
- * TODO(i18n): inline English, translated in a later pass.
  */
 
 import { useCallback, useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider, ProviderStatus } from "@otto-code/protocol/agent-types";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
+import { i18n } from "@/i18n/i18next";
 import { resolveProviderLabel } from "@/utils/provider-definitions";
 
 // Fixed preference order for auto-selecting the primary provider (charter).
@@ -30,13 +30,15 @@ function preferenceRank(provider: string): number {
 function statusLabel(status: ProviderStatus, modelCount: number): string {
   switch (status) {
     case "ready":
-      return modelCount > 0 ? `Available · ${modelCount} models` : "Available";
+      return modelCount > 0
+        ? i18n.t("setupWizard.providers.status.availableWithModels", { count: modelCount })
+        : i18n.t("setupWizard.providers.status.available");
     case "loading":
-      return "Detecting…";
+      return i18n.t("setupWizard.providers.status.detecting");
     case "error":
-      return "Error";
+      return i18n.t("setupWizard.providers.status.error");
     case "unavailable":
-      return "Not installed";
+      return i18n.t("setupWizard.providers.status.notInstalled");
   }
 }
 
@@ -47,6 +49,7 @@ interface ProvidersStepProps {
 }
 
 export function ProvidersStep({ serverId, primaryProvider, onSelectPrimary }: ProvidersStepProps) {
+  const { t } = useTranslation();
   const { entries, isLoading, supportsSnapshot } = useProvidersSnapshot(serverId);
 
   const sortedEntries = useMemo(() => {
@@ -74,17 +77,15 @@ export function ProvidersStep({ serverId, primaryProvider, onSelectPrimary }: Pr
         <View style={styles.loading}>
           <ActivityIndicator />
           <Text style={styles.loadingText}>
-            {supportsSnapshot ? "Detecting providers…" : "Waiting for the host…"}
+            {supportsSnapshot
+              ? t("setupWizard.providers.detecting")
+              : t("setupWizard.providers.waitingForHost")}
           </Text>
         </View>
       );
     }
     if (sortedEntries.length === 0) {
-      return (
-        <Text style={styles.empty}>
-          No providers detected yet. You can still continue and set one up later.
-        </Text>
-      );
+      return <Text style={styles.empty}>{t("setupWizard.providers.empty")}</Text>;
     }
     return (
       <View style={styles.list}>
@@ -106,11 +107,11 @@ export function ProvidersStep({ serverId, primaryProvider, onSelectPrimary }: Pr
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Your providers</Text>
+        <Text style={styles.title}>{t("setupWizard.providers.title")}</Text>
         <Text style={styles.subtitle}>
           {availableProviders.length > 0
-            ? "Pick the provider your agents should use by default. You can add more later in Settings."
-            : "Otto detects your agent providers automatically. You can add one later in Settings."}
+            ? t("setupWizard.providers.subtitlePick")
+            : t("setupWizard.providers.subtitleNone")}
         </Text>
       </View>
       {renderBody()}

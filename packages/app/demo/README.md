@@ -4,10 +4,8 @@ Playwright scripts that drive the real app and record screenshots + video for
 otto-code.me and the app stores. Never touches your real daemon (`~/.otto`,
 port 6868) — every run boots an isolated temp stack.
 
-For the full design rationale, scenario catalog, and storyboards, see
-[`projects/site-demos/site-demos.md`](../../../projects/site-demos/site-demos.md).
-For the scenario-authoring recipe, selector map, and gotchas ledger, see
-[`projects/site-demos/runbook.md`](../../../projects/site-demos/runbook.md).
+For the design rationale, the capture principles, the authoring recipe and the
+gotchas ledger, see [`docs/site-demos.md`](../../../docs/site-demos.md).
 This file is the short version: how to run what's already built.
 
 ## Quick start
@@ -207,10 +205,54 @@ pristine output.
 
 ## Writing a new scenario
 
-Copy the skeleton and rules in
-[`runbook.md` §3](../../../projects/site-demos/runbook.md#3-authoring-a-new-scenario--the-recipe)
-— it has a working template, the state-based-waits/whole-frame rules, and the
-verification loop (run → open every PNG and actually look at it, in both
-themes, before calling it done). Check the
-[gotchas ledger](../../../projects/site-demos/runbook.md#6-gotchas-ledger)
-first; most first-attempt failures are already logged there.
+One scenario = one feature = one `.demo.ts` file in `scenarios/`. Copy this
+shape (04/05/06 are the reference implementations):
+
+```ts
+import { expect, test } from "../../e2e/fixtures";
+import { applyDemoAppearance } from "../helpers/appearance";
+import { DemoRecorder } from "../helpers/capture";
+import { demoThemeAppearance, resolveDemoTheme } from "../helpers/theme";
+import { beat, humanClick, humanType, resetPacingSeed } from "../helpers/pacing";
+import { seedDemoCast, waitForProvidersReady, type DemoCast } from "../staging/cast";
+import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
+
+let workspace: DemoWorkspace;
+let cast: DemoCast; // only if the feature involves personalities/teams/pickers
+
+test.beforeAll(async () => {
+  workspace = await seedDemoWorkspace({
+    template: "pulse-api", // or "mango-storefront"
+    originOwner: "pulse-labs", // NEVER a github.com owner
+    title: "Rate limiting",
+  });
+  cast = await seedDemoCast(); // options: { teams: [...], activeTeam: "shipCrew" }
+});
+
+test.afterAll(async () => {
+  await cast?.cleanup(); // removes seeded people, clears active team
+  await workspace?.cleanup(); // removes project, deletes repo
+});
+
+test("my feature walkthrough", async ({ page }, testInfo) => {
+  testInfo.setTimeout(300_000); // 600_000 for real-run scenarios
+  resetPacingSeed();
+  const theme = resolveDemoTheme(testInfo.project.name); // "twilight" | "daylight"
+  await applyDemoAppearance(page, demoThemeAppearance(theme));
+  const recorder = await DemoRecorder.start(page, `NN-my-feature-${theme}`);
+
+  // ... steps: humanClick/humanType for on-camera actions, beat(page) to settle,
+  // recorder.shot("step-id", "Step title", "One-sentence caption the site shows.");
+
+  await recorder.finish(testInfo);
+});
+```
+
+**Do not hand-roll the appearance call or an unsuffixed
+`DemoRecorder.start(page, "NN-…")`** — a scenario that does will silently
+capture only one theme variant and break the site's dark/light asset pairing.
+
+The rules that make a capture good, the verification loop (run → open every PNG
+in **both** theme dirs and actually look at it), and the gotchas ledger are in
+[`docs/site-demos.md`](../../../docs/site-demos.md). Read the ledger first; most
+first-attempt failures are already logged there.

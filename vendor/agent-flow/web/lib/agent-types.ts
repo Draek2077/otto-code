@@ -118,7 +118,7 @@ export interface ToolCallNode {
 export interface Discovery {
   id: string
   agentId: string
-  type: 'file' | 'pattern' | 'finding' | 'code'
+  type: 'file' | 'pattern' | 'finding' | 'code' | 'error'
   label: string
   content: string       // short preview
   x: number

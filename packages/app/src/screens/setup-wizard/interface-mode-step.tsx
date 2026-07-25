@@ -4,12 +4,10 @@
  * (and the app it lands in). Presentational — selection is lifted to the shell,
  * which persists `interfaceMode` immediately so the rest of the wizard already
  * renders at the chosen depth.
- *
- * TODO(i18n): strings are inline English (this whole wizard surface is
- * translated in a later pass, matching welcome-step.tsx).
  */
 
 import { useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { InterfaceMode } from "@/hooks/use-settings";
@@ -21,35 +19,46 @@ interface InterfaceModeOption {
   bullets: string[];
 }
 
-const OPTIONS: InterfaceModeOption[] = [
-  {
-    value: "user",
-    title: "User",
-    tagline: "Chat with AI agents, organize projects, get things done.",
-    bullets: ["Focused, friendly interface", "No developer tooling to wade through"],
-  },
-  {
-    value: "developer",
-    title: "Developer",
-    tagline: "The full development environment.",
-    bullets: ["Files, diffs, terminals, search", "Git, pull requests, everything Otto can do"],
-  },
-];
-
 interface InterfaceModeStepProps {
   selected: InterfaceMode | null;
   onSelect: (mode: InterfaceMode) => void;
 }
 
 export function InterfaceModeStep({ selected, onSelect }: InterfaceModeStepProps) {
+  const { t } = useTranslation();
+
+  const options = useMemo<InterfaceModeOption[]>(
+    () => [
+      {
+        value: "user",
+        title: t("setupWizard.mode.user.title"),
+        tagline: t("setupWizard.mode.user.tagline"),
+        bullets: [
+          t("setupWizard.mode.user.bulletInterface"),
+          t("setupWizard.mode.user.bulletNoTooling"),
+        ],
+      },
+      {
+        value: "developer",
+        title: t("setupWizard.mode.developer.title"),
+        tagline: t("setupWizard.mode.developer.tagline"),
+        bullets: [
+          t("setupWizard.mode.developer.bulletTools"),
+          t("setupWizard.mode.developer.bulletGit"),
+        ],
+      },
+    ],
+    [t],
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>How do you want to use Otto?</Text>
-        <Text style={styles.subtitle}>You can switch anytime in Settings.</Text>
+        <Text style={styles.title}>{t("setupWizard.mode.title")}</Text>
+        <Text style={styles.subtitle}>{t("setupWizard.mode.subtitle")}</Text>
       </View>
       <View style={styles.cards}>
-        {OPTIONS.map((option) => (
+        {options.map((option) => (
           <InterfaceModeCard
             key={option.value}
             option={option}

@@ -61,6 +61,18 @@ default on). Off stops the frame loop and the census interval.
   already: a metric that climbs to a plateau and stays there has `monotonicity == 1`. Always read
   the per-sample series before calling something a leak — `min`/`max`/`first`/`last` in the trend
   report, or the raw samples from the bridge.
+- **A bounded thing looks unbounded until the run crosses the bound.** The sibling of the trap
+  above, and it cost the second wrong diagnosis: the workspace deck evicts at three, the soak seeded
+  three, and "never released" and "never reached the cap" produced the identical series. Before
+  reading retention off a series, check what caps the thing being measured and **seed above it**.
+  Where a cap exists, measure its cause directly (the mounted-tree count) and not only its
+  consequence (`query.observers`).
+- **`Client frame drift` is not a verdict below ~40 samples.** The bucket is
+  `max(1, floor(samples / 10))`, so a 12-cycle soak compares one 10s frame window against one other.
+  Single windows inside one steady state have ranged from 29 to 85 fps, and the same configuration
+  has produced both verdicts on consecutive runs — including "degraded" with the deck pinned to a
+  single workspace. Quote the whole `frames.fps` series, or run long enough for the decile to
+  contain something.
 - **Timer counters patch the globals once, before the React tree mounts.** They are installed from
   `app/_layout.tsx` module scope. Installing later means an unknown baseline; unpatching mid-session
   would corrupt the counts, which is why the `resourceMonitorEnabled` setting stops the _sampling_
@@ -109,9 +121,31 @@ Two tests, and the pairing is the method:
 
 The control is what makes the soak diagnostic rather than descriptive. Run both; read the delta.
 
+`OTTO_RESOURCE_SOAK_WORKSPACES` sets how many workspaces are seeded (default 4). It defaults above
+`WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES` on purpose — at or below the cap the deck never evicts, and
+the run cannot tell retention from a cap that was never reached.
+
 **The rule the harness must obey: navigate in-app, never `page.goto`.** A reload rebuilds every
 store and empties the query cache — it resets precisely the state being measured. The first version
 of this spec used `page.goto` per cycle and reported a perfectly healthy app.
+
+**Do not edit app source while a soak is in flight — including from another session.** Metro Fast
+Refresh re-evaluates the changed module graph, which rebuilds the React tree and re-creates the
+resource monitor singleton with an empty sample ring. It is the `page.goto` mistake arriving from
+the editor instead of the harness, and it is harder to spot: the daemon client survives, so traffic
+counters run on continuously while the census restarts, and the run reports a plausible-looking
+short series rather than an error. Two tells — the sample count comes back far below the cycle
+count, or a retained-state series dips **below its own one-unit floor** (a deck holding one
+workspace cannot drop below one workspace; only an app rebuild can). In a shared checkout, run the
+soak from a git worktree.
+
+**Never time a workspace switch with `expectComposerVisible`.** It resolves `.first()` across every
+retained panel, and the deck deliberately keeps the outgoing workspace painted while a cold one
+mounts (`useDeferredValue` on a cold selection), so the assertion can be satisfied by the workspace
+being navigated _away from_ — it under-reported cold switches by 40%. Wait on the target's own
+`workspace-deck-entry-<serverId>:<workspaceId>` instead: an inactive entry is `display: none`, so
+its visibility is unambiguous. Note that even this measures **painted**, not **usable** — a cold
+mount paints before its timeline refetch lands.
 
 **In production** — Settings › Diagnostics › Run app diagnostic, and copy. The `Client resources`,
 `Client frame drift`, `Client growth ranking`, `Daemon traffic` and `Query cache hotspots` sections
@@ -122,18 +156,55 @@ are all in the same paste as the daemon's.
 These are the structural facts the instrument has established. They are properties of the code as it
 stands, not a status report — what is being done about them is a row in
 [`projects/README.md`](../projects/README.md#performance), and the evidence, method and dated
-numbers are in
-[`findings/client-performance/`](../findings/client-performance/2026-07-25-fps-degradation.md).
+numbers are in [`findings/client-performance/`](../findings/README.md) — the
+[FPS-degradation report](../findings/client-performance/2026-07-25-fps-degradation.md) and the
+[workspace-tree retention report](../findings/client-performance/2026-07-25-workspace-tree-retention.md)
+that corrects its first conclusion.
 
-- **Mounted workspace trees are never released.** Visiting a workspace mounts its tree and it stays
-  mounted for the life of the session — deliberate (instant switch-back), bounded by
-  workspaces-visited rather than by time, but never reclaimed. Each retained tree keeps its live
-  `useQuery` observers and re-renders on every store write for the rest of the session, so the cost
-  of a session is a function of how many workspaces it has touched.
-- **Navigation re-fetches state the client already holds.** Returning to a workspace re-issues
-  `fetch_agent_timeline` and refreshes terminals, even when nothing changed. This is what the
-  connection indicator reacts to.
-- **`agentStreamTail` / `agentStreamHead` have no per-agent eviction.** Both are keyed by agent id
-  and only ever cleared wholesale by `clearSession` — no cap, no release on chat close or archive.
+- **Mounted workspace trees are evicted, LRU, at a user-set limit.**
+  `pruneMountedWorkspaceSelections` in `screens/workspace/workspace-deck-retention.ts` keeps the
+  active workspace plus the most recently active others and fully unmounts the rest. Unmounting
+  releases the tree's `useQuery` observers — measured, with the released queries showing up as
+  `query.unobserved`. **The cost of a session is a function of the limit, not of how many workspaces
+  it has touched.** Marginal cost of one resident tree is +59 to +118 observers and +76 to +169 DOM
+  nodes, the range depending on what that workspace has open.
+- **The limit is `mountedWorkspaceLimit`, device-local, default 5** (Settings › General ›
+  _Workspaces kept loaded_; clamped to 2–12). Device-local because retention is a property of this
+  machine's memory and this user's habits, not of the project or the host. **The pure retention
+  module holds no default of its own** — `maxMountedWorkspaces` is a required argument. A fallback
+  constant there would be a second cap that can silently disagree with the one in Settings, which is
+  how a user-facing setting stops meaning anything.
+- **Set below the working set, the limit is worse than either extreme.** With four workspaces in
+  rotation and a limit of three, every switch evicts the tree the user is about to return to —
+  textbook LRU thrashing. This is why the default is 5 rather than a rounder 3 or 4: it covers a
+  four-workspace rotation with one spare. Raising it costs memory, not frame rate — 3 → 6 resident
+  trees was within run-to-run noise on every frame metric the soak can read.
+- **Navigation asks the daemon for one thing per workspace visited, and nothing per revisit.**
+  Returning to a workspace used to re-issue `fetch_agent_timeline`, re-ask for setup status, and
+  re-subscribe terminals, none of which had changed. The three invariants that keep it at the floor:
+  a chat pane fetches its timeline on focus **only** when history was never applied or the host
+  reconnected since that agent last synced (`shouldSyncAgentTimelineOnFocus` — live `agent_stream`
+  plus the reducer's seq/epoch gate covers everything else); a successful setup-status response
+  carrying no snapshot is **an answer**, cached until a progress push, a workspace removal or a
+  reconnect; and the terminals push subscription outlives its last observer by
+  `TERMINAL_SUBSCRIPTION_LINGER_MS`, so a workspace round-trip is a timer cancel rather than an
+  unsubscribe/subscribe pair. That last one is a **debounce on churn, not a retention policy** —
+  keep it short enough that it never becomes a second answer to "how long do we keep workspace state
+  alive", which belongs to the deck's mounted set.
+- **`agentStreamTail` / `agentStreamHead` are released when an agent leaves the working set.** The
+  rule lives in `timeline/agent-stream-retention.ts`: buffers go when the agent is not being
+  displayed AND either it has left the session (deleted, removed, archived) or it is past the
+  retention cap, oldest-touched first. Two parts are load-bearing and easy to break:
+  - **"Not being displayed" is explicit, never inferred.** Every surface that renders the buffers
+    registers a ref-counted retainer while mounted (`useAgentStreamRetention`). A mounted background
+    pane is invisible to focus and to lifecycle, so inferring from either blanks it.
+  - **Releasing the buffers must release the resume state with them.** `agentTimelineCursor` and
+    `agentAuthoritativeHistoryApplied` are what tell `planInitialAgentTimelineSync` the client is
+    caught up. Drop the buffers alone and the next open issues an `after` catch-up that returns
+    nothing onto an empty tail — a blank chat. `releaseAgentStreams` does both; do not split it.
+
+  The Visualizer is unaffected by eviction: its backfill-and-replay re-fetches from the daemon
+  (`fetchAgentTimeline`), not from these buffers.
+
 - **The timer counters are the fastest "not this" in the toolkit.** `runtime.liveIntervals` staying
   flat retires the timer-leak hypothesis at a glance, and it has stayed flat in every run so far.

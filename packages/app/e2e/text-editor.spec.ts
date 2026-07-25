@@ -192,7 +192,7 @@ test.describe("Text editor", () => {
 
   // Skipped, not deleted: the wand button was removed from the editor toolbar —
   // a plain document editor does not carry an AI action, and this one was not
-  // scoped to the file it appeared in. See projects/refine/refine.md §12.
+  // scoped to the file it appeared in. See docs/refine.md ("Prose only").
   // Delete this spec once Refine's own review flow has a spec of its own.
   test.skip("AI Refactor composes a scoped prompt into a pre-filled draft", async ({ page }) => {
     await gotoWorkspace(page, workspace.workspaceId);

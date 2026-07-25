@@ -2303,7 +2303,7 @@ class ClaudeAgentSession implements AgentSession {
   // carries no per-internal-agent identity, so a watcher tails each run's
   // on-disk transcripts and re-emits observed-subagent events per internal
   // agent, nested under the workflow row. See
-  // projects/workflow-decomposition/workflow-decomposition.md. Keyed by the
+  // docs/subagent-accounting.md ("Workflow decomposition"). Keyed by the
   // workflow observed key; claimedDirs is shared so two concurrent runs in one
   // session never bind the same on-disk dir.
   private readonly workflowWatchers = new Map<string, WorkflowTranscriptWatcher>();
@@ -4059,7 +4059,7 @@ class ClaudeAgentSession implements AgentSession {
       // agent() fan-out carries per-agent identity on the live stream (the
       // "Path A" question) — group sidechain messages by parent_tool_use_id
       // and see whether subagent_type/task_description vary per child. See
-      // docs/visualizer.md (Debugging) and projects/workflow-decomposition.
+      // docs/visualizer.md (Debugging) and docs/subagent-accounting.md.
       if (process.env.OTTO_DEBUG_WORKFLOW) {
         const raw = message as Record<string, unknown>;
         this.logger.info(

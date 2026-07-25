@@ -411,6 +411,45 @@ describe("restoring tabs with an optional second field", () => {
     });
   });
 
+  /**
+   * The four job-tab kinds all persist (partialize normalizes them fine), so the
+   * only way one can be lost is the restore path not knowing its shape. Pinned
+   * together because they are opened from four different surfaces and each was
+   * added by a different change.
+   */
+  it("restores every job-tab kind, not just the ones with a coercer branch", () => {
+    expect(restore({ kind: "fileHistory", path: "/repo/a.ts" })).toEqual({
+      kind: "fileHistory",
+      path: "/repo/a.ts",
+    });
+    expect(restore({ kind: "fileHistory", path: "/repo/a.ts", startLine: 3, endLine: 9 })).toEqual({
+      kind: "fileHistory",
+      path: "/repo/a.ts",
+      startLine: 3,
+      endLine: 9,
+    });
+    expect(
+      restore({ kind: "codeReferences", path: "/repo/a.ts", line: 4, column: 2, symbol: "foo" }),
+    ).toEqual({ kind: "codeReferences", path: "/repo/a.ts", line: 4, column: 2, symbol: "foo" });
+    expect(
+      restore({
+        kind: "codeRename",
+        path: "/repo/a.ts",
+        line: 4,
+        column: 2,
+        symbol: "foo",
+        newName: "bar",
+      }),
+    ).toEqual({
+      kind: "codeRename",
+      path: "/repo/a.ts",
+      line: 4,
+      column: 2,
+      symbol: "foo",
+      newName: "bar",
+    });
+  });
+
   it("keeps restoring visualizer and orchestrationGraph tabs unchanged", () => {
     expect(restore({ kind: "visualizer" })).toEqual({ kind: "visualizer" });
     expect(restore({ kind: "visualizer", runId: "run_1" })).toEqual({
