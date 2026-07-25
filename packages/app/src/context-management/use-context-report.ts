@@ -71,6 +71,11 @@ export function useWorkspaceContextReport(
 export interface ContextReportQueryOptions {
   provider?: string | undefined;
   windowTokens?: number | undefined;
+  /**
+   * Evaluate as if this personality were running here — its injected memory
+   * brief joins the fixed weight. Omitted = the personality-agnostic report.
+   */
+  personalityId?: string | undefined;
 }
 
 export interface ContextReportQueryResult {
@@ -96,9 +101,10 @@ function fetchReport(params: {
   workspaceId: string;
   provider: string | undefined;
   windowTokens: number | undefined;
+  personalityId: string | undefined;
   force: boolean;
 }): Promise<ContextReport | null> {
-  const { key, client, workspaceId, provider, windowTokens, force } = params;
+  const { key, client, workspaceId, provider, windowTokens, personalityId, force } = params;
   // A forced refresh follows a write, so joining a scan that started before the
   // write would hand back the state it was meant to replace.
   if (!force) {
@@ -110,6 +116,7 @@ function fetchReport(params: {
       workspaceId,
       ...(provider ? { provider } : {}),
       ...(typeof windowTokens === "number" ? { windowTokens } : {}),
+      ...(personalityId ? { personalityId } : {}),
     })
     .then((payload) => payload.report)
     .finally(() => {
@@ -125,10 +132,10 @@ export function useContextReportQuery(
   options: ContextReportQueryOptions,
 ): ContextReportQueryResult {
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
-  const { provider, windowTokens } = options;
+  const { provider, windowTokens, personalityId } = options;
 
   const key = workspaceId
-    ? contextQueryKey({ serverId, workspaceId, provider, windowTokens })
+    ? contextQueryKey({ serverId, workspaceId, provider, windowTokens, personalityId })
     : null;
 
   // The report lives in the store, not in component state: closing the tab must
@@ -144,8 +151,14 @@ export function useContextReportQuery(
   const baseline = useContextManagementStore((state) =>
     workspaceId ? (state.reports[contextWorkspaceKey(serverId, workspaceId)] ?? null) : null,
   );
+  // The pushed baseline is personality-agnostic, so it can only seed a query
+  // that is too: seeding a personality-scoped view with it would show numbers
+  // missing that personality's memory under that personality's name.
   const usableBaseline =
-    !provider && baseline && (windowTokens === undefined || baseline.windowTokens === windowTokens)
+    !provider &&
+    !personalityId &&
+    baseline &&
+    (windowTokens === undefined || baseline.windowTokens === windowTokens)
       ? baseline
       : null;
   const seed = cached === undefined ? usableBaseline : cached;
@@ -178,6 +191,7 @@ export function useContextReportQuery(
           workspaceId,
           provider,
           windowTokens,
+          personalityId,
           force,
         });
         if (cancelled) return;
@@ -192,7 +206,7 @@ export function useContextReportQuery(
     return () => {
       cancelled = true;
     };
-  }, [client, workspaceId, key, provider, windowTokens, nonce, setQueryReport]);
+  }, [client, workspaceId, key, provider, windowTokens, personalityId, nonce, setQueryReport]);
 
   return useMemo(
     () => ({

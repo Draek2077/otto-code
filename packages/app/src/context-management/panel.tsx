@@ -40,6 +40,8 @@ import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store/s
 import { ContextRefineAction } from "./refine-action";
 import { ContextFindingsList, type ContextFindingTarget } from "./findings-list";
 import { ContextGraphTree } from "./graph-tree";
+import { ContextMemoryList } from "./memory-list";
+import { useContextPersonalityMemory } from "./use-context-personality";
 import { ContextSidebarTabs, type ContextSidebarTab } from "./sidebar-tabs";
 import {
   ancestorKeysForNode,
@@ -98,20 +100,37 @@ export function ContextManagementPanel(): ReactElement {
     },
     [updateSettings],
   );
+  // Which personality this tab is evaluating context FOR — resolved above the
+  // report query because it is one of the query's inputs. Context stopped being
+  // a property of the workspace alone once personalities started accruing
+  // memory: two personalities here send different things.
+  const [sidebarTab, setSidebarTab] = useState<ContextSidebarTab>("context");
+  const {
+    selectedPersonalityId,
+    slot: personalitySlot,
+    lessonCount,
+    memory,
+  } = useContextPersonalityMemory({ serverId, workspaceId, onTabChange: setSidebarTab });
+
   const {
     report,
     isLoading,
     isRefreshing,
     error: scanError,
     refresh,
-  } = useContextReportQuery(serverId, workspaceId, { windowTokens });
+  } = useContextReportQuery(serverId, workspaceId, {
+    windowTokens,
+    // Selecting a personality re-scopes the whole report: its injected memory
+    // joins the fixed weight, so the percentages describe what THAT personality
+    // carries rather than a shared average nobody actually pays.
+    ...(selectedPersonalityId ? { personalityId: selectedPersonalityId } : {}),
+  });
 
   const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(
     () => new Set(["context_files"]),
   );
   const [selectedNode, setSelectedNode] = useState<ContextNode | null>(null);
   const [compactShowsFile, setCompactShowsFile] = useState(false);
-  const [sidebarTab, setSidebarTab] = useState<ContextSidebarTab>("context");
 
   // The compact layout puts the whole page in one scroll, so the page itself
   // needs the overlay bar too — not just the lists inside it.
@@ -255,10 +274,25 @@ export function ContextManagementPanel(): ReactElement {
 
   // One tabbed body, rendered identically in both layouts — only its container
   // differs (a fixed sidebar column vs. a block in the phone's scroll).
-  const sidebarBody =
-    sidebarTab === "findings" ? (
+  let sidebarBody: ReactElement;
+  if (sidebarTab === "findings") {
+    sidebarBody = (
       <ContextFindingsList report={report} isLoading={isLoading} onReveal={handleRevealFinding} />
-    ) : (
+    );
+  } else if (sidebarTab === "memory") {
+    sidebarBody = (
+      <ContextMemoryList
+        view={memory.view}
+        isLoading={memory.isLoading}
+        error={memory.error}
+        hasPersonalitySelected={selectedPersonalityId !== null}
+        onSaveEntry={memory.saveEntry}
+        onDropEntry={memory.dropEntry}
+        onAddEntry={memory.addEntry}
+      />
+    );
+  } else {
+    sidebarBody = (
       <ContextGraphTree
         report={report}
         isLoading={isLoading}
@@ -270,6 +304,7 @@ export function ContextManagementPanel(): ReactElement {
         onSelectNode={handleSelectNode}
       />
     );
+  }
   const findingCount = report?.findings.length ?? 0;
 
   // Converting rewrites the parent file, so the report must be re-read
@@ -308,31 +343,35 @@ export function ContextManagementPanel(): ReactElement {
     [client, inbound, refresh, toast, workspaceId],
   );
 
-  // Two actions ride in the file toolbar: how this file is LOADED (link vs
-  // always) and how it is REWRITTEN (Refine). Both act on the selected file, so
-  // they share the slot rather than stacking a second bar over the editor.
+  // How this file is LOADED (link vs always) rides in the file toolbar, with
+  // the rest of the file's own tools. Compaction does NOT: it opens a job
+  // carrying the whole context graph, so it belongs with the graph — see the
+  // sidebar tabs below.
   const loadModeControl = useMemo(
-    () => (
-      <>
-        <ContextRefineAction
-          serverId={serverId}
-          workspaceId={workspaceId ?? ""}
-          report={report}
-          selectedNode={selectedNode}
+    () =>
+      inbound && selectedNode ? (
+        <LoadModeControl
+          inbound={inbound}
+          estTokens={selectedNode.estTokens}
+          supportsImports={report?.supportsImports ?? false}
+          busy={converting}
+          onConvert={handleConvert}
+          layout={isCompact ? "strip" : "toolbar"}
         />
-        {inbound && selectedNode ? (
-          <LoadModeControl
-            inbound={inbound}
-            estTokens={selectedNode.estTokens}
-            supportsImports={report?.supportsImports ?? false}
-            busy={converting}
-            onConvert={handleConvert}
-            layout={isCompact ? "strip" : "toolbar"}
-          />
-        ) : null}
-      </>
+      ) : null,
+    [converting, handleConvert, inbound, isCompact, report?.supportsImports, selectedNode],
+  );
+
+  const refineAction = useMemo(
+    () => (
+      <ContextRefineAction
+        serverId={serverId}
+        workspaceId={workspaceId ?? ""}
+        report={report}
+        selectedNode={selectedNode}
+      />
     ),
-    [converting, handleConvert, inbound, isCompact, report, selectedNode, serverId, workspaceId],
+    [report, selectedNode, serverId, workspaceId],
   );
 
   const filePane = useMemo(() => {
@@ -464,11 +503,14 @@ export function ContextManagementPanel(): ReactElement {
             error={scanError}
             windowTokens={windowTokens}
             onWindowTokensChange={handleWindowTokensChange}
+            personalitySlot={personalitySlot}
           />
           <ContextSidebarTabs
             active={sidebarTab}
             findingCount={findingCount}
+            lessonCount={lessonCount}
             onChange={setSidebarTab}
+            leading={refineAction}
           />
           <View style={styles.compactTree}>{sidebarBody}</View>
         </ScrollView>
@@ -488,12 +530,15 @@ export function ContextManagementPanel(): ReactElement {
             error={scanError}
             windowTokens={windowTokens}
             onWindowTokensChange={handleWindowTokensChange}
+            personalitySlot={personalitySlot}
           />
           <View style={styles.divider} />
           <ContextSidebarTabs
             active={sidebarTab}
             findingCount={findingCount}
+            lessonCount={lessonCount}
             onChange={setSidebarTab}
+            leading={refineAction}
           />
           {sidebarBody}
         </View>

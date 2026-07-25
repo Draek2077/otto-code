@@ -66,6 +66,15 @@ import { useIsExtraCompactFormFactor } from "@/constants/layout";
 import { settingsStyles } from "@/styles/settings";
 import type { Theme } from "@/styles/theme";
 import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
+import {
+  usePersonalityMemoryCounts,
+  usePersonalityMemoryEnabled,
+  usePersonalityMemoryTransfer,
+} from "@/context-management/use-personality-memory";
+import {
+  PersonalityMemoryTransferSheet,
+  type MemoryTransferChoice,
+} from "./personality-memory-transfer-sheet";
 
 /**
  * The single detection point for the agent personalities capability.
@@ -173,6 +182,8 @@ interface PersonalityDraft {
   effortLevel: string; // "" = none
   personalityPrompt: string;
   respectGlobalAppendPrompt: boolean;
+  /** Whether this personality accrues lessons across sessions. Default on. */
+  memoryEnabled: boolean;
   roles: PersonalityRole[];
   glowA: string;
   glowB: string;
@@ -327,6 +338,9 @@ function personalityToDraft(personality: AgentPersonality): PersonalityDraft {
     effortLevel: personality.effortLevel ?? "",
     personalityPrompt: personality.personalityPrompt ?? "",
     respectGlobalAppendPrompt: personality.respectGlobalAppendPrompt ?? true,
+    // Absent means on: memory costs nothing until a lesson exists, so the switch
+    // is there to stop a personality accruing, not to start it.
+    memoryEnabled: personality.memoryEnabled ?? true,
     roles: normalizePersonalityRoles(personality.roles),
     glowA: personality.spinner?.glowA ?? DEFAULT_GLOW_A,
     glowB: personality.spinner?.glowB ?? DEFAULT_GLOW_B,
@@ -362,6 +376,11 @@ function draftToPersonality(draft: PersonalityDraft, id: string): AgentPersonali
   if (voiceCues) {
     personality.voiceCues = voiceCues;
   }
+  // Written only when off, so the default state stays absent on the wire and an
+  // older daemon reading this roster sees exactly what it saw before.
+  if (!draft.memoryEnabled) {
+    personality.memoryEnabled = false;
+  }
   return personality;
 }
 
@@ -385,6 +404,7 @@ function emptyDraft(entries: readonly ProviderSnapshotEntry[]): PersonalityDraft
     effortLevel: "medium",
     personalityPrompt: "",
     respectGlobalAppendPrompt: true,
+    memoryEnabled: true,
     // A new personality is available everywhere by default; the user narrows it.
     roles: [...PERSONALITY_ROLES],
     glowA: DEFAULT_GLOW_A,
@@ -533,6 +553,13 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
     null,
   );
 
+  // Accrued-lesson counts, so a row shows what a personality has learned and a
+  // delete can ask about it before destroying it. Read-only here by design:
+  // managing entries lives in Context Management, which is the one place that
+  // holds everything sent before you type.
+  const memoryCounts = usePersonalityMemoryCounts(serverId, isConnected && hasFeature);
+  const memoryTransfer = usePersonalityMemoryTransfer(serverId);
+
   const personalities = useMemo(() => config?.agentPersonalities?.personalities ?? [], [config]);
   const providerEntries = useMemo(() => entries ?? [], [entries]);
 
@@ -630,10 +657,40 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
     [personalities, editing],
   );
 
+  // A personality with accrued lessons gets a three-way question instead of a
+  // yes/no confirm (transfer / discard / cancel), because the lessons are the
+  // only part of a personality that took real work to produce and there is no
+  // undo. Zero lessons keeps the plain confirm — a decision sheet about nothing
+  // is just an extra click.
+  const [pendingDelete, setPendingDelete] = useState<{
+    personality: AgentPersonality;
+    lessonCount: number;
+  } | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const deletePersonality = useCallback(
+    async (id: string) => {
+      try {
+        await savePersonalities(personalities.filter((entry) => entry.id !== id));
+        return null;
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+    },
+    [personalities, savePersonalities],
+  );
+
   const handleRemove = useCallback(
     (id: string) => {
       const personality = personalities.find((entry) => entry.id === id);
       if (!personality) return;
+      const lessonCount = memoryCounts[id] ?? 0;
+      if (lessonCount > 0) {
+        setDeleteError(null);
+        setPendingDelete({ personality, lessonCount });
+        return;
+      }
       void (async () => {
         const confirmed = await confirmDialog({
           title: "Delete personality",
@@ -643,18 +700,52 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
           destructive: true,
         });
         if (!confirmed) return;
-        try {
-          await savePersonalities(personalities.filter((entry) => entry.id !== id));
-        } catch (error) {
-          void alertDialog({
-            title: "Unable to save",
-            message: error instanceof Error ? error.message : String(error),
-          });
+        const failure = await deletePersonality(id);
+        if (failure) {
+          void alertDialog({ title: "Unable to save", message: failure });
         }
       })();
     },
-    [personalities, savePersonalities],
+    [deletePersonality, memoryCounts, personalities],
   );
+
+  const handleMemoryChoice = useCallback(
+    (choice: MemoryTransferChoice) => {
+      const target = pendingDelete;
+      if (!target) return;
+      setDeleteBusy(true);
+      setDeleteError(null);
+      void (async () => {
+        try {
+          // Memory first, roster second. Reversing this order would delete the
+          // owner of a store nobody can then hand over.
+          const transferFailure = await memoryTransfer.run({
+            fromPersonalityId: target.personality.id,
+            ...(choice.kind === "transfer" ? { toPersonalityId: choice.toPersonalityId } : {}),
+            mode: choice.kind,
+          });
+          if (transferFailure) {
+            setDeleteError(transferFailure);
+            return;
+          }
+          const deleteFailure = await deletePersonality(target.personality.id);
+          if (deleteFailure) {
+            setDeleteError(deleteFailure);
+            return;
+          }
+          setPendingDelete(null);
+        } finally {
+          setDeleteBusy(false);
+        }
+      })();
+    },
+    [deletePersonality, memoryTransfer, pendingDelete],
+  );
+
+  const handleMemoryChoiceCancel = useCallback(() => {
+    setPendingDelete(null);
+    setDeleteError(null);
+  }, []);
 
   // The shipped starter team is seeded automatically on a fresh host; this
   // button re-adds any builtin the user has since deleted (matched by stable id,
@@ -714,6 +805,7 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
                 entries={providerEntries}
                 isFirst={index === 0}
                 usageCount={usageStats[personality.id] ?? 0}
+                lessonCount={memoryCounts[personality.id] ?? 0}
                 onEdit={handleEdit}
                 onRemove={handleRemove}
               />
@@ -758,9 +850,23 @@ export function AgentPersonalitiesSection({ serverId }: { serverId: string }): R
           entries={providerEntries}
           takenNames={takenNames}
           speechOptions={speechOptions}
+          lessonCount={editing.id ? (memoryCounts[editing.id] ?? 0) : 0}
           onClose={handleClose}
           onSave={handleSave}
           onPersistGeneratedCues={persistGeneratedCues}
+        />
+      ) : null}
+
+      {pendingDelete ? (
+        <PersonalityMemoryTransferSheet
+          visible
+          personality={pendingDelete.personality}
+          lessonCount={pendingDelete.lessonCount}
+          candidates={personalities}
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={handleMemoryChoiceCancel}
+          onConfirm={handleMemoryChoice}
         />
       ) : null}
     </>
@@ -776,6 +882,8 @@ interface PersonalityRowProps {
   entries: readonly ProviderSnapshotEntry[];
   isFirst: boolean;
   usageCount: number;
+  /** Accrued lessons. Shown so a delete never feels inconsequential. */
+  lessonCount: number;
   onEdit: (id: string) => void;
   onRemove: (id: string) => void;
 }
@@ -785,6 +893,19 @@ function formatUsageCount(count: number): string {
     return "Never used";
   }
   return count === 1 ? "Used once" : `Used ${count} times`;
+}
+
+/**
+ * Accrual, not management: the row states that this personality has learned
+ * things, and stops there. Editing them lives in Context Management, so this
+ * needs no affordance — just enough that you would not delete it casually.
+ * Silent at zero, because "0 lessons" on every row is noise.
+ */
+function formatLessonCount(count: number): string | null {
+  if (count <= 0) {
+    return null;
+  }
+  return count === 1 ? "1 lesson" : `${count} lessons`;
 }
 
 // Resolve the display labels the dropdowns use (not raw ids) plus availability.
@@ -835,6 +956,7 @@ function PersonalityRow({
   entries,
   isFirst,
   usageCount,
+  lessonCount,
   onEdit,
   onRemove,
 }: PersonalityRowProps): ReactElement {
@@ -912,7 +1034,11 @@ function PersonalityRow({
               <Text style={STACKED_META_NAME_STYLE} numberOfLines={1}>
                 {providerLabel} · {modelLabel}
               </Text>
-              <Text style={styles.stackedMeta}>{formatUsageCount(usageCount)}</Text>
+              <Text style={styles.stackedMeta}>
+                {[formatUsageCount(usageCount), formatLessonCount(lessonCount)]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </Text>
             </View>
           </View>
         </View>
@@ -932,7 +1058,9 @@ function PersonalityRow({
           {personality.name}
         </Text>
         <Text style={META_LINE_STYLE} numberOfLines={1}>
-          {providerLabel} · {modelLabel} · {formatUsageCount(usageCount)}
+          {[providerLabel, modelLabel, formatUsageCount(usageCount), formatLessonCount(lessonCount)]
+            .filter(Boolean)
+            .join(" · ")}
         </Text>
         <RolePills roles={roles} />
         {!available ? (
@@ -959,6 +1087,8 @@ interface PersonalityEditModalProps {
   // draft name must not collide with any of them.
   takenNames: readonly string[];
   speechOptions: SpeechSettingsOptions | null;
+  /** Lessons this personality has already accrued (0 for a new one). */
+  lessonCount: number;
   onClose: () => void;
   // Resolves with the saved personality (or undefined if the save failed) so the
   // editor can start background cue generation keyed to its id.
@@ -977,10 +1107,12 @@ function PersonalityEditModal({
   entries,
   takenNames,
   speechOptions,
+  lessonCount,
   onClose,
   onSave,
   onPersistGeneratedCues,
 }: PersonalityEditModalProps): ReactElement {
+  const memorySupported = usePersonalityMemoryEnabled(serverId);
   const canPreviewVoice = useTtsPreviewFeature(serverId);
   const canGenerateCues = useVisualizerVoiceCuesFeature(serverId);
   const client = useHostRuntimeClient(serverId);
@@ -1140,6 +1272,9 @@ function PersonalityEditModal({
   }, []);
   const setRespectAppend = useCallback((value: boolean) => {
     setDraft((current) => ({ ...current, respectGlobalAppendPrompt: value }));
+  }, []);
+  const setMemoryEnabled = useCallback((value: boolean) => {
+    setDraft((current) => ({ ...current, memoryEnabled: value }));
   }, []);
   const setGlowA = useCallback((value: string) => {
     setDraft((current) => ({ ...current, glowA: value }));
@@ -1465,6 +1600,27 @@ function PersonalityEditModal({
               </View>
               <Switch value={draft.respectGlobalAppendPrompt} onValueChange={setRespectAppend} />
             </View>
+
+            {/* Accrual, not management. This says the personality HAS learned
+                things — enough that you would not delete it casually — and points
+                at the one surface that owns everything sent before you type.
+                Full CRUD here would need list and diff tooling this dialog does
+                not have, and would split memory across two places. */}
+            {memorySupported ? (
+              <View style={styles.toggleRow}>
+                <View style={settingsStyles.rowContent}>
+                  <Text style={settingsStyles.rowTitle}>Remember lessons</Text>
+                  <Text style={settingsStyles.rowHint}>
+                    {lessonCount > 0
+                      ? `${lessonCount === 1 ? "1 lesson" : `${lessonCount} lessons`} remembered so far. ` +
+                        "Read and edit them in Context Management."
+                      : "This personality records what it learns and carries it into later sessions. " +
+                        "Read and edit its lessons in Context Management."}
+                  </Text>
+                </View>
+                <Switch value={draft.memoryEnabled} onValueChange={setMemoryEnabled} />
+              </View>
+            ) : null}
           </>
         ) : null}
 

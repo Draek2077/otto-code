@@ -5362,7 +5362,7 @@ export class DaemonClient {
    * because memory is only trustworthy if what you are shown is what is sent.
    */
   async listPersonalityMemory(
-    input: { personalityId: string; projectRoot?: string },
+    input: { personalityId: string; workspaceId?: string; projectRoot?: string },
     requestId?: string,
   ): Promise<PersonalityMemoryListResponseMessage["payload"]> {
     return this.sendNamespacedCorrelatedSessionRequest({
@@ -5370,6 +5370,7 @@ export class DaemonClient {
       message: {
         type: "personality.memory.list.request",
         personalityId: input.personalityId,
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
         ...(input.projectRoot ? { projectRoot: input.projectRoot } : {}),
       },
     });

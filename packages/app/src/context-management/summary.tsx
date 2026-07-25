@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, type ReactElement } from "react";
+import { useCallback, useMemo, useRef, type ReactElement, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
@@ -30,6 +30,13 @@ interface ContextSummaryProps {
   error: string | null;
   windowTokens: number;
   onWindowTokensChange: (tokens: number) => void;
+  /**
+   * The "viewing context for <personality>" selector, rendered directly under
+   * the window presets. Passed in rather than built here so this panel stays a
+   * readout with no knowledge of the roster; both controls answer the same
+   * question ("what am I evaluating against"), so they sit together.
+   */
+  personalitySlot?: ReactNode;
 }
 
 /**
@@ -44,6 +51,7 @@ export function ContextSummary({
   error,
   windowTokens,
   onWindowTokensChange,
+  personalitySlot,
 }: ContextSummaryProps): ReactElement {
   const { t } = useTranslation();
 
@@ -77,6 +85,8 @@ export function ContextSummary({
           ))}
         </View>
       </View>
+
+      {personalitySlot}
 
       {report ? (
         <>

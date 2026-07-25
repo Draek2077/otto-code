@@ -3041,9 +3041,15 @@ export class Session {
       return;
     }
     try {
+      // The daemon owns root resolution: a client computing it would disagree
+      // the moment the workspace is a worktree, and then the brief shown here
+      // would not be the brief that gets injected.
+      const projectRoot =
+        (msg.workspaceId ? (await this.workspaceRegistry.get(msg.workspaceId))?.cwd : undefined) ??
+        msg.projectRoot;
       const view = await this.personalityMemory.view({
         personalityId: msg.personalityId,
-        ...(msg.projectRoot ? { projectRoot: msg.projectRoot } : {}),
+        ...(projectRoot ? { projectRoot: await this.resolveMemoryProjectRoot(projectRoot) } : {}),
       });
       this.emit({
         type: "personality.memory.list.response",
@@ -3088,6 +3094,19 @@ export class Session {
           code: "personality_memory_list_failed",
         },
       });
+    }
+  }
+
+  /**
+   * The repo root a cwd belongs to, so a worktree and its main checkout share
+   * one project's lessons — the same resolution the spawn path uses.
+   */
+  private async resolveMemoryProjectRoot(cwd: string): Promise<string> {
+    try {
+      return await this.workspaceGitService.resolveRepoRoot(cwd);
+    } catch {
+      // A non-git directory is ordinary, not an error: the cwd IS the project.
+      return cwd;
     }
   }
 
