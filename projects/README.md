@@ -790,50 +790,57 @@ the wave is item 1, the usage log's View B, and item 4, all spawn-ready today.
 
 ### Toward 0.7.0
 
-**27 commits are unreleased against `v0.6.7`** — Waves 2, 3 and 4 in their entirety. That is a
-genuinely larger product cut than a patch: Refine, the full LSP set, the steer queue, personality
-memory, the Solution view, history delete, honest token totals, AsciiDoc, mermaid, resource
-reporting. Note the release playbook's standing rule — **releases are always patch unless the product
-owner says "minor"** ([docs/release.md](../docs/release.md)). This section is the argument that this
-one is a minor; the call is not ours.
+**Waves 2, 3 and 4 are unreleased against `v0.6.7`** — a genuinely larger product cut than a patch:
+Refine, the full LSP set, the steer queue, personality memory, the Solution view, history delete,
+honest token totals, AsciiDoc, mermaid, resource reporting. Note the release playbook's standing rule
+— **releases are always patch unless the product owner says "minor"**
+([docs/release.md](../docs/release.md)). This section is the argument that this one is a minor; the
+call is not ours.
 
-Four things are worth taking **before** the cut, in this order.
+**All four pre-cut items are now done** (2026-07-25). What follows is the record of what each one
+turned out to be, because two of them did not go the way the plan expected.
 
-**1. The FPS fix — and it is blocked on one decision only.** This is the sharpest item on the board.
-The investigation is complete and honest: the instrument exists, four hypotheses were retired by
-measurement, and the cause is confirmed — **mounted workspace trees are never released**, costing
-~35% of the frame rate at three workspaces and never recovering. But **the fix is not built**, and it
-cannot start until someone answers: _evict cold workspace trees (LRU, remount on switch-back), or
-keep today's retain-everything trade?_ That is a product decision about a real trade-off — instant
-switch-back versus a frame rate that survives the day.
+**1. ✅ The FPS work — and the headline conclusion was withdrawn.** The plan said the cause was
+confirmed (mounted workspace trees never released, ~35% of the frame rate) and only a product
+decision blocked the fix. **Both halves were wrong**, and finding that out is the most valuable
+result in the release:
 
-Shipping 0.7.0 with a measured 35% degradation and no fix would be the weakest part of an otherwise
-strong release. Two cheaper sub-items can go with it and do not need the decision: navigation
-refetching state the client already holds (the cheapest concrete win), and per-agent eviction for
-`agentStreamTail`/`agentStreamHead`.
+- **Eviction already worked.** The earlier soak seeded exactly three workspaces and measured 1 → 3 —
+  at or below the existing cap — so the eviction path could not have run. At three workspaces,
+  "retained because nothing reclaims it" and "retained because the cap was never reached" produce an
+  identical series. Re-measured above the cap, mounted trees sit flat while six workspaces are
+  visited and the released queries reappear as `query.unobserved`, the signature of a React unmount.
+- **The −35% was an artifact.** It came from a decile statistic that is one sample at twelve cycles.
+  The same configuration produced both verdicts on consecutive runs — including "degraded" at a cap
+  of 1, where retention is provably constant. **Two runs per cap value is what exposed it.**
 
-**2. i18n — this is the translate moment.** The standing rule is _build first, translate last_, and
-the last three waves were built English-first by design. The debt is now six entries in
-[i18n](#i18n) and it is unusually well-characterised: the setup wizard, Refine and personality memory
-shipped English-only; the Solution view and history delete carry **English strings seeded into all
-seven non-English locales** because the resource types require key parity. A release is exactly the
-moment that debt is meant to be paid — after this, the seeded-English keys are indistinguishable from
-translated ones without reading the lag comments.
+So **no confirmed cause remains for the reported symptom**; the live candidate is render cost per
+inbound daemon message. What did ship: the cap became the user setting `mountedWorkspaceLimit`
+(device-local, default 5, driven by real usage — 8 workspaces with ~4 in rotation made the old cap of
+3 sit one short of the working set), the navigation path stopped re-asking for state the client
+already holds, and the stream buffers gained a release path.
 
-One decision hides inside it: history delete's destructive confirm copy is not in i18n at all, and
-translating it means deciding whether that whole family of dialog resolvers moves into i18n. That is
-a bigger call than one feature — settle it deliberately or leave it out deliberately, not by default.
+**2. ✅ i18n — paid, and one decision was taken rather than dodged.** The seeded-English keys, the
+English-only surfaces and the lagging keys are cleared, and `docs/i18n.md` now records what
+deliberately **stays** in English. The embedded decision — whether the destructive-dialog resolver
+family moves into i18n — was settled **whole** rather than half-moved, with the rationale written
+down. A remaining tail (personalities/teams settings, `ROLE_LABELS` / `ROLE_HINTS`) is scoped as
+whole-surface-or-nothing, which is the migration order the doc requires.
 
-**3. ✅ The six owed fold-ins — DONE 2026-07-25.** All six debts are paid and five folders have
-drained; see [Owed fold-ins](#owed-fold-ins) for what landed where, and why e2e-qa-coverage keeps
-its folder. `docs/` gained three pages (context-management, refine, site-demos) and three sections
-(testing's E2E tiers, subagent-accounting's workflow decomposition, visualizer's discovery cards).
-The tree is now reconciled going into the cut, which is what stops the next assessment starting with
-"five charters disagree with the code".
+**3. ✅ The six owed fold-ins.** All paid, five folders drained; see
+[Owed fold-ins](#owed-fold-ins) for what landed where and why e2e-qa-coverage keeps its folder.
+`docs/` gained three pages and three sections. The tree is reconciled going into the cut, which is
+what stops the next assessment starting with "five charters disagree with the code".
 
-**4. A real pass over what shipped.** Three waves landed largely in parallel sessions against a
-shared tree. Nothing has exercised Refine, the Solution view, history delete and the steer queue
-_together_ under one user's hands. The e2e tiers exist for this; use them.
+**4. ✅ The integrated pass.** Ran against the combined feature set and corrected at least one
+inventory entry that had gone stale — see the Editor and Performance sections for what it turned up,
+including the honest note that the performance-monitoring off switch does not uninstall its timer
+patch.
+
+**The pattern worth keeping from this release:** two of the four items overturned the plan that
+spawned them. Both did it by re-measuring rather than by arguing, and both wrote down the harness
+error that produced the wrong answer. `findings/` earning its own home during this cycle is not a
+coincidence.
 
 **Explicitly not before 0.7.0:** the Wave 5 bets below, and the upstream merge chain. The merge is
 the one thing whose cost keeps rising — but starting it days before a release cut is how a release
