@@ -1615,6 +1615,11 @@ export class VoiceAssistantWebSocketServer {
         // Unconditionally true: both handlers hang off agentStorage/agentManager,
         // which every daemon wires, so there is nothing to derive from.
         historyDelete: true,
+        // COMPAT(fileMutations): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
+        // `file.create`, `file.delete`, `file.rename`. Unconditionally true: the
+        // handlers live on the per-session file subsystem every daemon wires,
+        // with nothing optional behind them.
+        fileMutations: true,
       },
     };
   }

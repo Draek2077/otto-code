@@ -149,6 +149,23 @@ This is a sidebar block. It renders as a quote, because markdown has no
 sidebar of its own.
 ****
 
+== Images
+
+The AsciiDoc counterpart of the markdown file's image section. Both macros funnel
+into the same markdown image, so both resolve the same way.
+
+image::logo.svg[Orbit via the block macro]
+
+Inline, mid-sentence: image:logo.svg[Orbit inline] and back to prose.
+
+An escaping target must be refused before any read:
+
+image::../../../../etc/passwd.png[Refused: escaping path]
+
+A remote target is never fetched by the viewer:
+
+image::https://img.shields.io/badge/otto-code-blue.svg[Remote badge, never fetched]
+
 == Deliberate degradation
 
 The next line is an unresolved include. It should render as a visible note

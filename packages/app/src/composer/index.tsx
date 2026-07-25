@@ -48,6 +48,7 @@ import { ContextWindowMeter } from "@/components/context-window-meter";
 import { useCachedContextWindowUsage } from "@/hooks/use-cached-context-window-usage";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { useSessionStore, type Agent } from "@/stores/session-store";
+import { useWidgetPromptStore } from "@/widgets/prompt-store";
 import { useFilePicker } from "@/hooks/use-file-picker";
 import { useFileDrop } from "@/components/file-drop/use-file-drop";
 import type { DroppedItem } from "@/components/file-drop/types";
@@ -1331,6 +1332,24 @@ export function Composer({
     },
     [cwd, onMessageSent, t],
   );
+
+  const registerWidgetPromptSender = useWidgetPromptStore((state) => state.registerSender);
+
+  // Widgets in this chat's transcript may call sendPrompt(). Registering here
+  // is what makes the "active chat only" rule real rather than advisory: a
+  // widget resolves its sender from the mounted composer, so one sitting in a
+  // background tab or an unopened transcript finds nothing and does nothing.
+  //
+  // Routes through submitMessage rather than the full composer submit path on
+  // purpose — the widget's message must not clear a draft the user is halfway
+  // through typing, and must not force-interrupt a running turn.
+  useEffect(() => {
+    return registerWidgetPromptSender({ serverId, agentId }, (text) => {
+      void submitMessage(text, []).catch((error: unknown) => {
+        console.error("[Composer] Widget prompt failed to send:", error);
+      });
+    });
+  }, [registerWidgetPromptSender, serverId, agentId, submitMessage]);
 
   useEffect(() => {
     agentIdRef.current = agentId;

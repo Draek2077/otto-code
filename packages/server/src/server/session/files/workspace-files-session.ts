@@ -25,8 +25,14 @@ import type {
   SolutionRef,
   LspServersListRequest,
   LspServerStopRequest,
+  FileCreateRequest,
+  FileCreateResult,
+  FileDeleteRequest,
+  FileDeleteResult,
   FileDownloadTokenRequest,
   FileExplorerRequest,
+  FileRenameRequest,
+  FileRenameResult,
   FileReplaceRequest,
   FileSearchRequest,
   FileSearchSummary,
@@ -41,10 +47,13 @@ import type {
 import { FileUploadStore } from "../../file-upload/index.js";
 import type { DownloadTokenStore } from "../../file-download/token-store.js";
 import {
+  createExplorerEntry,
+  deleteExplorerEntry,
   getDownloadableFileInfo,
   listDirectoryEntries,
   readExplorerFile,
   readExplorerFileBytes,
+  renameExplorerEntry,
   writeExplorerFile,
 } from "../../file-explorer/service.js";
 import { SessionFileWatcher } from "../../file-explorer/file-watcher.js";
@@ -387,6 +396,134 @@ export class WorkspaceFilesSession {
       this.logger.error(
         { err: error, cwd, path: requestedPath },
         `Failed to fulfill file write request for workspace ${cwd}`,
+      );
+      emitResult({ status: "error", message: getErrorMessage(error) });
+    }
+  }
+
+  /**
+   * Create, delete and rename share one shape, and one policy that separates
+   * them from `file.write`: they are **workspace-bounded**. `file.write` is
+   * deliberately not — a tab may edit a file outside every known workspace —
+   * but the mutation surface is reached from the explorer tree, which is itself
+   * workspace-bounded, and "unlink any path on the host" is not a capability
+   * worth having for the sake of symmetry. Containment inside `cwd` is enforced
+   * a second time by the file-explorer service, which never follows the final
+   * path component.
+   */
+  async handleFileCreateRequest(request: FileCreateRequest): Promise<void> {
+    const cwd = request.cwd.trim();
+    const emitResult = (result: FileCreateResult): void => {
+      this.host.emit({
+        type: "file.create.response",
+        payload: {
+          cwd: cwd || request.cwd,
+          path: request.path,
+          result,
+          requestId: request.requestId,
+        },
+      });
+    };
+
+    if (!cwd) {
+      emitResult({ status: "error", message: "cwd is required" });
+      return;
+    }
+
+    try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
+      const outcome = await createExplorerEntry({
+        root: cwd,
+        relativePath: request.path,
+        kind: request.kind,
+      });
+      if (outcome.status === "ok") {
+        this.symbolIndex.invalidate(cwd);
+      }
+      emitResult(outcome);
+    } catch (error) {
+      this.logger.error(
+        { err: error, cwd, path: request.path },
+        `Failed to create ${request.path} in workspace ${cwd}`,
+      );
+      emitResult({ status: "error", message: getErrorMessage(error) });
+    }
+  }
+
+  async handleFileDeleteRequest(request: FileDeleteRequest): Promise<void> {
+    const cwd = request.cwd.trim();
+    const emitResult = (result: FileDeleteResult): void => {
+      this.host.emit({
+        type: "file.delete.response",
+        payload: {
+          cwd: cwd || request.cwd,
+          path: request.path,
+          result,
+          requestId: request.requestId,
+        },
+      });
+    };
+
+    if (!cwd) {
+      emitResult({ status: "error", message: "cwd is required" });
+      return;
+    }
+
+    try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
+      const outcome = await deleteExplorerEntry({
+        root: cwd,
+        relativePath: request.path,
+        recursive: request.recursive,
+      });
+      if (outcome.status === "ok") {
+        this.symbolIndex.invalidate(cwd);
+      }
+      emitResult(outcome);
+    } catch (error) {
+      this.logger.error(
+        { err: error, cwd, path: request.path },
+        `Failed to delete ${request.path} in workspace ${cwd}`,
+      );
+      emitResult({ status: "error", message: getErrorMessage(error) });
+    }
+  }
+
+  async handleFileRenameRequest(request: FileRenameRequest): Promise<void> {
+    const cwd = request.cwd.trim();
+    const emitResult = (result: FileRenameResult): void => {
+      this.host.emit({
+        type: "file.rename.response",
+        payload: {
+          cwd: cwd || request.cwd,
+          path: request.path,
+          newPath: request.newPath,
+          result,
+          requestId: request.requestId,
+        },
+      });
+    };
+
+    if (!cwd) {
+      emitResult({ status: "error", message: "cwd is required" });
+      return;
+    }
+
+    try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
+      const outcome = await renameExplorerEntry({
+        root: cwd,
+        relativePath: request.path,
+        newRelativePath: request.newPath,
+      });
+      if (outcome.status === "ok") {
+        this.symbolIndex.invalidate(cwd);
+      }
+      emitResult(outcome);
+    } catch (error) {
+      this.logger.error(
+        { err: error, cwd, path: request.path, newPath: request.newPath },
+        `Failed to rename ${request.path} in workspace ${cwd}`,
       );
       emitResult({ status: "error", message: getErrorMessage(error) });
     }

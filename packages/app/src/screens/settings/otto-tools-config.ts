@@ -53,6 +53,12 @@ export const OTTO_TOOL_GROUP_META: readonly OttoToolGroupMeta[] = [
     label: "Artifacts",
     description: "Create and update rendered artifacts.",
   },
+  {
+    group: "widgets",
+    label: "Widgets",
+    description:
+      "Let agents draw diagrams, charts and small interactive controls inline in the chat. Widgets run sandboxed with no network access, and can send a message to the chat when you click one.",
+  },
 ];
 
 // The two tool groups that belong under the dedicated "Browser Tools" section

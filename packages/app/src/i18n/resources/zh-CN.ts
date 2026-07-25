@@ -10,6 +10,7 @@ export const zhCN: TranslationResources = {
       confirm: "确认",
       close: "关闭",
       copy: "复制",
+      create: "创建",
       dismiss: "关闭",
       ok: "确定",
       retry: "重试",
@@ -629,6 +630,10 @@ export const zhCN: TranslationResources = {
         findInFiles: "在文件中查找",
         addToContext: "添加到对话",
         removeFromContext: "从对话中移除",
+        newFile: "新建文件…",
+        newFolder: "新建文件夹…",
+        rename: "重命名…",
+        delete: "删除",
       },
       actions: {
         back: "返回",
@@ -637,6 +642,37 @@ export const zhCN: TranslationResources = {
         refreshing: "正在刷新文件",
         hideHiddenFiles: "隐藏隐藏文件",
         showHiddenFiles: "显示隐藏文件",
+        newFile: "新建文件",
+        newFolder: "新建文件夹",
+      },
+      dialogs: {
+        nameLabel: "名称",
+        inFolder: "位于 {{folder}}",
+        newFile: {
+          title: "新建文件",
+          placeholder: "notes.md",
+        },
+        newFolder: {
+          title: "新建文件夹",
+          placeholder: "components",
+        },
+        rename: {
+          title: "重命名",
+          confirm: "重命名",
+        },
+        delete: {
+          titleFile: "删除文件？",
+          titleFolder: "删除文件夹？",
+          subjectFile: "“{{name}}”将从磁盘中删除。",
+          subjectFolder: "“{{name}}”将从磁盘中删除。",
+          permanentLine: "此操作不可撤销——该项目会从磁盘中移除，不会进入回收站，Otto 无法还原。",
+          confirm: "删除",
+        },
+        deleteContents: {
+          title: "删除文件夹及其内容？",
+          subject: "“{{name}}”不是空的，其中的所有内容也将被删除。",
+          confirm: "全部删除",
+        },
       },
       empty: {
         noFiles: "没有文件",
@@ -648,6 +684,8 @@ export const zhCN: TranslationResources = {
       },
       errors: {
         failedToListDirectory: "列出目录失败",
+        alreadyExists: "“{{name}}”已存在。",
+        noLongerExists: "该项目已不在磁盘上。",
       },
     },
     setup: {
@@ -3276,6 +3314,7 @@ export const zhCN: TranslationResources = {
           terminals: "终端",
           schedules: "计划任务",
           artifacts: "产物",
+          widgets: "小组件",
           workspace: "工作区",
         },
       },

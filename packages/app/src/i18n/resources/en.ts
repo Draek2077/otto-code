@@ -8,6 +8,7 @@ export const en = {
       confirm: "Confirm",
       close: "Close",
       copy: "Copy",
+      create: "Create",
       dismiss: "Dismiss",
       ok: "OK",
       retry: "Retry",
@@ -651,6 +652,10 @@ export const en = {
         findInFiles: "Find in files",
         addToContext: "Add to chat",
         removeFromContext: "Remove from chat",
+        newFile: "New file…",
+        newFolder: "New folder…",
+        rename: "Rename…",
+        delete: "Delete",
       },
       actions: {
         back: "Back",
@@ -659,6 +664,38 @@ export const en = {
         refreshing: "Refreshing files",
         hideHiddenFiles: "Hide hidden files",
         showHiddenFiles: "Show hidden files",
+        newFile: "New file",
+        newFolder: "New folder",
+      },
+      dialogs: {
+        nameLabel: "Name",
+        inFolder: "In {{folder}}",
+        newFile: {
+          title: "New file",
+          placeholder: "notes.md",
+        },
+        newFolder: {
+          title: "New folder",
+          placeholder: "components",
+        },
+        rename: {
+          title: "Rename",
+          confirm: "Rename",
+        },
+        delete: {
+          titleFile: "Delete file?",
+          titleFolder: "Delete folder?",
+          subjectFile: '"{{name}}" will be deleted from disk.',
+          subjectFolder: '"{{name}}" will be deleted from disk.',
+          permanentLine:
+            "This is permanent — it is removed from disk, not moved to the trash, and Otto cannot undo it.",
+          confirm: "Delete",
+        },
+        deleteContents: {
+          title: "Delete folder and its contents?",
+          subject: '"{{name}}" is not empty. Everything inside it will be deleted too.',
+          confirm: "Delete everything",
+        },
       },
       empty: {
         noFiles: "No files",
@@ -670,6 +707,8 @@ export const en = {
       },
       errors: {
         failedToListDirectory: "Failed to list directory",
+        alreadyExists: '"{{name}}" already exists here.',
+        noLongerExists: "That item no longer exists on disk.",
       },
     },
     setup: {
@@ -3396,6 +3435,7 @@ export const en = {
           terminals: "Terminals",
           schedules: "Schedules",
           artifacts: "Artifacts",
+          widgets: "Widgets",
           workspace: "Workspaces",
         },
       },

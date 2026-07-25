@@ -334,7 +334,9 @@ function convertStandaloneLine(trimmed: string, attributes: Map<string, string>)
 
   const blockImage = trimmed.match(BLOCK_IMAGE);
   if (blockImage) {
-    return [`![${firstPositional(blockImage[2])}](${blockImage[1].trim()})`];
+    return [
+      `![${firstPositional(blockImage[2])}](${resolveImageTarget(blockImage[1], attributes)})`,
+    ];
   }
 
   const include = trimmed.match(INCLUDE_DIRECTIVE);
@@ -748,6 +750,30 @@ function firstPositional(raw: string): string {
   return stripQuotes(splitAttributeList(raw)[0] ?? "");
 }
 
+/**
+ * An image target, with `:imagesdir:` applied.
+ *
+ * AsciiDoc's own convention is that image targets are relative to `imagesdir`
+ * rather than to the document, so `:imagesdir: images` + `image::flow.png[]`
+ * means `images/flow.png`. Folding it in here is what lets the markdown side
+ * resolve one kind of relative path — from there an AsciiDoc image and a
+ * markdown one take the identical route. A URL or a root-relative target ignores
+ * `imagesdir`, as Asciidoctor does.
+ */
+function resolveImageTarget(target: string, attributes: Map<string, string>): string {
+  const trimmed = target.trim();
+  const imagesDir = attributes.get("imagesdir")?.trim().replace(/\/+$/, "");
+  if (
+    !imagesDir ||
+    !trimmed ||
+    trimmed.startsWith("/") ||
+    /^[A-Za-z][A-Za-z0-9+.-]*:/.test(trimmed)
+  ) {
+    return trimmed;
+  }
+  return `${imagesDir}/${trimmed}`;
+}
+
 const PLACEHOLDER_OPEN = "\u0000";
 const PLACEHOLDER_CLOSE = "\u0001";
 
@@ -777,7 +803,7 @@ export function convertInline(text: string, attributes: Map<string, string>): st
 
   // Macros.
   result = result.replace(/image:([^\s[\]]+)\[(.*?)\]/g, (_match, src: string, spec: string) =>
-    protect(`![${firstPositional(spec)}](${src})`),
+    protect(`![${firstPositional(spec)}](${resolveImageTarget(src, attributes)})`),
   );
   result = result.replace(
     /\b(?:link|mailto):([^\s[\]]+)\[(.*?)\]/g,

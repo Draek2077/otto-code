@@ -50,6 +50,18 @@ jobs:
           node-version: "22"
           cache: "npm"
 
+      # Rides the lint job rather than owning one: the check is pure file
+      # analysis over the coverage matrix and packages/app/e2e, needs no
+      # dependencies, and finishes in well under a second — a dedicated job
+      # would spend a minute of npm ci to run it. Placed before `npm ci` so it
+      # fails fast and still reports drift when installation is broken.
+      # It lives in CI rather than the pre-commit hook on purpose: the hook is
+      # shared by every parallel session in a working tree, and this guard has
+      # to compare the whole spec directory against the whole matrix, so it
+      # could not be scoped to staged files anyway.
+      - name: E2E coverage matrix drift
+        run: node scripts/e2e-coverage-check.mjs
+
       - name: Install dependencies
         run: npm ci
 

@@ -4,7 +4,14 @@ import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promis
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { getDownloadableFileInfo, listDirectoryEntries, readExplorerFile } from "./service.js";
+import { readFile, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import {
+  deleteExplorerEntry,
+  getDownloadableFileInfo,
+  listDirectoryEntries,
+  readExplorerFile,
+} from "./service.js";
 import { isPlatform } from "../../test-utils/platform.js";
 
 async function createTempDir(prefix: string): Promise<string> {
@@ -102,6 +109,68 @@ describe.skipIf(isPlatform("win32"))("service POSIX-only", () => {
       expect(info.absolutePath).toBe(await realpath(target));
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  // The three specs below are why mutations resolve the *parent* rather than the
+  // target: a read may follow a symlink to what it points at, but a delete that
+  // did so would destroy the target instead of the link — and a symlinked parent
+  // directory is a traversal the lexical `..` check cannot see.
+  it("deletes a symlink itself, leaving its target alone", async () => {
+    const root = await createTempDir("otto-file-explorer-");
+
+    try {
+      const target = path.join(root, "safe.txt");
+      await writeFile(target, "safe\n", "utf-8");
+      await symlink("safe.txt", path.join(root, "safe-link.txt"));
+
+      const result = await deleteExplorerEntry({ root, relativePath: "safe-link.txt" });
+
+      expect(result).toEqual({ status: "ok", path: "safe-link.txt", kind: "file" });
+      expect(existsSync(path.join(root, "safe-link.txt"))).toBe(false);
+      expect(await readFile(target, "utf-8")).toBe("safe\n");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to delete through a symlinked parent directory", async () => {
+    const root = await createTempDir("otto-file-explorer-");
+    const outsideRoot = await createTempDir("otto-file-explorer-outside-");
+
+    try {
+      const victim = path.join(outsideRoot, "secret.txt");
+      await writeFile(victim, "top secret\n", "utf-8");
+      await symlink(outsideRoot, path.join(root, "escape"));
+
+      await expect(
+        deleteExplorerEntry({ root, relativePath: "escape/secret.txt" }),
+      ).rejects.toThrow("Access outside of workspace is not allowed");
+      expect(await readFile(victim, "utf-8")).toBe("top secret\n");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("deletes a symlinked directory as a link, not as its contents", async () => {
+    const root = await createTempDir("otto-file-explorer-");
+    const outsideRoot = await createTempDir("otto-file-explorer-outside-");
+
+    try {
+      await writeFile(path.join(outsideRoot, "keep.txt"), "keep\n", "utf-8");
+      await symlink(outsideRoot, path.join(root, "linked-dir"));
+
+      // lstat sees a link, not a directory, so this is an unlink — no `recursive`
+      // needed and nothing inside the target is touched.
+      const result = await deleteExplorerEntry({ root, relativePath: "linked-dir" });
+
+      expect(result).toEqual({ status: "ok", path: "linked-dir", kind: "file" });
+      expect((await stat(outsideRoot)).isDirectory()).toBe(true);
+      expect(await readFile(path.join(outsideRoot, "keep.txt"), "utf-8")).toBe("keep\n");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(outsideRoot, { recursive: true, force: true });
     }
   });
 });

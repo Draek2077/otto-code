@@ -2,12 +2,16 @@
 
 One row per feature behavior. **Status:** ✅ covered (validated in CI/local runs) · 🟡 partial
 **or implemented-but-not-yet-validated** (every newly written spec starts here until the
-iron-out pass promotes it) · ❌ gap. **Tier** (for gaps): T1 mock · T2 local-AI · T3 real
-provider · DT desktop-only (out of Playwright-web scope, manual/capture-harness). **Pri:** P0
-release-blocking journey · P1 shipped feature without coverage · P2 polish/visual.
+iron-out pass promotes it) · ❌ gap · 📊 **instrument** — a measurement harness that asserts no
+product behavior, deliberately uncounted in the scoreboard (see §16). **Tier** (for gaps): T1
+mock · T2 local-AI · T3 real provider · DT desktop-only (out of Playwright-web scope,
+manual/capture-harness). **Pri:** P0 release-blocking journey · P1 shipped feature without
+coverage · P2 polish/visual.
 
 Spec paths are relative to `packages/app/e2e/`. Every `*.spec.ts` on disk must be claimed by at
-least one row — `node scripts/e2e-coverage-check.mjs` enforces both directions.
+least one row — `node scripts/e2e-coverage-check.mjs` enforces both directions, and CI's `lint`
+job runs it on every push and pull request so drift fails the build rather than waiting for
+someone to run it by hand.
 
 ## 1. Startup, routing & app shell
 
@@ -148,17 +152,17 @@ least one row — `node scripts/e2e-coverage-check.mjs` enforces both directions
 
 ## 9. Files, editor & search
 
-| Behavior                                                                                          | Status | Specs / plan                                                      | Tier | Pri |
-| ------------------------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------- | ---- | --- |
-| Text editor (CM6): open, edit, save via daemon RPCs                                               | ✅     | `text-editor.spec.ts`                                             | T1   | —   |
-| File finder (quick open)                                                                          | ✅     | `file-finder.spec.ts`                                             | T1   | —   |
-| Project-wide search                                                                               | ✅     | `project-search.spec.ts`                                          | T1   | —   |
-| File explorer collapse behavior                                                                   | ✅     | `file-explorer-collapse.spec.ts`                                  | T1   | —   |
-| Scripts menu resize behavior                                                                      | ✅     | `workspace-scripts-menu-resize.spec.ts`                           | T1   | —   |
-| Unified file tab mode bar (editor/split/preview surfaces + per-file mode memory across reopen)    | ✅     | `file-tab-mode-bar.spec.ts`                                       | T1   | —   |
-| Editor dirty guard (dot, no-autosave, confirm-on-close, second-file open, buffer survives switch) | ✅     | `editor-dirty-guard.spec.ts`                                      | T1   | —   |
-| File rendering: mermaid/images/CSV in preview mode                                                | ❌     | pending file-rendering project; add per-format smoke as they ship | T1   | P2  |
-| AI Refactor flow (real agent behind selection refactor)                                           | ❌     | good T2 candidate — deterministic small refactor                  | T2   | P2  |
+| Behavior                                                                                          | Status | Specs / plan                                                        | Tier | Pri |
+| ------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------- | ---- | --- |
+| Text editor (CM6): open, edit, save via daemon RPCs                                               | ✅     | `text-editor.spec.ts`                                               | T1   | —   |
+| File finder (quick open)                                                                          | ✅     | `file-finder.spec.ts`                                               | T1   | —   |
+| Project-wide search                                                                               | ✅     | `project-search.spec.ts`                                            | T1   | —   |
+| File explorer collapse behavior                                                                   | ✅     | `file-explorer-collapse.spec.ts`                                    | T1   | —   |
+| Scripts menu resize behavior                                                                      | ✅     | `workspace-scripts-menu-resize.spec.ts`                             | T1   | —   |
+| Unified file tab mode bar (editor/split/preview surfaces + per-file mode memory across reopen)    | ✅     | `file-tab-mode-bar.spec.ts`                                         | T1   | —   |
+| Editor dirty guard (dot, no-autosave, confirm-on-close, second-file open, buffer survives switch) | ✅     | `editor-dirty-guard.spec.ts`                                        | T1   | —   |
+| File rendering: mermaid/images/CSV in preview mode                                                | ❌     | mermaid, AsciiDoc and relative images shipped; add per-format smoke | T1   | P2  |
+| AI Refactor flow (real agent behind selection refactor)                                           | ❌     | good T2 candidate — deterministic small refactor                    | T2   | P2  |
 
 ## 10. Git & Changes
 
@@ -226,3 +230,30 @@ least one row — `node scripts/e2e-coverage-check.mjs` enforces both directions
 | GPU fallback auto-relaunch + re-enable button             | ❌     | manual checklist item             | DT   | P2  |
 | Focus mode caption strip (Ctrl+Shift+F)                   | ❌     | manual checklist item             | DT   | P2  |
 | Electron webview browser pane (real preview verification) | ❌     | `docs/browser-capture-harness.md` | DT   | P2  |
+
+## 16. Performance instruments (measurement, not coverage)
+
+**Not feature coverage.** The specs below exist to _produce numbers_, not to assert product
+behavior — their only hard assertions are that the instrument itself produced a usable series.
+They carry 📊 rather than ✅/🟡/❌ precisely so the scoreboard stays honest: ✅ would inflate
+coverage with a spec that never proved a user-facing behavior, and ❌ would read as a gap
+someone is supposed to close. Sections 1–15 answer "is this behavior tested?"; this one answers
+"what do we have to measure with?".
+
+Each is opt-in behind an environment variable because it is slow by construction, so a normal
+run skips it and it appears as ⊘ in the run report. Read the numbers with the traps documented
+alongside the instrument — a soak series is easy to misread, and has produced two wrong
+diagnoses already.
+
+| Instrument                                                         | Status | Specs / plan                                                                                                  | Tier | Pri |
+| ------------------------------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------- | ---- | --- |
+| Client resource retention across repeated chat + navigation cycles | 📊     | `client-resource-soak.spec.ts` — `OTTO_RESOURCE_SOAK_E2E=1`; method and traps in `docs/client-performance.md` | T1   | —   |
+
+**Known inconsistency, left as a separate call:** the two terminal perf specs in §8
+(terminal-performance, terminal-keystroke-stress) are the same shape — opt-in instruments behind
+`OTTO_TERMINAL_PERF_E2E=1` — but sit there marked ✅, so §8's "100% covered" counts two specs
+that never run in CI. Moving them here would be the consistent thing; it also drops §8's ✅ count
+and re-buckets them in every future run report, so it is recorded rather than done silently.
+Their names are deliberately **not** backticked above: a backticked spec name anywhere in this
+file counts as a matrix claim, and a second claim in prose would keep the drift check green if
+the real §8 row were ever deleted.

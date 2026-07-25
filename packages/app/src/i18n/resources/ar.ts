@@ -10,6 +10,7 @@ export const ar: TranslationResources = {
       confirm: "تأكيد",
       close: "يغلق",
       copy: "نسخ",
+      create: "إنشاء",
       dismiss: "تجاهل",
       ok: "حسنًا",
       retry: "إعادة المحاولة",
@@ -633,6 +634,10 @@ export const ar: TranslationResources = {
         findInFiles: "بحث في الملفات",
         addToContext: "إضافة إلى المحادثة",
         removeFromContext: "إزالة من المحادثة",
+        newFile: "ملف جديد…",
+        newFolder: "مجلد جديد…",
+        rename: "إعادة تسمية…",
+        delete: "حذف",
       },
       actions: {
         back: "خلف",
@@ -641,6 +646,38 @@ export const ar: TranslationResources = {
         refreshing: "تحديث الملفات",
         hideHiddenFiles: "إخفاء الملفات المخفية",
         showHiddenFiles: "إظهار الملفات المخفية",
+        newFile: "ملف جديد",
+        newFolder: "مجلد جديد",
+      },
+      dialogs: {
+        nameLabel: "الاسم",
+        inFolder: "في {{folder}}",
+        newFile: {
+          title: "ملف جديد",
+          placeholder: "notes.md",
+        },
+        newFolder: {
+          title: "مجلد جديد",
+          placeholder: "components",
+        },
+        rename: {
+          title: "إعادة تسمية",
+          confirm: "إعادة تسمية",
+        },
+        delete: {
+          titleFile: "حذف الملف؟",
+          titleFolder: "حذف المجلد؟",
+          subjectFile: "سيتم حذف «{{name}}» من القرص.",
+          subjectFolder: "سيتم حذف «{{name}}» من القرص.",
+          permanentLine:
+            "هذا إجراء نهائي — يُحذف العنصر من القرص ولا يُنقل إلى سلة المهملات، ولا يمكن لـ Otto التراجع عنه.",
+          confirm: "حذف",
+        },
+        deleteContents: {
+          title: "حذف المجلد ومحتوياته؟",
+          subject: "«{{name}}» ليس فارغًا. سيتم حذف كل ما بداخله أيضًا.",
+          confirm: "حذف الكل",
+        },
       },
       empty: {
         noFiles: "لا توجد ملفات",
@@ -652,6 +689,8 @@ export const ar: TranslationResources = {
       },
       errors: {
         failedToListDirectory: "فشل في سرد ​​الدليل",
+        alreadyExists: "«{{name}}» موجود بالفعل هنا.",
+        noLongerExists: "لم يعد هذا العنصر موجودًا على القرص.",
       },
     },
     setup: {
@@ -3317,6 +3356,7 @@ export const ar: TranslationResources = {
           terminals: "الطرفيات",
           schedules: "الجداول",
           artifacts: "المخرجات",
+          widgets: "الأدوات المصغّرة",
           workspace: "مساحات العمل",
         },
       },

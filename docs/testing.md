@@ -177,7 +177,12 @@ files named inline. **It is live tooling, not a plan** — two things read it at
 
 - `npm run e2e:coverage` (`scripts/e2e-coverage-check.mjs`) fails on a **stale row** (the matrix
   names a spec that no longer exists) or an **unmapped spec** (a spec on disk no row claims), and
-  prints a per-category scoreboard. Pure file analysis, no daemon, under a second.
+  prints a per-category scoreboard. Pure file analysis, no daemon, under a second. **CI runs it in
+  the `lint` job**, before `npm ci`, on every push and pull request — it rode nobody's habit for one
+  release cycle and drifted, which is how `client-resource-soak.spec.ts` reached `main` unmapped.
+  It is deliberately _not_ a pre-commit hook step: the hook is shared by every parallel session in a
+  working tree, and this check must compare the whole spec directory against the whole matrix, so it
+  cannot be scoped to staged files.
 - The QA reporter (`packages/app/e2e/reporters/qa-reporter.ts`) reads the matrix's sections to
   bucket every test under its module, so the plan and the run artifacts stay in lockstep. **A spec
   showing up as "Unclassified" in a report means the matrix drifted** — fix the matrix, not the
@@ -187,6 +192,13 @@ Adding a spec is three steps, and the checker enforces the middle one: write it 
 `test`/`expect` from `./fixtures` (never from `@playwright/test` — the auto fixture is what seeds
 the daemon host, and without it the app sits on the pairing screen), add a matrix row at 🟡, and
 call `moneyShot()` at the moment the behaviour is proven.
+
+**A measurement harness is not coverage.** A spec whose only assertions are that the instrument
+produced a usable series — the resource soak, the terminal perf runs — proves nothing about
+product behaviour, so it belongs in the matrix's §16 marked 📊, which the scoreboard counts
+separately and keeps out of the percentage. Filing one under a feature section as ✅ tells the next
+reader that behaviour is tested when nothing asserted it, and does so in a section the release
+runbook reads.
 
 A run produces a report under `packages/app/e2e-report/` — a per-module table of contents, a
 failure report, a flat greppable log, and per-test evidence directories — plus Playwright's own

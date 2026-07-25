@@ -12,7 +12,7 @@ Navigation: [Repository documentation index](../README.md#documentation) ·
 - [The rules](#the-rules)
 - [Active charters](#active-charters)
 - [Open work](#open-work) — [Editor & code intelligence](#editor--code-intelligence) ·
-  [Git, changes & comments](#git-changes--comments) ·
+  [File rendering](#file-rendering) · [Git, changes & comments](#git-changes--comments) ·
   [Subagents & background tasks](#subagents--background-tasks) · [Visualizer](#visualizer) ·
   [Performance](#performance) · [Onboarding & UX](#onboarding--ux) ·
   [Providers & accounting](#providers--accounting) · [Testing & tooling](#testing--tooling) ·
@@ -65,8 +65,6 @@ Everything currently in this tree. Status vocabulary: **Charter** (nothing built
 | [dictation-refine](dictation-refine/dictation-refine.md)                                        | Charter | AI cleanup over dictated text via a latency-ordered ladder (lexical → ONNX → optional LLM)                                                                                                                                                                                                                                                                                                                                                                                    |
 | [editor-repo-conventions](editor-repo-conventions/editor-repo-conventions.md)                   | Charter | Honour the repo's own `.editorconfig` without configuring Otto; repo wins file-shaped settings, user wins view-shaped ones                                                                                                                                                                                                                                                                                                                                                    |
 | [e2e-qa-coverage](e2e-qa-coverage/e2e-qa-coverage.md)                                           | Partial | Full-app Playwright QA across 3 tiers. T1 and T2 green; Phase 3.5 iron-out and the ❌ rows remain. Tier design folded into [docs/testing.md](../docs/testing.md). **[coverage-matrix.md](e2e-qa-coverage/coverage-matrix.md) is live tooling, not a plan** — `scripts/e2e-coverage-check.mjs` and the QA reporter read it at runtime, so this folder cannot drain                                                                                                             |
-| [file-rendering](file-rendering/file-rendering.md)                                              | Partial | IDE-grade file rendering. Mermaid **and AsciiDoc both shipped** (`markdown/asciidoc/`, wired through `file-pane-render-mode.ts`); the only remainder is [relative-image-resolution.md](file-rendering/relative-image-resolution.md), which has no code yet. [asciidoc-preview.md](file-rendering/asciidoc-preview.md) is spent and drains with the next pass                                                                                                                  |
-| [inline-widgets](inline-widgets/inline-widgets.md)                                              | Charter | In-message widgets — a `show_widget` tool carrying an HTML/SVG fragment rendered inline. Distinct from artifacts; reuses their sandbox                                                                                                                                                                                                                                                                                                                                        |
 | [marketing-strategy](marketing-strategy/marketing-strategy.md)                                  | Charter | Otto's public voice (Philippe, first person) and the channels still to create                                                                                                                                                                                                                                                                                                                                                                                                 |
 | [mobile-daemon](mobile-daemon/mobile-daemon.md)                                                 | Charter | Embedded API-native daemon on the phone ("This device" host); no CLIs                                                                                                                                                                                                                                                                                                                                                                                                         |
 | [multiplayer](multiplayer/multiplayer.md)                                                       | Charter | Presence, entering each other's workspaces, opt-in follow — never forced mirroring                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -174,14 +172,21 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
   violated — but it is one avoidable no-op RPC per workspace, and it lands in the same place as the
   "navigation refetches state the client already holds" row under [Performance](#performance).
   Closing it means the client learning the host setting, which it does not fetch outside Settings.
-- ⚪ **Solution view Phase 2 — general file mutations.** _Otto has no file create, delete, rename or
-  move RPC at all._ The whole mutation surface is `file.write`, `file.replace` and `file.upload`.
-  "Manage files within projects" therefore has a prerequisite strictly larger than the Solution view
-  itself — and it benefits the Files lens identically, so it must not be smuggled in as .NET work.
-  For SDK-style projects it alone delivers add/remove correctly, because membership is implicit:
-  creating a `.cs` file _is_ adding it to the project. Explicit-item projects are the minority that
-  needs real editing, and the daemon already reports which items are implicit
-  (`SolutionProjectNode.isImplicit`), so they are detectable.
+- ⚪ **Solution view Phase 2 — `.csproj` explicit-item membership.** _This entry used to read "Otto
+  has no file create, delete, rename or move RPC at all" and was filed as .NET work. It was neither:
+  the missing RPCs were a Files-lens gap that merely happened to block this row, and they are now
+  **built** — `file.create`/`file.delete`/`file.rename` behind `features.fileMutations`, see
+  [docs/file-mutations.md](../docs/file-mutations.md)._ With that prerequisite gone, SDK-style
+  projects are already correct: membership is implicit, so creating a `.cs` file _is_ adding it to
+  the project, and the Files lens now does exactly that. What remains is the minority case —
+  explicit-item projects, where add/remove means editing the project file's item list. The daemon
+  already reports which items are implicit (`SolutionProjectNode.isImplicit`), so they are
+  detectable; the missing piece is a write path through the sidecar, which has no mutation verb today
+  (see Phase 3).
+- ⚪ **A rename does not retarget an open editor tab.** Falling out of the file-mutation work above:
+  renaming or deleting a file that is open in a tab leaves the tab pointing at the old path. The
+  watcher reports the disappearance so the editor shows its deleted-file state, which is honest but
+  not helpful; re-pointing open tabs at a moved file is unbuilt.
 - ⚪ **Solution view Phase 3 — solution and project mutations.** Add/remove a project, manage solution
   folders, new project from template, references and packages. **Via SolutionPersistence's writer,
   which round-trips both formats** — `.sln`/`.slnx` are never written by hand. The sidecar has no
@@ -193,6 +198,44 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
   per row (`lsp/registry.ts`), with no mechanism for per-workspace dynamic arguments.
 - ⚪ **Solution view: solution filters (`.slnf`).** Explicitly out of scope for Phase 1. Listed so
   nobody assumes they work.
+
+### File rendering
+
+_The `file-rendering` charter drained 2026-07-25. Mermaid, AsciiDoc and relative image resolution all
+shipped; the durable rules live in [docs/markdown-rendering.md](../docs/markdown-rendering.md). What
+follows is everything that charter had left._
+
+- 🟡 **CSV/TSV table view.** Client-side parse plus virtualized rows (the explorer's FlatList
+  patterns), with a toggle between table and raw text. `test-documents/data.csv` and `data.tsv` are
+  the fixtures already waiting for it. Moderate.
+- 🟡 **Jupyter notebooks (`.ipynb`).** JSON parse → markdown cells through `MarkdownRenderer`, code
+  cells through `HighlightedCodeBlock`, base64 image outputs through the existing image path, text
+  outputs as code blocks. Fixture: `test-documents/notebook.ipynb`. Moderate, and the highest
+  perceived value of what remains.
+- 🟡 **GitHub alerts.** `> [!NOTE]` / `[!WARNING]` / `[!TIP]` blockquotes render their literal marker
+  text today. A token-level markdown-it rule mapping the five kinds onto themed callouts lights up
+  chat and viewer at once, the way `task-lists.ts` did. Common in READMEs, so worth more than its
+  size suggests.
+- 🟡 **HTML `<table>`.** No markdown translation yet, so it unwraps to its cell text — legible, not
+  broken, and deliberately so. Translating it to a GFM table is the obvious next tag; the AsciiDoc
+  converter's `renderTable` already shows the shape.
+- 🟡 **Icon or interactive checkboxes**, replacing the read-only ☐/☑ glyphs task lists render.
+- ⚪ **Footnotes.**
+- ⚪ **Math (KaTeX).** Feasible on web; native needs the webview approach, and the mermaid payload
+  (`components/markdown/mermaid/webview/`) is now the pattern to copy — it already bundles katex.
+- ⚪ **Mermaid polish:** pan/zoom for diagrams wider than the pane, and a source/diagram toggle.
+- ⚪ **PDF — deferred.** The one genuinely heavy item: pdf.js on web, a separate native library, large
+  payloads.
+- 🔵 **Chat's image resolver stays separate — a correction to the drained charter.** The charter said
+  chat had no workspace image path. It does, and always did: `utils/assistant-image-source.ts` +
+  `AssistantMarkdownImage` (`message.tsx`) resolve an agent-authored `![](screenshots/out.png)`
+  through the same `readFile` → attachment-store transport the viewer now uses. The two look like
+  duplicates and must not be merged: chat's is deliberately **unbounded** (it falls back to the
+  filesystem, drive or home root, because agents screenshot to `/tmp` and `~/.otto`), while the
+  viewer's refuses anything outside the workspace, because a repo document is untrusted input. The
+  contrast is written up in
+  [docs/markdown-rendering.md](../docs/markdown-rendering.md#two-resolvers-on-purpose--do-not-unify-them).
+  Chat's HTML `<img>` half remains off for an unrelated reason: `enableHtmlish={false}`.
 
 ### Git, changes & comments
 
@@ -410,6 +453,19 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
   client form has no personality field. **Settle the product decision first:** persisted re-resolve
   versus a one-time fill. Gate on `features.agentPersonalities`. Detail:
   `archive/projects/todos/schedule-form-personality-binding.md`.
+- 🟡 **Widgets: the on-device pass.** Shipped 2026-07-25 (charter drained; architecture in
+  [docs/widgets.md](../docs/widgets.md)). Every layer is typed and unit-tested, but the three
+  sandboxes have not been clicked through: the Electron `<webview>` preload handshake, the web
+  `MessagePort` transfer, and content-driven height on a phone (including the 420px collapse). Do
+  this before widgets are defaulted on for everyone.
+- 🔵 **Widgets: attribution for `sendPrompt`.** A widget-sent turn renders as an ordinary user
+  message; today the only attribution is proximity — the user clicked something and a message
+  appeared. A first-class "sent by a widget" marker on user messages is a protocol change and was
+  deliberately not made. Decide whether it is worth one.
+- 🔵 **Widgets: reopening the network question.** v1 ships `connect-src 'none'` with no CDN and no
+  vendored libraries, so charts are hand-rolled SVG (a stated deviation from the charter's
+  recommendation — reasons in [docs/widgets.md](../docs/widgets.md#network-none)). Reopening needs
+  an asset origin that survives the relay, not a CDN allowlist. Not blocking.
 - 🔴 **The Files module flashes an error referencing a stale URL.** Likely a cached query or path, or
   a persisted tab pointing at a dead path. Needs a repro.
 - 🔵 **Do models volunteer suggested tasks at Claude Desktop's rate?** The trigger-first description
@@ -531,15 +587,23 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
   remain: the scoped `personality-autosubmit-regression` rework, the Windows-only
   `git-cta-push-reconcile` limitation, and the deferred vision spec, which needs a vision-capable
   pinned model.
-- 🟡 **The coverage drift guard is failing, which is it working.**
-  `node scripts/e2e-coverage-check.mjs` exits 1: `client-resource-soak.spec.ts` landed with resource
-  reporting in `beb4b833a` without its matrix row, so 122 specs on disk are claimed by 121 rows.
-  That is exactly the "adding a spec without a matrix row must be impossible" rule catching a real
-  omission — the fix is one row in
-  [coverage-matrix.md](e2e-qa-coverage/coverage-matrix.md), left here rather than made because that
-  spec is being edited in-flight. It also strengthens the case for the project's deferred Phase 1
-  item: the guard only bites when someone runs it by hand, and nobody did between the wave landing
-  and this pass.
+- ✅ **The coverage drift guard now runs itself.** _(Closed 2026-07-25.)_
+  `client-resource-soak.spec.ts` had landed in `beb4b833a` without a matrix row, so 122 specs were
+  claimed by 121 rows and `node scripts/e2e-coverage-check.mjs` exited 1. The row is added, and the
+  guard runs in **CI's `lint` job** (`.github/workflows/ci.yml`) on every push and pull request —
+  before `npm ci`, since it is pure file analysis and needs no dependencies, so it costs no runner
+  and fails fast. CI rather than the pre-commit hook deliberately: the hook is shared by every
+  parallel session in a working tree, and this check compares the whole spec directory against the
+  whole matrix, so it could not have been scoped to staged files even if the contention risk were
+  acceptable. This was the project's deferred Phase 1 "wire coverage check into CI" item.
+  The soak went into a **new §16, "Performance instruments (measurement, not coverage)"**, marked
+  📊 rather than ✅/🟡/❌: its only hard assertions are that the instrument produced a usable
+  series, so counting it as coverage would claim a behaviour nobody tested. The check counts 📊
+  separately and keeps it out of the percentage. **Left open, deliberately:**
+  `terminal-performance` and `terminal-keystroke-stress` are the same shape — opt-in instruments
+  behind `OTTO_TERMINAL_PERF_E2E=1` — but sit in §8 marked ✅, so §8's "100% covered" counts two
+  specs that never run in CI. Moving them drops §8's ✅ count and re-buckets them in every future
+  run report, so it is recorded rather than done in passing.
 - 🟡 **Site demos: the scenario backlog.** The pipeline itself is shipped and documented
   ([docs/site-demos.md](../docs/site-demos.md)); what remains is content. In rough priority:
   (a) **A `demo:real` capture pass over 07-subagent-track / 08-visualizer / 09-composer-intelligence**
@@ -699,17 +763,41 @@ The wave's own header said "provider parity", and with item 1 delayed **that is 
 what shipped was the Solution view, history delete, honest token totals and the context wiring. Worth
 naming: the parity thesis is now a wave behind, not discharged.
 
-**Standing note on item 1.** Its cost is monotonically increasing, and Wave 3 widened the gap on
-purpose — personality memory has no upstream counterpart to merge against, and the Wave 5 candidate
-would widen it much further. It is the last item whose whole point is reducing divergence cost, so
-every wave it waits, it buys less. Delaying it is a legitimate call; forgetting it is not. Note its
-own charter still records itself as blocked on upstream `v0.2.0` being untagged — **that is stale**,
-upstream has since tagged `v0.2.0` and `v0.2.1`. There is also a setup step: this checkout has no
-`upstream` remote (only `origin` and `agentflow`).
+**Standing note on item 1 — now measured, and the estimate was wrong about the driver.**
+[findings/upstream/2026-07-25-paseo-merge-gap.md](../findings/upstream/2026-07-25-paseo-merge-gap.md)
+replaces the guess with numbers. Merging `v0.2.2` today costs **369 conflicted files / 1,365 conflict
+hunks / 30,054 conflicted lines**, against **68 files / 125 hunks** for the last completed merge
+(2026-07-12). Three corrections to what this section used to say:
+
+- **The cost curve steps on upstream minors; it does not slope with our divergence.** Otto's 419
+  commits since the merge-base add **+17 hunks** against a frozen `v0.1.107` over twelve days. The
+  same twelve days took the day-of cost from 60 to 1,365 hunks — almost entirely from one upstream
+  release, `v0.2.0` (237 commits), cut 2026-07-24. So "every wave it waits, it buys less" is true but
+  mis-attributed: **1,250 of today's 1,365 hunks were already sunk the day before the delay decision
+  was taken.** The delay's own share so far is **+115 hunks, +9%**. The question that matters is
+  whether to merge before upstream cuts `v0.3.0`, not how many days pass.
+- **The rebrand shortcut does not exist.** **Zero of 1,365 hunks** are resolvable by
+  `scripts/rebrand-upstream.pl` alone — 346 carry upstream naming, none carry _only_ naming.
+  Pre-applying the rules to upstream's side makes it worse (409 files / 1,772 hunks). Budget for
+  judgement on all 369 files.
+- **The subagent convergence is free and should ride with the merge, not follow it.** Upstream's
+  daemon-side ingestion is 47 files with **zero conflicts**; the client half Otto keeps is **14
+  hunks**. Sequencing it as a separate phase behind the merge buys nothing.
+
+Estimate for the merge itself: **≈23–35 agent-sessions**, extrapolated from the 2026-07-12
+calibration point and explicitly not a measurement. It excludes two design collisions the merge
+surfaces — upstream independently shipped **a file editor** (`app/src/file-pane/editor/`, 9 files) and
+**Changes-as-a-tab plus commit history**, against Otto's own 56-file `app/src/editor/`. That is the
+`v0.2.0` forge cautionary tale repeating twice, and the cadence rule meant to catch it early ("read
+every minor release's changelog even when you skip the merge") did not run.
+
+Setup notes in this section were stale and are corrected: the `upstream` remote **does** exist, and
+upstream has now tagged `v0.2.2` as well. Merge at **`v0.2.2`** — both patches carry Claude 5 fixes
+Otto wants, and the premium over `v0.2.0` is +2 files / +5 hunks.
 
 1. ⏸️ **Upstream merge → subagent convergence → provider adapters** (trap 1, non-negotiable
-   order) — **delayed by the product owner, 2026-07-25.** Not being taken this wave. Its cost keeps
-   rising while it waits, so it is the first thing to reconsider when the wave reopens.
+   order) — **delayed by the product owner, 2026-07-25.** Not being taken this wave. The delay stands;
+   the numbers above only sharpen what reopening it costs.
 2. **Shared context instrumentation** — the Visualizer readout and the usage log (trap 3). **Trap 3
    is largely already discharged**; see the correction below.
 3. ✅ **total-token-accounting** and ✅ **history-management** — trust and tidiness. Both shipped
@@ -775,14 +863,14 @@ whatever the cutoff. The dangerous branch was never built, so it cannot be reach
 
 #### Readiness, item by item (checked 2026-07-25)
 
-| Item                              | Ready?               | What actually gates it                                                                                                                                                                                                                                                                                                                                     |
-| --------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. upstream merge → convergence   | ✅ **now unblocked** | The convergence charter records "blocked on the Phase 1 merge landing (upstream `v0.2.0`, currently untagged)". **That blocker is stale** — upstream has tagged `v0.2.0` and `v0.2.1`. Setup step first: this checkout has no `upstream` remote (only `origin` and `agentflow`)                                                                            |
-| 1b. provider adapters             | ✅ ready, cheap      | The contract is two events plus one optional method, and nothing in the protocol, daemon projection or client says "claude". Per-provider sub-agent accounting rides the same stream. The risk is all in convergence, not here                                                                                                                             |
-| 2. shared context instrumentation | 🟡 half done         | Visualizer ring ✅ 2026-07-25 — unified onto the provider's own accounting (`AgentUsage.contextCategories`, open-ended labels), so the ring and the context meter read one source. **Trap 3 was wrong:** View B does _not_ share this accounting — it needs Otto's own prompt-assembly instrumentation, which no provider can report. See the View B entry |
-| 3a. total-token-accounting        | ✅ **shipped**       | Built 2026-07-25 on the 2026-07-17 audit. The audit's four findings held, plus a fifth it missed: Pi and OpenCode report a running SESSION total, so the ledger re-booked it every turn. Charter drained                                                                                                                                                   |
-| 3b. history-management            | ✅ **shipped**       | The `[PROPOSED]` set was answered 2026-07-25 and built the same day (Phases 0, 1 and 3; Phase 2 was deleted outright by the answer, not deferred). Open tail: multi-select, auto-retention, i18n. Charter drained                                                                                                                                          |
-| 4. solution-view Phase 1          | ✅ **done**          | Built 2026-07-25. The spike's 193 KB estimate landed at 257 KB once `Microsoft.Build.Locator` was in; two corrections came out of finishing it — `RollForward=LatestMajor` is required (a `net8.0` payload will not start on a .NET 9/10-only host), and Buildalyzer was rejected on measurement                                                           |
+| Item                              | Ready?                      | What actually gates it                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. upstream merge → convergence   | ✅ **unblocked, and sized** | The charter's "blocked on `v0.2.0`, currently untagged" blocker is gone — upstream has tagged `v0.2.0`, `v0.2.1` and `v0.2.2`, the `upstream` remote exists, and the charter now says so. **Measured 2026-07-25:** 369 conflicted files / 1,365 hunks at `v0.2.2`; 0 of them naming-only; convergence itself is conflict-free. ≈23–35 sessions, excluding the file-editor collision. [findings](../findings/upstream/2026-07-25-paseo-merge-gap.md) |
+| 1b. provider adapters             | ✅ ready, cheap             | The contract is two events plus one optional method, and nothing in the protocol, daemon projection or client says "claude". Per-provider sub-agent accounting rides the same stream. The risk is all in convergence, not here                                                                                                                                                                                                                      |
+| 2. shared context instrumentation | 🟡 half done                | Visualizer ring ✅ 2026-07-25 — unified onto the provider's own accounting (`AgentUsage.contextCategories`, open-ended labels), so the ring and the context meter read one source. **Trap 3 was wrong:** View B does _not_ share this accounting — it needs Otto's own prompt-assembly instrumentation, which no provider can report. See the View B entry                                                                                          |
+| 3a. total-token-accounting        | ✅ **shipped**              | Built 2026-07-25 on the 2026-07-17 audit. The audit's four findings held, plus a fifth it missed: Pi and OpenCode report a running SESSION total, so the ledger re-booked it every turn. Charter drained                                                                                                                                                                                                                                            |
+| 3b. history-management            | ✅ **shipped**              | The `[PROPOSED]` set was answered 2026-07-25 and built the same day (Phases 0, 1 and 3; Phase 2 was deleted outright by the answer, not deferred). Open tail: multi-select, auto-retention, i18n. Charter drained                                                                                                                                                                                                                                   |
+| 4. solution-view Phase 1          | ✅ **done**                 | Built 2026-07-25. The spike's 193 KB estimate landed at 257 KB once `Microsoft.Build.Locator` was in; two corrections came out of finishing it — `RollForward=LatestMajor` is required (a `net8.0` payload will not start on a .NET 9/10-only host), and Buildalyzer was rejected on measurement                                                                                                                                                    |
 
 **The shape this implies.** Item 1 is the wave — it is the only item whose cost rises with delay, and
 its stated blocker just cleared. Items 3a and 3b are **done**; item 2 is half done. What remains of
@@ -792,7 +880,7 @@ the wave is item 1, the usage log's View B, and item 4, all spawn-ready today.
 
 **Waves 2, 3 and 4 are unreleased against `v0.6.7`** — a genuinely larger product cut than a patch:
 Refine, the full LSP set, the steer queue, personality memory, the Solution view, history delete,
-honest token totals, AsciiDoc, mermaid, resource reporting. Note the release playbook's standing rule
+honest token totals, AsciiDoc, mermaid, resource reporting, general file mutations. Note the release playbook's standing rule
 — **releases are always patch unless the product owner says "minor"**
 ([docs/release.md](../docs/release.md)). This section is the argument that this one is a minor; the
 call is not ours.
@@ -928,7 +1016,11 @@ rediscovered as new work. Folder: `archive/projects/duplicate-base-workspaces/`.
 Shipped work whose durable facts have **not yet** reached `docs/`. Each is a debt against rule 4 —
 until it is paid, the project folder cannot leave.
 
-**None outstanding.** The six debts standing at the start of the 0.7.0 run were paid on 2026-07-25:
+**None outstanding.** The six debts standing at the start of the 0.7.0 run were paid on 2026-07-25,
+and **file-rendering was drained the same day** — mermaid, AsciiDoc and relative image resolution all
+folded into [docs/markdown-rendering.md](../docs/markdown-rendering.md), its unbuilt tail moved to
+[File rendering](#file-rendering) above, its two code citations (`task-lists.ts`,
+`file-pane-render-mode.ts`) and its `docs/references.md` row repointed:
 
 | Was owed by              | Paid into                                                                                                     | Folder            |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------- | ----------------- |

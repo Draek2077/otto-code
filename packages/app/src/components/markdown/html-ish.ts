@@ -1,4 +1,5 @@
 import { Parser } from "htmlparser2";
+import { isWorkspaceRelativeImageSrc } from "./workspace-image-source";
 
 export interface MarkdownTextPart {
   kind: "markdown";
@@ -37,6 +38,8 @@ export type MarkdownDisplayPart = MarkdownTextPart | MarkdownDetailsPart | Markd
  * - `script`/`style` are the only tags whose *contents* are dropped too.
  * - Image srcs are gated by scheme, and the gate is the only thing standing between a document
  *   and a network fetch. `remoteImages: "altText"` closes it entirely for a given surface.
+ *   `localImages: "workspace"` adds workspace-relative paths as an allowed *class* — it does not
+ *   widen the scheme allowlist, and those paths are contained before anything is read.
  */
 
 const FENCE_LINE_RE = /^ {0,3}([`~]{3,})[^\n\r]*(?:\r?\n|$)/gm;
@@ -83,13 +86,33 @@ export interface HtmlishOptions {
    *   Used by the file viewer, where a repo document must not be able to phone home.
    */
   remoteImages?: "load" | "altText";
+  /**
+   * Whether a workspace-relative src (`docs/diagram.png`) survives as an image rather than
+   * dropping to its alt text. `"workspace"` only says the surface *has* a workspace to resolve
+   * against — the resolution and its containment happen in `workspace-image-source.ts`, and an
+   * src that escapes the root lands back on the alt-text path from there.
+   */
+  localImages?: "workspace" | "off";
 }
 
-function isRenderableImageSrc(src: string, options: HtmlishOptions): boolean {
+/**
+ * A src that may be handed straight to an `<Image>`: an in-document data URL, or a remote one on
+ * a surface that opted in. This is the scheme allowlist, and relative resolution does not widen
+ * it — `file:`, `javascript:` and host-absolute paths named by a document stay rejected here
+ * however the surface is configured.
+ */
+export function isDirectImageSrc(src: string, options: HtmlishOptions): boolean {
   if (LOCAL_IMAGE_SRC_RE.test(src)) {
     return true;
   }
   return options.remoteImages !== "altText" && REMOTE_IMAGE_SRC_RE.test(src);
+}
+
+function isRenderableImageSrc(src: string, options: HtmlishOptions): boolean {
+  if (isDirectImageSrc(src, options)) {
+    return true;
+  }
+  return options.localImages === "workspace" && isWorkspaceRelativeImageSrc(src);
 }
 
 interface ProtectedMarkdownRange {

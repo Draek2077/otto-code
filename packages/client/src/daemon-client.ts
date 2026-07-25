@@ -44,8 +44,12 @@ import type {
   SolutionProjectNode,
   SolutionProjectStatus,
   SolutionPackageReference,
+  FileCreateResult,
+  FileDeleteResult,
   FileDownloadTokenResponse,
+  FileEntryKind,
   FileEol,
+  FileRenameResult,
   FileReplaceFileResult,
   FileReplaceRequest,
   FileReplaceResponse,
@@ -485,6 +489,32 @@ export interface FileWriteOptions {
   /** Only the deleted-file "save re-creates" flow sets these two. */
   allowCreate?: boolean;
   eol?: FileEol;
+  requestId?: string;
+}
+/**
+ * The general file-mutation surface — what exists in a directory, rather than
+ * what is inside a file. Gated on `features.fileMutations`; there is no
+ * client-side substitute, so callers check the flag before offering the action.
+ */
+export interface FileCreateOptions {
+  cwd: string;
+  /** Workspace-relative. The parent directory must already exist. */
+  path: string;
+  kind: FileEntryKind;
+  requestId?: string;
+}
+export interface FileDeleteOptions {
+  cwd: string;
+  path: string;
+  /** Required for a directory with children; otherwise the daemon reports `not_empty`. */
+  recursive?: boolean;
+  requestId?: string;
+}
+export interface FileRenameOptions {
+  cwd: string;
+  path: string;
+  /** Workspace-relative destination. A different parent makes this a move. */
+  newPath: string;
   requestId?: string;
 }
 /**
@@ -4918,6 +4948,51 @@ export class DaemonClient {
         eol: options.eol,
       },
       responseType: "file.write.response",
+    });
+    return payload.result;
+  }
+
+  /** Create an empty file or a directory. Never overwrites — see FileCreateResultSchema. */
+  async createFileEntry(options: FileCreateOptions): Promise<FileCreateResult> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "file.create.request",
+        cwd: options.cwd,
+        path: options.path,
+        kind: options.kind,
+      },
+      responseType: "file.create.response",
+    });
+    return payload.result;
+  }
+
+  /** Permanent delete — an unlink, not a move to any trash. */
+  async deleteFileEntry(options: FileDeleteOptions): Promise<FileDeleteResult> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "file.delete.request",
+        cwd: options.cwd,
+        path: options.path,
+        recursive: options.recursive,
+      },
+      responseType: "file.delete.response",
+    });
+    return payload.result;
+  }
+
+  /** Rename, which is also move. Never clobbers an occupied destination. */
+  async renameFileEntry(options: FileRenameOptions): Promise<FileRenameResult> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "file.rename.request",
+        cwd: options.cwd,
+        path: options.path,
+        newPath: options.newPath,
+      },
+      responseType: "file.rename.response",
     });
     return payload.result;
   }

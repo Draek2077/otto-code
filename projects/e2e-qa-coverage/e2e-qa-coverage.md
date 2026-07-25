@@ -39,8 +39,12 @@ with the covering spec files named inline.
 - **Unmapped specs** — a spec file on disk that no matrix row claims → error. New specs must be
   added to the matrix in the same change; the check makes forgetting impossible.
 - **Scoreboard** — per-category ✅/🟡/❌ counts, so "how covered is Git & Changes?" is one command.
+  📊 instrument rows (§16) are counted separately and excluded from the percentage — a measurement
+  harness asserts no behavior, so scoring it either way would lie about coverage.
 
-The check is pure file analysis (no daemon, no browser, <1s) and is safe to wire into CI later.
+The check is pure file analysis (no daemon, no browser, <1s) and **runs in CI's `lint` job** on
+every push and pull request. It was hand-run only for one release cycle and drifted in exactly the
+predicted way, which is what moved it out of the deferred phase.
 
 The matrix is also what groups the **run report** — the reporter reads its sections to bucket
 every test under its module, so the plan document and the run artifacts stay in lockstep. What a
@@ -105,8 +109,9 @@ When cutting a release (rides alongside the `release` skill, does not block it y
   `applyPersonality`.
 - **Phase 3.5 — NEXT: iron-out.** Run batches per [iron-out.md](../README.md#testing--tooling), fix
   selector/timing drift, promote 🟡 → ✅.
-- **Phase 1 — organize (deferred):** add `@cat:*` tags to specs; category npm scripts; wire
-  coverage check into CI.
+- **Phase 1 — organize (partly done):** coverage check **wired into CI** (`lint` job in
+  `.github/workflows/ci.yml`, 2026-07-25). Still deferred: `@cat:*` tags on specs, category npm
+  scripts, and teaching the check to verify tags too.
 - **Phase 4 — remaining gaps:** work down the 24 ❌ rows in priority order (observed subagents,
   artifacts/preview, vision, relay pairing, compact-layout smoke, …); each new feature PR adds
   its matrix row + spec together.

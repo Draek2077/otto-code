@@ -10,6 +10,7 @@ export const fr: TranslationResources = {
       confirm: "Confirmer",
       close: "Fermer",
       copy: "Copier",
+      create: "Créer",
       dismiss: "Ignorer",
       ok: "OK",
       retry: "Réessayer",
@@ -643,6 +644,10 @@ export const fr: TranslationResources = {
         findInFiles: "Rechercher dans les fichiers",
         addToContext: "Ajouter à la conversation",
         removeFromContext: "Retirer de la conversation",
+        newFile: "Nouveau fichier…",
+        newFolder: "Nouveau dossier…",
+        rename: "Renommer…",
+        delete: "Supprimer",
       },
       actions: {
         back: "Dos",
@@ -651,6 +656,38 @@ export const fr: TranslationResources = {
         refreshing: "Actualisation des fichiers",
         hideHiddenFiles: "Masquer les fichiers cachés",
         showHiddenFiles: "Afficher les fichiers cachés",
+        newFile: "Nouveau fichier",
+        newFolder: "Nouveau dossier",
+      },
+      dialogs: {
+        nameLabel: "Nom",
+        inFolder: "Dans {{folder}}",
+        newFile: {
+          title: "Nouveau fichier",
+          placeholder: "notes.md",
+        },
+        newFolder: {
+          title: "Nouveau dossier",
+          placeholder: "components",
+        },
+        rename: {
+          title: "Renommer",
+          confirm: "Renommer",
+        },
+        delete: {
+          titleFile: "Supprimer le fichier ?",
+          titleFolder: "Supprimer le dossier ?",
+          subjectFile: "« {{name}} » sera supprimé du disque.",
+          subjectFolder: "« {{name}} » sera supprimé du disque.",
+          permanentLine:
+            "C’est définitif : l’élément est supprimé du disque, pas déplacé vers la corbeille, et Otto ne peut pas annuler.",
+          confirm: "Supprimer",
+        },
+        deleteContents: {
+          title: "Supprimer le dossier et son contenu ?",
+          subject: "« {{name}} » n’est pas vide. Tout ce qu’il contient sera également supprimé.",
+          confirm: "Tout supprimer",
+        },
       },
       empty: {
         noFiles: "Aucun fichier",
@@ -662,6 +699,8 @@ export const fr: TranslationResources = {
       },
       errors: {
         failedToListDirectory: "Échec de la liste du répertoire",
+        alreadyExists: "« {{name}} » existe déjà ici.",
+        noLongerExists: "Cet élément n’existe plus sur le disque.",
       },
     },
     setup: {
@@ -3409,6 +3448,7 @@ export const fr: TranslationResources = {
           terminals: "Terminaux",
           schedules: "Planifications",
           artifacts: "Artéfacts",
+          widgets: "Widgets",
           workspace: "Espaces de travail",
         },
       },

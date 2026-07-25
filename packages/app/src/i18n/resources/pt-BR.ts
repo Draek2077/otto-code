@@ -10,6 +10,7 @@ export const ptBR: TranslationResources = {
       confirm: "Confirmar",
       close: "Fechar",
       copy: "Copiar",
+      create: "Criar",
       dismiss: "Dispensar",
       ok: "OK",
       retry: "Tentar novamente",
@@ -644,6 +645,10 @@ export const ptBR: TranslationResources = {
         findInFiles: "Buscar nos arquivos",
         addToContext: "Adicionar ao chat",
         removeFromContext: "Remover do chat",
+        newFile: "Novo arquivo…",
+        newFolder: "Nova pasta…",
+        rename: "Renomear…",
+        delete: "Excluir",
       },
       actions: {
         back: "Voltar",
@@ -652,6 +657,38 @@ export const ptBR: TranslationResources = {
         refreshing: "Atualizando arquivos",
         hideHiddenFiles: "Ocultar arquivos ocultos",
         showHiddenFiles: "Mostrar arquivos ocultos",
+        newFile: "Novo arquivo",
+        newFolder: "Nova pasta",
+      },
+      dialogs: {
+        nameLabel: "Nome",
+        inFolder: "Em {{folder}}",
+        newFile: {
+          title: "Novo arquivo",
+          placeholder: "notes.md",
+        },
+        newFolder: {
+          title: "Nova pasta",
+          placeholder: "components",
+        },
+        rename: {
+          title: "Renomear",
+          confirm: "Renomear",
+        },
+        delete: {
+          titleFile: "Excluir o arquivo?",
+          titleFolder: "Excluir a pasta?",
+          subjectFile: "“{{name}}” será excluído do disco.",
+          subjectFolder: "“{{name}}” será excluída do disco.",
+          permanentLine:
+            "Isso é permanente — o item é removido do disco, não vai para a lixeira, e o Otto não pode desfazer.",
+          confirm: "Excluir",
+        },
+        deleteContents: {
+          title: "Excluir a pasta e o conteúdo?",
+          subject: "“{{name}}” não está vazia. Tudo dentro dela também será excluído.",
+          confirm: "Excluir tudo",
+        },
       },
       empty: {
         noFiles: "Nenhum arquivo",
@@ -663,6 +700,8 @@ export const ptBR: TranslationResources = {
       },
       errors: {
         failedToListDirectory: "Falha ao listar diretório",
+        alreadyExists: "“{{name}}” já existe aqui.",
+        noLongerExists: "Esse item não existe mais no disco.",
       },
     },
     setup: {
@@ -3378,6 +3417,7 @@ export const ptBR: TranslationResources = {
           terminals: "Terminais",
           schedules: "Agendamentos",
           artifacts: "Artefatos",
+          widgets: "Widgets",
           workspace: "Espaços de trabalho",
         },
       },

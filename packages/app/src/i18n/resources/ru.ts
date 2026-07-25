@@ -10,6 +10,7 @@ export const ru: TranslationResources = {
       confirm: "Подтвердить",
       close: "Закрывать",
       copy: "Копировать",
+      create: "Создать",
       dismiss: "Скрыть",
       ok: "ОК",
       retry: "Повторить",
@@ -642,6 +643,10 @@ export const ru: TranslationResources = {
         findInFiles: "Найти в файлах",
         addToContext: "Добавить в чат",
         removeFromContext: "Убрать из чата",
+        newFile: "Новый файл…",
+        newFolder: "Новая папка…",
+        rename: "Переименовать…",
+        delete: "Удалить",
       },
       actions: {
         back: "Назад",
@@ -650,6 +655,38 @@ export const ru: TranslationResources = {
         refreshing: "Обновление файлов",
         hideHiddenFiles: "Скрыть скрытые файлы",
         showHiddenFiles: "Показать скрытые файлы",
+        newFile: "Новый файл",
+        newFolder: "Новая папка",
+      },
+      dialogs: {
+        nameLabel: "Имя",
+        inFolder: "В {{folder}}",
+        newFile: {
+          title: "Новый файл",
+          placeholder: "notes.md",
+        },
+        newFolder: {
+          title: "Новая папка",
+          placeholder: "components",
+        },
+        rename: {
+          title: "Переименовать",
+          confirm: "Переименовать",
+        },
+        delete: {
+          titleFile: "Удалить файл?",
+          titleFolder: "Удалить папку?",
+          subjectFile: "Файл «{{name}}» будет удалён с диска.",
+          subjectFolder: "Папка «{{name}}» будет удалена с диска.",
+          permanentLine:
+            "Это необратимо — объект удаляется с диска, а не перемещается в корзину, и Otto не может это отменить.",
+          confirm: "Удалить",
+        },
+        deleteContents: {
+          title: "Удалить папку вместе с содержимым?",
+          subject: "Папка «{{name}}» не пуста. Всё её содержимое также будет удалено.",
+          confirm: "Удалить всё",
+        },
       },
       empty: {
         noFiles: "Нет файлов",
@@ -661,6 +698,8 @@ export const ru: TranslationResources = {
       },
       errors: {
         failedToListDirectory: "Не удалось указать каталог",
+        alreadyExists: "«{{name}}» уже существует здесь.",
+        noLongerExists: "Этого объекта больше нет на диске.",
       },
     },
     setup: {
@@ -3371,6 +3410,7 @@ export const ru: TranslationResources = {
           terminals: "Терминалы",
           schedules: "Расписания",
           artifacts: "Артефакты",
+          widgets: "Виджеты",
           workspace: "Рабочие пространства",
         },
       },

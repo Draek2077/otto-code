@@ -10,6 +10,7 @@ export const ja: TranslationResources = {
       confirm: "確認",
       close: "閉じる",
       copy: "コピー",
+      create: "作成",
       dismiss: "閉じる",
       ok: "OK",
       retry: "再試行",
@@ -644,6 +645,10 @@ export const ja: TranslationResources = {
         findInFiles: "ファイル内を検索",
         addToContext: "チャットに追加",
         removeFromContext: "チャットから削除",
+        newFile: "新規ファイル…",
+        newFolder: "新規フォルダ…",
+        rename: "名前を変更…",
+        delete: "削除",
       },
       actions: {
         back: "戻る",
@@ -652,6 +657,38 @@ export const ja: TranslationResources = {
         refreshing: "ファイルを更新中",
         hideHiddenFiles: "隠しファイルを非表示",
         showHiddenFiles: "隠しファイルを表示",
+        newFile: "新規ファイル",
+        newFolder: "新規フォルダ",
+      },
+      dialogs: {
+        nameLabel: "名前",
+        inFolder: "{{folder}} 内",
+        newFile: {
+          title: "新規ファイル",
+          placeholder: "notes.md",
+        },
+        newFolder: {
+          title: "新規フォルダ",
+          placeholder: "components",
+        },
+        rename: {
+          title: "名前を変更",
+          confirm: "変更",
+        },
+        delete: {
+          titleFile: "ファイルを削除しますか？",
+          titleFolder: "フォルダを削除しますか？",
+          subjectFile: "「{{name}}」をディスクから削除します。",
+          subjectFolder: "「{{name}}」をディスクから削除します。",
+          permanentLine:
+            "この操作は取り消せません。ごみ箱には移動せず、ディスクから完全に削除されます。",
+          confirm: "削除",
+        },
+        deleteContents: {
+          title: "フォルダとその中身を削除しますか？",
+          subject: "「{{name}}」は空ではありません。中身もすべて削除されます。",
+          confirm: "すべて削除",
+        },
       },
       empty: {
         noFiles: "ファイルなし",
@@ -663,6 +700,8 @@ export const ja: TranslationResources = {
       },
       errors: {
         failedToListDirectory: "ディレクトリの一覧取得に失敗しました",
+        alreadyExists: "「{{name}}」はすでに存在します。",
+        noLongerExists: "その項目はディスク上に存在しません。",
       },
     },
     setup: {
@@ -3366,6 +3405,7 @@ export const ja: TranslationResources = {
           terminals: "ターミナル",
           schedules: "スケジュール",
           artifacts: "アーティファクト",
+          widgets: "ウィジェット",
           workspace: "ワークスペース",
         },
       },

@@ -1,4 +1,4 @@
-import { isAbsolutePath } from "@/utils/path";
+import { containRelativePath, isAbsolutePath } from "@/utils/path";
 
 function safeDecodeURIComponent(value: string): string {
   try {
@@ -639,27 +639,16 @@ function resolveRelativePathUnderRoot(pathValue: string, workspaceRoot: string):
   }
 
   const root = workspaceRoot.replace(/\/+$/, "") || "/";
-  const pathSegments = normalizedPath.split("/");
-  const resolvedSegments: string[] = [];
-  for (const segment of pathSegments) {
-    if (!segment || segment === ".") {
-      continue;
-    }
-    if (segment === "..") {
-      if (resolvedSegments.length === 0) {
-        return null;
-      }
-      resolvedSegments.pop();
-      continue;
-    }
-    resolvedSegments.push(segment);
+  const contained = containRelativePath(normalizedPath);
+  if (contained === null) {
+    return null;
   }
 
-  if (resolvedSegments.length === 0) {
+  if (contained === "") {
     return root;
   }
 
-  return root === "/" ? `/${resolvedSegments.join("/")}` : `${root}/${resolvedSegments.join("/")}`;
+  return root === "/" ? `/${contained}` : `${root}/${contained}`;
 }
 
 function normalizeFileUrlPath(pathname: string): string | null {
