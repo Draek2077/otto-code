@@ -103,7 +103,7 @@ When cutting a release (rides alongside the `release` skill, does not block it y
   extensions: synthetic tool-permission scenario, dev-only `dontAsk` mode, prompt-triggered
   suggestion/rate-limit/markdown/tool-call scenarios, structured title responder, no-op
   `applyPersonality`.
-- **Phase 3.5 — NEXT: iron-out.** Run batches per [iron-out.md](iron-out.md), fix
+- **Phase 3.5 — NEXT: iron-out.** Run batches per [iron-out.md](../README.md#testing--tooling), fix
   selector/timing drift, promote 🟡 → ✅.
 - **Phase 1 — organize (deferred):** add `@cat:*` tags to specs; category npm scripts; wire
   coverage check into CI.

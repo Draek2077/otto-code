@@ -1,0 +1,162 @@
+# Otto software documentation
+
+**This is the official documentation for how Otto works.** Durable, evergreen architectural facts —
+system design, subsystem behaviour, conventions and the gotchas you cannot derive from the code.
+
+It is the **specification we build against**. When the code and a page here disagree, that is a
+defect in one of them, not a matter of taste.
+
+| Tree                                 | Holds                                                                                                 | Tense                                 |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| **`docs/`** (here)                   | How Otto works                                                                                        | Present — _this is how it behaves_    |
+| [`projects/`](../projects/README.md) | Charters for work not yet done, and the single open-work ledger                                       | Future — _this is what we will build_ |
+| [`CLAUDE.md`](../CLAUDE.md)          | Working rules for AI agents in this repo                                                              | Imperative — _do this, never that_    |
+| [`archdocs/`](../archdocs/README.md) | The system-level architecture record: AsciiDoc pages with Mermaid diagrams, one level above this tree | Present, wide-angle                   |
+
+`CLAUDE.md` is deliberately **not** a documentation index. It is agent context — rules, gates and
+constraints. This file is the index.
+
+## What belongs here
+
+A page earns its place in `docs/` when its content will still be true after the current work ships.
+Point-in-time plans, build sequencing, findings reports and status belong in
+[`projects/`](../projects/README.md). Code-level facts belong in comments next to the code.
+
+**When you learn something meta** — a gotcha, a convention, a workflow, a piece of system context
+that will outlive the current task — update the relevant page here or add one, and list it below.
+An unlisted page is an invisible page.
+
+---
+
+## Contents
+
+- [Start here](#start-here)
+- [Chat, agents and orchestration](#chat-agents-and-orchestration)
+- [Workspaces, files and git](#workspaces-files-and-git)
+- [Editor and code intelligence](#editor-and-code-intelligence)
+- [Providers and integration](#providers-and-integration)
+- [Client and UI](#client-and-ui)
+- [Protocol, data and performance](#protocol-data-and-performance)
+- [Testing](#testing)
+- [Build, release and operations](#build-release-and-operations)
+- [Reference](#reference)
+
+---
+
+## Start here
+
+| Page                                       | What's in it                                                                    |
+| ------------------------------------------ | ------------------------------------------------------------------------------- |
+| [product.md](product.md)                   | What Otto is, who it's for, where it's going                                    |
+| [architecture.md](architecture.md)         | System design, package layering, WebSocket protocol, agent lifecycle, data flow |
+| [glossary.md](glossary.md)                 | Authoritative terminology — the UI label wins, no synonyms                      |
+| [coding-standards.md](coding-standards.md) | Type hygiene, error handling, state design, React patterns, file organization   |
+| [development.md](development.md)           | Dev server, build sync gotchas, CLI reference, agent state                      |
+
+## Chat, agents and orchestration
+
+| Page                                                                     | What's in it                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [chat-lifecycle.md](chat-lifecycle.md)                                   | Chat states, delivery (Interrupt vs Queue for a busy agent), parent/child relationships, archive semantics, tabs vs archive, the subagents track, the Background Tasks track. **A chat is the wrapper; an agent is the AI session inside it** |
+| [agent-personalities.md](agent-personalities.md)                         | Agent Personalities — data model, the 7 roles, spawn-snapshot lifecycle, the starter team                                                                                                                                                     |
+| [agent-teams.md](agent-teams.md)                                         | Agent Teams — per-host templates of personalities, the active team, the instant switcher                                                                                                                                                      |
+| [subagent-accounting.md](subagent-accounting.md)                         | Real per-subagent token and cost accounting — provider-neutral core, the 3-step adapter contract, parent-residual de-inflation, the pricing invariant. Claude is the reference                                                                |
+| [orchestration-node-capabilities.md](orchestration-node-capabilities.md) | What a Graph node can declare — output fields and `submit_output`, conditional edges, per-node tool authority and query tools, retry and time limits, prompt templates, the three-valued node result                                          |
+| [safe-unattended.md](safe-unattended.md)                                 | Safe unattended runs — the deny-by-default posture, `dontAsk` mode, Auto/Haiku coercion, the deny-responder                                                                                                                                   |
+| [suggested-tasks.md](suggested-tasks.md)                                 | Suggested Tasks — the `spawn_task` / `dismiss_task` contract, trigger-first descriptions, the auto-approval rationale, the 4 start modes and the `detached` flag                                                                              |
+| [timeline-sync.md](timeline-sync.md)                                     | Agent chat delivery paths — live events versus timeline backfill                                                                                                                                                                              |
+| [visualizer.md](visualizer.md)                                           | Visualizer — the vendored agent-flow render layer, the bridge contract, the Otto event adapter                                                                                                                                                |
+| [activity-stats.md](activity-stats.md)                                   | Activity Stats — the daemon-wide usage counter store, day-bucketed rollups, chokepoints, the `stats.activity.get` RPC, the itemized usage log                                                                                                 |
+| [terminal-activity.md](terminal-activity.md)                             | Terminal activity indicators — the source-agnostic tracker, agent hook reporting, adding a new hook provider                                                                                                                                  |
+
+## Workspaces, files and git
+
+| Page                                             | What's in it                                                                                                                                                               |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [workspace-lifecycle.md](workspace-lifecycle.md) | Workspace and worktree lifecycle — archive, branch cleanup (detect → ask → act), re-attach, the immutable `cwd`, workspace activity buckets. Separate from chats by design |
+| [new-project.md](new-project.md)                 | The New project page — `project.scaffold` as one daemon-owned transaction, the step plan, partial-failure reporting, folder-name validation, remote creation per provider  |
+| [changes-view.md](changes-view.md)               | What the Changes diff is measured against — the base-resolution ladder, the local-vs-origin fork-point rule, the per-worktree base override for stacked branches           |
+| [git-providers.md](git-providers.md)             | Git hosting — the provider-neutral forge layer (GitHub + Bitbucket Cloud)                                                                                                  |
+| [git-file-history.md](git-file-history.md)       | Per-file git investigation — history/diff/blame/origin over local git; `--follow`, paged blame, no forge and no per-provider rollout                                       |
+
+## Editor and code intelligence
+
+| Page                                           | What's in it                                                                                                                                                                              |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [text-editor.md](text-editor.md)               | IDE-grade text editing — daemon file RPCs, the CM6 editor, AI Refactor, the unified file tab, the File Editor shortcut scope                                                              |
+| [code-intelligence.md](code-intelligence.md)   | The LSP client — go-to-definition, hover, references, rename, diagnostics; the pool's lifecycle obligation, the indexing-cost policy, language rows, why linters are language servers too |
+| [markdown-rendering.md](markdown-rendering.md) | The shared markdown pipeline — we translate embedded HTML rather than render it, and `remoteImages` decides which surfaces may fetch                                                      |
+| [file-icons.md](file-icons.md)                 | Material icon theme integration for the file explorer                                                                                                                                     |
+
+## Providers and integration
+
+| Page                                       | What's in it                                                                                                                                                                                            |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [providers.md](providers.md)               | Adding a new agent provider end to end                                                                                                                                                                  |
+| [custom-providers.md](custom-providers.md) | Custom provider config: Z.AI, Alibaba/Qwen, ACP agents, profiles, custom binaries                                                                                                                       |
+| [preview.md](preview.md)                   | The Preview subsystem — design principles (token economy, guardrail-bearing tool descriptions, daemon-enforced tab binding), settings, `launch.json`. **Read before touching anything preview-related** |
+| [service-proxy.md](service-proxy.md)       | Exposing workspace scripts at public URLs — DNS setup, reverse proxy config                                                                                                                             |
+
+## Client and UI
+
+| Page                                     | What's in it                                                                                                                                                                |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [design.md](design.md)                   | Theme tokens — colors, fonts, spacing, radii, icons                                                                                                                         |
+| [unistyles.md](unistyles.md)             | Unistyles gotchas — `useUnistyles()` is forbidden, and the alternatives in order                                                                                            |
+| [hover.md](hover.md)                     | Hover — the canonical pattern (plain View + pointer handlers, separate inner Pressable) and the three ways agents break it                                                  |
+| [floating-panels.md](floating-panels.md) | Anchored popovers — the Portal/Modal escape for Android, lifecycle gates, the keyboard shared value, the status-bar offset, the flash                                       |
+| [mobile-panels.md](mobile-panels.md)     | Compact layout's three mutually exclusive destinations as **one** interaction — position ownership, ordering and interruption, integration rules                            |
+| [expo-router.md](expo-router.md)         | Route ownership, startup restore, native blank-screen gotchas. **Read before changing routes, startup routing, remembered-workspace restore or active-workspace selection** |
+| [forms.md](forms.md)                     | Form architecture — the non-React form model, the form kit, load-state gating. The schedule form is the golden example                                                      |
+| [ui-icons.md](ui-icons.md)               | General UI icons — Material Symbols vendoring, the codegen script, how to add or change an icon                                                                             |
+| [text-effects.md](text-effects.md)       | The "working" text effect — sweep vs glyph primitives, the theme registry, the shipped themes                                                                               |
+| [i18n.md](i18n.md)                       | Client UI translations in `packages/app/src/i18n`                                                                                                                           |
+| [feature-flags.md](feature-flags.md)     | Gated features — turning a subsystem off so its code never loads; the Metro no-tree-shake constraint, the lazy-split pattern, Visualizer as the reference                   |
+
+## Protocol, data and performance
+
+| Page                                               | What's in it                                                                                          |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| [rpc-namespacing.md](rpc-namespacing.md)           | WebSocket RPC naming — dotted namespaces and `.request`/`.response` pairs                             |
+| [protocol-validation.md](protocol-validation.md)   | zod-aot generated inbound WebSocket validation, the patched compiler regressions, schema-purity rules |
+| [data-model.md](data-model.md)                     | File-based JSON persistence, Zod schemas, atomic writes, no migrations                                |
+| [terminal-performance.md](terminal-performance.md) | Terminal latency pipeline, coalescing and backpressure invariants, benchmark and perf-spec usage      |
+
+## Testing
+
+| Page                                                     | What's in it                                                                   |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [testing.md](testing.md)                                 | TDD workflow, determinism, real dependencies over mocks, test organization     |
+| [mobile-testing.md](mobile-testing.md)                   | Maestro and mobile test workflows                                              |
+| [ad-hoc-daemon-testing.md](ad-hoc-daemon-testing.md)     | The isolated in-process daemon test harness                                    |
+| [browser-capture-harness.md](browser-capture-harness.md) | The real-Electron browser screenshot harness and the compositor-surface gotcha |
+
+## Build, release and operations
+
+| Page                                           | What's in it                                                                                                                                       |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [release.md](release.md)                       | Release playbook, draft releases, the completion checklist                                                                                         |
+| [fork-release-guide.md](fork-release-guide.md) | This fork's release infrastructure versus upstream — EAS/Play/Cloudflare/domain gaps                                                               |
+| [upstream-merges.md](upstream-merges.md)       | Ingesting upstream Paseo changes — remote setup, rebrand tooling, the merge playbook, merge-at-a-tag cadence, the intent ledger of what we skipped |
+| [android.md](android.md)                       | App variants, local and cloud builds, EAS workflows                                                                                                |
+| [desktop-linux.md](desktop-linux.md)           | Linux desktop — packaging (deb/rpm/AppImage), the sandbox profile, GPU fallback, diagnostics                                                       |
+| [docker.md](docker.md)                         | Running the daemon and bundled web UI in Docker — volumes, agent images, security                                                                  |
+
+## Reference
+
+| Page                                                                   | What's in it                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [references.md](references.md)                                         | **The references and sources index** — every external source Otto drew on, grouped by what it informed, with why we used it and what it contributed. Includes "considered and rejected" entries, and an ordered reading list for the agentic-coding-templates initiative |
+| [glossary.md](glossary.md)                                             | Authoritative terminology                                                                                                                                                                                                                                                |
+| [opencode-global-event-baseline.md](opencode-global-event-baseline.md) | OpenCode global event verification baseline — a dated snapshot, kept as evidence rather than as a live spec                                                                                                                                                              |
+
+---
+
+## Related, outside this tree
+
+- [`../SECURITY.md`](../SECURITY.md) — relay threat model, E2E encryption, DNS rebinding, agent auth
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — contribution workflow
+- [`../CHANGELOG.md`](../CHANGELOG.md) — release history
+- [`../archdocs/`](../archdocs/README.md) — the architecture site (`npm run archdocs:serve`, port 4400)
+- `../public-docs/` — the **user-facing manual** published to otto-code.me/docs. A different audience
+  and a different contract from this tree; it documents what Otto does, not how it is built

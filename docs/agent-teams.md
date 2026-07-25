@@ -2,7 +2,7 @@
 
 An **Agent Team** (UI label: "Agent teams", Host settings → Agents) is a named, per-host grouping of [agent personalities](agent-personalities.md) that acts as an **operating template** for the whole host: which personalities are on deck, and a shared **team prompt** that frames how they work together. A user can define many teams — "Shipping crew", "Research panel", "Solo + reviewer" — with any personalities in any of them (membership is many-to-many), but only **one team is active at a time**, and switching the active team is instant from the main UI.
 
-Teams build directly on the Personalities system and reuse its invariants — stable ids, snapshot-at-spawn, availability, no-fallback hard-fails — rather than inventing new ones. Read [agent-personalities.md](agent-personalities.md) first. Teams shipped in 0.5.2. This doc is the durable architecture; the one remaining follow-up — the themed avatar image set — is tracked in [projects/todos/agent-teams-themed-avatars.md](../projects/todos/agent-teams-themed-avatars.md).
+Teams build directly on the Personalities system and reuse its invariants — stable ids, snapshot-at-spawn, availability, no-fallback hard-fails — rather than inventing new ones. Read [agent-personalities.md](agent-personalities.md) first. Teams shipped in 0.5.2. This doc is the durable architecture; the one remaining follow-up — the themed avatar image set — is tracked in [the projects ledger](../projects/README.md#onboarding--ux).
 
 ## What an active team does
 
@@ -131,4 +131,4 @@ A fresh host seeds `DEFAULT_AGENT_TEAMS` (`packages/protocol/src/default-persona
 
 ## Deferred
 
-The **themed avatar image set** (charter step 7) is not built — an additive layer adding ~2 dozen app-bundled images, `avatar.imageId` catalog values, and a picker grid in the edit modal (the schema field already exists and degrades to the color avatar without it). Tracked in [projects/todos/agent-teams-themed-avatars.md](../projects/todos/agent-teams-themed-avatars.md).
+The **themed avatar image set** (charter step 7) is not built — an additive layer adding ~2 dozen app-bundled images, `avatar.imageId` catalog values, and a picker grid in the edit modal (the schema field already exists and degrades to the color avatar without it). Tracked in [the projects ledger](../projects/README.md#onboarding--ux).

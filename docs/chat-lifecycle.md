@@ -25,9 +25,28 @@ Every prompt entrypoint (composer, MCP `send_agent_prompt`, CLI, chat mentions, 
 | `interrupt` (default) | Cancel the in-flight turn, run this now **in the same provider session** |
 | `queue`               | Let the turn finish; run this as the next turn                           |
 
-`interrupt` is the default everywhere, so no existing caller changed behavior. UI label: **Interrupt** / **Queue** (Settings → Default send, and the composer's Queue track). `cancel_agent` remains interrupt-only — abort the run, keep the agent alive.
+`interrupt` is the wire default. UI label: **Interrupt** / **Queue** (Settings → Default send, and the composer's Queue track). `cancel_agent` remains interrupt-only — abort the run, keep the agent alive.
 
 The whole feature lives in the turn lifecycle **above** every provider adapter, so it behaves identically for Claude, Codex, Copilot, OpenCode, Pi, and the openai-compatible provider. There are no per-provider adapters.
+
+### Which delivery each entrypoint picks
+
+The default is the wire default, not the right answer for every sender. A person typing into the composer has decided to interrupt by typing; Otto injecting a message on someone's behalf has decided nothing.
+
+| Entrypoint                                   | Delivery            | Why                                                                                                                                                                           |
+| -------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Composer, CLI `otto agent send`              | user's choice       | Settings → Default send; the alternate send action does the other one                                                                                                         |
+| MCP `send_agent_prompt`                      | caller's choice     | Explicit `delivery` arg, `interrupt` default — the calling agent knows whether its prompt is a correction or a follow-up                                                      |
+| **Chat @mention**                            | **`queue`**         | A room mention is a message, not an emergency. Interrupting discarded work on behalf of someone who only meant to say something — and `@everyone` did it to a roomful at once |
+| **Notify-on-finish**                         | **`queue`**         | "Your child finished" is a report. Interrupting killed the turn the parent ran while the child worked, and a fan-out of N children interrupted it N times in a row            |
+| Schedule fire → existing chat                | neither (**fails**) | `executeSchedule` pre-checks `hasInFlightRun` and fails the run with "already has an active run"; it has never interrupted. Open question — see below                         |
+| Schedule fire → new chat, `/loop` iterations | n/a                 | Each runs a freshly created agent, which cannot be busy                                                                                                                       |
+
+Both flipped paths already carried `source: "system"`, so each injected message still arrives as **its own turn** — queueing changes when a mention or a report lands, never how many there are or what they say. (The mention path was untagged until the flip; tagging it was part of the change, because two mentions merging into one turn would have lost each one's envelope.)
+
+`delivery: "queue"` can never be the reason a prompt fails to arrive: an agent with no live session cannot be busy, so `enqueueSteerMessage` reports "not queued" and the caller dispatches normally. That matters most for exactly these senders, whose target may be closed or not yet revived.
+
+**Still open — a schedule firing into a chat that is already busy.** Unlike the other two this is not a delivery-flag flip: `executeSchedule` runs the prompt through `runAgent`, which blocks to collect the timeline and final text for the run record, and the steer queue's dispatch is fire-and-forget. It is also a product question rather than a correctness one — whether a schedule is a _deadline_ ("run at 09:00, or not at all", which the cadence/next-run UI implies) or a _task_ ("run this, whenever you can"). Queueing means a run record sits `running` for an unbounded time, possibly past its own next fire. The candidates are: keep fail-fast; queue with a bounded wait; or record the run as **skipped** rather than failed, which fixes the misleading part of today's behavior without changing when anything runs. Decide it as a schedule question, not a queue one.
 
 ### How the queue drains
 
@@ -43,9 +62,23 @@ Consecutive **user** messages in the queue are delivered as a **single** turn, j
 
 Three notes dropped while an agent grinds through a refactor are one instruction set, not three turns. Delivering them separately makes the agent act on note 1 before it has seen the constraint in note 3, and pays a full context re-send per turn. System-injected entries (`source: "system"` — mentions, schedule fires, notify-on-finish, agent-to-agent sends) never merge: each carries its own envelope and means something on its own.
 
+### Editing the queue
+
+Order is what a FIFO means, so the queue supports three edits: **take one back** (`agent.queue.remove`, behind the Queue track's edit and send-now actions), **re-order** (`agent.queue.reorder`), and **drop everything** (`agent.queue.clear`).
+
+Re-order is exposed as per-row **move earlier / move later** controls rather than drag-and-drop. The track is a two-to-three-row stack pinned above the composer on phone, tablet, and web; a drag gesture there competes with the scroll and the keyboard for a list that is almost never long enough to need one, and buttons are the affordance that works identically on all three. Both are complete — any order is reachable either way.
+
+The daemon re-resolves the entry by id and **clamps** the destination rather than rejecting it, because the client is rendering a snapshot that may already be one drain stale; a move that lands at the end of a shorter queue is what the user meant. `moved: false` (already drained, or already there) is not an error — the authoritative order arrives on the agent snapshot regardless.
+
+### Interrupts the provider did not fully honour
+
+Claude Agent SDK ≥ 0.3.212 resolves `query.interrupt()` with an **interrupt receipt** (`still_queued`, feature-detected via `interrupt_receipt_v1` in `system/init`): uuids of async user messages that survive the interrupt and will still run. The Claude adapter filters it to uuids **it stamped itself**, since the receipt also carries ids the CLI enqueued (cron triggers, auto-resume continuations) that a client is told to ignore rather than treat as errors. Anything left means an interrupt Otto reported as complete left one of Otto's own messages live in the CLI, and it is logged at `warn` as `provider.claude.interrupt.still_queued`.
+
+The reconcile is deliberately **diagnostic, not corrective**, and that follows from the queue's shape: Otto's queue is daemon-owned and sits above every adapter, so there is no provider-side queue for the daemon to re-sync against — the daemon already decides what runs next for every provider. The SDK also exposes no `cancel_async_message` on `Query`, so a survivor could not be withdrawn even if there were something to repair. Revisit if that lands.
+
 ### Wire surface
 
-`server_info.features.steerQueue` gates the daemon-owned queue (`COMPAT(steerQueue)`, v0.6.8). With it the client sends `delivery: "queue"` on `send_agent_message_request`, reads `AgentSnapshotPayload.queuedMessages` (id + truncated preview + `enqueuedAt`), and edits the queue via `agent.queue.remove` / `agent.queue.clear`. Without it the composer keeps its own client-held queue drained on the running→idle edge — the behavior Otto has always had, not a degraded build of the daemon feature. Attachments live only in the client, so the daemon-backed path keeps a local sidecar keyed by the daemon's entry id purely so "edit" can restore them; losing it costs the attachments on edit, nothing else.
+`server_info.features.steerQueue` gates the daemon-owned queue (`COMPAT(steerQueue)`, v0.6.8); `features.steerQueueReorder` gates re-ordering separately (`COMPAT(steerQueueReorder)`, v0.6.9), because a 0.6.8 daemon owns a queue it cannot re-order — against one, the move controls are simply absent and the rest of the queue works. With it the client sends `delivery: "queue"` on `send_agent_message_request`, reads `AgentSnapshotPayload.queuedMessages` (id + truncated preview + `enqueuedAt`), and edits the queue via `agent.queue.remove` / `agent.queue.reorder` / `agent.queue.clear`. Without it the composer keeps its own client-held queue drained on the running→idle edge — the behavior Otto has always had, not a degraded build of the daemon feature. Attachments live only in the client, so the daemon-backed path keeps a local sidecar keyed by the daemon's entry id purely so "edit" can restore them; losing it costs the attachments on edit, nothing else.
 
 ## Relationships
 

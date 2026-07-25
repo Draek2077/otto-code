@@ -4,7 +4,7 @@
 **Lineage:** Builds directly on the daemon's existing multi-client WebSocket model
 ([docs/architecture.md](../../docs/architecture.md)), the relay E2E trust model
 ([SECURITY.md](../../SECURITY.md), `packages/relay`), and — for shared steering — the
-[steer-queue charter](../steer-queue/steer-queue.md).
+[steer-queue charter](../../docs/chat-lifecycle.md).
 
 The user's vision, verbatim:
 

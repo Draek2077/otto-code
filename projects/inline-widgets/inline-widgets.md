@@ -306,8 +306,8 @@ either way, so the guest should surface that as a visible render error rather th
 ### 6.2 Do we ship `read_me`, and how big?
 
 Claude's is 99K characters. Otto is a token-cost-conscious fork —
-`projects/token-cost-audit/` measured ~9.7–14.9K tokens per request and
-`projects/token-cost-fixes/` exists to bring that down. A 99K-char always-available tool is not
+[docs/token-economy.md](../../docs/token-economy.md) measures ~9.7–14.9K tokens per request, and
+the fixes that brought it down are recorded there. A 99K-char always-available tool is not
 free even when unused, and once used it is enormous.
 
 Options: skip it and put a compact contract in the tool description; ship a much smaller single

@@ -18,7 +18,7 @@ Known v1 limits: rows are ephemeral projections — daemon restart/client reconn
 
 Bridge the gap between an agent's **provider-managed subagents** (spawned by the CLI/SDK inside the agent's own process — Claude's `Task` tool, "ultracode" fan-out, etc.) and Otto's ability to **track and watch each of them separately**. Today Otto flattens all of a Claude subagent's activity into a single log string inside the parent's `Task` tool-call row and drops its failure signals entirely. This doc defines how to promote each provider-managed subagent to a first-class, separately-watchable — but **read-only / unattended** — entry in the parent's subagents track.
 
-Read [chat-lifecycle.md](./chat-lifecycle.md) first: it defines the existing **Otto-native** subagent (the thing we are _not_ changing) and the track/tab/pane/archive machinery we are reusing.
+Read [chat-lifecycle.md](../../docs/chat-lifecycle.md) first: it defines the existing **Otto-native** subagent (the thing we are _not_ changing) and the track/tab/pane/archive machinery we are reusing.
 
 ---
 
@@ -41,7 +41,7 @@ The whole point of this feature: an **observed subagent** should sit in the same
 
 ## What the provider actually gives us (Claude)
 
-The `@anthropic-ai/claude-agent-sdk` surface is rich; Otto currently consumes almost none of it. Grounding refs are in [`sdk.d.ts`](../packages/server/node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts) and the current, deliberately-lossy consumer [`sidechain-tracker.ts`](../packages/server/src/server/agent/providers/claude/sidechain-tracker.ts).
+The `@anthropic-ai/claude-agent-sdk` surface is rich; Otto currently consumes almost none of it. Grounding refs are in [`sdk.d.ts`](../../packages/server/node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts) and the current, deliberately-lossy consumer [`sidechain-tracker.ts`](../../packages/server/src/server/agent/providers/claude/sidechain-tracker.ts).
 
 | Capability                   | SDK surface                                                                                                                                                                                                                                    | Otto today                                                                                                                                                                                          |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -58,7 +58,7 @@ The `@anthropic-ai/claude-agent-sdk` surface is rich; Otto currently consumes al
 
 ## Target model: the observed subagent is a read-only agent record
 
-The subagents track, tabs, and message pane already render from `Agent` records in the client session store, filtered by `parentAgentId` ([`subagents/select.ts`](../packages/app/src/subagents/select.ts), [`subagents/track.tsx`](../packages/app/src/subagents/track.tsx)). **We reuse that pipeline instead of building a parallel one.** The daemon materializes each provider-managed subagent as an `Agent` snapshot that:
+The subagents track, tabs, and message pane already render from `Agent` records in the client session store, filtered by `parentAgentId` ([`subagents/select.ts`](../../packages/app/src/subagents/select.ts), [`subagents/track.tsx`](../../packages/app/src/subagents/track.tsx)). **We reuse that pipeline instead of building a parallel one.** The daemon materializes each provider-managed subagent as an `Agent` snapshot that:
 
 - has `parentAgentId` set to the parent agent → it appears in the parent's track automatically;
 - carries a new **attendability marker** (below) → the client renders it read-only and the daemon refuses attended operations;
@@ -109,7 +109,7 @@ Requirement (from the fork owner): **do not build a different mode.** Open the o
 
 Interactive affordances to hide/disable when `attend === "observed"` (single gate, read off the agent record):
 
-- **Composer** ([`agent-panel.tsx`](../packages/app/src/panels/agent-panel.tsx) `AgentComposerSection` / `ActiveAgentComposer`): hide the input, send, and attachment controls. Prefer a slim, clearly-disabled banner ("Observed subagent — read only") over an empty focusable box.
+- **Composer** ([`agent-panel.tsx`](../../packages/app/src/panels/agent-panel.tsx) `AgentComposerSection` / `ActiveAgentComposer`): hide the input, send, and attachment controls. Prefer a slim, clearly-disabled banner ("Observed subagent — read only") over an empty focusable box.
 - **Parameter controls:** model / mode / thinking pickers, rewind, slash-command entry — hidden or rendered visibly disabled (reduced opacity + no press target), never silently inert.
 - **Permission prompts:** none exist for observed subagents (the provider handles permissions inside its own process), so there is nothing to approve — ensure no permission UI can appear.
 - **Track row actions:** show **archive/drop**; hide **detach**.
@@ -123,10 +123,10 @@ Gate all of the above behind a capability flag so old daemons/clients degrade cl
 
 ## Protocol
 
-Follow the [CLAUDE.md](../CLAUDE.md) protocol contract and [rpc-namespacing.md](./rpc-namespacing.md).
+Follow the [CLAUDE.md](../../CLAUDE.md) protocol contract and [rpc-namespacing.md](../../docs/rpc-namespacing.md).
 
-- **New agent field** `attend` on the agent snapshot ([`agent-types.ts`](../packages/protocol/src/agent-types.ts) / the session-store `Agent`): optional, default `"attended"`. Old clients ignore it (they render the record as a normal — attended — agent, which is a graceful, if not read-only, fallback; the capability gate below prevents that on capable clients).
-- **Capability flag** `server_info.features.observedSubagents` ([`messages.ts`](../packages/protocol/src/messages.ts) features block) with `// COMPAT(observedSubagents): added in vX.Y, drop the gate when daemon floor >= vX.Y`. Client shows the read-only track rows/pane only when the flag is present; otherwise it falls back to **today's behavior** (the embedded `sub_agent` log in the parent Task row) — which is exactly the "update the host to use this" degradation the fork's feature contract calls for. **No fallback path** that simulates observed subagents on an old daemon.
+- **New agent field** `attend` on the agent snapshot ([`agent-types.ts`](../../packages/protocol/src/agent-types.ts) / the session-store `Agent`): optional, default `"attended"`. Old clients ignore it (they render the record as a normal — attended — agent, which is a graceful, if not read-only, fallback; the capability gate below prevents that on capable clients).
+- **Capability flag** `server_info.features.observedSubagents` ([`messages.ts`](../../packages/protocol/src/messages.ts) features block) with `// COMPAT(observedSubagents): added in vX.Y, drop the gate when daemon floor >= vX.Y`. Client shows the read-only track rows/pane only when the flag is present; otherwise it falls back to **today's behavior** (the embedded `sub_agent` log in the parent Task row) — which is exactly the "update the host to use this" degradation the fork's feature contract calls for. **No fallback path** that simulates observed subagents on an old daemon.
 - **Stop RPC** for an observed subagent: `agent.subagent.stop.request` / `.response`, resolved by the daemon to the owning provider session's `stopTask`. Reuse the existing stop path if one already targets provider tasks; do not add a Claude-specific RPC.
 
 Backward-compat rules apply verbatim: `attend` is additive/optional, never flips to required, and the embedded-log path stays parseable so a 6-month-old client still renders _something_.
@@ -167,10 +167,10 @@ Set expectations before building — these bound what "bridge the gap" can deliv
 ## Open questions
 
 1. **Durability across daemon restart / reconnect.** Observed subagents are a projection of the parent's stream. If the parent is idle and the client reconnects, do we replay enough to reconstruct in-flight/finished subagents, or read `listSubagents()` + `getSubagentMessages()` from disk to rehydrate? Leaning: rehydrate from the parent's replayable timeline; fall back to the on-disk jsonl for full transcript on demand.
-2. **Glossary term.** "Observed subagent" is the working name (internal). The UI label wins per [glossary.md](./glossary.md) — pick the user-facing label before shipping and record it there. Candidates: "watched subagent", "observed subagent", "read-only subagent".
+2. **Glossary term.** "Observed subagent" is the working name (internal). The UI label wins per [glossary.md](../../docs/glossary.md) — pick the user-facing label before shipping and record it there. Candidates: "watched subagent", "observed subagent", "read-only subagent".
 3. **Track density.** Ultracode fan-out can spawn many subagents; the track already flags accumulation for Otto-native subagents. Do observed subagents need grouping/auto-collapse of completed ones sooner?
 4. **Nested subagents.** A subagent that itself spawns subagents — do we flatten to the top parent or preserve depth? (SDK `parent_tool_use_id` chains make depth recoverable.) Leaning: flatten for v1.
-5. **Token economy.** `forwardSubagentText` multiplies streamed volume. Confirm the coalescing/backpressure story (see [terminal-performance.md](./terminal-performance.md) for the existing invariants) holds for many concurrent subagent transcripts.
+5. **Token economy.** `forwardSubagentText` multiplies streamed volume. Confirm the coalescing/backpressure story (see [terminal-performance.md](../../docs/terminal-performance.md) for the existing invariants) holds for many concurrent subagent transcripts.
 
 ---
 

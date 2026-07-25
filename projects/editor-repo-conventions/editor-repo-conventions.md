@@ -9,7 +9,7 @@ all of it. Open a 4-space Python project in Otto and press Tab: you get whatever
 That is the whole problem. **A repo that has stated its conventions should have them honoured without
 anyone configuring Otto.**
 
-Distinct from [lsp-code-intelligence](../lsp-code-intelligence/lsp-code-intelligence.md), which is
+Distinct from [lsp-code-intelligence](../../docs/code-intelligence.md), which is
 about a language server _understanding_ code. This is about the editor _typing_ code the way the
 project already agreed to. They share nothing but the file tab.
 

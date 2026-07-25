@@ -125,6 +125,6 @@ line to speak never burns the slot for one that has), and the pre-existing
 ## Not in this project
 
 - The `waiting` cue moment — see
-  [projects/voice-cue-waiting](../voice-cue-waiting/voice-cue-waiting.md).
+  [projects/voice-cue-waiting](../../docs/visualizer.md).
 - Cue text quality/variety — fixed 2026-07-20 in
   `packages/server/src/server/agent/voice-cue-generator.ts`.

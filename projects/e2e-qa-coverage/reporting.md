@@ -40,7 +40,7 @@ already set them (`e2e-report-local-ai/`, `e2e-report-real/`, and the matching
 `playwright-report-*`), so a T2/T3 run never clobbers the T1 report. Trace/video/screenshot
 artifacts are separated a level lower — each Playwright project owns an `outputDir` under
 `test-results/<project>` (or under `E2E_OUTPUT_DIR`, which you should point outside
-`packages/app`; see the Run mechanics section of [iron-out.md](iron-out.md)).
+`packages/app`; see the Run mechanics section of [iron-out.md](../README.md#testing--tooling)).
 
 Module grouping is derived from [`coverage-matrix.md`](coverage-matrix.md): the
 reporter reads its `## <n>. <Title>` sections and the backtick-quoted spec names
@@ -113,5 +113,5 @@ guards. The convention:
   durable record that the bug is fixed.
 
 Bugs found _by_ the suite during an iron-out pass are recorded in
-[`iron-out.md`](iron-out.md) with their diagnosis; once fixed, they graduate into a
+[`iron-out.md`](../README.md#testing--tooling) with their diagnosis; once fixed, they graduate into a
 regression spec by the rules above.
