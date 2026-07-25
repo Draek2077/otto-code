@@ -68,6 +68,7 @@ import { buildDiffFlatItems, sumHeightsBefore, type DiffFlatItem } from "@/git/d
 import { buildDiffTree, collectDirPaths, compressSingleChildChains } from "@/git/diff-tree";
 import { DiffFolderRow } from "@/git/diff-folder-row";
 import { TreeIndentGuides, treeRowPaddingLeft } from "@/components/tree-primitives";
+import { TREE_RAILS_ALL_CONTINUE } from "@/components/tree-rail-mask";
 import { SvgXml } from "react-native-svg";
 import { getFileIconSvg } from "@/components/material-file-icons";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
@@ -236,6 +237,8 @@ interface DiffFileSectionProps {
   isExpanded: boolean;
   /** Tree indentation level (0 on the flat/mobile path). */
   depth?: number;
+  /** which indent rails keep running below this row — see tree-rail-mask.ts */
+  ancestorMask?: number;
   /** Show the muted directory suffix (flat list); false inside the folder tree. */
   showDir?: boolean;
   /** Commit selection checkbox (uncommitted mode with a commit-capable host). */
@@ -995,6 +998,7 @@ const DiffFileHeader = memo(function DiffFileHeader({
   file,
   isExpanded,
   depth = 0,
+  ancestorMask = TREE_RAILS_ALL_CONTINUE,
   showDir = true,
   selectable = false,
   selected = false,
@@ -1089,7 +1093,7 @@ const DiffFileHeader = memo(function DiffFileHeader({
 
   return (
     <View style={containerStyle} onLayout={handleLayout} testID={testID}>
-      <TreeIndentGuides depth={depth} />
+      <TreeIndentGuides depth={depth} ancestorMask={ancestorMask} />
       <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
         <TooltipTrigger asChild>
           <Pressable
@@ -3155,6 +3159,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
             dirPath={item.dirPath}
             displayName={item.displayName}
             depth={item.depth}
+            ancestorMask={item.ancestorMask}
             collapsed={item.collapsed}
             additions={item.additions}
             deletions={item.deletions}
@@ -3170,6 +3175,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
             file={item.file}
             isExpanded={item.isExpanded}
             depth={item.depth}
+            ancestorMask={item.ancestorMask}
             showDir={viewMode === "flat"}
             selectable={commitSelectionEnabled}
             selected={!deselectedPaths.has(item.file.path)}

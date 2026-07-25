@@ -58,20 +58,16 @@ import { focusWithRetries } from "@/utils/web-focus";
 import {
   cancelComposerAgent,
   dispatchComposerAgentMessage,
-  editQueuedComposerMessage,
   findGithubItemByOption,
   isAttachmentSelectedForGithubItem,
   openComposerAttachment,
   pickAndPersistImages,
-  queueComposerMessage,
   removeComposerAttachmentAtIndex,
-  sendQueuedComposerMessageNow,
   toggleGithubAttachmentFromPicker,
   uploadFileAttachments,
   type AgentStreamWriter,
-  type QueueWriter,
-  type QueuedComposerMessage,
 } from "@/composer/actions";
+import { useComposerQueue, type ComposerQueueItem } from "@/composer/queue";
 import { useVoiceOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -125,7 +121,7 @@ import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useComposerGithubAutoAttach } from "./github/auto-attach";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
 
-type QueuedMessage = QueuedComposerMessage;
+type QueuedMessage = ComposerQueueItem;
 
 type AttachmentListUpdater =
   | UserComposerAttachment[]
@@ -839,7 +835,6 @@ interface ComposerProps {
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 
-const EMPTY_ARRAY: readonly QueuedMessage[] = [];
 const StableMessageInput = memo(MessageInput);
 
 function resolveContextWindowValues(
@@ -1065,12 +1060,11 @@ export function Composer({
 
   const agentState = useSessionStore(useShallow(buildAgentStateSelector(serverId, agentId)));
 
-  const queuedMessagesRaw = useSessionStore((state) =>
-    state.sessions[serverId]?.queuedMessages?.get(agentId),
-  );
-  const queuedMessages = queuedMessagesRaw ?? EMPTY_ARRAY;
+  // Daemon-owned when the host advertises it, client-held otherwise — the
+  // composer only ever talks to this controller. See composer/queue.ts.
+  const messageQueue = useComposerQueue({ serverId, agentId, client, encodeImages });
+  const queuedMessages = messageQueue.items;
 
-  const setQueuedMessages = useSessionStore((state) => state.setQueuedMessages);
   const setAgentStreamTail = useSessionStore((state) => state.setAgentStreamTail);
   const setAgentStreamHead = useSessionStore((state) => state.setAgentStreamHead);
 
@@ -1308,37 +1302,22 @@ export function Composer({
   const isAgentRunning = agentState.status === "running";
   const hasAgent = agentState.status !== null;
 
-  const queueWriter = useMemo<QueueWriter>(
-    () => ({
-      read: (id) => useSessionStore.getState().sessions[serverId]?.queuedMessages?.get(id) ?? [],
-      write: (updater) => setQueuedMessages(serverId, updater),
-    }),
-    [serverId, setQueuedMessages],
-  );
-
   const queueMessage = useCallback(
     (queuedMessage: string, queuedAttachments: ComposerAttachment[]) => {
-      const result = queueComposerMessage({
-        agentId,
-        text: queuedMessage,
-        attachments: queuedAttachments,
-        queue: queueWriter,
-      });
-      if (!result.queued) return;
+      const trimmed = queuedMessage.trim();
+      if (!trimmed && queuedAttachments.length === 0) return;
 
+      // Clear optimistically: the row appears from the queue controller either
+      // way, and a failed enqueue surfaces as a send error like any other.
       setUserInput("");
       setSelectedAttachments([]);
       resetSuppression();
       clearSentAttachments(queuedAttachments);
+      void messageQueue.enqueue(trimmed, queuedAttachments).catch((error: unknown) => {
+        setSendError(error instanceof Error ? error.message : t("composer.errors.failedToSend"));
+      });
     },
-    [
-      agentId,
-      clearSentAttachments,
-      queueWriter,
-      resetSuppression,
-      setSelectedAttachments,
-      setUserInput,
-    ],
+    [clearSentAttachments, messageQueue, resetSuppression, setSelectedAttachments, setUserInput, t],
   );
 
   const sendMessageWithContent = useCallback(
@@ -1656,16 +1635,18 @@ export function Composer({
 
   const handleEditQueuedMessage = useCallback(
     (id: string) => {
-      const result = editQueuedComposerMessage({
-        agentId,
-        messageId: id,
-        queue: queueWriter,
-      });
-      if (!result) return;
-      setUserInput(result.text);
-      setSelectedAttachments(result.attachments);
+      void (async () => {
+        try {
+          const item = await messageQueue.take(id);
+          if (!item) return;
+          setUserInput(item.text);
+          setSelectedAttachments(composerWorkspaceAttachment.userAttachmentsOnly(item.attachments));
+        } catch (error) {
+          setSendError(error instanceof Error ? error.message : t("composer.errors.failedToSend"));
+        }
+      })();
     },
-    [agentId, queueWriter, setSelectedAttachments, setUserInput],
+    [messageQueue, setSelectedAttachments, setUserInput, t],
   );
 
   const handleSendQueuedNow = useCallback(
@@ -1682,20 +1663,35 @@ export function Composer({
           return;
         }
       }
-      // Reuse the regular send path; server-side send atomically interrupts any active run.
-      const result = await sendQueuedComposerMessageNow({
-        agentId,
-        messageId: id,
-        queue: queueWriter,
-        submitMessage: ({ text, attachments: queuedAttachments }) =>
-          submitMessage(text, queuedAttachments),
-        failedToSendMessage: t("composer.errors.failedToSend"),
-      });
-      if (result.status === "failed") {
-        setSendError(result.errorMessage);
+      // Take it out of the queue first, then reuse the regular send path — the
+      // server-side send atomically interrupts whatever is running.
+      let taken: ComposerQueueItem | null = null;
+      try {
+        taken = await messageQueue.take(id);
+        if (!taken) return;
+        await submitMessage(taken.text, taken.attachments);
+      } catch (error) {
+        // The entry is already out of the queue, so put it back where the user
+        // can act on it rather than dropping it on the floor.
+        if (taken) {
+          setUserInput(taken.text);
+          setSelectedAttachments(
+            composerWorkspaceAttachment.userAttachmentsOnly(taken.attachments),
+          );
+        }
+        setSendError(error instanceof Error ? error.message : t("composer.errors.failedToSend"));
       }
     },
-    [agentId, isAgentRunning, queueWriter, serverId, submitMessage, t],
+    [
+      agentId,
+      isAgentRunning,
+      messageQueue,
+      serverId,
+      setSelectedAttachments,
+      setUserInput,
+      submitMessage,
+      t,
+    ],
   );
 
   const handleQueue = useCallback(

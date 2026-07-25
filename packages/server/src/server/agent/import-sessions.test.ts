@@ -95,6 +95,7 @@ function makeManagedAgent(args: {
     lifecycle: "closed",
     session: null,
     activeForegroundTurnId: null,
+    steerQueue: [],
   } satisfies ManagedAgent;
 }
 

@@ -8,7 +8,7 @@ body:
       value: |
         Otto is opinionated and maintained by one person. Feature requests are welcome, but they get evaluated against product fit, not just usefulness, and the bar is whether the change keeps the product lean enough for one person to maintain.
 
-        Big ideas are better discussed in [Discord](https://discord.gg/jz8T2uahpH) first. And please don't open a feature request and a PR at the same time, get alignment on the idea before writing code.
+        Big ideas are better opened as a [GitHub Discussion](https://github.com/Draek2077/otto-code/discussions) first. And please don't open a feature request and a PR at the same time, get alignment on the idea before writing code.
 
   - type: checkboxes
     id: prior-search

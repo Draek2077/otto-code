@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,8 +45,8 @@ function stubRow(id: string, extensions: readonly string[] = [".ts"]): LspServer
   };
 }
 
-function createService(rows: readonly LspServerRow[]): LspService {
-  const service = LspService.create({ logger, rows, now: () => 0 });
+function createService(rows: readonly LspServerRow[], now: () => number = () => 0): LspService {
+  const service = LspService.create({ logger, rows, now });
   services.push(service);
   return service;
 }
@@ -304,6 +304,32 @@ describe("find references", () => {
 
     expect(result).toEqual({ status: "ok", locations: [], error: null });
   });
+
+  // The defect this exists to prevent, measured on this repo 2026-07-25: for the ~7s after
+  // spawn that tsserver spends loading the project, `fromFileUri` reported 2 hits in 1 file
+  // when the truth was 14 in 4. It answered `ok` the whole time, because the old rule only
+  // reported `indexing` for an EMPTY result. A complete-looking answer that is 7x short is
+  // worse than no answer, so indexing now outranks having results.
+  it("reports indexing even when it found some references, because the set may be partial", async () => {
+    const rootPath = await createRoot();
+    const service = createService([stubRow("stub")]);
+    const filePath = path.join(rootPath, "a.ts");
+    await service.syncDocument({ rootPath, filePath, text: DRAFT });
+
+    await service.references({ rootPath, filePath, line: 2, column: 7 });
+    const [entry] = service.running();
+    await service.requestOnServer(rootPath, entry.serverId, "stub/progress-begin");
+
+    const partial = await service.references({ rootPath, filePath, line: 2, column: 7 });
+    expect(partial.status).toBe("indexing");
+    // The partial set still comes back — a provisional list beats an empty one, as long as
+    // the caller is told it is provisional.
+    expect(partial.locations).toHaveLength(1);
+
+    await service.requestOnServer(rootPath, entry.serverId, "stub/progress-end");
+    const settled = await service.references({ rootPath, filePath, line: 2, column: 7 });
+    expect(settled.status).toBe("ok");
+  });
 });
 
 describe("rename, as a dry run", () => {
@@ -311,7 +337,14 @@ describe("rename, as a dry run", () => {
     const rootPath = await createRoot();
     const service = createService([stubRow("stub")]);
     const filePath = path.join(rootPath, "a.ts");
-    const text = "const target = 1;\nuse(target);\n";
+    // `use12(` is six characters, so `target` starts at column 7 on BOTH lines — which is
+    // where the stub plans its edits. The alignment matters: the plan is grounded against the
+    // real file, so a position that landed mid-word would faithfully capture the mid-word
+    // text, and the run would then correctly refuse it.
+    const text = "const target = 1;\nuse12(target);\n";
+    // Written to disk as well as synced: the plan captures the text each edit would replace,
+    // which is what makes the job verifiable and reversible later.
+    await writeFile(filePath, text, "utf8");
     await service.syncDocument({ rootPath, filePath, text });
 
     const plan = await service.renamePreview({
@@ -327,8 +360,8 @@ describe("rename, as a dry run", () => {
       {
         path: filePath,
         edits: [
-          { line: 1, column: 7, endLine: 1, endColumn: 13, newText: "renamed" },
-          { line: 2, column: 7, endLine: 2, endColumn: 13, newText: "renamed" },
+          { line: 1, column: 7, endLine: 1, endColumn: 13, newText: "renamed", oldText: "target" },
+          { line: 2, column: 7, endLine: 2, endColumn: 13, newText: "renamed", oldText: "target" },
         ],
       },
     ]);
@@ -350,7 +383,55 @@ describe("rename, as a dry run", () => {
       newName: "renamed",
     });
 
-    expect(plan).toEqual({ status: "ok", files: [], fileCount: 0, editCount: 0, error: null });
+    expect(plan).toEqual({
+      status: "ok",
+      files: [],
+      fileCount: 0,
+      editCount: 0,
+      planId: "",
+      error: null,
+    });
+  });
+
+  // Every other request degrades to a bad answer while the project loads; this one degrades
+  // to a destructive edit. So it refuses outright rather than returning an under-reported
+  // plan that a UI would present as the complete blast radius.
+  it("refuses to plan at all while a bound server is still indexing", async () => {
+    const rootPath = await createRoot();
+    const service = createService([stubRow("stub")]);
+    const filePath = path.join(rootPath, "a.ts");
+    await service.syncDocument({ rootPath, filePath, text: DRAFT });
+
+    await service.references({ rootPath, filePath, line: 2, column: 7 });
+    const [entry] = service.running();
+    await service.requestOnServer(rootPath, entry.serverId, "stub/progress-begin");
+
+    const blocked = await service.renamePreview({
+      rootPath,
+      filePath,
+      line: 2,
+      column: 7,
+      newName: "renamed",
+    });
+    expect(blocked).toEqual({
+      status: "indexing",
+      files: [],
+      fileCount: 0,
+      editCount: 0,
+      planId: "",
+      error: null,
+    });
+
+    await service.requestOnServer(rootPath, entry.serverId, "stub/progress-end");
+    const settled = await service.renamePreview({
+      rootPath,
+      filePath,
+      line: 2,
+      column: 7,
+      newName: "renamed",
+    });
+    expect(settled.status).toBe("ok");
+    expect(settled.editCount).toBeGreaterThan(0);
   });
 
   it("sorts edits within a file so a preview reads top to bottom", async () => {
@@ -577,5 +658,221 @@ describe("document lifecycle through the service", () => {
 
     expect(service.running()).toEqual([]);
     expect(service.openDocumentCount()).toBe(0);
+  });
+});
+
+// The daemon supplies the tick (`reapIdle` on an interval) and this service supplies the
+// other half: which workspace counts as the one in front of the user. Without that, every
+// server gets the long allowance forever and `backgroundIdleMinutes` means nothing.
+describe("the idle policy", () => {
+  it("gives the workspace of the latest request the long allowance and the other the short one", async () => {
+    const [background, active] = await Promise.all([createRoot(), createRoot()]);
+    let clock = 0;
+    const service = createService([stubRow("stub")], () => clock);
+
+    await service.syncDocument({
+      rootPath: background,
+      filePath: path.join(background, "a.ts"),
+      text: DRAFT,
+    });
+    await service.syncDocument({
+      rootPath: active,
+      filePath: path.join(active, "a.ts"),
+      text: DRAFT,
+    });
+
+    // Past the 2-minute background allowance, well short of the 10-minute foreground one.
+    clock = 3 * 60_000;
+    await service.reapIdle();
+
+    expect(service.running().map((entry) => entry.rootPath)).toEqual([active]);
+  });
+
+  it("counts a lookup as looking at that workspace, not only a buffer sync", async () => {
+    const [first, second] = await Promise.all([createRoot(), createRoot()]);
+    let clock = 0;
+    const service = createService([stubRow("stub")], () => clock);
+
+    const filePath = path.join(first, "a.ts");
+    await service.syncDocument({ rootPath: first, filePath, text: DRAFT });
+    await service.syncDocument({
+      rootPath: second,
+      filePath: path.join(second, "a.ts"),
+      text: DRAFT,
+    });
+
+    // The user goes back to the first workspace and asks it something.
+    clock = 1000;
+    await service.definition({ rootPath: first, filePath, line: 2, column: 7 });
+
+    clock = 3 * 60_000 + 1000;
+    await service.reapIdle();
+
+    expect(service.running().map((entry) => entry.rootPath)).toEqual([first]);
+  });
+
+  it("keeps a server alive while it is still being used", async () => {
+    const rootPath = await createRoot();
+    let clock = 0;
+    const service = createService([stubRow("stub")], () => clock);
+    const filePath = path.join(rootPath, "a.ts");
+    await service.syncDocument({ rootPath, filePath, text: DRAFT });
+
+    clock = 9 * 60_000;
+    await service.definition({ rootPath, filePath, line: 2, column: 7 });
+    clock = 15 * 60_000;
+    await service.reapIdle();
+
+    expect(service.running()).toHaveLength(1);
+  });
+});
+
+// The only method in this subsystem that writes a file, so its guards get tested rather
+// than trusted. The stub renames whatever `target` it finds, which is enough to exercise
+// every gate.
+// The only path in this subsystem that writes a file, so its behaviour is proven rather than
+// trusted. The engine's own guarantees are covered in edit-job.test.ts; these check that the
+// service wires the right plan to the right run and refuses what it should.
+describe("rename, applied", () => {
+  const RENAMED = "const first = 1;\nconst renamed = 2;\nconst last = 3;\n";
+
+  async function planFor(service: LspService, rootPath: string, filePath: string) {
+    return service.renamePreview({ rootPath, filePath, line: 2, column: 7, newName: "renamed" });
+  }
+
+  it("runs the plan that was audited and reports it complete", async () => {
+    const rootPath = await createRoot();
+    const service = createService([stubRow("stub")]);
+    const filePath = path.join(rootPath, "a.ts");
+    await writeFile(filePath, DRAFT, "utf8");
+    await service.syncDocument({ rootPath, filePath, text: DRAFT });
+
+    const plan = await planFor(service, rootPath, filePath);
+    const applied = await service.renameApply({
+      rootPath,
+      filePath,
+      line: 2,
+      column: 7,
+      newName: "renamed",
+      planId: plan.planId,
+    });
+
+    expect(applied.status).toBe("ok");
+    expect(applied.complete).toBe(true);
+    expect(applied.appliedEdits).toBe(plan.editCount);
+    expect(applied.runId).not.toBeNull();
+    expect(await readFile(filePath, "utf8")).toBe(RENAMED);
+  });
+
+  // The plan carries the text each edit replaces, so it can be checked against reality at run
+  // time. This is what replaced the old all-or-nothing "recompute and refuse" gate.
+  it("records the text each edit expects to replace", async () => {
+    const rootPath = await createRoot();
+    const service = createService([stubRow("stub")]);
+    const filePath = path.join(rootPath, "a.ts");
+    await writeFile(filePath, DRAFT, "utf8");
+    await service.syncDocument({ rootPath, filePath, text: DRAFT });
+
+    const plan = await planFor(service, rootPath, filePath);
+
+    expect(plan.files[0].edits[0].oldText).toBe("target");
+  });
+
+  // The case that made the old design wrong for Otto: an agent writes to the file while the
+  // user is auditing. The job runs; only the edit whose ground truth moved is skipped.
+  it("applies what still fits when the file changed under the plan", async () => {
+    const rootPath = await createRoot();
+    const service = createService([stubRow("stub")]);
+    const filePath = path.join(rootPath, "a.ts");
+    await writeFile(filePath, DRAFT, "utf8");
+    await service.syncDocument({ rootPath, filePath, text: DRAFT });
+    const plan = await planFor(service, rootPath, filePath);
+
+    await writeFile(filePath, "const first = 1;\nconst MOVED = 2;\nconst last = 3;\n", "utf8");
+
+    const applied = await service.renameApply({
+      rootPath,
+      filePath,
+      line: 2,
+      column: 7,
+      newName: "renamed",
+      planId: plan.planId,
+    });
+
+    // The run still HAPPENS — that is the point of the status. This file contributed one
+    // edit and it moved, so the file itself failed while the run reports honestly on it.
+    expect(applied.status).toBe("ok");
+    expect(applied.complete).toBe(false);
+    expect(applied.skippedEdits).toBeGreaterThan(0);
+    expect(applied.files[0].kind).toBe("failed");
+    expect(applied.files[0].reason).toContain("changed after the plan");
+  });
+
+  it("puts the files back on undo", async () => {
+    const rootPath = await createRoot();
+    const service = createService([stubRow("stub")]);
+    const filePath = path.join(rootPath, "a.ts");
+    await writeFile(filePath, DRAFT, "utf8");
+    await service.syncDocument({ rootPath, filePath, text: DRAFT });
+
+    const plan = await planFor(service, rootPath, filePath);
+    const applied = await service.renameApply({
+      rootPath,
+      filePath,
+      line: 2,
+      column: 7,
+      newName: "renamed",
+      planId: plan.planId,
+    });
+    const undone = await service.renameUndo(applied.runId ?? "");
+
+    expect(undone.status).toBe("ok");
+    expect(undone.complete).toBe(true);
+    expect(await readFile(filePath, "utf8")).toBe(DRAFT);
+  });
+
+  it("reports a plan the host no longer holds rather than guessing at one", async () => {
+    const rootPath = await createRoot();
+    const service = createService([stubRow("stub")]);
+    const filePath = path.join(rootPath, "a.ts");
+    await writeFile(filePath, DRAFT, "utf8");
+    await service.syncDocument({ rootPath, filePath, text: DRAFT });
+
+    const applied = await service.renameApply({
+      rootPath,
+      filePath,
+      line: 2,
+      column: 7,
+      newName: "renamed",
+      planId: "never-planned",
+    });
+
+    expect(applied.status).toBe("expired");
+    expect(applied.runId).toBeNull();
+    expect(await readFile(filePath, "utf8")).toBe(DRAFT);
+  });
+
+  it("reports an unknown run rather than pretending to undo it", async () => {
+    const service = createService([stubRow("stub")]);
+
+    expect((await service.renameUndo("never-ran")).status).toBe("expired");
+  });
+
+  // A language server is a foreign process that answers in paths. One naming a file outside
+  // the workspace must not turn the daemon into a write primitive for it — and it is refused
+  // at PLAN time, so an unrunnable plan is never shown as if it could run.
+  it("refuses to plan at all when the server names a file outside the workspace", async () => {
+    const rootPath = await createRoot();
+    const outsideRoot = await createRoot();
+    const service = createService([stubRow("stub")]);
+    const filePath = path.join(outsideRoot, "a.ts");
+    await writeFile(filePath, DRAFT, "utf8");
+    await service.syncDocument({ rootPath, filePath, text: DRAFT });
+
+    const plan = await planFor(service, rootPath, filePath);
+
+    expect(plan.status).toBe("unavailable");
+    expect(plan.error).toContain("outside this workspace");
+    expect(await readFile(filePath, "utf8")).toBe(DRAFT);
   });
 });

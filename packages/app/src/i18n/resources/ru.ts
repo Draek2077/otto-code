@@ -2106,6 +2106,13 @@ export const ru: TranslationResources = {
     loading: "Loading files...",
     noResults: "No files",
   },
+  // Refine — the reviewed AI rewrite (projects/refine/refine.md). Only the two
+  // entry-point strings are translated here; the Refine tab itself is literal
+  // English pending the pre-release i18n sweep, like the rename/references tabs.
+  refine: {
+    open: "Refine with AI",
+    saveFirst: "Save or revert your changes first — Refine works from the file on disk.",
+  },
   refactor: {
     open: "Refactor with AI",
     title: "Refactor with AI",
@@ -2625,6 +2632,7 @@ export const ru: TranslationResources = {
         tabsPanes: "Вкладки и панели",
         projects: "Проекты",
         panels: "Панели",
+        editor: "File Editor",
         agentInput: "Вход Agent",
       },
       help: {
@@ -2671,6 +2679,12 @@ export const ru: TranslationResources = {
         sendMessage: "Отправить сообщение",
         queueMessage: "Сообщение в очереди",
         muteUnmuteVoiceMode: "Отключить голосовой режим /unmute",
+        editorSave: "Save file",
+        editorFind: "Find in file",
+        editorGoToLine: "Go to line",
+        editorGoToDefinition: "Go to definition",
+        editorFindReferences: "Find references",
+        editorRenameSymbol: "Rename symbol",
       },
       helpNotes: {
         showKeyboardShortcuts: "Доступно, когда фокус находится не в текстовом поле или терминале.",

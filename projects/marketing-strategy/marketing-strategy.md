@@ -70,6 +70,19 @@ Tone rules:
 | `cloud.tsx` contact fallbacks                  | "DM me on Discord"                             | GitHub Issues                                    |
 | `community-links.tsx` (app)                    | "Community" → Paseo Discord                    | "Feedback" → Otto Issues                         |
 | `packages/website/public/9viSwGkz_400x400.jpg` | Mo's avatar                                    | Deleted                                          |
+| `.github/ISSUE_TEMPLATE/*.yml` (all 3)         | "reach me on Discord" → Paseo's Discord invite | GitHub Issues / Discussions                      |
+| `packages/expo-two-way-audio/package.json`     | homepage+repository → `github.com/boudra` fork | Otto monorepo; bugs → Otto Issues                |
+| `shorten-path.test.ts`, `session*.test.ts`     | `moboudra` fixture username/displayName        | neutral `devuser` fixtures                       |
+
+The `author`/`bugs`-style attribution to genuine upstream authors was deliberately kept where
+it names the real original author and not Mo: Speechmatics stays credited as the
+`expo-two-way-audio` `author` (it's their MIT library, forked once by Mo, now vendored here);
+only the Mo-fork URLs were repointed.
+
+**Deliberately left as-is:** `.github/FUNDING.yml` still lists `github: [boudra]` — this is the
+repo's GitHub Sponsor button, which is the repo-level equivalent of the support page and part
+of the same intentional dedication. Revisit only if the sponsor dedication changes. (GitHub
+`custom:` URLs could add Agent Flow here to parallel the sponsor page if desired.)
 
 ## Open work — channels Otto actually needs
 

@@ -51,6 +51,15 @@ export function normalizeWorkspaceTabTarget(
   if (value.kind === "fileHistory") {
     return normalizeFileHistoryTabTarget(value);
   }
+  if (value.kind === "codeReferences") {
+    return normalizeCodeReferencesTabTarget(value);
+  }
+  if (value.kind === "codeRename") {
+    return normalizeCodeRenameTabTarget(value);
+  }
+  if (value.kind === "refine") {
+    return normalizeRefineTabTarget(value);
+  }
   if (value.kind === "visualizer") {
     const runId = trimNonEmpty(value.runId);
     return runId ? { kind: "visualizer", runId } : { kind: "visualizer" };
@@ -89,6 +98,126 @@ function normalizeFileHistoryTabTarget(
     return { kind: "fileHistory", path };
   }
   return { kind: "fileHistory", path, startLine, endLine };
+}
+
+/**
+ * A references tab needs all four fields to mean anything: the position is what was asked
+ * about, and the symbol is what the tab is called. Unlike `fileHistory`, a bad position
+ * cannot degrade to "the whole file" — there is no such search — so it drops the tab.
+ */
+function normalizeCodeReferencesTabTarget(
+  value: Extract<WorkspaceTabTarget, { kind: "codeReferences" }>,
+): WorkspaceTabTarget | null {
+  const path = trimNonEmpty(value.path);
+  const symbol = trimNonEmpty(value.symbol);
+  const line = normalizePositiveInteger(value.line);
+  const column = normalizePositiveInteger(value.column);
+  if (!path || !symbol || line === null || column === null) {
+    return null;
+  }
+  return { kind: "codeReferences", path, line, column, symbol };
+}
+
+type PathKeyedTarget = Extract<WorkspaceTabTarget, { kind: "fileHistory" | "refine" }>;
+
+function isPathKeyedTarget(value: WorkspaceTabTarget): value is PathKeyedTarget {
+  return value.kind === "fileHistory" || value.kind === "refine";
+}
+
+function pathKeyedTargetsEqual(left: PathKeyedTarget, right: PathKeyedTarget): boolean {
+  if (left.kind !== right.kind) {
+    return false;
+  }
+  if (left.kind === "refine" && right.kind === "refine") {
+    return left.paths[0] === right.paths[0];
+  }
+  return (
+    left.kind === "fileHistory" &&
+    right.kind === "fileHistory" &&
+    left.path === right.path &&
+    left.startLine === right.startLine &&
+    left.endLine === right.endLine
+  );
+}
+
+type PositionKeyedTarget = Extract<WorkspaceTabTarget, { kind: "codeReferences" | "codeRename" }>;
+
+function isPositionKeyedTarget(value: WorkspaceTabTarget): value is PositionKeyedTarget {
+  return value.kind === "codeReferences" || value.kind === "codeRename";
+}
+
+/**
+ * Position, not symbol name. Two identically named symbols in different scopes are two
+ * different things, and matching on the name would collapse them into one tab — precisely
+ * the confusion a language server exists to remove. The kind is part of it too: a rename job
+ * and a reference search on the same symbol are different tabs.
+ */
+function positionKeyedTargetsEqual(left: PositionKeyedTarget, right: PositionKeyedTarget): boolean {
+  return (
+    left.kind === right.kind &&
+    left.path === right.path &&
+    left.line === right.line &&
+    left.column === right.column
+  );
+}
+
+/**
+ * Every field required, for the references reason plus one: a rename job with no new name
+ * is not a job, and restoring a half-persisted one would put an Apply button in front of
+ * an edit nobody described.
+ */
+function normalizeCodeRenameTabTarget(
+  value: Extract<WorkspaceTabTarget, { kind: "codeRename" }>,
+): WorkspaceTabTarget | null {
+  const path = trimNonEmpty(value.path);
+  const symbol = trimNonEmpty(value.symbol);
+  const newName = trimNonEmpty(value.newName);
+  const line = normalizePositiveInteger(value.line);
+  const column = normalizePositiveInteger(value.column);
+  if (!path || !symbol || !newName || line === null || column === null) {
+    return null;
+  }
+  return { kind: "codeRename", path, line, column, symbol, newName };
+}
+
+/**
+ * A refine job needs at least one rewritable document; without one there is
+ * nothing the tab could ever write, so a half-persisted target is dropped
+ * rather than restored as an empty session. Read-only references are optional
+ * by nature — losing them costs context, not correctness.
+ */
+function normalizeRefineTabTarget(
+  value: Extract<WorkspaceTabTarget, { kind: "refine" }>,
+): WorkspaceTabTarget | null {
+  const paths = normalizePathList(value.paths);
+  if (paths.length === 0) {
+    return null;
+  }
+  const references = normalizePathList(value.references).filter((path) => !paths.includes(path));
+  const presetId = trimNonEmpty(value.presetId);
+  return {
+    kind: "refine",
+    paths,
+    ...(references.length > 0 ? { references } : {}),
+    ...(presetId ? { presetId } : {}),
+  };
+}
+
+function normalizePathList(value: readonly string[] | undefined): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of value) {
+    const path = trimNonEmpty(entry);
+    if (!path || seen.has(path)) {
+      continue;
+    }
+    seen.add(path);
+    out.push(path);
+  }
+  return out;
 }
 
 function normalizePositiveInteger(value: number | undefined): number | null {
@@ -156,14 +285,19 @@ export function workspaceTabTargetsEqual(
   if (left.kind === "visualizer" && right.kind === "visualizer") {
     return left.runId === right.runId;
   }
-  // Path plus scope: the whole-file history and a line-scoped history of the
-  // same file are two different questions, so they are two tabs.
-  if (left.kind === "fileHistory" && right.kind === "fileHistory") {
-    return (
-      left.path === right.path &&
-      left.startLine === right.startLine &&
-      left.endLine === right.endLine
-    );
+  // Two path-keyed kinds, sharing one branch to stay inside this function's
+  // complexity ceiling:
+  //   fileHistory — path PLUS scope, because whole-file history and a
+  //     line-scoped history of the same file are different questions.
+  //   refine — the primary path alone, because a second refine of the same
+  //     document is a fresh pin of the same job and supersedes the first.
+  if (isPathKeyedTarget(left) && isPathKeyedTarget(right)) {
+    return pathKeyedTargetsEqual(left, right);
+  }
+  // Both code-intelligence tabs are keyed the same way, so they share one branch —
+  // two branches here would push this function past its complexity ceiling.
+  if (isPositionKeyedTarget(left) && isPositionKeyedTarget(right)) {
+    return positionKeyedTargetsEqual(left, right);
   }
   // Singleton per workspace — kind alone settles identity.
   if (left.kind === "contextManagement") {
@@ -246,6 +380,18 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
         ? `_L${target.startLine}-${target.endLine}`
         : "";
     return `filehistory_${target.path}${scope}`;
+  }
+  if (target.kind === "codeReferences") {
+    return `coderefs_${target.path}:${target.line}:${target.column}`;
+  }
+  if (target.kind === "codeRename") {
+    return `coderename_${target.path}:${target.line}:${target.column}`;
+  }
+  // The primary path alone: a second refine of the same document supersedes the
+  // first, so neither the rest of the working set nor the preset is part of the
+  // identity — a re-request is a fresh pin of the same job.
+  if (target.kind === "refine") {
+    return `refine_${target.paths[0] ?? ""}`;
   }
   if (target.kind === "visualizer") {
     return target.runId ? `visualizer_run_${target.runId}` : "visualizer";

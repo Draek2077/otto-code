@@ -45,6 +45,10 @@ export interface ArchiveDependencies {
   markWorkspaceArchiving: (workspaceIds: Iterable<string>, archivingAt: string) => void;
   clearWorkspaceArchiving: (workspaceIds: Iterable<string>) => void;
   killTerminalsForWorkspace: (workspaceId: string) => Promise<void>;
+  // Stops the language servers rooted at a directory no active workspace points at
+  // any more. Optional so the test harnesses and the CLI paths need not wire an
+  // LspService; when absent, servers are left to the daemon's idle reaper.
+  stopLanguageServers?: (rootPath: string) => Promise<void>;
   // Deletes a local branch from the shared repo. Injectable for tests; defaults
   // to the real git-backed implementation.
   deleteLocalBranch?: (input: {
@@ -132,6 +136,13 @@ export async function archiveByScope(
       targetWorkspaceIds,
       request.requestId,
     );
+
+    if (targetDir !== null && archivedWorkspaceIds.length > 0) {
+      await stopLanguageServersForArchivedDirectories(dependencies, {
+        directories: [targetDir],
+        archivedWorkspaceIds,
+      });
+    }
 
     if (request.repoRoot) {
       try {
@@ -376,6 +387,52 @@ export async function archiveWorkspaceContents(
   }
 
   return archivedAgents;
+}
+
+export type StopLanguageServersDependencies = Pick<
+  ArchiveDependencies,
+  "listActiveWorkspaces" | "stopLanguageServers" | "sessionLogger"
+>;
+
+// A language server is keyed by DIRECTORY, not by workspace record, so it may only be
+// stopped once no active workspace still points at that directory — the same
+// last-reference rule the directory removal uses. Exported because project removal
+// archives its workspaces without going through archiveByScope and owes the same
+// teardown.
+//
+// Never throws: a language server that refuses to die must not fail an archive that has
+// already happened.
+export async function stopLanguageServersForArchivedDirectories(
+  dependencies: StopLanguageServersDependencies,
+  input: { directories: Iterable<string>; archivedWorkspaceIds: Iterable<string> },
+): Promise<void> {
+  const stop = dependencies.stopLanguageServers;
+  if (!stop) {
+    return;
+  }
+
+  const archivedWorkspaceIds = new Set(input.archivedWorkspaceIds);
+  const remainingActive = await dependencies.listActiveWorkspaces().catch(() => null);
+  if (remainingActive === null) {
+    return;
+  }
+
+  const unreferenced = [...new Set([...input.directories].map((dir) => resolve(dir)))].filter(
+    (dir) => isDirectoryUnreferenced(remainingActive, dir, archivedWorkspaceIds),
+  );
+
+  await Promise.all(
+    unreferenced.map(async (dir) => {
+      try {
+        await stop(dir);
+      } catch (error) {
+        dependencies.sessionLogger?.warn(
+          { err: error, targetPath: dir },
+          "Failed to stop language servers for archived workspace; leaving them to the idle reaper",
+        );
+      }
+    }),
+  );
 }
 
 // EXACTLY one last-reference predicate in the module. True when, after archiving

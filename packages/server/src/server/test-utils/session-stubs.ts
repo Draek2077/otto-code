@@ -74,6 +74,29 @@ export function asDaemonConfigStore(stub: {
   return createStub<SessionOptions["daemonConfigStore"]>(stub);
 }
 
+/**
+ * What a WebSocket-server test needs to get through construction. `get()` is not
+ * optional: the server reads `lsp` up front to seed the language-server pool's policy,
+ * so a store that only stubs `onChange` throws before the test starts.
+ */
+export function createDaemonConfigStoreStub(): {
+  onChange: () => () => void;
+  get: () => { lsp: Record<string, unknown> };
+} {
+  return {
+    onChange: vi.fn(() => () => {}),
+    get: vi.fn(() => ({
+      lsp: {
+        enabled: true,
+        languages: {},
+        maxRunningServers: 6,
+        idleMinutes: 10,
+        backgroundIdleMinutes: 2,
+      },
+    })),
+  };
+}
+
 export function asTerminalManager(stub: {
   [K in keyof NonNullable<SessionOptions["terminalManager"]>]?: unknown;
 }): NonNullable<SessionOptions["terminalManager"]> {

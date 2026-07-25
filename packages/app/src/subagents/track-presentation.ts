@@ -158,6 +158,37 @@ export function formatCompactTokenCount(tokens: number | null | undefined): stri
   return `${m >= 100 ? String(Math.round(m)) : m.toFixed(1).replace(/\.0$/, "")}M`;
 }
 
+/**
+ * How much work the sub-agent has done, e.g. "1 tool", "89 tools". Returns null
+ * for absent/zero so a provider that reports no count renders nothing rather
+ * than a bare "0 tools". Raw count on purpose — unlike tokens, this number stays
+ * legible at any size and rounding it would hide the difference between 89 and
+ * 140 tool calls. See docs/chat-lifecycle.md (the subagents track).
+ */
+export function formatSubagentToolUseCount(count: number | null | undefined): string | null {
+  if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) {
+    return null;
+  }
+  const whole = Math.floor(count);
+  if (whole <= 0) {
+    return null;
+  }
+  return `${whole} ${whole === 1 ? "tool" : "tools"}`;
+}
+
+/**
+ * The tool the sub-agent is running right now — the signal that turns "spinning"
+ * into "spinning _on a Bash_". The daemon already clears it on terminal rows, so
+ * this only trims and drops blanks; it never invents a value for a provider that
+ * doesn't report one. See docs/chat-lifecycle.md (the subagents track).
+ */
+export function formatSubagentCurrentTool(tool: string | null | undefined): string | null {
+  if (typeof tool !== "string") {
+    return null;
+  }
+  return tool.trim() || null;
+}
+
 /** Sum of the cumulative token totals across all rows (incl. completed). */
 export function sumSubagentTokens(rows: readonly SubagentRow[]): number {
   let total = 0;
@@ -210,7 +241,7 @@ export function isSubagentRowRunning(status: SubagentRow["status"]): boolean {
 /**
  * Frozen run duration (createdAt → updatedAt) for a terminal row, e.g. "3m 12s".
  * Returns null while the row is still running — the track renders a live ticker
- * for those instead. See projects/subagent-liveness/subagent-liveness.md (liveness signals).
+ * for those instead. See docs/chat-lifecycle.md (the subagents track).
  */
 export function formatSubagentElapsed(row: SubagentRow): string | null {
   if (isSubagentRowRunning(row.status)) {

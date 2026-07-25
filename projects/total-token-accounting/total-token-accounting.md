@@ -95,7 +95,7 @@ descendants.cumulativeTokens` (walk `parentAgentId`, both observed and attended 
    sub-agents, workflows, anything spawned from it. Toggleable in **general settings**
    (device-local, e.g. `chatMetricsBar`, default TBD). Metric set to iron out here: total tokens
    (the number from step 1) is the anchor; candidates alongside it are active/completed sub-agent
-   counts, elapsed time, tool-call count (needs subagent-liveness 6c's daemon counter), and cost —
+   counts, elapsed time, tool-call count (the daemon's per-sub-agent `toolUseCount`, shipped 2026-07-25), and cost —
    pick the few that are honest TODAY client-side for v1, grow as daemon counters land. The
    glossary rule (one label, no synonyms) applies — proposal: **"total tokens"** = cumulative
    spend, **"context"** = window occupancy, never mixed.

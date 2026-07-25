@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -252,6 +252,68 @@ describe("closing a document", () => {
 
     await documents.closeWorkspace(rootPath);
 
+    expect(documents.openCount()).toBe(0);
+  });
+});
+
+describe("querying a file no editor is mirroring", () => {
+  it("opens it from disk so the server can answer about it", async () => {
+    const rootPath = await createRoot();
+    const documents = createDocuments([stubRow("stub")]);
+    const filePath = path.join(rootPath, "a.ts");
+    await writeFile(filePath, "const onDisk = 1;\n", "utf8");
+
+    // No sync: this is a References tab restored after a client reload, whose file has
+    // no mounted editor tab to mirror the buffer.
+    const bound = await documents.serversFor(rootPath, filePath);
+
+    expect(await received(bound[0].connection)).toEqual([
+      {
+        kind: "didOpen",
+        uri: expect.stringContaining("a.ts"),
+        version: 1,
+        languageId: "typescript",
+        text: "const onDisk = 1;\n",
+      },
+    ]);
+  });
+
+  it("re-asking does not re-open it", async () => {
+    const rootPath = await createRoot();
+    const documents = createDocuments([stubRow("stub")]);
+    const filePath = path.join(rootPath, "a.ts");
+    await writeFile(filePath, "const onDisk = 1;\n", "utf8");
+
+    const bound = await documents.serversFor(rootPath, filePath);
+    await documents.serversFor(rootPath, filePath);
+    await documents.serversFor(rootPath, filePath);
+
+    const notifications = await received(bound[0].connection);
+    expect(notifications.map((entry) => entry.kind)).toEqual(["didOpen"]);
+  });
+
+  it("an editor that mounts afterwards takes the document over with a didChange", async () => {
+    const rootPath = await createRoot();
+    const documents = createDocuments([stubRow("stub")]);
+    const filePath = path.join(rootPath, "a.ts");
+    await writeFile(filePath, "const onDisk = 1;\n", "utf8");
+
+    const bound = await documents.serversFor(rootPath, filePath);
+    await documents.sync({ rootPath, filePath, text: "const edited = 1;\n" });
+
+    expect(await received(bound[0].connection)).toEqual([
+      expect.objectContaining({ kind: "didOpen", version: 1, text: "const onDisk = 1;\n" }),
+      expect.objectContaining({ kind: "didChange", version: 2, text: "const edited = 1;\n" }),
+    ]);
+  });
+
+  it("leaves the servers unopened when the file is not there", async () => {
+    const rootPath = await createRoot();
+    const documents = createDocuments([stubRow("stub")]);
+
+    const bound = await documents.serversFor(rootPath, path.join(rootPath, "gone.ts"));
+
+    expect(await received(bound[0].connection)).toEqual([]);
     expect(documents.openCount()).toBe(0);
   });
 });

@@ -2791,7 +2791,7 @@ describe("session checkout pull request auto-merge", () => {
               autoMergeRequest: {
                 enabledAt: "2026-05-13T17:00:00Z",
                 mergeMethod: "SQUASH",
-                enabledBy: "moboudra",
+                enabledBy: "devuser",
               },
               viewerCanEnableAutoMerge: false,
               viewerCanDisableAutoMerge: true,
@@ -2818,7 +2818,7 @@ describe("session checkout pull request auto-merge", () => {
           autoMergeRequest: {
             enabledAt: "2026-05-13T17:00:00Z",
             mergeMethod: "SQUASH",
-            enabledBy: "moboudra",
+            enabledBy: "devuser",
           },
           viewerCanEnableAutoMerge: false,
           viewerCanDisableAutoMerge: true,
@@ -3014,7 +3014,7 @@ describe("session checkout pull request auto-merge", () => {
               autoMergeRequest: {
                 enabledAt: "2026-05-13T17:00:00Z",
                 mergeMethod: "SQUASH",
-                enabledBy: "moboudra",
+                enabledBy: "devuser",
               },
               viewerCanEnableAutoMerge: false,
               viewerCanDisableAutoMerge: true,

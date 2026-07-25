@@ -54,7 +54,19 @@ export type KeyboardActionId =
   | "workspace.archive"
   | "view.toggle.focus"
   | "theme.cycle"
-  | "message-input.action";
+  | "message-input.action"
+  // File Editor actions. Unlike every other id here these are NOT dispatched by
+  // the app — the focused CodeMirror editor executes them, from a keymap built
+  // out of these very bindings (see editor/editor-key-bindings.ts). They live in
+  // the registry so they are listed and rebindable in Settings, and so that
+  // being focus-scoped they outrank a general binding on the same combo while
+  // the editor has focus. See route-shortcut.ts for the other half of that.
+  | "editor.save"
+  | "editor.find"
+  | "editor.goToLine"
+  | "editor.goToDefinition"
+  | "editor.findReferences"
+  | "editor.renameSymbol";
 
 export type KeyboardShortcutPayload =
   | { index: number }

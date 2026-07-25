@@ -1,15 +1,17 @@
 # LSP code intelligence
 
-**Status:** **Phases 3, 5a and 5b complete** (2026-07-25). Go-to-definition resolves a position
+**Status:** **PHASE 5 COMPLETE** (2026-07-25) — 5a hover, 5b diagnostics, 5c references tab, 5d rename job tab. Phases 1-3 shipped earlier. Go-to-definition resolves a position
 through a real language server, with the ctags index as the no-server fallback; hover explains the
 symbol under the pointer; and **problems are marked, explained, and live** — squiggle, gutter glyph,
 and the server's own words on hover. **Daemon → Code** carries the master switch, per-language rows
 with honest cost copy, and the running-servers table.
 
 **Phase 4 (Angular) is deferred indefinitely** — see the Phases section for why and for the
-framework taxonomy that makes it decidable. 5c and 5d have their daemon capability, RPCs
-(`code.references`, `code.rename.preview`) and client methods, and owe only their tabs — but see the
-blocking defect below before building 5d's Apply.
+framework taxonomy that makes it decidable; the multi-server binding it existed to prove now has a
+real production user in the `oxlint` row.
+
+**The blocking defect that gated 5d's Apply is fixed** — see "Phases 5c and 5d, as built" below. Its
+root cause was a client capability we never advertised, not a limitation of tsserver.
 
 **Verified live against a real daemon** (2026-07-25) by driving the WebSocket directly against this
 repo as the workspace:
@@ -58,9 +60,10 @@ Decisions Phase 1 settled that the sections below predate:
   ComSpec with `/d /s /c` and explicit quoting instead; a spaced-path test covers it.
 - **`typescript-language-server` 5.3 sends no `serverInfo`** — only `capabilities`. It is optional
   in LSP; do not assert on it.
-- **The pool holds no timers.** `reapIdle()` is called by the daemon on an interval and every
-  decision reads an injected clock, which is what makes idle/backoff behaviour testable without
-  waiting on wall time.
+- **The pool holds no timers.** Every decision reads an injected clock, which is what makes
+  idle/backoff behaviour testable without waiting on wall time. The other half of that bargain is
+  that the daemon must supply the tick — see "The lifecycle wiring, as built" below, which is where
+  it was owed for several phases and not paid.
 
 The C# handshake question is **settled** — see the Languages section, which also corrects the
 binary this charter originally named.
@@ -125,6 +128,44 @@ a new **Code** host section.
   so instead of guessing.
 - The running table is a real table (server / workspace / uptime / Stop), per the repo's
   "data needs a table, not a card" rule.
+
+---
+
+## The lifecycle wiring, as built (2026-07-25)
+
+The pool's cost controls were written, tested and then **not called**. `reapIdle`,
+`setActiveWorkspace`, `stopWorkspace` and `stopAll` had zero production call sites through Phase 5:
+a repo-wide grep found them only in `pool.test.ts`, `service.test.ts` and e2e teardowns. Everything
+this charter says above about idle exit, background reap and archive/shutdown teardown was therefore
+describing tests, not the daemon. The only thing actually bounding the process count was
+`enforceRunningCap` — the LRU cap, which is a backstop, not a policy.
+
+The failure mode is worth naming because it is not a bug in any one file. "The pool holds no timers"
+is a correct testability decision; what it does is **move an obligation out of the subsystem**, and
+nothing in the subsystem can fail when the obligation is not met. Every unit test still passed.
+
+| Obligation                    | Who pays it now                                                                                                             |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| The idle tick                 | `websocket-server.ts` — `startLspIdleReapInterval`, every 30s, `unref`'d, cleared in `close()`                              |
+| Which workspace is "active"   | `LspService.setActiveWorkspace`, called from its own request path (`syncDocument` + `capableServersFor`)                    |
+| Teardown on workspace archive | `archiveByScope` via the `stopLanguageServers` dependency, gated on the same last-reference rule the directory removal uses |
+| Teardown on daemon shutdown   | `websocket-server.close()` → `lspService.stopAll()`                                                                         |
+
+- **The active workspace is derived, not pushed.** There is no focus signal on the wire, and adding
+  one would give the idle policy a second source of truth — the one that goes stale is the one that
+  leaves servers running. Every code-intelligence request already _is_ a focus signal: a hover, a
+  definition lookup or a buffer sync only happens for the file someone is looking at. This is what
+  finally makes `backgroundIdleMinutes` mean anything; until it was wired, `activeWorkspaceKey`
+  stayed `null` forever and every server got the long allowance.
+- **Archive teardown is keyed by directory, not by workspace record**, because that is how a server
+  is keyed. Two workspace records over one `cwd` mean archiving the first must not stop the servers
+  the second is still using — the same predicate (`isDirectoryUnreferenced`) that decides whether
+  the worktree directory itself may be removed. Project removal archives workspaces without going
+  through `archiveByScope`, so it calls the shared helper directly.
+- **None of the teardown may fail an archive.** The archive has already happened by the time the
+  servers are stopped; a server that refuses to die is logged and left to the reaper.
+- The regression guard is `websocket-server.lsp-lifecycle.test.ts` — that the daemon ticks and that
+  shutdown stops everything. Not what the pool does with the tick, which `pool.test.ts` already owns.
 
 ---
 
@@ -253,9 +294,9 @@ realistic steady state is **the active workspace's servers only** — usually 1�
 1. **Lazy spawn.** Nothing starts until you open or query a file of that language _in that
    workspace_. Three open workspaces where you've only touched TypeScript in one = one process.
 2. **Background workspaces reap fast.** A workspace that stops being the active one starts a short
-   idle timer (default ~2 min) instead of the normal long one (~15 min). Switch away, get the memory
-   back; switch back, pay a warm-up you asked for by switching.
-3. **A hard global cap.** "Max running language servers" (default 4), LRU-evicted. This is the
+   idle timer (default 2 min) instead of the normal long one (default 10 min). Switch away, get the
+   memory back; switch back, pay a warm-up you asked for by switching.
+3. **A hard global cap.** "Max running language servers" (default 6), LRU-evicted. This is the
    backstop that makes the worst case _bounded_ rather than _unlikely_ — no combination of
    workspaces, languages and bad luck can multiply past it.
 
@@ -438,7 +479,9 @@ a language can have a server without a grammar (it just won't be highlighted) an
   (checked), and Content-Length framing is not worth hand-rolling.
 - **Process model:** one server per (workspace root × server), and **a document may be bound to
   several** (Angular + TypeScript on the same `.ts`). Lazily spawned, idle-timeout exit, killed on
-  workspace archive and daemon shutdown, restarted with capped backoff on crash.
+  workspace archive and daemon shutdown, restarted with capped backoff on crash. Every clause of
+  that sentence except lazy spawn and crash backoff needed a caller outside the pool, and for
+  several phases had none — see "The lifecycle wiring, as built".
 - **Resolution order is workspace-first, always.** A server that type-checks the project must be the
   version the project itself installs — the workspace's `node_modules/.bin` before our bundled copy
   before PATH. Angular makes this mandatory rather than merely correct.
@@ -674,6 +717,160 @@ the project yet.
 > grace window per workspace × server), and have the tab state plainly when a plan may be partial
 > rather than implying completeness. 5c wants the same guard but degrades gracefully — an
 > under-reported reference list is a bad search, not a bad edit.
+
+### Phases 5c and 5d, as built — and the root cause the charter had wrong
+
+**The blocking defect is FIXED, and its cause was ours, not tsserver's.** This charter said
+"`typescript-language-server` answers `initialize` immediately and loads the project lazily
+**without reporting `$/progress`**". That was a measurement of a bug we had: **we never
+advertised `window.workDoneProgress` in our client capabilities**, and the LSP spec forbids a
+server from starting server-initiated progress unless the client declares it. Answering
+`window/workDoneProgress/create` is not enough — the capability has to be advertised for the
+server to ask at all.
+
+One line in `initializeParams` changed the picture completely. Measured on this repo:
+
+| elapsed   | busy       | `references` hits | files |
+| --------- | ---------- | ----------------- | ----- |
+| 166ms     | —          | 2                 | 1     |
+| 1.47s     | **→ busy** |                   |       |
+| 2.1–8.1s  | busy       | 2                 | 1     |
+| **12.1s** | **→ idle** |                   |       |
+| 16.2s     | idle       | **14**            | **4** |
+
+So the truth is 14 sites in 4 files, the wrong answer persists for **~12 seconds**, and it is
+now **observable** rather than guessed at. Three consequences:
+
+- **No grace-window timer, and good riddance.** A fixed duration would have had to guess, and
+  the probe shows why guessing fails twice over: 5s would be too short here, and a
+  converge-until-unchanged heuristic would ALSO have been fooled — "2 hits" was stable across
+  four samples spanning 7.6 seconds.
+- **`indexing` now outranks having results.** The old rule only reported `indexing` for an
+  _empty_ result, which is exactly backwards: a complete-looking answer that is 7× short is
+  more dangerous than an empty one. `references` returns the partial set **with**
+  `status: "indexing"` so the tab can show it and mark it provisional.
+- **The sidebar spinner works for TypeScript now**, which this charter previously recorded as
+  "correct but nearly invisible". It was invisible because nothing was ever reported.
+
+**5c — the references tab.** `codeReferences` workspace tab, one per (path, line, column) so a
+second search sits beside the first. Grouped by file, with the source line behind each hit
+(one `readTextFile` per _file_, not per hit) — a reference list without the line is a list of
+places to go and look, which is most of the work the list was supposed to save. The
+provisional chip is driven by the `indexing` status above, and the hook re-asks with backoff
+until the project settles or a 90s ceiling gives up and says so.
+
+**5d — the rename job tab.** Context menu → a dialog for the _name only_ → a `codeRename` tab
+holding the dry run → explicit Apply. The dialog is deliberately not the audit surface: one
+field with one answer is a dialog's shape; "here is everything this will change" is not.
+
+**`code.rename.apply` carries the `planId`, NOT the edits.** That is the load-bearing decision.
+A request carrying its own edit list would be a remote arbitrary-write primitive wearing a
+rename's name — any client could post any text at any path. Instead the daemon recomputes the
+plan and passes four gates, each with a test:
+
+1. The plan is recomputed, never trusted from the client.
+2. Recomputation re-applies the indexing guard, so a preview taken while settled cannot be
+   cashed in after the server starts reloading.
+3. The `planId` must match, or nothing is written and the answer is `stale`.
+4. **Every file must be inside the workspace.** A language server is a foreign process that
+   answers in paths; one naming `../../.ssh/config` must not make the daemon write there. Any
+   escape fails the whole apply before a single write. `path.relative`, not a string prefix —
+   a prefix test says `/repo-evil` is inside `/repo`.
+
+Honest limit, stated rather than papered over: writes are all-or-nothing at the _check_ stage
+but not transactional at the _filesystem_ stage. An I/O failure partway leaves earlier files
+written. The fix would be a journal, which a symbol rename does not warrant.
+
+### The rename became a reversible job (2026-07-25)
+
+**`renameApply` no longer recomputes-and-refuses. It runs the stored plan.** Product-owner
+direction, and the reasoning corrects a mistake this charter made one section earlier.
+
+The first design recomputed the plan at apply time and refused on any difference (`stale`). The
+property that was protecting is real — _the client must not be the author of the edits_ — but it
+was never `recompute` that provided it. Keeping the plan **daemon-side**, keyed by `planId`,
+preserves it exactly while giving the user what a dry run actually promises: the edits you
+approved are the edits that run.
+
+And the refusal was wrong for this product specifically. Otto exists to run agents that write
+files; "a file changed since you looked" is the **common** case here, not the exceptional one.
+A gate that fires constantly is a failure mode wearing a safety mechanism's clothes.
+
+`lsp/edit-job.ts` owns the machinery, and knows nothing about renames or language servers — a
+symbol rename is one _planner_ feeding it; a file rename would be another. What it owns is the
+part that is the same either way and the part that is dangerous: writing, recording what was
+written, and being able to take it back. **15 tests.**
+
+Three properties carry the design:
+
+- **Each edit carries `oldText`** — the text it expects to replace, captured by reading the
+  files at plan time. Safety moved from all-or-nothing to per-edit: a file that changed
+  underneath loses only the edits whose ground truth moved, the rest still land, and the ones
+  that did not are named. A file that cannot be read keeps its edits with an empty `oldText`
+  rather than being dropped, because dropping it would quietly shrink the blast radius the user
+  is being shown.
+- **Every write is journalled** (before- and after-image), so `renameUndo` can reverse the run.
+- **Undo is verified the same way as apply.** A file is restored only if it still holds exactly
+  what the run wrote. Anything else means someone edited it since, and a blind restore would
+  destroy that work — so it is reported as `changedSince` and left alone. That check is what
+  makes undo safe rather than merely available.
+
+`code.rename.apply`'s status is now three-valued (`ok` / `expired` / `escaped`) and **`ok` means
+the run happened, not that everything applied** — `complete` and the per-file outcomes carry
+that. A run where two of fourteen edits no longer fit still wrote twelve, and reporting it as a
+failure would hide them, and hide the fact that there is now something to undo.
+
+Workspace containment moved to **plan** time as well as run time: an unrunnable plan should
+never be shown as if it could run.
+
+The tab is now a job surface: plan → run → per-file report → undo → **close**. One action slot
+whose meaning follows the phase, rather than Apply and Undo both on screen asking the user to
+work out which is live.
+
+**Re-planning after an undo does not work, and the tab no longer offers it (2026-07-25).**
+Reported from use: undo succeeded, "Plan again" then failed and the tab was stuck. The cause is
+structural, not a bug in the button. `edit-job` writes and restores files **itself** — it is the
+one path in this subsystem that mutates a workspace without going through `documents.sync`, and
+nothing tells the language servers. We advertise no file watchers either. So after apply, and
+again after undo, a bound server's in-memory copy of those files is whatever it last saw, and a
+rename planned against it is a rename of a symbol that is not there any more.
+
+Product-owner call: an undone rename is **terminal**. The replan control is withdrawn in the
+`undone` phase and the action slot becomes `Close` (`closeCurrentTab`); the user starts a fresh
+rename from the file. Cheaper and more honest than a button that cannot work.
+
+The real fix, if this is ever wanted back, is to notify the servers after a job runs — a
+`workspace/didChangeWatchedFiles` for the written paths, plus a re-sync of any open document —
+and it belongs in `edit-job`'s completion path, not in the rename planner. Note the cost first:
+that turns every apply/undo into an LSP write-through, and both `renameApply` and `renameUndo`
+would need to wait for it before the panel can plan again.
+
+### A query must not depend on another tab being open (2026-07-25)
+
+Reported from use: reload the client (Ctrl+R, or an HMR rebuild) with a References tab open and
+it comes back **"0 references in 0 files"** for a symbol that plainly has them, and Refresh
+never recovers it.
+
+The tab was fine. The **document mirror** was the missing link. `LspDocuments.serversFor` used to
+send `didOpen` only when some editor had already called `code.document.sync` for that path — and
+the only caller of that is `useCodeDocument`, which lives in the **file pane**. A pane mounts
+just its frontmost tab, so after a reload the References tab is on top and the source file's
+editor tab never mounts, never mirrors, and the language server is asked
+`textDocument/references` for a URI it was never handed. tsserver answers **empty** for that —
+not an error, just nothing — so the daemon reported `ok` with zero locations and the panel said,
+accurately and uselessly, "No references found." Re-asking reproduced the same state exactly.
+
+The fix belongs in `LspDocuments`, not in the panels: `serversFor` now loads the file from disk
+and registers it when nothing is mirroring it, so **every position query is self-sufficient**.
+Definition, hover, references, and rename-preview all route through it, so all four stop
+depending on which tab happens to be frontmost. The loaded document is kept in the map rather
+than opened-and-dropped — a results tab re-asks, and the indexing poll re-asks several times.
+An editor tab that mounts later takes it over on its first `sync`: identical text is a no-op, a
+differing draft bumps the version and sends `didChange`. Best-effort throughout — missing,
+unreadable, or over 4 MB leaves the servers unopened, which is exactly the old behaviour.
+
+The invariant to keep: **"answers come from the draft, not the disk" means the draft when one
+exists — not "only when one exists."** 4 tests in `documents.test.ts`.
 
 ### What Phase 5 owes the indexing indicator
 

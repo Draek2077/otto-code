@@ -330,6 +330,7 @@ function makeManagedAgent(input: {
     unsubscribeSession: null,
     session: null,
     activeForegroundTurnId: input.lifecycle === "running" ? "turn-1" : null,
+    steerQueue: [],
   };
 }
 
@@ -1240,6 +1241,10 @@ test("archive emits an authoritative agent_update upsert for subscribed clients"
       agentManager: asAgentManager({
         subscribe: () => () => {},
         listAgents: () => [],
+        // archiveAgentForClose asks this first so it can route observed
+        // subagents past archiveAgentCommand. Unstubbed, the stub proxy throws
+        // before the real archive path ever runs.
+        getObservedSubagentPayload: () => null,
         getAgent: () => null,
         archiveAgent: async () => {
           const archivedAt = new Date().toISOString();
@@ -1605,8 +1610,10 @@ test("close_items_request archives agents and kills terminals in one batch", asy
       agentManager: asAgentManager({
         subscribe: () => () => {},
         listAgents: () => [],
+        getObservedSubagentPayload: () => null,
         getAgent: (agentId: string) => (agentId === "agent-1" ? { id: agentId } : null),
         hasInFlightRun: (agentId: string) => agentId === "agent-1",
+        clearSteerQueue: () => 0,
         cancelAgentRun,
         archiveAgent: async () => ({ archivedAt }),
         clearAgentAttention: async () => {},
@@ -1773,8 +1780,10 @@ test("close_items_request archives stored agents that are not currently loaded",
       agentManager: asAgentManager({
         subscribe: () => () => {},
         listAgents: () => [],
+        getObservedSubagentPayload: () => null,
         getAgent: (agentId: string) => (agentId === "agent-live" ? { id: agentId } : null),
         hasInFlightRun: () => false,
+        clearSteerQueue: () => 0,
         archiveAgent: async (agentId: string) => {
           if (agentId !== "agent-live") {
             throw new Error(`Unexpected live archive: ${agentId}`);
@@ -1932,9 +1941,11 @@ test("close_items_request continues after an archive failure", async () => {
       agentManager: asAgentManager({
         subscribe: () => () => {},
         listAgents: () => [],
+        getObservedSubagentPayload: () => null,
         getAgent: (agentId: string) =>
           agentId === "agent-bad" || agentId === "agent-good" ? { id: agentId } : null,
         hasInFlightRun: () => false,
+        clearSteerQueue: () => 0,
         archiveAgent: async (agentId: string) => {
           if (agentId === "agent-bad") {
             throw new Error("archive failed");
@@ -3914,7 +3925,7 @@ test("open_project_request does not unarchive an archived parent workspace for a
       projectId: home,
       rootPath: home,
       kind: "non_git",
-      displayName: "moboudra",
+      displayName: "devuser",
       createdAt: "2026-04-24T07:00:00.000Z",
       updatedAt: archivedAt,
       archivedAt,
@@ -3927,7 +3938,7 @@ test("open_project_request does not unarchive an archived parent workspace for a
       projectId: home,
       cwd: home,
       kind: "directory",
-      displayName: "moboudra",
+      displayName: "devuser",
       createdAt: "2026-04-24T07:00:00.000Z",
       updatedAt: archivedAt,
       archivedAt,

@@ -16,6 +16,8 @@ import type {
   CodeDocumentCloseRequest,
   CodeHoverRequest,
   CodeReferencesRequest,
+  CodeRenameApplyRequest,
+  CodeRenameUndoRequest,
   CodeRenamePreviewRequest,
   LspServersListRequest,
   LspServerStopRequest,
@@ -703,6 +705,7 @@ export class WorkspaceFilesSession {
           files: plan.files,
           fileCount: plan.fileCount,
           editCount: plan.editCount,
+          planId: plan.planId,
           error: plan.error,
           requestId: request.requestId,
         },
@@ -718,6 +721,101 @@ export class WorkspaceFilesSession {
           files: [],
           fileCount: 0,
           editCount: 0,
+          planId: "",
+          error: getErrorMessage(error),
+          requestId: request.requestId,
+        },
+      });
+    }
+  }
+
+  /**
+   * The one request in this subsystem that writes. It carries no edits — only the `planId`
+   * of the plan the user audited — so the daemon's own language server stays the sole
+   * author of what lands on disk. See `LspService.renameApply` for the four gates.
+   */
+  async handleCodeRenameApplyRequest(request: CodeRenameApplyRequest): Promise<void> {
+    const cwd = request.cwd.trim();
+    try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
+      const applied = await this.lspService.renameApply({
+        rootPath: cwd,
+        filePath: this.resolveWorkspacePath(cwd, request.path),
+        line: request.line,
+        column: request.column,
+        newName: request.newName,
+        planId: request.planId,
+      });
+      this.host.emit({
+        type: "code.rename.apply.response",
+        payload: {
+          cwd: request.cwd,
+          path: request.path,
+          newName: request.newName,
+          status: applied.status,
+          runId: applied.runId,
+          files: applied.files,
+          appliedFiles: applied.appliedFiles,
+          appliedEdits: applied.appliedEdits,
+          skippedEdits: applied.skippedEdits,
+          complete: applied.complete,
+          error: applied.error,
+          requestId: request.requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "code.rename.apply.response",
+        payload: {
+          cwd: request.cwd,
+          path: request.path,
+          newName: request.newName,
+          status: "expired",
+          runId: null,
+          files: [],
+          appliedFiles: 0,
+          appliedEdits: 0,
+          skippedEdits: 0,
+          complete: false,
+          error: getErrorMessage(error),
+          requestId: request.requestId,
+        },
+      });
+    }
+  }
+
+  /**
+   * Take a run back. Carries only the run id — the daemon holds the before-images, so an
+   * undo can no more be forged into an arbitrary write than an apply can.
+   */
+  async handleCodeRenameUndoRequest(request: CodeRenameUndoRequest): Promise<void> {
+    const cwd = request.cwd.trim();
+    try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
+      const undone = await this.lspService.renameUndo(request.runId);
+      this.host.emit({
+        type: "code.rename.undo.response",
+        payload: {
+          cwd: request.cwd,
+          runId: request.runId,
+          status: undone.status,
+          files: undone.files,
+          restoredFiles: undone.restoredFiles,
+          complete: undone.complete,
+          error: undone.error,
+          requestId: request.requestId,
+        },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "code.rename.undo.response",
+        payload: {
+          cwd: request.cwd,
+          runId: request.runId,
+          status: "expired",
+          files: [],
+          restoredFiles: 0,
+          complete: false,
           error: getErrorMessage(error),
           requestId: request.requestId,
         },

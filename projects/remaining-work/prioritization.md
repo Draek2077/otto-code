@@ -29,9 +29,10 @@ Seven folders existed with no row in the table at all: `agent-orchestration`,
 `token-cost-fixes`. Added.
 
 Confirmed genuinely unbuilt by grep (zero hits in `packages/*/src`): steer-queue
-(`delivery.*queue`), personality-memory (`remember_`), computer-use (`computerUse`),
+(`delivery.*queue` — since shipped 2026-07-25, so that grep now hits), personality-memory (`remember_`), computer-use (`computerUse`),
 preview-file-tabs (`isPreviewTab`), git-hosting GitLab
-(`gitlab`), visualizer Arena (`arenaMode`), subagent-liveness 6b/6c (`toolUseCount`).
+(`gitlab`), visualizer Arena (`arenaMode`), subagent-liveness 6b/6c (`toolUseCount` —
+since shipped 2026-07-25, so that grep now hits).
 Mermaid: one hit repo-wide, so file-rendering's headline item is untouched.
 
 ---
@@ -89,21 +90,21 @@ This is where the queue starts.
 | **App-wide FPS degrades over time**                |   3   |  4   | **4**  |  1   | The app gets worse the longer it stays open — brutal for a tool you leave running all day. Measure first; "no resource reporting at all" is the instrument. Underrated in v1                                                                                                                                            |
 | ~~**diff-base**~~ _(shipped)_                      |   2   |  2   | **4**  |  0   | Was: Changes view fills with other teams' merged work on a stacked branch. Shipped 2026-07-24 — fork-point base resolution + per-worktree base override. See `docs/changes-view.md`                                                                                                                                     |
 | ~~**Go-to-definition (client half)**~~ _(shipped)_ |   2   |  2   | **4**  |  0   | Shipped: `use-go-to-definition.ts`, `word-at-cursor.ts`, `definition-picker-dialog.tsx` calling `code.symbols`. Note it runs on the **ctags** path — `lsp-code-intelligence` §3.4 replaces that word-based lookup with a position-based one, so this client wiring is rewritten in that charter's Phase 3, not extended |
-| **steer-queue**                                    |   2   |  3   | **4**  |  1   | Changes every supervision interaction: today any prompt to a busy agent clobbers its turn. Absorbs "queued messages should merge into one send"                                                                                                                                                                         |
+| ~~**steer-queue**~~ _(shipped)_                    |   2   |  3   | **4**  |  1   | Was: any prompt to a busy agent clobbers its turn. Shipped 2026-07-25 — `delivery: "queue"` on every entrypoint, daemon-owned FIFO drained at turn finalize, all providers at once. Absorbed "queued messages should merge into one send". See `docs/chat-lifecycle.md`                                                 |
 | Composer paste overflow                            |   1   |  1   |   3    |  0   | Pasting a large block pushes Send off-screen. You paste code all day                                                                                                                                                                                                                                                    |
 | **file-rendering (mermaid first)**                 |   3   |  2   |   3    |  1   | Mermaid is a _listed bug_. Diagrams are dead in both chat and the file viewer; one pipeline fixes both                                                                                                                                                                                                                  |
 | Keyboard shortcut overhaul                         |   3   |  3   |   3    |  0   | Editor shortcuts fight Otto's global ones. Hit constantly; plan already written                                                                                                                                                                                                                                         |
 
 ### 3.2 Small tails worth taking opportunistically
 
-| Project                      | Scope | Diff | Impact | Enab | Why here                                                           |
-| ---------------------------- | :---: | :--: | :----: | :--: | ------------------------------------------------------------------ |
-| `projects/todos/` (rest)     |   2   |  1   |   3    |  0   | Pre-extracted as independently-pullable by design                  |
-| preview-file-tabs            |   2   |  2   |   3    |  0   | Feasibility already confirmed — "no blockers, just work"           |
-| subagent-liveness 6b/6c      |   2   |  2   |   3    |  0   | "Is this thing alive or hung?" without opening the row. 6a shipped |
-| Visualizer actions disappear |   1   |  2   |   2    |  0   | Long bash/read/write shows, hides, reappears on completion         |
-| web-search-providers         |   1   |  1   |   2    |  0   | Contained to one provider settings panel; free engines only        |
-| sidebar-reveal Increment 2   |   1   |  2   |   2    |  0   | Tutorial create-workspace step; primitive already shipped          |
+| Project                      | Scope | Diff | Impact | Enab | Why here                                                    |
+| ---------------------------- | :---: | :--: | :----: | :--: | ----------------------------------------------------------- |
+| `projects/todos/` (rest)     |   2   |  1   |   3    |  0   | Pre-extracted as independently-pullable by design           |
+| preview-file-tabs            |   2   |  2   |   3    |  0   | Feasibility already confirmed — "no blockers, just work"    |
+| ~~subagent-liveness 6b/6c~~  |   2   |  2   |   3    |  0   | SHIPPED 2026-07-25 — tool count + current tool on the row   |
+| Visualizer actions disappear |   1   |  2   |   2    |  0   | Long bash/read/write shows, hides, reappears on completion  |
+| web-search-providers         |   1   |  1   |   2    |  0   | Contained to one provider settings panel; free engines only |
+| sidebar-reveal Increment 2   |   1   |  2   |   2    |  0   | Tutorial create-workspace step; primitive already shipped   |
 
 ### 3.2b Background track — real value, but **not** user-facing
 
@@ -206,42 +207,85 @@ user-facing impact. Enablement work no longer occupies a wave of its own — it 
 background track (§3.2b) in parallel, because it does not deliver anything to a user and
 must not displace work that does.
 
-### Wave 0 — in flight, closing out
+### ✅ Wave 0 — COMPLETE (2026-07-24)
 
-Commit the working tree. ~~Apply the §1 status corrections~~ (done). ~~Take the
-duplicate-base-workspaces verdict~~ (done, archived). Finish the e2e iron-out already
-running — batch by batch per [iron-out.md](../e2e-qa-coverage/iron-out.md), **never the
-full suite at once** ([CLAUDE.md](../../CLAUDE.md) critical rules).
+~~Commit the working tree~~ · ~~apply the §1 status corrections~~ · ~~take the
+duplicate-base-workspaces verdict~~ (archived) · ~~finish the e2e iron-out~~ — T1 and T2
+both green.
 
-Retained as-is because it is nearly done, **not** because it earned the slot. Under the
-corrected rubric this is a Wave-1-impact-1 background item; it should not have led the
-plan. Once it closes, coverage becomes continuous, not a phase.
+Retained at the head of the plan because it was nearly done, **not** because it earned
+the slot. Under the corrected rubric it was an impact-1 background item. Coverage is now
+continuous, not a phase — see §3.2b.
 
-### Wave 1 — unblock the daily workflow
+### ✅ Wave 1 — COMPLETE (2026-07-25)
 
-Everything a developer hits while trying to use Otto for real work. Highest impact per
-hour on the board, and all of it independently shippable.
+Everything a developer hits while trying to use Otto for real work. All five shipped,
+each verified in the tree rather than from its commit message.
 
-1. **Push-disabled-after-commit** — root-caused; pure execution
-2. ~~**Go-to-definition, client half**~~ — **shipped**; verified in the tree 2026-07-24
-   (`use-go-to-definition.ts` + `definition-picker-dialog.tsx`). It answers from the ctags
-   index, which `lsp-code-intelligence` replaces — do not invest further in the word-based
-   path
-3. ~~**diff-base**~~ — **shipped 2026-07-24** (`docs/changes-view.md`); only the
+1. ~~**Push-disabled-after-commit**~~ — **shipped** (`92329a728`). The fix corrected the
+   brief: the path is **shared**, not GitHub-only — Bitbucket polls at 30s/180s so it
+   rarely hits the race window. Server stops the PR-status poll publishing git-tracking
+   state (`prStatusOnly` + `gitLoadedAtMs`); client guards on a monotonic stamp
+2. ~~**Go-to-definition, client half**~~ — **shipped** (`use-go-to-definition.ts` +
+   `definition-picker-dialog.tsx`). It answered from the ctags index, which the later
+   LSP work replaces — do not invest further in the word-based path
+3. ~~**diff-base**~~ — **shipped** (`706124680`, `docs/changes-view.md`). Only the
    auto-fetch decision and non-worktree overrides remain, both parked in
    `projects/diff-base/`
-4. **Composer paste overflow** — trivial fix, hit constantly
-5. **Mermaid** — via file-rendering; lights up chat + viewer together
+4. ~~**Composer paste overflow**~~ — **shipped** (max-height + internal scroll)
+5. ~~**Mermaid**~~ — **shipped** (`208bd50ce`). One renderer change lit up chat and the
+   file viewer together, per-platform via a webview split
 
-### Wave 2 — supervision and editing feel
+### Unplanned track — editor depth (2026-07-24 → 07-25)
 
-The two things you do all day in Otto that currently feel worst.
+Substantial work that was in **no wave** and is unscored. Recorded here so the plan
+reflects what actually happened, and because at least one item would have earned a slot:
 
-1. **steer-queue** — stop clobbering a running turn to add a thought
+- **LSP code intelligence** (`0a8abeb7d`) — supersedes the ctags path behind
+  go-to-definition. Impact 4 on the corrected rubric; had it been scored it would have
+  led Wave 2 over the shortcut overhaul
+- **New Project page** (`0a8abeb7d`)
+- **File Editor polish** (`f4f3f5209`, `813a0cb27`) — gutter jump, right-click context
+  menu (cut/copy/paste/select all/select line + go to definition), shortcut **hints**,
+  hover signature fix
+
+Note the shortcut work in that entry was the _display_ half only (hints). The override
+half is Wave 2 item 3, **shipped 2026-07-25** — see below.
+
+### Wave 2 — supervision and editing feel — NEXT
+
+The two things you do all day in Otto that currently feel worst. **Verified not started
+2026-07-25** (no `delivery: "queue"`, no wired Refine, no `toolUseCount`/`currentTool` in
+the protocol) — the editor work that landed during Wave 1 is the unplanned track above,
+not this. Items 1, 3 and 4 have since shipped; **refine** is what remains of this wave.
+
+1. ✅ ~~**steer-queue** — stop clobbering a running turn to add a thought~~ —
+   **SHIPPED 2026-07-25.** A `delivery: "interrupt" | "queue"` mode on every prompt
+   entrypoint (`startAgentRun`), a daemon-owned per-agent FIFO drained in
+   `finalizeForegroundTurn` behind a `pendingSteerDrain` hold, and `queuedMessages` on the
+   agent snapshot behind `features.steerQueue` (`COMPAT(steerQueue)`, v0.6.8). Provider-neutral
+   by construction — it lives in the turn lifecycle above every adapter, so all providers got
+   it at once. Absorbed the "queued messages should merge into one send" item: consecutive
+   **user** entries are delivered as one turn (system-injected ones never merge). The
+   composer's Queue track is now daemon-backed; `Interrupt`/`Queue` were already the
+   Settings → Default send labels, so no new vocabulary. Charter drained and folded into
+   [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md#delivery--how-a-prompt-reaches-a-busy-agent)
+   - [docs/glossary.md](../../docs/glossary.md)
 2. **refine** — the AI rewrite loop with review (trap 2: also unlocks context compaction
    and the editor's "explain this" action, converting two backlog items into presets)
-3. **Keyboard shortcut overhaul** — editor scope that overrides Otto's globals
-4. **subagent-liveness 6b/6c** — "alive or hung?" without opening the row
+3. ✅ ~~**Keyboard shortcut overhaul** — editor scope that overrides Otto's globals~~ —
+   **SHIPPED 2026-07-25.** A "File Editor" registry section, `bindingSpecificity` in the
+   matcher (a binding that names the focused surface beats an unscoped one on the same
+   combo), and a registry→CM6 bridge so a rebind reaches the open editor. Rules in
+   [docs/text-editor.md](../../docs/text-editor.md#keyboard-shortcuts-the-file-editor-scope);
+   inventory entry in [remaining-work.md](remaining-work.md#keyboard-shortcuts)
+4. ✅ ~~**subagent-liveness 6b/6c** — "alive or hung?" without opening the row~~ —
+   **SHIPPED 2026-07-25.** Additive optional `toolUseCount` + `currentTool` on the agent
+   snapshot (`COMPAT(subagentLiveness)`), provider-reported for observed rows (Claude reads
+   `usage.tool_uses` / `last_tool_name`) and timeline-derived where there is no task report
+   (native `create_agent` children, Workflow internal agents). Rendered on the row as
+   `elapsed · tokens · N tools · Tool`. Charter drained and folded into
+   [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md#the-subagents-track)
 5. **lsp-code-intelligence Phases 2–3** — Phase 1's daemon core is built and tested; Phase 2
    (document sync off the existing buffer mirror) and Phase 3 (the `code.definition` RPC,
    Daemon → Code settings, client rewiring from word to position) are what a user actually

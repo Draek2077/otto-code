@@ -1181,6 +1181,20 @@ const AgentRuntimeInfoSchema: z.ZodType<AgentRuntimeInfo> = z.object({
   extra: z.record(z.string(), z.unknown()).optional(),
 });
 
+/**
+ * One message parked for delivery as an agent's NEXT turn (`delivery: "queue"`).
+ * The daemon owns the queue; this is the read-only projection the Queue track
+ * renders. Declared above AgentSnapshotPayloadSchema — zod-aot emits schemas in
+ * source order, so a forward reference is a build-time ReferenceError.
+ */
+export const QueuedAgentMessagePayloadSchema = z.object({
+  id: z.string(),
+  /** Leading text of the message, truncated for display. */
+  preview: z.string(),
+  enqueuedAt: z.string(),
+  attachmentCount: z.number().int().nonnegative().optional(),
+});
+
 export const AgentSnapshotPayloadSchema = z.object({
   id: z.string(),
   provider: AgentProviderSchema,
@@ -1208,6 +1222,21 @@ export const AgentSnapshotPayloadSchema = z.object({
   // additive; absent ⇒ no readout. Old clients ignore it.
   // See docs/agent-lifecycle.md (Item 3).
   cumulativeTokens: z.number().optional(),
+  // Liveness signals for the sub-agents track: how much work this agent has done
+  // (`toolUseCount`, cumulative and monotonic) and what it is doing right now
+  // (`currentTool`, the latest tool name, cleared once the agent is terminal —
+  // a finished agent isn't "running Bash"). Both are purely additive optional
+  // leaves: a provider that can't report them leaves them absent and the row
+  // omits the readout rather than showing a wrong value.
+  // COMPAT(subagentLiveness): added in v0.6.7; old clients ignore both.
+  // See docs/chat-lifecycle.md (the subagents track).
+  toolUseCount: z.number().optional(),
+  currentTool: z.string().optional(),
+  // Messages parked for delivery as this agent's NEXT turn (delivery: "queue").
+  // Daemon-owned and ephemeral — the composer's Queue track renders straight
+  // from this. Absent/empty ⇒ nothing queued; old clients ignore it.
+  // COMPAT(steerQueue): added in v0.6.8, drop the gate when floor >= v0.6.8.
+  queuedMessages: z.array(QueuedAgentMessagePayloadSchema).optional(),
   lastError: z.string().optional(),
   title: z.string().nullable(),
   labels: z.record(z.string(), z.string()).default({}),
@@ -1645,6 +1674,30 @@ export const SendAgentMessageRequestSchema = z.object({
   messageId: z.string().optional(), // Client-provided ID for deduplication
   images: z.array(ImageAttachmentSchema).optional(),
   attachments: AgentAttachmentsSchema,
+  // How to reach a BUSY agent. "interrupt" (default, and what every older
+  // client means by omitting this) cancels the in-flight turn and runs this
+  // instead; "queue" lets the turn finish and runs this as the next one.
+  // Against an idle agent both run immediately.
+  // COMPAT(steerQueue): added in v0.6.8, drop the gate when floor >= v0.6.8.
+  delivery: z.enum(["interrupt", "queue"]).optional(),
+});
+
+/** Pull one message back out of an agent's queue (Queue-track edit / send now). */
+export const AgentQueueRemoveRequestMessageSchema = z.object({
+  type: z.literal("agent.queue.remove.request"),
+  requestId: z.string(),
+  /** Accepts full ID, unique prefix, or exact full title (server resolves). */
+  agentId: z.string(),
+  /** The queued message's `id` from `AgentSnapshotPayload.queuedMessages`. */
+  messageId: z.string(),
+});
+
+/** Drop every message queued behind an agent's current turn. */
+export const AgentQueueClearRequestMessageSchema = z.object({
+  type: z.literal("agent.queue.clear.request"),
+  requestId: z.string(),
+  /** Accepts full ID, unique prefix, or exact full title (server resolves). */
+  agentId: z.string(),
 });
 
 export const WaitForFinishRequestSchema = z.object({
@@ -3792,6 +3845,51 @@ export const FileWriteRequestSchema = z.object({
   requestId: z.string(),
 });
 
+/**
+ * Refine — an AI rewrite the user reviews as a diff before anything is written.
+ * This RPC only *proposes*: it reads nothing from disk and writes nothing. The
+ * accepted result goes back through `file.write.request` like any other save,
+ * so the conditional-write precondition still guards it.
+ *
+ * `base` travels from the client rather than being re-read on the daemon, so
+ * the model rewrites exactly the document the user is looking at and the diff
+ * they review is the diff of what they saw.
+ */
+/**
+ * One document in a refine request. `id` is opaque and client-minted; the model
+ * never sees it and the daemon only echoes it back. That is deliberate: the
+ * client maps id -> absolute path itself, so a model that mangles or invents a
+ * filename cannot misroute a write. `label` is the only path-ish thing the
+ * model sees, and it exists purely so the prompt can say which file is which.
+ */
+export const FileRefineDocumentSchema = z.object({
+  id: z.string().min(1),
+  label: z.string(),
+  content: z.string(),
+});
+
+/** A file the model may read for context but must never rewrite. */
+export const FileRefineReferenceSchema = z.object({
+  label: z.string(),
+  content: z.string(),
+});
+
+export const FileRefineRequestSchema = z.object({
+  type: z.literal("file.refine.request"),
+  // Provider resolution only — which workspace's mini-task chain runs this.
+  // Documents are NOT read from disk here; they travel on the wire.
+  cwd: z.string(),
+  // What the model may rewrite. The blast radius of the whole request: a file
+  // absent from this list cannot be changed, whatever the model returns.
+  documents: z.array(FileRefineDocumentSchema).min(1),
+  // What it may read to understand the first list. Optional so an old client
+  // that only sends documents still parses.
+  references: z.array(FileRefineReferenceSchema).optional(),
+  // The user's plain-language instruction, possibly seeded from a preset.
+  instruction: z.string(),
+  requestId: z.string(),
+});
+
 // Subscriptions exist only for paths open in tabs; the daemon cleans them up
 // when the session ends.
 export const FileWatchSubscribeRequestSchema = z.object({
@@ -3903,6 +4001,42 @@ export const CodeRenamePreviewRequestSchema = z.object({
   line: z.number().int().positive(),
   column: z.number().int().positive(),
   newName: z.string().min(1),
+  requestId: z.string(),
+});
+
+/**
+ * Execute a rename the user has audited. **The edits are deliberately NOT on this request.**
+ *
+ * The client sends back only the `planId` it was shown; the daemon recomputes the plan and
+ * refuses unless the identity matches. A request that carried its own edit list would be a
+ * remote arbitrary-write primitive wearing a rename's name — any client could post any text
+ * at any path. This shape makes the daemon's own language server the sole author of what
+ * gets written, and the plan id the proof that the user saw it.
+ */
+export const CodeRenameApplyRequestSchema = z.object({
+  type: z.literal("code.rename.apply.request"),
+  cwd: z.string(),
+  path: z.string(),
+  line: z.number().int().positive(),
+  column: z.number().int().positive(),
+  newName: z.string().min(1),
+  /** From the preview response. Identity of the exact plan the user approved. */
+  planId: z.string().min(1),
+  requestId: z.string(),
+});
+
+/**
+ * Undo a run. Carries only the run's id — the daemon holds the before-images.
+ *
+ * Declared here, with the other inbound rename schemas, rather than beside its response
+ * further down: `SessionInboundMessageSchema` is a top-level const, so a schema it names
+ * must already be initialized when that line runs. Below the union it is a
+ * ReferenceError at import time, not a type error.
+ */
+export const CodeRenameUndoRequestSchema = z.object({
+  type: z.literal("code.rename.undo.request"),
+  cwd: z.string(),
+  runId: z.string().min(1),
   requestId: z.string(),
 });
 
@@ -4204,6 +4338,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   TasksSuggestedDismissRequestMessageSchema,
   AgentPersonalitySetRequestMessageSchema,
   AgentRewindRequestMessageSchema,
+  AgentQueueRemoveRequestMessageSchema,
+  AgentQueueClearRequestMessageSchema,
   AgentPermissionResponseMessageSchema,
   CheckoutStatusRequestSchema,
   SubscribeCheckoutDiffRequestSchema,
@@ -4278,6 +4414,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   FileDownloadTokenRequestSchema,
   FileUploadRequestSchema,
   FileWriteRequestSchema,
+  FileRefineRequestSchema,
   FileWatchSubscribeRequestSchema,
   FileWatchUnsubscribeRequestSchema,
   FileSearchRequestSchema,
@@ -4291,6 +4428,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CodeHoverRequestSchema,
   CodeReferencesRequestSchema,
   CodeRenamePreviewRequestSchema,
+  CodeRenameApplyRequestSchema,
+  CodeRenameUndoRequestSchema,
   LspServersListRequestSchema,
   LspServerStopRequestSchema,
   ClearAgentAttentionMessageSchema,
@@ -4555,6 +4694,13 @@ export const ServerInfoStatusPayloadSchema = z
         retainedTranscripts: z.boolean().optional(),
         // COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         suggestedTasks: z.boolean().optional(),
+        // COMPAT(steerQueue): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+        // Daemon owns a per-agent queue of steering messages, accepts
+        // `delivery: "queue"` on send, reports `queuedMessages` on the agent
+        // snapshot, and serves agent.queue.remove/clear. Without it the
+        // composer keeps its own local queue — that is the pre-existing
+        // behavior, not a degraded build of this feature.
+        steerQueue: z.boolean().optional(),
         // Daemon can resolve and evaluate the provider's context graph, serve
         // context.report.* and push context_report_changed. Without it the
         // client hides both the Context Management tab and the composer
@@ -4564,6 +4710,13 @@ export const ServerInfoStatusPayloadSchema = z
         contextManagement: z.boolean().optional(),
         // COMPAT(textEditor): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         textEditor: z.boolean().optional(),
+        // Refine — the daemon can turn a pinned document plus an instruction
+        // into a proposed rewrite (`file.refine.*`). Without it the Refine
+        // entry is absent: there is no client-side substitute for a model, and
+        // a degraded "open a chat instead" path is exactly the unreviewed edit
+        // Refine exists to replace.
+        // COMPAT(refine): added in v0.6.9, drop the gate when daemon floor >= v0.6.9.
+        refine: z.boolean().optional(),
         // COMPAT(projectSearch): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         projectSearch: z.boolean().optional(),
         // COMPAT(codeIndex): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
@@ -5575,6 +5728,39 @@ export const AgentForkContextResponseMessageSchema = z.object({
   }),
 });
 
+export const AgentQueueRemoveResponseMessageSchema = z.object({
+  type: z.literal("agent.queue.remove.response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    /**
+     * The removed message's text, handed back so the composer can put it back
+     * in the box for editing or re-send it right away. Null when the id was
+     * already gone — the turn drained it while the tap was in flight.
+     * Attachments are not echoed: the client that queued the message keeps its
+     * own local copy keyed by `id` (see the composer's queued-attachment
+     * sidecar), and a client that never queued it has nothing to restore.
+     */
+    removed: z
+      .object({
+        id: z.string(),
+        text: z.string(),
+      })
+      .nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const AgentQueueClearResponseMessageSchema = z.object({
+  type: z.literal("agent.queue.clear.response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    clearedCount: z.number().int().nonnegative(),
+    error: z.string().nullable(),
+  }),
+});
+
 export const CancelAgentResponseMessageSchema = z.object({
   type: z.literal("cancel_agent_response"),
   payload: z.object({
@@ -5635,6 +5821,13 @@ export const SendAgentMessageResponseMessageSchema = z.object({
     agentId: z.string(),
     accepted: z.boolean(),
     error: z.string().nullable(),
+    // Set when the message was parked for the next turn rather than dispatched
+    // (`delivery: "queue"` against a busy agent). `queuedMessageId` is the
+    // entry's id in `AgentSnapshotPayload.queuedMessages` — the key the sender
+    // uses to find its own entry again. Absent ⇒ dispatched now (or old daemon).
+    // COMPAT(steerQueue): added in v0.6.8, drop the gate when floor >= v0.6.8.
+    queued: z.boolean().optional(),
+    queuedMessageId: z.string().optional(),
   }),
 });
 
@@ -6978,6 +7171,40 @@ export const FileWriteResponseSchema = z.object({
   }),
 });
 
+/**
+ * A refine proposal: the whole rewritten text of each document the model chose
+ * to change, keyed by the id the request minted. Documents it left alone are
+ * simply absent, and ids the request never sent are dropped by the daemon.
+ *
+ * The client diffs each one against the base it pinned, so a truncated or
+ * chatty answer shows up as a diff the user can refuse rather than as a
+ * corrupted file.
+ */
+export const FileRefineFileSchema = z.object({
+  id: z.string().min(1),
+  content: z.string(),
+});
+
+export const FileRefineResultSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("ok"),
+    files: z.array(FileRefineFileSchema),
+  }),
+  z.object({
+    status: z.literal("error"),
+    message: z.string(),
+  }),
+]);
+
+export const FileRefineResponseSchema = z.object({
+  type: z.literal("file.refine.response"),
+  payload: z.object({
+    cwd: z.string(),
+    result: FileRefineResultSchema,
+    requestId: z.string(),
+  }),
+});
+
 export const FileWatchSubscribeResponseSchema = z.object({
   type: z.literal("file.watch.subscribe.response"),
   payload: z.object({
@@ -7131,6 +7358,12 @@ export const CodeRenameEditSchema = z.object({
   endLine: z.number().int().positive(),
   endColumn: z.number().int().positive(),
   newText: z.string(),
+  /**
+   * The text this edit expects to replace. Carried so the dry run can show what is being
+   * changed rather than only what it becomes — and, on the daemon side, so the run can tell
+   * that a file moved under the plan. For a rename this is always one identifier.
+   */
+  oldText: z.string().default(""),
 });
 
 export const CodeRenameFilePlanSchema = z.object({
@@ -7150,6 +7383,87 @@ export const CodeRenamePreviewResponseSchema = z.object({
     /** Blast radius, so the dry-run tab can lead with it. */
     fileCount: z.number().int().nonnegative(),
     editCount: z.number().int().nonnegative(),
+    /**
+     * Identity of this exact plan, echoed back on apply. Computed by the daemon so there is
+     * one definition of "the same plan" rather than two that can drift apart.
+     */
+    planId: z.string().default(""),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+/**
+ * Five-valued, because the ways a rename can fail to happen are things a user needs told
+ * apart: still loading, no server, the plan moved, or the server pointed outside the
+ * workspace. Collapsing them into one failure is how "nothing happened" becomes unexplainable.
+ */
+/**
+ * Whether the run HAPPENED — deliberately not whether everything applied.
+ *
+ * A run where two of fourteen edits no longer fit is still a run that took place, and the
+ * twelve that landed are real. Collapsing that into a failure would hide them, and hiding a
+ * write is the one thing an auditable edit surface must never do. Per-edit fate lives in the
+ * file outcomes; `complete` is the single-glance answer.
+ */
+export const CodeRenameApplyStatusSchema = z.enum(["ok", "expired", "escaped"]);
+
+export const CodeRenameFileOutcomeKindSchema = z.enum(["applied", "partial", "failed"]);
+
+/** What happened to one file in a run. */
+export const CodeRenameFileOutcomeSchema = z.object({
+  path: z.string(),
+  kind: CodeRenameFileOutcomeKindSchema,
+  appliedEdits: z.number().int().nonnegative(),
+  skippedEdits: z.number().int().nonnegative(),
+  /** Why, whenever anything was skipped or the file failed outright. */
+  reason: z.string().nullable(),
+});
+
+export const CodeRenameUndoStatusSchema = z.enum(["ok", "expired"]);
+
+export const CodeRenameUndoFileKindSchema = z.enum(["restored", "changedSince", "failed"]);
+
+/**
+ * What happened to one file during an undo. `changedSince` is the important one: the file was
+ * edited after the run, so restoring would have destroyed that work and it was left alone.
+ */
+export const CodeRenameUndoFileSchema = z.object({
+  path: z.string(),
+  kind: CodeRenameUndoFileKindSchema,
+  reason: z.string().nullable(),
+});
+
+export const CodeRenameUndoResponseSchema = z.object({
+  type: z.literal("code.rename.undo.response"),
+  payload: z.object({
+    cwd: z.string(),
+    runId: z.string(),
+    status: CodeRenameUndoStatusSchema,
+    files: z.array(CodeRenameUndoFileSchema),
+    restoredFiles: z.number().int().nonnegative(),
+    /** True only when every file the run wrote was put back. */
+    complete: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CodeRenameApplyResponseSchema = z.object({
+  type: z.literal("code.rename.apply.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    newName: z.string(),
+    status: CodeRenameApplyStatusSchema,
+    /** Identity of this run, for undo. Null when nothing ran. */
+    runId: z.string().nullable(),
+    files: z.array(CodeRenameFileOutcomeSchema),
+    appliedFiles: z.number().int().nonnegative(),
+    appliedEdits: z.number().int().nonnegative(),
+    skippedEdits: z.number().int().nonnegative(),
+    /** True only when every planned edit landed. */
+    complete: z.boolean(),
     error: z.string().nullable(),
     requestId: z.string(),
   }),
@@ -7712,6 +8026,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentThinkingResponseMessageSchema,
   SetAgentFeatureResponseMessageSchema,
   AgentDetachResponseMessageSchema,
+  AgentQueueRemoveResponseMessageSchema,
+  AgentQueueClearResponseMessageSchema,
   AgentSubagentStopResponseMessageSchema,
   AgentBackgroundTaskStopResponseMessageSchema,
   AgentBackgroundTaskClearResponseMessageSchema,
@@ -7803,6 +8119,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FileDownloadTokenResponseSchema,
   FileUploadResponseSchema,
   FileWriteResponseSchema,
+  FileRefineResponseSchema,
   FileWatchSubscribeResponseSchema,
   FileWatchUnsubscribeResponseSchema,
   FileWatchEventSchema,
@@ -7818,6 +8135,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CodeHoverResponseSchema,
   CodeReferencesResponseSchema,
   CodeRenamePreviewResponseSchema,
+  CodeRenameApplyResponseSchema,
+  CodeRenameUndoResponseSchema,
   LspServersListResponseSchema,
   LspServerStopResponseSchema,
   ListProviderModelsResponseMessageSchema,
@@ -7966,6 +8285,12 @@ export type FetchAgentTimelineResponseMessage = z.infer<
 export type AgentForkContextResponseMessage = z.infer<typeof AgentForkContextResponseMessageSchema>;
 export type CancelAgentResponseMessage = z.infer<typeof CancelAgentResponseMessageSchema>;
 export type SendAgentMessageResponseMessage = z.infer<typeof SendAgentMessageResponseMessageSchema>;
+export type QueuedAgentMessagePayload = z.infer<typeof QueuedAgentMessagePayloadSchema>;
+export type AgentPromptDelivery = NonNullable<SendAgentMessageRequest["delivery"]>;
+export type AgentQueueRemoveRequestMessage = z.infer<typeof AgentQueueRemoveRequestMessageSchema>;
+export type AgentQueueRemoveResponseMessage = z.infer<typeof AgentQueueRemoveResponseMessageSchema>;
+export type AgentQueueClearRequestMessage = z.infer<typeof AgentQueueClearRequestMessageSchema>;
+export type AgentQueueClearResponseMessage = z.infer<typeof AgentQueueClearResponseMessageSchema>;
 export type SetVoiceModeResponseMessage = z.infer<typeof SetVoiceModeResponseMessageSchema>;
 export type SetAgentModeResponseMessage = z.infer<typeof SetAgentModeResponseMessageSchema>;
 export type SetAgentModelResponseMessage = z.infer<typeof SetAgentModelResponseMessageSchema>;
@@ -8355,6 +8680,12 @@ export type FileEol = z.infer<typeof FileEolSchema>;
 export type FileWriteRequest = z.infer<typeof FileWriteRequestSchema>;
 export type FileWriteResponse = z.infer<typeof FileWriteResponseSchema>;
 export type FileWriteResult = z.infer<typeof FileWriteResultSchema>;
+export type FileRefineRequest = z.infer<typeof FileRefineRequestSchema>;
+export type FileRefineDocument = z.infer<typeof FileRefineDocumentSchema>;
+export type FileRefineReference = z.infer<typeof FileRefineReferenceSchema>;
+export type FileRefineFile = z.infer<typeof FileRefineFileSchema>;
+export type FileRefineResponse = z.infer<typeof FileRefineResponseSchema>;
+export type FileRefineResult = z.infer<typeof FileRefineResultSchema>;
 export type FileWatchSubscribeRequest = z.infer<typeof FileWatchSubscribeRequestSchema>;
 export type FileWatchUnsubscribeRequest = z.infer<typeof FileWatchUnsubscribeRequestSchema>;
 export type FileWatchEvent = z.infer<typeof FileWatchEventSchema>;
@@ -8391,6 +8722,14 @@ export type CodeReferencesRequest = z.infer<typeof CodeReferencesRequestSchema>;
 export type CodeReferencesResponse = z.infer<typeof CodeReferencesResponseSchema>;
 export type CodeRenamePreviewRequest = z.infer<typeof CodeRenamePreviewRequestSchema>;
 export type CodeRenamePreviewResponse = z.infer<typeof CodeRenamePreviewResponseSchema>;
+export type CodeRenameApplyRequest = z.infer<typeof CodeRenameApplyRequestSchema>;
+export type CodeRenameApplyResponse = z.infer<typeof CodeRenameApplyResponseSchema>;
+export type CodeRenameApplyStatus = z.infer<typeof CodeRenameApplyStatusSchema>;
+export type CodeRenameFileOutcome = z.infer<typeof CodeRenameFileOutcomeSchema>;
+export type CodeRenameUndoRequest = z.infer<typeof CodeRenameUndoRequestSchema>;
+export type CodeRenameUndoResponse = z.infer<typeof CodeRenameUndoResponseSchema>;
+export type CodeRenameUndoStatus = z.infer<typeof CodeRenameUndoStatusSchema>;
+export type CodeRenameUndoFile = z.infer<typeof CodeRenameUndoFileSchema>;
 export type CodeRenameEdit = z.infer<typeof CodeRenameEditSchema>;
 export type CodeRenameFilePlan = z.infer<typeof CodeRenameFilePlanSchema>;
 export type LspServersListRequest = z.infer<typeof LspServersListRequestSchema>;

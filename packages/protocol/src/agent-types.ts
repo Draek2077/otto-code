@@ -505,6 +505,21 @@ export interface ObservedSubagentUpdate {
   status: "initializing" | "running" | "idle" | "error" | "closed";
   requiresAttention?: boolean;
   usage?: AgentUsage;
+  /**
+   * Tool invocations this subagent has made so far (cumulative). Neutral field
+   * any provider can set; kept monotonic by the daemon so a status-only final
+   * update can't drop the readout. Claude reads it from the SDK's per-task
+   * `usage.tool_uses`. Absent ⇒ the row shows no count.
+   */
+  toolUseCount?: number;
+  /**
+   * The tool this subagent is running (or ran last) — the "spinning _on a 90s
+   * Bash_" signal. Neutral field any provider can set; unlike the counters it is
+   * NOT monotonic (latest wins) and the daemon drops it once the row goes
+   * terminal. Claude reads it from `task_progress.last_tool_name`. Absent ⇒ the
+   * row omits it; never guess a value.
+   */
+  currentTool?: string;
 }
 
 /**

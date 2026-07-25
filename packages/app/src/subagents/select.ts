@@ -13,6 +13,8 @@ export interface SubagentRow {
   updatedAt: Agent["updatedAt"];
   attend?: Agent["attend"];
   cumulativeTokens?: Agent["cumulativeTokens"];
+  toolUseCount?: Agent["toolUseCount"];
+  currentTool?: Agent["currentTool"];
   personalityName?: Agent["personalityName"];
   personalitySpinner?: Agent["personalitySpinner"];
 }
@@ -37,6 +39,8 @@ function toSubagentRow(agent: Agent): SubagentRow {
     updatedAt: agent.updatedAt,
     attend: agent.attend,
     cumulativeTokens: agent.cumulativeTokens,
+    toolUseCount: agent.toolUseCount,
+    currentTool: agent.currentTool,
     personalityName: agent.personalityName,
     personalitySpinner: agent.personalitySpinner,
   };

@@ -7,12 +7,73 @@ import { ensureAgentLoaded } from "./agent-loading.js";
 
 export type AgentRunController = Pick<
   AgentManager,
-  "getAgent" | "tryRunOutOfBand" | "hasInFlightRun" | "replaceAgentRun" | "streamAgent"
+  | "getAgent"
+  | "tryRunOutOfBand"
+  | "hasInFlightRun"
+  | "replaceAgentRun"
+  | "streamAgent"
+  | "enqueueSteerMessage"
 >;
+
+/**
+ * How a prompt reaches a BUSY agent. Against an idle agent both modes are the
+ * same thing: run it now.
+ *
+ * - `interrupt` — cancel the in-flight turn and run this instead, in the same
+ *   provider session. Today's behavior, and still the default so no existing
+ *   caller changes.
+ * - `queue` — let the turn finish, then run this as the next turn.
+ *
+ * Lives in the turn lifecycle, above every provider adapter, so it behaves
+ * identically for every provider.
+ */
+export type AgentPromptDelivery = "interrupt" | "queue";
 
 export interface StartAgentRunOptions {
   replaceRunning?: boolean;
   runOptions?: AgentRunOptions;
+  delivery?: AgentPromptDelivery;
+  /** Marks system-injected prompts so the queue never merges them into a user turn. */
+  source?: "user" | "system";
+}
+
+export interface StartAgentRunResult {
+  outOfBand: boolean;
+  /** True when the prompt was parked for the next turn instead of dispatched. */
+  queued: boolean;
+  /** The queue entry's id, so the caller can find its own message again. */
+  queuedMessageId?: string;
+}
+
+/**
+ * `queue` only defers against a BUSY agent. `enqueueSteerMessage` does the busy
+ * check and the push in one synchronous block and reports back whether it took
+ * the prompt, so an idle agent falls straight through to running it now.
+ * Returns null when the caller should dispatch normally.
+ */
+function tryQueuePrompt(
+  agentManager: AgentRunController,
+  agentId: string,
+  prompt: AgentPromptInput,
+  logger: Logger,
+  options: StartAgentRunOptions | undefined,
+): StartAgentRunResult | null {
+  if (options?.delivery !== "queue") {
+    return null;
+  }
+  const enqueued = agentManager.enqueueSteerMessage(agentId, prompt, {
+    ...(options.runOptions ? { runOptions: options.runOptions } : {}),
+    ...(options.source ? { source: options.source } : {}),
+  });
+  if (!enqueued.queued) {
+    return null;
+  }
+  logger.trace({ agentId, entryId: enqueued.entry?.id }, "agent.session.start_stream.queued");
+  return {
+    outOfBand: false,
+    queued: true,
+    ...(enqueued.entry ? { queuedMessageId: enqueued.entry.id } : {}),
+  };
 }
 
 export function startAgentRun(
@@ -21,7 +82,7 @@ export function startAgentRun(
   prompt: AgentPromptInput,
   logger: Logger,
   options?: StartAgentRunOptions,
-): { outOfBand: boolean } {
+): StartAgentRunResult {
   const snapshot = agentManager.getAgent(agentId);
   logger.trace(
     {
@@ -39,10 +100,14 @@ export function startAgentRun(
   // in-flight turn — replaceAgentRun would interrupt the running turn. The
   // intercept lives at this layer so it covers every prompt entrypoint.
   if (agentManager.tryRunOutOfBand(agentId, prompt)) {
-    return { outOfBand: true };
+    return { outOfBand: true, queued: false };
+  }
+  const runOptions = options?.runOptions;
+  const queuedResult = tryQueuePrompt(agentManager, agentId, prompt, logger, options);
+  if (queuedResult) {
+    return queuedResult;
   }
   const shouldReplace = Boolean(options?.replaceRunning && agentManager.hasInFlightRun(agentId));
-  const runOptions = options?.runOptions;
   const iterator = shouldReplace
     ? agentManager.replaceAgentRun(agentId, prompt, runOptions)
     : agentManager.streamAgent(agentId, prompt, runOptions);
@@ -81,7 +146,7 @@ export function startAgentRun(
       logger.error({ err: error, agentId }, "Agent stream failed");
     }
   })();
-  return { outOfBand: false };
+  return { outOfBand: false, queued: false };
 }
 
 /**
@@ -131,6 +196,17 @@ export interface SendPromptToAgentParams {
    * schedule fires, notify-on-finish).
    */
   unarchive?: boolean;
+  /**
+   * How to reach a busy agent. Defaults to `interrupt` — today's behavior for
+   * every caller. See AgentPromptDelivery.
+   */
+  delivery?: AgentPromptDelivery;
+  /**
+   * Marks the prompt as Otto-injected (chat mention, schedule fire,
+   * notify-on-finish) rather than typed by a person. Only affects queue
+   * merging; system-injected entries are always delivered as their own turn.
+   */
+  source?: "user" | "system";
   logger: Logger;
 }
 
@@ -172,13 +248,13 @@ export async function waitForAgentRunStartWithTimeout(
  */
 export async function sendPromptToAgent(
   params: SendPromptToAgentParams,
-): Promise<{ outOfBand: boolean }> {
+): Promise<StartAgentRunResult> {
   const unarchive = params.unarchive ?? true;
 
   const record = await params.agentStorage.get(params.agentId);
   if (record?.archivedAt) {
     if (!unarchive) {
-      return { outOfBand: false };
+      return { outOfBand: false, queued: false };
     }
     await unarchiveAgentState(params.agentStorage, params.agentManager, params.agentId);
   }
@@ -200,6 +276,8 @@ export async function sendPromptToAgent(
   return startAgentRun(params.agentManager, params.agentId, params.prompt, params.logger, {
     replaceRunning: true,
     runOptions,
+    ...(params.delivery ? { delivery: params.delivery } : {}),
+    ...(params.source ? { source: params.source } : {}),
   });
 }
 
@@ -294,6 +372,7 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
       agentId: callerAgentId,
       prompt: formatSystemNotificationPrompt(body),
       unarchive: false,
+      source: "system",
       logger,
     });
   }

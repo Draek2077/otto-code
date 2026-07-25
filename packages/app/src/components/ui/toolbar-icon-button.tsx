@@ -36,6 +36,17 @@ const selectedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregr
 // dimming comes from the button's reduced opacity (iconButtonDisabled) while
 // the icon keeps the muted color.
 const mutedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+// The tinted glyph, for the one button in a toolbar that is the action the
+// surface exists for (the rename tab's Apply). A tint, not a filled pill: a
+// solid accent chip is taller than the icon buttons beside it and would break
+// the pinned toolbar height it sits in.
+const accentIconColorMapping = (theme: Theme) => ({ color: theme.colors.accent });
+
+/**
+ * `accent` marks the toolbar's primary action. At most one per toolbar — the
+ * tint only means "this is the one" while nothing else is competing for it.
+ */
+export type ToolbarIconButtonTone = "default" | "accent";
 
 export function ToolbarIconButton({
   label,
@@ -44,6 +55,7 @@ export function ToolbarIconButton({
   disabled = false,
   selected = false,
   loading = false,
+  tone = "default",
   shortcut,
   testID,
 }: {
@@ -53,12 +65,17 @@ export function ToolbarIconButton({
   disabled?: boolean;
   selected?: boolean;
   loading?: boolean;
+  tone?: ToolbarIconButtonTone;
   /**
    * Key hint printed after the label, in the app's tooltip idiom (see
    * header-toggle-button). Omit when the button has no binding — a tooltip that
    * names a key the button doesn't answer to is worse than no hint.
+   *
+   * A chord (`ShortcutKey[][]`), not a single combo: these hints are resolved
+   * from the shortcut registry, where a user rebind may be a multi-step chord,
+   * and printing only its first step would misname the key.
    */
-  shortcut?: ShortcutKey[];
+  shortcut?: ShortcutKey[][];
   testID?: string;
 }) {
   const buttonStyle = useCallback(
@@ -71,7 +88,7 @@ export function ToolbarIconButton({
     [disabled, selected],
   );
   const accessibilityState = useMemo(() => ({ disabled, selected }), [disabled, selected]);
-  const iconMapping = !disabled && selected ? selectedIconColorMapping : mutedIconColorMapping;
+  const iconMapping = resolveIconMapping({ disabled, selected, tone });
   const isCompact = useIsCompactFormFactor();
   const glyphSize = isCompact ? TOOLBAR_ICON_SIZE_COMPACT : TOOLBAR_ICON_SIZE;
   return (
@@ -86,7 +103,7 @@ export function ToolbarIconButton({
         style={buttonStyle}
       >
         {loading ? (
-          <ThemedLoadingSpinner size={glyphSize} uniProps={mutedIconColorMapping} />
+          <ThemedLoadingSpinner size={glyphSize} uniProps={iconMapping} />
         ) : (
           <Icon size={glyphSize} uniProps={iconMapping} />
         )}
@@ -94,11 +111,36 @@ export function ToolbarIconButton({
       <TooltipContent side="bottom" align="center" offset={8}>
         <View style={styles.tooltipRow}>
           <Text style={styles.tooltipText}>{label}</Text>
-          {shortcut ? <Shortcut keys={shortcut} style={styles.tooltipShortcut} /> : null}
+          {shortcut && shortcut.length > 0 ? (
+            <Shortcut chord={shortcut} style={styles.tooltipShortcut} />
+          ) : null}
         </View>
       </TooltipContent>
     </Tooltip>
   );
+}
+
+/**
+ * Disabled outranks the tone: an accent glyph on a button that cannot be
+ * pressed reads as the action being available, which is the one thing the
+ * disabled state exists to deny.
+ */
+function resolveIconMapping({
+  disabled,
+  selected,
+  tone,
+}: {
+  disabled: boolean;
+  selected: boolean;
+  tone: ToolbarIconButtonTone;
+}): (theme: Theme) => { color: string } {
+  if (disabled) {
+    return mutedIconColorMapping;
+  }
+  if (tone === "accent") {
+    return accentIconColorMapping;
+  }
+  return selected ? selectedIconColorMapping : mutedIconColorMapping;
 }
 
 const styles = StyleSheet.create((theme: Theme) => ({

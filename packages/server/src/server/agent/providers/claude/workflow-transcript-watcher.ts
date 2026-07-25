@@ -32,7 +32,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import type { AgentStreamEvent } from "../../agent-sdk-types.js";
+import type { AgentStreamEvent, AgentTimelineItem } from "../../agent-sdk-types.js";
 
 import { grandTotalTokens } from "../../subagent-usage.js";
 
@@ -100,6 +100,40 @@ interface AgentState {
   /** The terminal status emitted at settle; token updates re-assert it. */
   settledStatus?: "idle" | "error" | "closed";
   lastTokens: number;
+  /**
+   * Track-row liveness for this workflow child, derived from its transcript
+   * (a workflow's internal agents get no SDK task report of their own — the
+   * live stream carries none of them). `countedToolCallIds` makes the count
+   * idempotent across a call's running → completed entries.
+   * See docs/chat-lifecycle.md (the subagents track).
+   */
+  countedToolCallIds: Set<string>;
+  currentTool?: string;
+}
+
+/**
+ * Fold a batch of transcript items into a workflow child's liveness counters.
+ * Returns true when the readout moved (a tool call not yet counted), so the
+ * caller pushes an update. Counting by call id keeps a call's running →
+ * completed entries from double-counting, and the last tool wins.
+ * See docs/chat-lifecycle.md (the subagents track).
+ */
+function recordWorkflowChildToolActivity(
+  state: AgentState,
+  items: readonly AgentTimelineItem[],
+): boolean {
+  let changed = false;
+  for (const item of items) {
+    if (item.type !== "tool_call" || state.countedToolCallIds.has(item.callId)) {
+      continue;
+    }
+    state.countedToolCallIds.add(item.callId);
+    if (item.name) {
+      state.currentTool = item.name;
+    }
+    changed = true;
+  }
+  return changed;
 }
 
 interface RunStateInfo {
@@ -469,6 +503,7 @@ export class WorkflowTranscriptWatcher {
         continue;
       }
       const items = entries.flatMap((entry) => state.mapper.mapEntry(entry as never));
+      let toolActivityChanged = false;
       if (items.length > 0) {
         this.ensureAnnounced(agentId, state, items);
         for (const item of items) {
@@ -479,8 +514,9 @@ export class WorkflowTranscriptWatcher {
             item,
           });
         }
+        toolActivityChanged = recordWorkflowChildToolActivity(state, items);
       }
-      this.maybeEmitTokens(state);
+      this.maybeEmitProgress(state, toolActivityChanged);
     }
   }
 
@@ -496,6 +532,7 @@ export class WorkflowTranscriptWatcher {
       announced: false,
       settled: false,
       lastTokens: 0,
+      countedToolCallIds: new Set<string>(),
     };
     this.agents.set(agentId, state);
     return state;
@@ -549,6 +586,12 @@ export class WorkflowTranscriptWatcher {
         status,
         ...(status === "error" ? { requiresAttention: true } : {}),
         ...(state.lastTokens > 0 ? { cumulativeTokens: state.lastTokens } : {}),
+        // The run's final tool count stays on the finished row ("89 tools" is
+        // what it DID); currentTool is deliberately not re-asserted here — the
+        // projection drops it on a terminal row.
+        ...(state.countedToolCallIds.size > 0
+          ? { toolUseCount: state.countedToolCallIds.size }
+          : {}),
       },
     });
     this.opts.logger.debug(
@@ -557,13 +600,19 @@ export class WorkflowTranscriptWatcher {
     );
   }
 
-  private maybeEmitTokens(state: AgentState): void {
+  /**
+   * Push the child's running figures when they move: token totals, or the
+   * liveness pair (tool count / current tool) when only those changed — a child
+   * that is grinding through tools between assistant frames must still look
+   * alive on the row. See docs/chat-lifecycle.md (the subagents track).
+   */
+  private maybeEmitProgress(state: AgentState, toolActivityChanged: boolean): void {
     const totals = state.mapper.usageTotals();
     const tokens = grandTotalTokens(totals);
-    if (tokens <= state.lastTokens) {
+    if (tokens <= state.lastTokens && !toolActivityChanged) {
       return;
     }
-    state.lastTokens = tokens;
+    state.lastTokens = Math.max(state.lastTokens, tokens);
     // A settled child must not flip back to running when a late transcript
     // chunk raises its token total (the final chunk usually lands on the same
     // tick as the journal result) — re-assert the settled status instead.
@@ -583,7 +632,13 @@ export class WorkflowTranscriptWatcher {
         usage: toClaudeSubagentUsage(totals, model),
         usageRounds: state.mapper.roundCount(),
         ...(model ? { model } : {}),
-        cumulativeTokens: tokens,
+        // A tool-only emit can land before the first assistant frame, when the
+        // total is still 0 — say nothing rather than report a zero.
+        ...(tokens > 0 ? { cumulativeTokens: tokens } : {}),
+        ...(state.countedToolCallIds.size > 0
+          ? { toolUseCount: state.countedToolCallIds.size }
+          : {}),
+        ...(state.currentTool ? { currentTool: state.currentTool } : {}),
       },
     });
   }

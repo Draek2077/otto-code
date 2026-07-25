@@ -77,11 +77,14 @@ export function CodeEditor(props: CodeEditorProps) {
       onDirtyChanged: (dirty) => callbacksRef.current.onDirtyChanged?.(dirty),
       onMatchInfo: (info) => callbacksRef.current.onMatchInfo?.(info),
       onCursorMoved: (position) => callbacksRef.current.onCursorMoved?.(position),
+      keyBindings: callbacksRef.current.keyBindings,
       onSaveShortcut: () => callbacksRef.current.onSaveShortcut?.(),
       onFindShortcut: () => callbacksRef.current.onFindShortcut?.(),
       onCloseFindShortcut: () => callbacksRef.current.onCloseFindShortcut?.(),
       onGoToLineShortcut: () => callbacksRef.current.onGoToLineShortcut?.(),
       onGoToDefinitionShortcut: () => callbacksRef.current.onGoToDefinitionShortcut?.(),
+      onFindReferencesShortcut: () => callbacksRef.current.onFindReferencesShortcut?.(),
+      onRenameSymbolShortcut: () => callbacksRef.current.onRenameSymbolShortcut?.(),
       onScrolled: (metrics) => callbacksRef.current.onScrolled?.(metrics),
       onPointerSelect: (select) => callbacksRef.current.onPointerSelect?.(select),
       // Only claim the right-click when the host actually has a menu: without a
@@ -160,6 +163,19 @@ export function CodeEditor(props: CodeEditorProps) {
   useEffect(() => {
     coreRef.current?.setWordWrap(props.wordWrap);
   }, [props.wordWrap]);
+
+  // Rebinding a shortcut in Settings must land on an editor that is already
+  // open, not only on the next remount. Keyed by value for the same reason the
+  // theme effect is: the hook rebuilds the array whenever the overrides query
+  // re-renders, so an identity check would reconfigure CM6 on every render.
+  const keyBindingsKey = JSON.stringify(props.keyBindings ?? null);
+  useEffect(() => {
+    const bindings = callbacksRef.current.keyBindings;
+    if (bindings) {
+      coreRef.current?.setKeyBindings(bindings);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyBindingsKey]);
 
   // The store hands out a stable array while the set is unchanged, so this fires on a
   // real republish rather than on every keystroke that re-renders the pane.

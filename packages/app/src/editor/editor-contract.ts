@@ -202,6 +202,49 @@ export type EditorHoverAnswer =
   /** No server covers this file, or the request failed. Asking again will not help. */
   | { kind: "unavailable" };
 
+/**
+ * The editor commands whose key is Otto's to choose, and therefore the user's to
+ * rebind. Each one is a "File Editor" row in the shortcut registry and a host
+ * callback on `CodeEditorProps`; the core only knows how to wire the two together.
+ *
+ * Not in here: CodeMirror's `defaultKeymap` (select line, undo, indent, the
+ * clipboard) and Escape-closes-find. Those are the platform's editor bindings
+ * rather than Otto's, and they keep working untouched — see editor-core's keymap.
+ */
+export type EditorKeyAction =
+  | "save"
+  | "find"
+  | "goToLine"
+  | "goToDefinition"
+  | "findReferences"
+  | "renameSymbol";
+
+export interface EditorKeyBinding {
+  action: EditorKeyAction;
+  /** A CodeMirror key name — "Mod-s", "Shift-F12", "F2". */
+  key: string;
+}
+
+/**
+ * What the editor binds when the host supplies no bindings of its own: the
+ * native webview, which has no shortcut registry to read, and tests.
+ *
+ * These MUST stay in step with the File Editor section of `SHORTCUT_BINDINGS`
+ * (keyboard/keyboard-shortcuts.ts) — the registry is the source of truth and
+ * this is its restatement for hosts that cannot reach it. editor-key-bindings.test.ts
+ * asserts the two agree, so a default changed in one place fails there rather
+ * than silently giving phones a different editor from desktops.
+ */
+export const DEFAULT_EDITOR_KEY_BINDINGS: readonly EditorKeyBinding[] = [
+  { action: "save", key: "Mod-s" },
+  { action: "find", key: "Mod-f" },
+  { action: "goToLine", key: "Mod-g" },
+  { action: "goToDefinition", key: "Mod-b" },
+  { action: "goToDefinition", key: "F12" },
+  { action: "findReferences", key: "Shift-F12" },
+  { action: "renameSymbol", key: "F2" },
+];
+
 export interface EditorController {
   getDoc(): Promise<string>;
   /** Current primary selection (for AI Refactor scoping). */
@@ -278,20 +321,37 @@ export interface CodeEditorProps {
   onMatchInfo?: (info: EditorMatchInfo | null) => void;
   /** Caret/selection moved; drives the status bar's Ln/Col readout. */
   onCursorMoved?: (position: EditorCursorPosition) => void;
-  /** Mod-S inside the editor; the host owns the actual save. */
+  /**
+   * Which key runs which of the callbacks below. Comes from the user's effective
+   * shortcut registry (see editor/editor-key-bindings.ts), so a rebind in
+   * Settings reaches the editor. Omitted means `DEFAULT_EDITOR_KEY_BINDINGS` —
+   * which is what the native webview host uses, since a phone has no shortcuts
+   * screen to rebind from.
+   */
+  keyBindings?: readonly EditorKeyBinding[];
+  /** The `save` binding fired; the host owns the actual save. */
   onSaveShortcut?: () => void;
-  /** Mod-F inside the editor; the host opens the find strip. */
+  /** The `find` binding fired; the host opens the find strip. */
   onFindShortcut?: () => void;
   /**
    * Escape inside the editor while find is running; the host closes the find
    * strip. Never fires when find is idle — Escape keeps its editing meaning
-   * then.
+   * then. Not a rebindable binding for exactly that reason.
    */
   onCloseFindShortcut?: () => void;
-  /** Mod-G inside the editor; the host opens the go-to-line dialog. */
+  /** The `goToLine` binding fired; the host opens the go-to-line dialog. */
   onGoToLineShortcut?: () => void;
-  /** Mod-B / F12 inside the editor; the host runs go-to-definition. */
+  /** The `goToDefinition` binding fired; the host runs go-to-definition. */
   onGoToDefinitionShortcut?: () => void;
+  /**
+   * The `findReferences` binding fired; the host opens the references tab. Wired
+   * even when no language server covers the file — like go-to-definition, the
+   * keystroke reaches the editor whether or not the menu item is offered, so the
+   * capability gate lives in the host's handler.
+   */
+  onFindReferencesShortcut?: () => void;
+  /** The `renameSymbol` binding fired; the host opens the rename dialog. */
+  onRenameSymbolShortcut?: () => void;
   /**
    * Debounced buffer mirror. The document lives inside the editor (web DOM or
    * native webview); this keeps a recoverable copy outside it so host

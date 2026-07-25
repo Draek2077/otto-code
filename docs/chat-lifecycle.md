@@ -16,6 +16,37 @@ initializing → idle → running → idle (or error → closed)
 
 Each chat in `AgentManager` carries a `lastStatus` of `initializing`, `idle`, `running`, `error`, or `closed`, reflecting the state of the agent session behind it. State transitions persist to disk and stream to subscribed clients via WebSocket.
 
+## Delivery — how a prompt reaches a busy agent
+
+Every prompt entrypoint (composer, MCP `send_agent_prompt`, CLI, chat mentions, schedule fires, notify-on-finish) funnels through `sendPromptToAgent` → `startAgentRun`, which takes a `delivery` mode. It only matters when the target is **busy**; against an idle agent both modes run the prompt immediately.
+
+| `delivery`            | Busy target                                                              |
+| --------------------- | ------------------------------------------------------------------------ |
+| `interrupt` (default) | Cancel the in-flight turn, run this now **in the same provider session** |
+| `queue`               | Let the turn finish; run this as the next turn                           |
+
+`interrupt` is the default everywhere, so no existing caller changed behavior. UI label: **Interrupt** / **Queue** (Settings → Default send, and the composer's Queue track). `cancel_agent` remains interrupt-only — abort the run, keep the agent alive.
+
+The whole feature lives in the turn lifecycle **above** every provider adapter, so it behaves identically for Claude, Codex, Copilot, OpenCode, Pi, and the openai-compatible provider. There are no per-provider adapters.
+
+### How the queue drains
+
+- **State.** `ManagedAgent.steerQueue` is a FIFO of `SteerQueueEntry` (`steer-queue-state.ts` owns the pure logic). Ephemeral by design — a queued nudge is about the run in progress, so it does not survive a daemon restart.
+- **Enqueue.** `AgentManager.enqueueSteerMessage` does the busy check and the push in one synchronous block and reports whether it took the prompt, so the answer cannot go stale between them. Not busy ⇒ the caller dispatches normally.
+- **Drain.** `finalizeForegroundTurn` decides synchronously, before it emits state, whether to pop a batch instead of going idle. `pendingSteerDrain` then holds the agent visibly `running` across the async handoff — mirroring `pendingReplacement` — so the row never flickers idle→running between queued turns and a message sent in that window is buffered rather than raced into a second concurrent turn.
+- **Terminal error or `closed`.** Do **not** drain. A queued turn must never run unprompted into a broken session: the queue is held and stays visible so the supervisor decides.
+- **Cancel clears it.** `cancelAgentRunCommand` (the shared verb behind the client's stop button and the `cancel_agent` tool) empties the queue: aborting the run also abandons the work lined up behind it. Interrupt-and-steer does **not** clear it — those queued notes are separate instructions.
+
+### Several messages queued at once merge into one turn
+
+Consecutive **user** messages in the queue are delivered as a **single** turn, joined in FIFO order with a blank line between them; images and attachments concatenate in the same order and the head entry's `runOptions` (including `messageId`) win.
+
+Three notes dropped while an agent grinds through a refactor are one instruction set, not three turns. Delivering them separately makes the agent act on note 1 before it has seen the constraint in note 3, and pays a full context re-send per turn. System-injected entries (`source: "system"` — mentions, schedule fires, notify-on-finish, agent-to-agent sends) never merge: each carries its own envelope and means something on its own.
+
+### Wire surface
+
+`server_info.features.steerQueue` gates the daemon-owned queue (`COMPAT(steerQueue)`, v0.6.8). With it the client sends `delivery: "queue"` on `send_agent_message_request`, reads `AgentSnapshotPayload.queuedMessages` (id + truncated preview + `enqueuedAt`), and edits the queue via `agent.queue.remove` / `agent.queue.clear`. Without it the composer keeps its own client-held queue drained on the running→idle edge — the behavior Otto has always had, not a degraded build of the daemon feature. Attachments live only in the client, so the daemon-backed path keeps a local sidecar keyed by the daemon's entry id purely so "edit" can restore them; losing it costs the attachments on edit, nothing else.
+
 ## Relationships
 
 A chat's agent can launch other chats via the agent-scoped `create_agent` MCP tool. Agent-scoped creation is always asynchronous. `relationship` and `workspace` are separate decisions:
@@ -86,6 +117,23 @@ Row actions are **status-aware** — the primary action matches the row's state.
 Row names are **frozen labels**, not summaries. A short, stable name is derived once when the subagent starts (from its type, plus an optional truncated slice of the initial task) and never mutates afterward — a provider's streaming progress summary updates the pane's live subtitle, never the row's title, and the projection enforces a hard single-line length cap. This keeps the track readable like a list of tabs.
 
 Each row shows **honest cumulative token cost** right of the name — the running Σ(input + output) the daemon accumulates across the subagent's turns (not a last-turn or estimated number), plus `totalCostUsd` when the provider reports one. The accumulator is universal: it works for any provider and any spawn path, including cost-less local models. The collapsed track header sums the total across all rows, so a fan-out's cost is legible at a glance.
+
+### Row liveness — "alive or hung?" without opening the row
+
+Beyond name and cost, a row carries three signals that answer whether the subagent is still working, in the order Claude Code's own background-task panel uses them: **elapsed time · tokens · tool uses · current tool**. Each renders only when its source reports it, so a row degrades to exactly what it can honestly say — a missing signal is absent, never a zero or a guess.
+
+- **Elapsed** is client-derived: a live ticker while the row is running, frozen at `createdAt → updatedAt` once terminal.
+- **`toolUseCount`** is cumulative work done and stays on a finished row (`89 tools` is what it _did_). The daemon keeps it monotonic, so a status-only settle can never walk it back.
+- **`currentTool`** is the tool it is running or ran last — the signal that turns "spinning" into "spinning _on a Bash_". Unlike the counters it is **not** monotonic (latest wins) and it is **sticky** across an update that omits it, so a scalar-only progress refresh can't blank it. The projection **drops it on any terminal row**: a finished agent isn't running Bash.
+
+Both wire fields are additive optional leaves on the agent snapshot (`COMPAT(subagentLiveness)`), so old clients ignore them and no capability gate is needed.
+
+The two sources are deliberately different, and that split is the provider-neutrality rule:
+
+- **Observed rows** get both from the provider, through the neutral `ObservedSubagentUpdate` — the same plumbing as `cumulativeTokens`. A provider fills them in its adapter (Claude reads `usage.tool_uses` and `last_tool_name` off the SDK's per-task messages; the adapter contract is in [projects/observed-subagents/provider-adapters.md](../projects/observed-subagents/provider-adapters.md)); one that can't leaves them absent and the row simply omits the readout. Nothing daemon-side infers a tool name.
+- **Rows with no provider task report** — native `create_agent` children, and a Workflow run's internal agents (whose fan-out carries no per-agent identity on the live stream) — derive both from the subagent's own timeline: count distinct `tool_call` ids, take the latest name. That derivation lives at the daemon's single timeline chokepoint (`recordAndDispatchTimelineItem`), which both the direct stream path and the stream coalescer's flush pass through. The coalescer is also the anti-strobe mechanism: running tool calls arrive batched, so the row re-emits at the coalesce window's rate rather than per event. Native derivation is scoped to agents carrying a parent-agent label — a main chat renders no track row, so counting one would be pure overhead.
+
+The header aggregate deliberately sums **tokens only**. A tool-use total would silently shrink whenever rows are cleared (only `cumulativeTokens` survives a clear, via the tally below), and a number that quietly drops is worse than no number.
 
 Completed subagents **tidy themselves without being destroyed**: terminal rows move into a collapsed **"Completed (N)"** group at the bottom of the track, keeping their frozen name and final token total, while the active list shows only in-flight subagents. A manual **"Clear all completed"** gesture archives every terminal row at once (never a running one). Nothing is destroyed until the user clears it or the parent is archived (which cascades), so cost and transcript survive the tidy.
 

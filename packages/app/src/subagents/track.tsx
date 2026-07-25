@@ -27,7 +27,9 @@ import {
   buildSubagentRowPresentationData,
   formatCompactTokenCount,
   formatHeaderLabel,
+  formatSubagentCurrentTool,
   formatSubagentElapsed,
+  formatSubagentToolUseCount,
   isSubagentRowRunning,
   partitionSubagentRows,
   resolveSubagentRowAction,
@@ -312,6 +314,11 @@ function SubagentsTrackRow({
     presentation.titleState === "loading" ? t("common.states.loading") : presentation.label;
   const rowAction = resolveSubagentRowAction(row.status);
   const tokenLabel = formatCompactTokenCount(row.cumulativeTokens);
+  // Liveness readouts, in the same order Claude's own background-task panel
+  // uses: elapsed · tokens · tool uses · current tool. Each is null when the
+  // provider doesn't report it, so the row degrades to what it can honestly say.
+  const toolUseLabel = formatSubagentToolUseCount(row.toolUseCount);
+  const currentToolLabel = formatSubagentCurrentTool(row.currentTool);
   const isRunning = isSubagentRowRunning(row.status);
   const frozenElapsed = formatSubagentElapsed(row);
   const handlePress = useCallback(() => {
@@ -365,6 +372,24 @@ function SubagentsTrackRow({
                 {tokenLabel}
               </Text>
             ) : null}
+            {toolUseLabel ? (
+              <Text
+                style={styles.rowMeta}
+                numberOfLines={1}
+                testID={`subagents-track-tool-uses-${row.id}`}
+              >
+                {toolUseLabel}
+              </Text>
+            ) : null}
+            {currentToolLabel ? (
+              <Text
+                style={styles.rowCurrentTool}
+                numberOfLines={1}
+                testID={`subagents-track-current-tool-${row.id}`}
+              >
+                {currentToolLabel}
+              </Text>
+            ) : null}
             <SubagentRowActions
               rowId={row.id}
               displayLabel={displayLabel}
@@ -384,7 +409,7 @@ function SubagentsTrackRow({
 // Elapsed run time — a live ticker while the subagent works, then frozen at its
 // createdAt→updatedAt duration once terminal. The Claude background-task panel's
 // clearest liveness signal; here it complements the token readout.
-// See projects/subagent-liveness/subagent-liveness.md (liveness signals).
+// See docs/chat-lifecycle.md (the subagents track).
 function SubagentElapsed({
   rowId,
   startedAt,
@@ -607,6 +632,16 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
     fontVariant: ["tabular-nums"],
+  },
+  // The live tool name reads as the answer to "what is it doing", not another
+  // statistic — same muted tone as the numbers but no tabular figures, and
+  // capped/shrinkable so a long MCP tool name truncates instead of squeezing
+  // the row label out.
+  rowCurrentTool: {
+    flexShrink: 1,
+    maxWidth: 120,
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
   },
   completedGroup: {
     marginTop: theme.spacing[1],

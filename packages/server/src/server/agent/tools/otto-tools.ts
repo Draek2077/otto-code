@@ -1637,6 +1637,13 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     agentId: z.string(),
     prompt: z.string(),
     sessionMode: z.string().optional().describe("Optional mode to set before running the prompt."),
+    delivery: z
+      .enum(["interrupt", "queue"])
+      .optional()
+      .default("interrupt")
+      .describe(
+        "How to reach the agent if it is BUSY. 'interrupt' (default) cancels whatever it is doing and runs your prompt now — use it for corrections that must land immediately. 'queue' lets the current turn finish and runs your prompt as the next one — use it for a follow-up that should not throw away work in progress. If the agent is idle both run it immediately.",
+      ),
   };
   const agentToAgentSendAgentPromptInputSchema = {
     ...commonSendAgentPromptInputSchema,
@@ -2320,12 +2327,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       sessionMode,
       background = Boolean(callerAgentId),
       notifyOnFinish,
+      delivery = "interrupt",
     }: {
       agentId: string;
       prompt: string;
       sessionMode?: string;
       background?: boolean;
       notifyOnFinish?: boolean;
+      delivery?: "interrupt" | "queue";
     }) => {
       // Omitted → fall back to the daemon notify-on-finish default (default
       // true, preserving prior behavior); an explicit arg still overrides. The
@@ -2335,12 +2344,16 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       const shouldNotifyOnFinish = Boolean(callerAgentId && resolvedNotifyOnFinish && background);
       onActivity?.("backgroundTasksInvoked", Number(background));
 
-      await sendPromptToAgent({
+      const dispatch = await sendPromptToAgent({
         agentManager,
         agentStorage,
         agentId,
         prompt,
         sessionMode,
+        delivery,
+        // Agent-to-agent sends carry their own framing; never merge one into a
+        // neighbouring message when the queue drains.
+        source: "system",
         logger: childLogger,
       });
 
@@ -2379,17 +2392,19 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       // Re-fetch snapshot since the state may have changed
       const currentSnapshot = agentManager.getAgent(agentId);
 
+      const queuedGuidance = dispatch.queued
+        ? "The agent was busy, so your prompt is queued and will run as its next turn. Nothing was interrupted."
+        : null;
+      const notifyGuidance = shouldNotifyOnFinish
+        ? "You will get notified when the prompted agent finishes, errors, or needs permission. Do not poll for status; continue with other work until the notification arrives."
+        : null;
+      const guidance = [queuedGuidance, notifyGuidance].filter(Boolean).join(" ");
       const responseData = {
         success: true,
         status: currentSnapshot?.lifecycle ?? "idle",
         lastMessage: null,
         permission: null,
-        ...(shouldNotifyOnFinish
-          ? {
-              guidance:
-                "You will get notified when the prompted agent finishes, errors, or needs permission. Do not poll for status; continue with other work until the notification arrives.",
-            }
-          : {}),
+        ...(guidance ? { guidance } : {}),
       };
       const validJson = ensureValidJson(responseData);
 

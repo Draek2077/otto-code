@@ -4,7 +4,9 @@ import {
   buildSubagentRowPresentationData,
   formatCompactTokenCount,
   formatHeaderLabel,
+  formatSubagentCurrentTool,
   formatSubagentElapsed,
+  formatSubagentToolUseCount,
   isSubagentRowRunning,
   isSubagentRowTidyEligible,
   partitionSubagentRows,
@@ -26,6 +28,8 @@ function row(overrides: Partial<SubagentRow> & Pick<SubagentRow, "id">): Subagen
     updatedAt: overrides.updatedAt ?? new Date("2026-04-20T00:00:00.000Z"),
     attend: overrides.attend,
     cumulativeTokens: overrides.cumulativeTokens,
+    toolUseCount: overrides.toolUseCount,
+    currentTool: overrides.currentTool,
     personalityName: overrides.personalityName,
     personalitySpinner: overrides.personalitySpinner,
   };
@@ -395,5 +399,36 @@ describe("buildSubagentRowPresentationData", () => {
     );
     expect(presentation.label).toBe("Sage");
     expect(presentation.titleState).toBe("ready");
+  });
+});
+
+describe("formatSubagentToolUseCount", () => {
+  it("reads as work done, singular and plural", () => {
+    expect(formatSubagentToolUseCount(1)).toBe("1 tool");
+    expect(formatSubagentToolUseCount(89)).toBe("89 tools");
+  });
+
+  it("stays raw at large counts — 140 tool calls must not read as 89", () => {
+    expect(formatSubagentToolUseCount(1240)).toBe("1240 tools");
+  });
+
+  it("renders nothing when there is nothing honest to say", () => {
+    expect(formatSubagentToolUseCount(0)).toBeNull();
+    expect(formatSubagentToolUseCount(undefined)).toBeNull();
+    expect(formatSubagentToolUseCount(Number.NaN)).toBeNull();
+    expect(formatSubagentToolUseCount(-3)).toBeNull();
+  });
+});
+
+describe("formatSubagentCurrentTool", () => {
+  it("surfaces the tool the sub-agent is on", () => {
+    expect(formatSubagentCurrentTool("Bash")).toBe("Bash");
+    expect(formatSubagentCurrentTool("  Edit  ")).toBe("Edit");
+  });
+
+  it("omits rather than invents when the provider reports nothing", () => {
+    expect(formatSubagentCurrentTool(undefined)).toBeNull();
+    expect(formatSubagentCurrentTool(null)).toBeNull();
+    expect(formatSubagentCurrentTool("   ")).toBeNull();
   });
 });

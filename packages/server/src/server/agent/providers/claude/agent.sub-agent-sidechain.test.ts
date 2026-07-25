@@ -251,6 +251,9 @@ function buildWorkflowScenarioEvents(
       description: "Fanning out research agents",
       summary: "Phase 1: gather sources",
       usage: { total_tokens: 1200, tool_uses: 4, duration_ms: 5000 },
+      // The SDK's own liveness pair: how many tools the run has invoked and
+      // which one it is on right now.
+      last_tool_name: "Bash",
     },
     {
       type: "system",
@@ -640,6 +643,70 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
     const last = updates[updates.length - 1];
     expect(last?.update).toMatchObject({ key: "wf-call-1", status: "idle" });
     expect(last?.update.cumulativeTokens).toBe(4800);
+  });
+
+  test("carries the SDK's tool-use count and current tool onto the observed row", async () => {
+    queryFactory.mockImplementation(() => buildQueryMock(buildWorkflowScenarioEvents("completed")));
+
+    const session = await new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    }).createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+    });
+
+    const events = await collectUntilTerminal(streamSession(session, "ultracode: research this"));
+    await session.close();
+
+    const updates = events.filter(
+      (event): event is Extract<AgentStreamEvent, { type: "observed_subagent_updated" }> =>
+        event.type === "observed_subagent_updated",
+    );
+
+    // Mid-run: "89 tool uses · Bash" — how much work it has done and what it is
+    // doing right now, both read from the SDK rather than inferred.
+    const progress = updates.find((event) => event.update.currentTool !== undefined);
+    expect(progress?.update).toMatchObject({
+      key: "wf-call-1",
+      status: "running",
+      toolUseCount: 4,
+      currentTool: "Bash",
+    });
+
+    // The settle carries the final count but no current tool — a finished run
+    // isn't running anything.
+    const last = updates[updates.length - 1];
+    expect(last?.update.toolUseCount).toBe(12);
+    expect(last?.update.currentTool).toBeUndefined();
+  });
+
+  test("omits the liveness fields when the provider reports no tool signal", async () => {
+    // The plain-Task fixture's task lifecycle carries no usage.tool_uses and no
+    // last_tool_name. The row must simply say nothing — never a zero, never a
+    // guessed tool name.
+    const session = await new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    }).createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+    });
+
+    const events = await collectUntilTerminal(streamSession(session, "delegate work"));
+    await session.close();
+
+    const updates = events.filter(
+      (event): event is Extract<AgentStreamEvent, { type: "observed_subagent_updated" }> =>
+        event.type === "observed_subagent_updated",
+    );
+    expect(updates.length).toBeGreaterThan(0);
+    for (const event of updates) {
+      expect(event.update).not.toHaveProperty("toolUseCount");
+      expect(event.update).not.toHaveProperty("currentTool");
+    }
   });
 
   test("surfaces a failed Workflow run as an error requiring attention", async () => {

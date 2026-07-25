@@ -23,6 +23,7 @@ import type { ManagedAgent } from "./agent-manager.js";
 import type { JsonValue } from "../json-utils.js";
 import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
 import { isStoredAgentProviderAvailable, toAgentPersistenceHandle } from "../persistence-hooks.js";
+import { steerQueuePreview, type SteerQueueEntry } from "./steer-queue-state.js";
 export type { ManagedAgent };
 
 interface ProjectionOptions {
@@ -102,6 +103,52 @@ export function toStoredAgentRecord(
   } satisfies StoredAgentRecord;
 }
 
+/**
+ * Project the daemon-owned steering queue for the wire. Returns undefined for an
+ * empty queue so the field stays absent rather than shipping `[]` on every
+ * snapshot. See docs/chat-lifecycle.md (queued delivery).
+ */
+function toQueuedMessagePayloads(
+  // A live ManagedAgent always has one; the projection is also handed
+  // hand-built snapshots (imports, tests), same as `availableModes` above.
+  queue: readonly SteerQueueEntry[] | undefined,
+): AgentSnapshotPayload["queuedMessages"] {
+  if (!queue || queue.length === 0) {
+    return undefined;
+  }
+  return queue.map((entry) => {
+    const attachmentCount =
+      typeof entry.prompt === "string"
+        ? 0
+        : entry.prompt.filter((block) => block.type !== "text").length;
+    return {
+      id: entry.id,
+      preview: steerQueuePreview(entry),
+      enqueuedAt: entry.enqueuedAt,
+      ...(attachmentCount > 0 ? { attachmentCount } : {}),
+    };
+  });
+}
+
+/**
+ * Carry the spawning Agent Personality's identity onto the snapshot so the row
+ * keeps its name and spinner colors. See docs/agent-personalities.md.
+ */
+function applyPersonalityIdentity(
+  payload: AgentSnapshotPayload,
+  snapshot: AgentSessionConfig["personalitySnapshot"],
+): void {
+  if (snapshot?.spinner !== undefined) {
+    payload.personalitySpinner = snapshot.spinner;
+  }
+  if (snapshot?.name !== undefined) {
+    payload.personalityName = snapshot.name;
+  }
+  if (snapshot?.personalityId !== undefined) {
+    payload.personalityId = snapshot.personalityId;
+  }
+}
+
 export function toAgentPayload(
   agent: ManagedAgent,
   options?: ProjectionOptions,
@@ -155,22 +202,25 @@ export function toAgentPayload(
     payload.cumulativeTokens = agent.cumulativeTokens;
   }
 
+  // Same liveness signals observed rows carry, so a native (create_agent) child
+  // reads identically in the track. Sourced from its own timeline rather than a
+  // provider task report — see AgentManager.recordNativeSubagentToolActivity.
+  applySubagentLiveness(payload, {
+    toolUseCount: agent.toolUseCount,
+    currentTool: agent.currentTool,
+    status: agent.lifecycle,
+  });
+
+  const queuedMessages = toQueuedMessagePayloads(agent.steerQueue);
+  if (queuedMessages) {
+    payload.queuedMessages = queuedMessages;
+  }
+
   if (agent.lastError !== undefined) {
     payload.lastError = agent.lastError;
   }
 
-  const personalitySpinner = agent.config.personalitySnapshot?.spinner;
-  if (personalitySpinner !== undefined) {
-    payload.personalitySpinner = personalitySpinner;
-  }
-  const personalityName = agent.config.personalitySnapshot?.name;
-  if (personalityName !== undefined) {
-    payload.personalityName = personalityName;
-  }
-  const personalityId = agent.config.personalitySnapshot?.personalityId;
-  if (personalityId !== undefined) {
-    payload.personalityId = personalityId;
-  }
+  applyPersonalityIdentity(payload, agent.config.personalitySnapshot);
 
   // Handle attention state
   payload.requiresAttention = agent.attention.requiresAttention;
@@ -336,6 +386,10 @@ export function toObservedSubagentPayload(input: {
   // breakdown and (possibly-cheaper) model survive a scalar-only final update.
   lastUsage?: AgentUsage;
   model?: string;
+  // Liveness counters resolved by the manager across updates (monotonic count,
+  // latest tool). See applySubagentLiveness for the terminal-clearing rule.
+  toolUseCount?: number;
+  currentTool?: string;
   update: ObservedSubagentUpdate;
 }): AgentSnapshotPayload {
   const { update } = input;
@@ -382,7 +436,36 @@ export function toObservedSubagentPayload(input: {
     payload.cumulativeTokens = input.cumulativeTokens;
   }
 
+  applySubagentLiveness(payload, {
+    toolUseCount: input.toolUseCount,
+    currentTool: input.currentTool,
+    status: update.status,
+  });
+
   return payload;
+}
+
+/**
+ * Attach the sub-agents-track liveness signals to a snapshot: how much work the
+ * agent has done (`toolUseCount`, cumulative — it stays on a finished row, which
+ * is the whole point of "89 tool uses") and what it is doing right now
+ * (`currentTool`, dropped the moment the agent is terminal — a finished agent
+ * isn't "running Bash"). Absent inputs leave the fields off entirely so the row
+ * omits the readout instead of showing a stale or invented value.
+ * Shared by both projections so observed and native sub-agent rows read alike.
+ * See docs/chat-lifecycle.md (the subagents track).
+ */
+function applySubagentLiveness(
+  payload: AgentSnapshotPayload,
+  input: { toolUseCount?: number; currentTool?: string; status: AgentSnapshotPayload["status"] },
+): void {
+  if (typeof input.toolUseCount === "number" && Number.isFinite(input.toolUseCount)) {
+    payload.toolUseCount = input.toolUseCount;
+  }
+  const isLive = input.status === "initializing" || input.status === "running";
+  if (isLive && input.currentTool) {
+    payload.currentTool = input.currentTool;
+  }
 }
 
 export function toAgentListItemPayload(agent: AgentSnapshotPayload): AgentListItemPayload {

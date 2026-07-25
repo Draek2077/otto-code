@@ -44,6 +44,10 @@ class FakePermissionAgentManager {
     return this.hasRunInFlight;
   }
 
+  enqueueSteerMessage(): { queued: boolean } {
+    return { queued: false };
+  }
+
   streamAgent(
     agentId: string,
     prompt: AgentPromptInput,

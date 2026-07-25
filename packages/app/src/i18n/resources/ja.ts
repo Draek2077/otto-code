@@ -2096,6 +2096,13 @@ export const ja: TranslationResources = {
     loading: "Loading files...",
     noResults: "No files",
   },
+  // Refine — the reviewed AI rewrite (projects/refine/refine.md). Only the two
+  // entry-point strings are translated here; the Refine tab itself is literal
+  // English pending the pre-release i18n sweep, like the rename/references tabs.
+  refine: {
+    open: "Refine with AI",
+    saveFirst: "Save or revert your changes first — Refine works from the file on disk.",
+  },
   refactor: {
     open: "Refactor with AI",
     title: "Refactor with AI",
@@ -2612,6 +2619,7 @@ export const ja: TranslationResources = {
         tabsPanes: "タブ＆ペイン",
         projects: "プロジェクト",
         panels: "パネル",
+        editor: "File Editor",
         agentInput: "エージェント入力",
       },
       help: {
@@ -2658,6 +2666,12 @@ export const ja: TranslationResources = {
         sendMessage: "メッセージを送信",
         queueMessage: "メッセージをキューに追加",
         muteUnmuteVoiceMode: "音声モードのミュートを切り替え",
+        editorSave: "Save file",
+        editorFind: "Find in file",
+        editorGoToLine: "Go to line",
+        editorGoToDefinition: "Go to definition",
+        editorFindReferences: "Find references",
+        editorRenameSymbol: "Rename symbol",
       },
       helpNotes: {
         showKeyboardShortcuts:

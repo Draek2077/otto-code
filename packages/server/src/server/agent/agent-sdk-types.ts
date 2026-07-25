@@ -601,6 +601,18 @@ export interface ObservedSubagentUpdate {
   // which is already cumulative-per-subagent). Honest cost for the track readout.
   // See docs/agent-lifecycle.md (Item 3).
   cumulativeTokens?: number;
+  // Tool invocations this subagent has made so far (cumulative). A neutral field
+  // any provider can set; the daemon keeps it monotonic like cumulativeTokens so
+  // a status-only final update can't drop the readout. Claude reads it from the
+  // SDK's per-task `usage.tool_uses`. Optional/additive — absent ⇒ no count on
+  // the row. See docs/chat-lifecycle.md (the subagents track).
+  toolUseCount?: number;
+  // The tool this subagent is running (or ran last). A neutral field any
+  // provider can set; unlike the counters it is NOT monotonic (latest wins) and
+  // the daemon drops it once the row is terminal — a finished subagent isn't
+  // "running Bash". Claude reads it from `task_progress.last_tool_name`.
+  // Optional/additive — absent ⇒ the row omits it, never a guessed value.
+  currentTool?: string;
 }
 
 /**

@@ -3,10 +3,19 @@ import type {
   CodeDefinitionStatus,
   CodeDiagnostic,
 } from "@otto-code/protocol/messages";
+import { readFile } from "node:fs/promises";
 import type { Logger } from "pino";
 import { z } from "zod";
 import type { LspFeature } from "./connection.js";
 import { LspDiagnosticsStore, toCodeDiagnostics } from "./diagnostics.js";
+import {
+  EditJobStore,
+  isInsideWorkspace,
+  type FileOutcome,
+  type PlannedEdit,
+  type PlannedFile,
+  type UndoFileOutcome,
+} from "./edit-job.js";
 import { LspDocuments } from "./documents.js";
 import {
   LspServerPool,
@@ -128,18 +137,25 @@ export interface ReferencesResult {
   error: string | null;
 }
 
-/** One edit a rename would make, 1-based. */
-export interface RenameEdit {
-  line: number;
-  column: number;
-  endLine: number;
-  endColumn: number;
-  newText: string;
-}
+/**
+ * One edit a rename would make, 1-based.
+ *
+ * `oldText` is what makes the job reversible and verifiable rather than merely described: it
+ * is the text the edit expects to replace, and the only way to tell at run time that a file
+ * moved under the plan.
+ */
+export type RenameEdit = PlannedEdit;
 
-export interface RenameFilePlan {
+export type RenameFilePlan = PlannedFile;
+
+/**
+ * What the language server said, before the plan is grounded against the files. Distinct
+ * from `RenameFilePlan` on purpose: only one of these two has been checked against reality,
+ * and letting them share a type is how an ungrounded plan reaches the run.
+ */
+interface RenameFileRanges {
   path: string;
-  edits: RenameEdit[];
+  edits: Omit<PlannedEdit, "oldText">[];
 }
 
 /**
@@ -151,11 +167,58 @@ export interface RenamePlan {
   files: RenameFilePlan[];
   fileCount: number;
   editCount: number;
+  /**
+   * Identity of this exact set of edits. Echoed back on apply so the daemon can prove the
+   * plan being applied is the plan that was audited — computed here rather than by the
+   * client so there is only one definition of "the same plan" in the system.
+   */
+  planId: string;
   error: string | null;
 }
 
 export interface RenameQuery extends DefinitionQuery {
   newName: string;
+}
+
+export interface RenameApplyQuery extends RenameQuery {
+  /** The `planId` of the plan the user actually audited. */
+  planId: string;
+}
+
+export type RenameApplyStatus =
+  /**
+   * The run happened. NOT the same as "everything applied" — read `complete` and the
+   * per-file outcomes for that. A run where two of fourteen edits no longer fit is still a
+   * run that took place, and reporting it as a failure would hide the twelve that landed.
+   */
+  | "ok"
+  /** The host no longer holds this plan, so there is nothing to run. */
+  | "expired"
+  /** The plan names a file outside the workspace. Nothing written, deliberately. */
+  | "escaped";
+
+export interface RenameApplyResult {
+  status: RenameApplyStatus;
+  /** Identity of this run, for undo. Null when nothing ran. */
+  runId: string | null;
+  files: FileOutcome[];
+  appliedFiles: number;
+  appliedEdits: number;
+  skippedEdits: number;
+  /** True only when every planned edit landed. */
+  complete: boolean;
+  error: string | null;
+}
+
+export type RenameUndoStatus = "ok" | "expired";
+
+export interface RenameUndoResult {
+  status: RenameUndoStatus;
+  files: UndoFileOutcome[];
+  restoredFiles: number;
+  /** True only when every file the run wrote was put back. */
+  complete: boolean;
+  error: string | null;
 }
 
 /** One document's whole current problem set, ready to broadcast. */
@@ -235,8 +298,12 @@ export class LspService {
   private readonly logger: Logger;
 
   private readonly diagnostics = new LspDiagnosticsStore();
+  /** Plans and their runs, so a job can be executed as audited and taken back afterwards. */
+  private readonly jobs = new EditJobStore();
 
   private settings: LspSettings = DEFAULT_SETTINGS;
+  /** Last workspace handed to the pool, so an unchanged one never re-enters it. */
+  private activeWorkspaceKey: string | null = null;
   private activityListener: ((busyRoots: string[]) => void) | null = null;
   private diagnosticsListener: ((snapshot: DiagnosticsSnapshot) => void) | null = null;
   /** Last snapshot sent, so an unchanged set never becomes a broadcast. */
@@ -438,6 +505,7 @@ export class LspService {
    * a state worth preserving.
    */
   async syncDocument(input: SyncDocumentInput): Promise<void> {
+    this.setActiveWorkspace(input.rootPath);
     await this.documents.sync(input);
     await this.documents.serversFor(input.rootPath, input.filePath);
   }
@@ -462,6 +530,7 @@ export class LspService {
     query: DefinitionQuery,
     feature: LspFeature,
   ): Promise<BoundServer[]> {
+    this.setActiveWorkspace(query.rootPath);
     const bound = await this.documents.serversFor(query.rootPath, query.filePath);
     return bound.filter((entry) => entry.connection.supports(feature));
   }
@@ -591,8 +660,14 @@ export class LspService {
     }
 
     const locations = dedupeLocations(answers.flatMap((answer) => answer ?? []));
-    if (locations.length === 0 && bound.some((entry) => entry.connection.isIndexing)) {
-      return { status: "indexing", locations: [], error: null };
+
+    // A NON-EMPTY answer from a still-loading server is the dangerous case, and the one
+    // this used to report as `ok`. Measured on this repo: for 7 seconds after spawn,
+    // `fromFileUri` returned 2 hits in 1 file when the truth is 14 in 4 — a complete-looking
+    // answer that was 7x short. So indexing outranks having results: the caller is told the
+    // list is provisional and gets the partial set to show meanwhile.
+    if (bound.some((entry) => entry.connection.isIndexing)) {
+      return { status: "indexing", locations, error: null };
     }
     return { status: "ok", locations, error: null };
   }
@@ -610,7 +685,24 @@ export class LspService {
         files: [],
         fileCount: 0,
         editCount: 0,
+        planId: "",
         error: "No language server is available for this file on the host",
+      };
+    }
+
+    // Refused outright while any bound server is still building its project model. A
+    // rename's whole purpose here is an auditable blast radius, and a plan produced against
+    // a half-loaded program under-reports it — "1 file, 2 edits" for something that touches
+    // 4 files and 14 sites. Every other request degrades to a bad answer; this one degrades
+    // to a destructive edit, so it does not get to guess.
+    if (bound.some((entry) => entry.connection.isIndexing)) {
+      return {
+        status: "indexing",
+        files: [],
+        fileCount: 0,
+        editCount: 0,
+        planId: "",
+        error: null,
       };
     }
 
@@ -625,20 +717,45 @@ export class LspService {
       if (!parsed.success || parsed.data === null) {
         continue;
       }
-      const files = toRenameFilePlans(parsed.data);
-      if (files.length === 0) {
+      const ranges = toRenameFilePlans(parsed.data);
+      if (ranges.length === 0) {
         continue;
       }
+
+      // Every file the server named must be inside the workspace, checked HERE rather than
+      // at apply: a plan that could never legally run should not be shown as if it could.
+      const escaped = ranges.find((file) => !isInsideWorkspace(query.rootPath, file.path));
+      if (escaped !== undefined) {
+        this.logger.warn(
+          { rootPath: query.rootPath, escapedPath: escaped.path },
+          "refusing rename plan: language server named a file outside the workspace",
+        );
+        return {
+          status: "unavailable",
+          files: [],
+          fileCount: 0,
+          editCount: 0,
+          planId: "",
+          error: `The language server named a file outside this workspace (${escaped.path})`,
+        };
+      }
+
+      // Reading the files here is what makes the job reversible and verifiable: each edit
+      // records the text it expects to replace, which is the entire basis for detecting at
+      // run time that something moved under us.
+      const files = await capturePlannedFiles(ranges);
+      const plan = this.jobs.putPlan(files, `rename:${query.newName}`);
       return {
         status: "ok",
-        files,
-        fileCount: files.length,
-        editCount: files.reduce((total, file) => total + file.edits.length, 0),
+        files: plan.files,
+        fileCount: plan.fileCount,
+        editCount: plan.editCount,
+        planId: plan.planId,
         error: null,
       };
     }
 
-    return { status: "ok", files: [], fileCount: 0, editCount: 0, error: null };
+    return { status: "ok", files: [], fileCount: 0, editCount: 0, planId: "", error: null };
   }
 
   /**
@@ -669,6 +786,98 @@ export class LspService {
   }
 
   /**
+   * Run a rename the user audited.
+   *
+   * **The stored plan is executed — not one re-derived now.** A deliberate reversal of the
+   * first design, which recomputed the plan and refused on any difference. The property that
+   * design was really protecting was never *recomputation*; it was *the client is not the
+   * author of the edits* — and keeping the plan daemon-side preserves that exactly while
+   * giving the user what a dry run actually promises: the edits you approved are the edits
+   * that run. Recomputing also refused the whole job whenever anything moved, and in a
+   * product whose agents write files continuously that is the common case, not the rare one.
+   *
+   * Safety moved from all-or-nothing to per-edit: each edit carries the text it expects to
+   * replace, so a file that changed underneath loses only the edits whose ground truth moved,
+   * and those are named rather than silently dropped. Every write is journalled, so
+   * `renameUndo` can take the whole run back.
+   */
+  async renameApply(query: RenameApplyQuery): Promise<RenameApplyResult> {
+    const plan = this.jobs.getPlan(query.planId);
+    if (plan === null) {
+      return {
+        status: "expired",
+        runId: null,
+        files: [],
+        appliedFiles: 0,
+        appliedEdits: 0,
+        skippedEdits: 0,
+        complete: false,
+        error:
+          "The host no longer holds this plan. Plan the rename again to see its current impact.",
+      };
+    }
+
+    // Re-checked at run time, not merely when the plan was made: a plan can sit on screen
+    // while a workspace is reconfigured, and a path that has since escaped must not be written.
+    const escaped = plan.files.find((file) => !isInsideWorkspace(query.rootPath, file.path));
+    if (escaped !== undefined) {
+      this.logger.warn(
+        { rootPath: query.rootPath, escapedPath: escaped.path },
+        "refusing rename: plan names a file outside the workspace",
+      );
+      return {
+        status: "escaped",
+        runId: null,
+        files: [],
+        appliedFiles: 0,
+        appliedEdits: 0,
+        skippedEdits: 0,
+        complete: false,
+        error: `The plan names a file outside this workspace (${escaped.path})`,
+      };
+    }
+
+    const outcome = await this.jobs.run(plan);
+    return {
+      status: "ok",
+      runId: outcome.runId,
+      files: outcome.files,
+      appliedFiles: outcome.appliedFiles,
+      appliedEdits: outcome.appliedEdits,
+      skippedEdits: outcome.skippedEdits,
+      complete: outcome.complete,
+      error: null,
+    };
+  }
+
+  /**
+   * Put a run back.
+   *
+   * Only files still holding exactly what the run wrote are restored. Anything edited since
+   * is reported and left alone — a blind restore would destroy that work, which is a worse
+   * outcome than not undoing.
+   */
+  async renameUndo(runId: string): Promise<RenameUndoResult> {
+    const outcome = await this.jobs.undo(runId);
+    if (outcome === null) {
+      return {
+        status: "expired",
+        files: [],
+        restoredFiles: 0,
+        complete: false,
+        error: "The host no longer holds this run, so it cannot be undone from here.",
+      };
+    }
+    return {
+      status: "ok",
+      files: outcome.files,
+      restoredFiles: outcome.restoredFiles,
+      complete: outcome.complete,
+      error: null,
+    };
+  }
+
+  /**
    * Escape hatch for tests that need to drive a specific server directly. Not part of
    * the RPC surface.
    */
@@ -688,7 +897,22 @@ export class LspService {
     return this.documents.openCount();
   }
 
+  /**
+   * Which workspace the user is looking at, which is what separates the idle allowance
+   * from the much shorter background one.
+   *
+   * Called from this service's own request path rather than pushed by the client: there is
+   * no focus signal on the wire, and every code-intelligence request already *is* one —
+   * a hover, a definition lookup or a buffer sync only happens for the file in front of
+   * someone. Inventing a second signal would give the idle policy two sources of truth,
+   * and the one that goes stale is the one that leaves servers running.
+   */
   setActiveWorkspace(rootPath: string | null): void {
+    const key = rootPath === null ? null : documentKey(rootPath);
+    if (key === this.activeWorkspaceKey) {
+      return;
+    }
+    this.activeWorkspaceKey = key;
     this.pool.setActiveWorkspace(rootPath);
   }
 
@@ -717,6 +941,89 @@ export class LspService {
  */
 function diagnosticsServerKey(rootPath: string, serverId: string): string {
   return `${documentKey(rootPath)} ${serverId}`;
+}
+
+/**
+ * Read each planned file once and record, for every edit, the text it would replace.
+ *
+ * This is the step that turns a description of a change into a job that can be verified and
+ * reversed. One read per file, and only at plan time — the run itself re-reads to check that
+ * nothing moved since.
+ *
+ * A file that cannot be read keeps its edits with an empty `oldText`, which the run will
+ * refuse to match. Dropping it here instead would quietly shrink the blast radius the user is
+ * being shown, and under-reporting impact is the one thing this whole surface exists to
+ * prevent.
+ */
+async function capturePlannedFiles(ranges: readonly RenameFileRanges[]): Promise<PlannedFile[]> {
+  const captured: PlannedFile[] = [];
+
+  for (const file of ranges) {
+    let text: string;
+    try {
+      text = await readFile(file.path, "utf8");
+    } catch {
+      captured.push({ path: file.path, edits: file.edits.map(withoutGroundTruth) });
+      continue;
+    }
+    const lineStarts = buildLineStarts(text);
+    captured.push({
+      path: file.path,
+      edits: file.edits.map((edit) =>
+        groundEdit(
+          edit,
+          text.slice(
+            offsetOf(lineStarts, text.length, edit.line, edit.column),
+            offsetOf(lineStarts, text.length, edit.endLine, edit.endColumn),
+          ),
+        ),
+      ),
+    });
+  }
+
+  return captured;
+}
+
+/** An edit paired with the text it expects to replace. */
+function groundEdit(edit: Omit<PlannedEdit, "oldText">, oldText: string): PlannedEdit {
+  return {
+    line: edit.line,
+    column: edit.column,
+    endLine: edit.endLine,
+    endColumn: edit.endColumn,
+    newText: edit.newText,
+    oldText,
+  };
+}
+
+/**
+ * An edit with no ground truth, for a file that could not be read. The run will refuse to
+ * match it — which is the point: an unreadable file must not quietly shrink the blast radius
+ * the user is shown.
+ */
+function withoutGroundTruth(edit: Omit<PlannedEdit, "oldText">): PlannedEdit {
+  return groundEdit(edit, "");
+}
+
+function buildLineStarts(text: string): number[] {
+  const starts = [0];
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "\n") {
+      starts.push(index + 1);
+    }
+  }
+  return starts;
+}
+
+/** 1-based line/column to an offset, clamped to the document. */
+function offsetOf(
+  lineStarts: readonly number[],
+  length: number,
+  line: number,
+  column: number,
+): number {
+  const start = lineStarts[Math.min(Math.max(line, 1), lineStarts.length) - 1];
+  return Math.min(start + Math.max(0, column - 1), length);
 }
 
 function normalizeDefinitionReply(reply: unknown, serverId: string): CodeDefinitionLocation[] {
@@ -816,8 +1123,8 @@ function toHoverRange(range: z.infer<typeof RangeSchema>): HoverRange {
  */
 function toRenameFilePlans(
   edit: Exclude<z.infer<typeof WorkspaceEditSchema>, null>,
-): RenameFilePlan[] {
-  const plans: RenameFilePlan[] = [];
+): RenameFileRanges[] {
+  const plans: RenameFileRanges[] = [];
 
   for (const [uri, edits] of Object.entries(edit.changes ?? {})) {
     let filePath: string;

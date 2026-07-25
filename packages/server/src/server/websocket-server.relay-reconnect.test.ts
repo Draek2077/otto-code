@@ -11,7 +11,10 @@ import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import type { WorkspaceAutoName } from "./workspace-auto-name.js";
 import { asInternals, createStub } from "./test-utils/class-mocks.js";
-import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
+import {
+  createDaemonConfigStoreStub,
+  createProviderSnapshotManagerStub,
+} from "./test-utils/session-stubs.js";
 import {
   asUint8Array,
   decodeTerminalStreamFrame,
@@ -228,9 +231,7 @@ function createServer(options?: {
   logger?: ReturnType<typeof createLogger>;
 }) {
   const speechReadiness = options?.speechReadiness ?? null;
-  const daemonConfigStore = {
-    onChange: vi.fn(() => () => {}),
-  };
+  const daemonConfigStore = createDaemonConfigStoreStub();
   const logger = options?.logger ?? createLogger();
   return new VoiceAssistantWebSocketServer(
     createStub<HTTPServer>({}),

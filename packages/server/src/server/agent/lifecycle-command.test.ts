@@ -45,6 +45,8 @@ class FakeLifecycleAgentManager implements LifecycleAgentManager {
   readonly notifiedAgentIds: string[] = [];
   readonly modeUpdates: Array<{ agentId: string; modeId: string }> = [];
   readonly detachedAgentIds: string[] = [];
+  readonly clearedSteerQueueAgentIds: string[] = [];
+  readonly steerQueueSizes = new Map<string, number>();
   inFlightAgentIds = new Set<string>();
 
   constructor(private readonly storage: FakeLifecycleAgentStorage) {}
@@ -60,6 +62,15 @@ class FakeLifecycleAgentManager implements LifecycleAgentManager {
   async cancelAgentRun(agentId: string): Promise<boolean> {
     this.cancelledAgentIds.push(agentId);
     return this.inFlightAgentIds.delete(agentId);
+  }
+
+  clearSteerQueue(agentId: string): number {
+    const size = this.steerQueueSizes.get(agentId) ?? 0;
+    if (size > 0) {
+      this.steerQueueSizes.set(agentId, 0);
+      this.clearedSteerQueueAgentIds.push(agentId);
+    }
+    return size;
   }
 
   async clearAgentAttention(agentId: string): Promise<void> {

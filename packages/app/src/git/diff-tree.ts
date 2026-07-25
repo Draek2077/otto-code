@@ -1,3 +1,4 @@
+import { TREE_RAILS_ALL_CONTINUE, withTreeRail } from "@/components/tree-rail-mask";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
 
 // Builds a directory hierarchy from the flat, path-sorted `ParsedDiffFile[]` the
@@ -35,6 +36,8 @@ export interface DiffTreeFolderRow {
   /** compressed display label, e.g. "packages/app/src" */
   displayName: string;
   depth: number;
+  /** which indent rails keep running below this row — see tree-rail-mask.ts */
+  ancestorMask: number;
   additions: number;
   deletions: number;
 }
@@ -43,6 +46,8 @@ export interface DiffTreeFileRow {
   kind: "file";
   file: ParsedDiffFile;
   depth: number;
+  /** which indent rails keep running below this row — see tree-rail-mask.ts */
+  ancestorMask: number;
 }
 
 export type DiffTreeRow = DiffTreeFolderRow | DiffTreeFileRow;
@@ -166,11 +171,15 @@ export function flattenDiffTree(
   const statsByNode = computeDirStats(root);
   const rows: DiffTreeRow[] = [];
 
-  function walk(node: DiffTreeDirNode, depth: number): void {
-    for (const child of node.children) {
+  function walk(node: DiffTreeDirNode, depth: number, parentMask: number): void {
+    const lastIndex = node.children.length - 1;
+    node.children.forEach((child, index) => {
+      // `depth` is the child's own depth, so the bit it sets is the one its rail
+      // column reads back when the row renders.
+      const mask = withTreeRail(parentMask, depth, index !== lastIndex);
       if (child.kind === "file") {
-        rows.push({ kind: "file", file: child.file, depth });
-        continue;
+        rows.push({ kind: "file", file: child.file, depth, ancestorMask: mask });
+        return;
       }
       const stats = statsByNode.get(child) ?? EMPTY_DIR_STATS;
       rows.push({
@@ -178,16 +187,17 @@ export function flattenDiffTree(
         dirPath: child.dirPath,
         displayName: child.name,
         depth,
+        ancestorMask: mask,
         additions: stats.additions,
         deletions: stats.deletions,
       });
       if (!collapsed.has(child.dirPath)) {
-        walk(child, depth + 1);
+        walk(child, depth + 1, mask);
       }
-    }
+    });
   }
 
-  walk(root, 0);
+  walk(root, 0, TREE_RAILS_ALL_CONTINUE);
   return rows;
 }
 

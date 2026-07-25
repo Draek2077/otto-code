@@ -34,6 +34,7 @@ import {
 } from "@/hooks/use-activity-stats";
 import { useUsageLogFeature } from "@/hooks/use-usage-log";
 import { UsageLogList, UsageTotalsBar, type UsageTotals } from "@/components/usage-log-list";
+import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { Button } from "@/components/ui/button";
 import { COMPACT_CONTROL_HEIGHT } from "@/components/ui/control-geometry";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -319,13 +320,18 @@ function StatsScreenContent(): ReactElement {
           ))}
           {pinned.length > 0 && (
             <View style={styles.pinnedTotals}>
-              {pinned.map(({ host, totals }) => (
-                <UsageTotalsBar
-                  key={host.serverId}
-                  totals={totals}
-                  label={hosts.length > 1 ? host.label : undefined}
-                />
-              ))}
+              {/* Bounded like the rows it totals, so the bar lines up with the
+                  ledger instead of stretching past it. The band itself (rule +
+                  background) still spans the window. */}
+              <ChatWidthBounds style={styles.pinnedTotalsInner}>
+                {pinned.map(({ host, totals }) => (
+                  <UsageTotalsBar
+                    key={host.serverId}
+                    totals={totals}
+                    label={hosts.length > 1 ? host.label : undefined}
+                  />
+                ))}
+              </ChatWidthBounds>
             </View>
           )}
         </View>
@@ -513,7 +519,14 @@ function HostStatsSection({
           showsVerticalScrollIndicator={!isWeb}
         >
           {logSupported && tab === "log" ? (
-            <UsageLogList serverId={serverId} window={window} onTotalsChange={handleTotals} />
+            // The ledger reads like chat content — one long column of rows — so
+            // it honours the same Appearance → Chat width setting: capped at the
+            // default/wide width and centered, or edge-to-edge on "full". The
+            // Summary tab stays unbounded; its two tile columns are a grid that
+            // wants the room.
+            <ChatWidthBounds style={styles.logBounds}>
+              <UsageLogList serverId={serverId} window={window} onTotalsChange={handleTotals} />
+            </ChatWidthBounds>
           ) : (
             body
           )}
@@ -696,7 +709,17 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: theme.spacing[3],
     // 1px shorter than the top so the bar's total height trims by a pixel.
     paddingBottom: theme.spacing[3] - 1,
+  },
+  pinnedTotalsInner: {
+    width: "100%",
+    alignSelf: "center",
     gap: theme.spacing[3],
+  },
+  // Chat-width bounds for the ledger: full width up to the cap, then centered
+  // in the scroll region (`undefined` cap on "full" leaves it edge-to-edge).
+  logBounds: {
+    width: "100%",
+    alignSelf: "center",
   },
   scrollContent: {
     flexGrow: 1,

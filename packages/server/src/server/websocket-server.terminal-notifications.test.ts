@@ -16,7 +16,10 @@ import type {
 } from "../terminal/terminal-manager.js";
 import type { PersistedWorkspaceRecord, WorkspaceRegistry } from "./workspace-registry.js";
 import { asInternals, createStub } from "./test-utils/class-mocks.js";
-import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
+import {
+  createDaemonConfigStoreStub,
+  createProviderSnapshotManagerStub,
+} from "./test-utils/session-stubs.js";
 import type { PushNotificationSender, PushPayload } from "./push/notifications.js";
 import type { WorkspaceAutoName } from "./workspace-auto-name.js";
 
@@ -132,9 +135,7 @@ function createServer(terminalManager: TerminalManager, workspaceRegistry?: Work
       },
     })),
   };
-  const daemonConfigStore = {
-    onChange: vi.fn(() => () => {}),
-  };
+  const daemonConfigStore = createDaemonConfigStoreStub();
 
   const server = new VoiceAssistantWebSocketServer(
     createStub<HTTPServer>({}),

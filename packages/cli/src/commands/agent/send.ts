@@ -32,6 +32,7 @@ export interface AgentSendOptions extends CommandOptions {
   image?: string[];
   prompt?: string;
   promptFile?: string;
+  queue?: boolean;
 }
 
 export function addSendOptions(cmd: Command): Command {
@@ -42,7 +43,11 @@ export function addSendOptions(cmd: Command): Command {
     .option("--prompt <text>", "Provide the message inline as a flag")
     .option("--prompt-file <path>", "Read the message from a UTF-8 text file")
     .option("--image <path>", "Attach image(s) to the message", collectMultiple, [])
-    .option("--no-wait", "Return immediately without waiting for completion");
+    .option("--no-wait", "Return immediately without waiting for completion")
+    .option(
+      "--queue",
+      "If the agent is busy, run this after its current turn instead of interrupting it",
+    );
 }
 
 /**
@@ -203,7 +208,26 @@ export async function runSendCommand(
       options.image && options.image.length > 0 ? await readImageFiles(options.image) : undefined;
 
     // Send the message
-    await client.sendAgentMessage(agentIdArg, promptInput, { images });
+    const dispatch = await client.sendAgentMessage(agentIdArg, promptInput, {
+      images,
+      ...(options.queue ? { delivery: "queue" as const } : {}),
+    });
+
+    // A queued message has no run to wait for yet — it starts when the current
+    // turn ends, so report it and return rather than blocking on --wait.
+    if (dispatch.queued) {
+      await client.close();
+
+      return {
+        type: "single",
+        data: {
+          agentId: agentIdArg,
+          status: "sent",
+          message: "Agent is busy; message queued to run as its next turn",
+        },
+        schema: agentSendSchema,
+      };
+    }
 
     // If --no-wait, return immediately
     if (options.wait === false) {

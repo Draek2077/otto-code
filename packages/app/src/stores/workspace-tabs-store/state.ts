@@ -48,6 +48,41 @@ export type WorkspaceTabTarget =
   // selection is a different question from investigating the whole file, so the
   // scoped tab lives beside the unscoped one instead of replacing it.
   | { kind: "fileHistory"; path: string; startLine?: number; endLine?: number }
+  // Every reference to one symbol, as a results tab. A tab rather than a dialog for the
+  // same reason as fileHistory: it is a working surface you navigate FROM and keep open,
+  // and a dialog would be dismissed by the very act of visiting a hit. One tab per
+  // (path, line, column) — a second search must not evict the first, or "look at these
+  // two call sites" becomes impossible.
+  | { kind: "codeReferences"; path: string; line: number; column: number; symbol: string }
+  // A rename set up as a JOB: the request is taken from the file, and the tab shows the full
+  // dry run — every file and every edit it would make — before anything happens. A tab and
+  // not an inline rename box, deliberately: an inline box hides project-wide blast radius
+  // behind a single keystroke. One per (path, line, column), like references.
+  | {
+      kind: "codeRename";
+      path: string;
+      line: number;
+      column: number;
+      symbol: string;
+      newName: string;
+    }
+  // An AI rewrite of one document set up as a JOB, in the same spirit as
+  // codeRename: the proposal is shown as a diff against the file as it was, the
+  // user keeps the parts they want, and NOTHING is written until Accept. A tab
+  // and not a mode on the editor, deliberately — a diff you decide on wants the
+  // whole frame, and a mode would have to be un-persisted on every reload
+  // because the pinned base only exists in memory. One tab per path: refining
+  // the same document again supersedes the first job rather than sitting beside
+  // it. `presetId` lets a surface that already knows what it is asking for
+  // (Context Management) seed the instruction.
+  //
+  // A SET of paths, not one: the rewrites people want are frequently not local
+  // to a file (compacting a memory index means moving detail into the entries
+  // it points at). `paths` are rewritable and `paths[0]` names the tab;
+  // `references` are read-only context, so a rewrite can be made in the context
+  // of the project without that context becoming editable. All absolute — a
+  // context set legitimately spans repo and home files.
+  | { kind: "refine"; paths: string[]; references?: string[]; presetId?: string }
   // Context Management — everything the provider sends before the user types.
   // One per workspace: the report is a property of the workspace and its
   // provider, so a second tab would show the same thing.
@@ -543,6 +578,82 @@ const SIMPLE_STRING_FIELD_BY_KIND: Record<string, string> = {
   gitLog: "operation",
 };
 
+/**
+ * Four fields of three shapes, which is more branching than the main coercer's
+ * cyclomatic-complexity budget can absorb. The zero/empty placeholders are deliberate: the
+ * normalizer rejects them, so a persisted tab missing any field is dropped rather than
+ * restored pointing at nothing.
+ */
+function coerceCodeReferencesTabTarget(raw: Record<string, unknown>): WorkspaceTabTarget | null {
+  return normalizeWorkspaceTabTarget({
+    kind: "codeReferences",
+    path: typeof raw.path === "string" ? raw.path : "",
+    line: typeof raw.line === "number" ? raw.line : 0,
+    column: typeof raw.column === "number" ? raw.column : 0,
+    symbol: typeof raw.symbol === "string" ? raw.symbol : "",
+  });
+}
+
+/** Same shape as the references coercer, plus the new name the job was set up with. */
+function coerceCodeRenameTabTarget(raw: Record<string, unknown>): WorkspaceTabTarget | null {
+  return normalizeWorkspaceTabTarget({
+    kind: "codeRename",
+    path: typeof raw.path === "string" ? raw.path : "",
+    line: typeof raw.line === "number" ? raw.line : 0,
+    column: typeof raw.column === "number" ? raw.column : 0,
+    symbol: typeof raw.symbol === "string" ? raw.symbol : "",
+    newName: typeof raw.newName === "string" ? raw.newName : "",
+  });
+}
+
+/**
+ * Kinds persisted as "one primary string field plus one optional second string
+ * field". Three near-identical branches for these was what pushed the main
+ * coercer past its complexity ceiling, so they share a table instead. A null
+ * `primary` means the kind has no required field at all (visualizer).
+ */
+const OPTIONAL_PAIR_FIELD_BY_KIND: Record<string, { primary: string | null; optional: string }> = {
+  visualizer: { primary: null, optional: "runId" },
+  orchestrationGraph: { primary: "graphId", optional: "runId" },
+};
+
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+/** Refine carries two path LISTS, so it does not fit the single-field table above. */
+function coerceRefineTabTarget(raw: Record<string, unknown>): WorkspaceTabTarget | null {
+  const references = toStringArray(raw.references);
+  return normalizeWorkspaceTabTarget({
+    kind: "refine",
+    paths: toStringArray(raw.paths),
+    ...(references.length > 0 ? { references } : {}),
+    ...(typeof raw.presetId === "string" ? { presetId: raw.presetId } : {}),
+  });
+}
+
+function coerceOptionalPairTabTarget(
+  kind: string,
+  raw: Record<string, unknown>,
+): WorkspaceTabTarget | null {
+  const spec = OPTIONAL_PAIR_FIELD_BY_KIND[kind];
+  if (!spec) {
+    return null;
+  }
+  const primary = spec.primary ? raw[spec.primary] : null;
+  if (spec.primary && typeof primary !== "string") {
+    return null;
+  }
+  const optional = raw[spec.optional];
+  return normalizeWorkspaceTabTarget({
+    kind,
+    ...(spec.primary ? { [spec.primary]: primary } : {}),
+    ...(typeof optional === "string" ? { [spec.optional]: optional } : {}),
+  } as WorkspaceTabTarget);
+}
+
 function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTarget | null {
   const kind = typeof raw.kind === "string" ? raw.kind : null;
   if (kind === "draft" && typeof raw.draftId === "string") {
@@ -556,19 +667,17 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
   if (kind === "file" || kind === "editor") {
     return coerceFileLikeTabTarget(raw);
   }
-  if (kind === "visualizer") {
-    return normalizeWorkspaceTabTarget({
-      kind: "visualizer",
-      ...(typeof raw.runId === "string" ? { runId: raw.runId } : {}),
-    });
+  if (kind && kind in OPTIONAL_PAIR_FIELD_BY_KIND) {
+    return coerceOptionalPairTabTarget(kind, raw);
   }
-  // Like visualizer, orchestrationGraph has an optional second field (runId).
-  if (kind === "orchestrationGraph" && typeof raw.graphId === "string") {
-    return normalizeWorkspaceTabTarget({
-      kind: "orchestrationGraph",
-      graphId: raw.graphId,
-      ...(typeof raw.runId === "string" ? { runId: raw.runId } : {}),
-    });
+  if (kind === "codeReferences") {
+    return coerceCodeReferencesTabTarget(raw);
+  }
+  if (kind === "codeRename") {
+    return coerceCodeRenameTabTarget(raw);
+  }
+  if (kind === "refine") {
+    return coerceRefineTabTarget(raw);
   }
   // No id field at all — the workspace is the identity.
   if (kind === "contextManagement") {

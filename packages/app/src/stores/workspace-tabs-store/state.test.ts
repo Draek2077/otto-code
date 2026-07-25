@@ -8,6 +8,7 @@ import {
   applyRetargetTab,
   buildWorkspaceTabPersistenceKey,
   initialWorkspaceTabsCoreState,
+  migrateWorkspaceTabsState,
   type WorkspaceTabsCoreState,
 } from "./state";
 
@@ -362,5 +363,65 @@ describe("workspace-tabs-store reducers", () => {
 
     expect(state.focusedTabIdByWorkspace[WORKSPACE_KEY]).toBe(first.tabId);
     expect(state.uiTabsByWorkspace[WORKSPACE_KEY]).toHaveLength(1);
+  });
+});
+
+/**
+ * Three kinds share one table-driven coercer (a primary field plus an optional
+ * second one). This pins all three, because collapsing them was a refactor of a
+ * path every persisted tab goes through on startup.
+ */
+describe("restoring tabs with an optional second field", () => {
+  function restore(target: unknown): unknown {
+    const state = migrateWorkspaceTabsState(
+      { uiTabsByWorkspace: { [WORKSPACE_KEY]: [{ tabId: "t1", target, createdAt: NOW }] } },
+      { now: NOW },
+    );
+    return state.uiTabsByWorkspace[WORKSPACE_KEY]?.[0]?.target ?? null;
+  }
+
+  it("restores a refine tab with its whole working set", () => {
+    expect(restore({ kind: "refine", paths: ["/repo/a.md"] })).toEqual({
+      kind: "refine",
+      paths: ["/repo/a.md"],
+    });
+    expect(
+      restore({
+        kind: "refine",
+        paths: ["/repo/a.md"],
+        references: ["/repo/b.md"],
+        presetId: "tighten-prose",
+      }),
+    ).toEqual({
+      kind: "refine",
+      paths: ["/repo/a.md"],
+      references: ["/repo/b.md"],
+      presetId: "tighten-prose",
+    });
+  });
+
+  it("drops a refine tab with nothing rewritable — there is no job left to run", () => {
+    expect(restore({ kind: "refine" })).toBeNull();
+    expect(restore({ kind: "refine", paths: [] })).toBeNull();
+    expect(restore({ kind: "refine", references: ["/repo/b.md"] })).toBeNull();
+    // Junk inside the array is dropped, not fatal, as long as one path survives.
+    expect(restore({ kind: "refine", paths: [7, "/repo/a.md", null] })).toEqual({
+      kind: "refine",
+      paths: ["/repo/a.md"],
+    });
+  });
+
+  it("keeps restoring visualizer and orchestrationGraph tabs unchanged", () => {
+    expect(restore({ kind: "visualizer" })).toEqual({ kind: "visualizer" });
+    expect(restore({ kind: "visualizer", runId: "run_1" })).toEqual({
+      kind: "visualizer",
+      runId: "run_1",
+    });
+    expect(restore({ kind: "orchestrationGraph", graphId: "g1", runId: "run_1" })).toEqual({
+      kind: "orchestrationGraph",
+      graphId: "g1",
+      runId: "run_1",
+    });
+    expect(restore({ kind: "orchestrationGraph" })).toBeNull();
   });
 });

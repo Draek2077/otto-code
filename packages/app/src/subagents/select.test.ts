@@ -241,6 +241,7 @@ describe("selectSubagentsForParent", () => {
       "attend",
       "createdAt",
       "cumulativeTokens",
+      "currentTool",
       "id",
       "personalityName",
       "personalitySpinner",
@@ -248,6 +249,7 @@ describe("selectSubagentsForParent", () => {
       "requiresAttention",
       "status",
       "title",
+      "toolUseCount",
       "updatedAt",
     ]);
     expect(rows[0]).not.toHaveProperty("onOpen");

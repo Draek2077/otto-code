@@ -2057,6 +2057,13 @@ export const zhCN: TranslationResources = {
     loading: "Loading files...",
     noResults: "No files",
   },
+  // Refine — the reviewed AI rewrite (projects/refine/refine.md). Only the two
+  // entry-point strings are translated here; the Refine tab itself is literal
+  // English pending the pre-release i18n sweep, like the rename/references tabs.
+  refine: {
+    open: "Refine with AI",
+    saveFirst: "Save or revert your changes first — Refine works from the file on disk.",
+  },
   refactor: {
     open: "Refactor with AI",
     title: "Refactor with AI",
@@ -2571,6 +2578,7 @@ export const zhCN: TranslationResources = {
         tabsPanes: "标签和窗格",
         projects: "项目",
         panels: "面板",
+        editor: "File Editor",
         agentInput: "Agent 输入",
       },
       help: {
@@ -2617,6 +2625,12 @@ export const zhCN: TranslationResources = {
         sendMessage: "发送消息",
         queueMessage: "消息排队",
         muteUnmuteVoiceMode: "静音/取消静音语音模式",
+        editorSave: "Save file",
+        editorFind: "Find in file",
+        editorGoToLine: "Go to line",
+        editorGoToDefinition: "Go to definition",
+        editorFindReferences: "Find references",
+        editorRenameSymbol: "Rename symbol",
       },
       helpNotes: {
         showKeyboardShortcuts: "焦点不在文本输入框或终端内时可用。",
