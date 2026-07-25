@@ -152,6 +152,70 @@ describe("WorkflowTranscriptWatcher", () => {
     ).toBe(true);
   });
 
+  it("reports each child's tool count and current tool from its transcript", () => {
+    // A workflow's internal agents get no SDK task report of their own, so the
+    // transcript is the only liveness source they have.
+    // See docs/chat-lifecycle.md (the subagents track).
+    vi.useFakeTimers();
+    watcher.arm();
+
+    const runDir = path.join(baseWorkflowsDir(), "wf_tools-1");
+    fs.mkdirSync(runDir, { recursive: true });
+    writeJsonl(path.join(runDir, "agent-a1.jsonl"), [
+      { type: "user", uuid: "u1", message: { role: "user", content: "Investigate" } },
+      {
+        type: "assistant",
+        uuid: "as1",
+        message: {
+          id: "m1",
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "toolu_r", name: "Read", input: { file_path: "/x.ts" } },
+          ],
+          usage: { output_tokens: 40 },
+        },
+      },
+    ]);
+
+    vi.advanceTimersByTime(700);
+
+    const childKey = `${WORKFLOW_KEY}::wfagent:a1`;
+    const afterFirstTool = events.findLast(
+      (e) => e.type === "observed_subagent_updated" && e.update.key === childKey,
+    );
+    expect(afterFirstTool?.type).toBe("observed_subagent_updated");
+    if (afterFirstTool?.type === "observed_subagent_updated") {
+      expect(afterFirstTool.update.toolUseCount).toBe(1);
+      expect(afterFirstTool.update.currentTool).toBe("Read");
+    }
+
+    // A second tool call in a later chunk raises the count and moves the tool.
+    fs.appendFileSync(
+      path.join(runDir, "agent-a1.jsonl"),
+      JSON.stringify({
+        type: "assistant",
+        uuid: "as2",
+        message: {
+          id: "m2",
+          role: "assistant",
+          content: [{ type: "tool_use", id: "toolu_b", name: "Bash", input: { command: "ls" } }],
+          usage: { output_tokens: 10 },
+        },
+      }) + "\n",
+      "utf8",
+    );
+
+    vi.advanceTimersByTime(700);
+
+    const afterSecondTool = events.findLast(
+      (e) => e.type === "observed_subagent_updated" && e.update.key === childKey,
+    );
+    if (afterSecondTool?.type === "observed_subagent_updated") {
+      expect(afterSecondTool.update.toolUseCount).toBe(2);
+      expect(afterSecondTool.update.currentTool).toBe("Bash");
+    }
+  });
+
   it("reconciles authoritative tokens and terminal state from the run-state file on disarm", () => {
     vi.useFakeTimers();
     watcher.arm();

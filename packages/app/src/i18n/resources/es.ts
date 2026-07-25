@@ -2115,6 +2115,13 @@ export const es: TranslationResources = {
     loading: "Loading files...",
     noResults: "No files",
   },
+  // Refine — the reviewed AI rewrite (projects/refine/refine.md). Only the two
+  // entry-point strings are translated here; the Refine tab itself is literal
+  // English pending the pre-release i18n sweep, like the rename/references tabs.
+  refine: {
+    open: "Refine with AI",
+    saveFirst: "Save or revert your changes first — Refine works from the file on disk.",
+  },
   refactor: {
     open: "Refactor with AI",
     title: "Refactor with AI",
@@ -2634,6 +2641,7 @@ export const es: TranslationResources = {
         tabsPanes: "Pestañas y paneles",
         projects: "Proyectos",
         panels: "Paneles",
+        editor: "File Editor",
         agentInput: "EntradaAgent",
       },
       help: {
@@ -2680,6 +2688,12 @@ export const es: TranslationResources = {
         sendMessage: "enviar mensaje",
         queueMessage: "mensaje de cola",
         muteUnmuteVoiceMode: "Silenciar el modo de voz/unmute",
+        editorSave: "Save file",
+        editorFind: "Find in file",
+        editorGoToLine: "Go to line",
+        editorGoToDefinition: "Go to definition",
+        editorFindReferences: "Find references",
+        editorRenameSymbol: "Rename symbol",
       },
       helpNotes: {
         showKeyboardShortcuts: "Disponible cuando el foco no está en un campo de texto o terminal.",

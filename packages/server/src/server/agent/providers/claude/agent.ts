@@ -4643,6 +4643,11 @@ class ClaudeAgentSession implements AgentSession {
       description: message.summary ?? message.description,
       status: "running",
       cumulativeTokens: message.usage?.total_tokens,
+      // The SDK reports both liveness signals per task, so Otto reads them
+      // instead of inferring: `tool_uses` is the authoritative invocation count
+      // and `last_tool_name` is what the subagent is running right now.
+      toolUseCount: message.usage?.tool_uses,
+      currentTool: message.last_tool_name,
     });
   }
 
@@ -4868,6 +4873,8 @@ class ClaudeAgentSession implements AgentSession {
       status: "running" | "idle" | "error" | "closed";
       requiresAttention?: boolean;
       cumulativeTokens?: number | undefined;
+      toolUseCount?: number | undefined;
+      currentTool?: string | undefined;
     },
   ): void {
     void message;
@@ -4911,6 +4918,12 @@ class ClaudeAgentSession implements AgentSession {
           : {}),
         ...(typeof input.cumulativeTokens === "number" && Number.isFinite(input.cumulativeTokens)
           ? { cumulativeTokens: input.cumulativeTokens }
+          : {}),
+        ...(typeof input.toolUseCount === "number" && Number.isFinite(input.toolUseCount)
+          ? { toolUseCount: input.toolUseCount }
+          : {}),
+        ...(readObservedSubagentText(input.currentTool)
+          ? { currentTool: readObservedSubagentText(input.currentTool) }
           : {}),
       },
     });
@@ -5014,6 +5027,9 @@ class ClaudeAgentSession implements AgentSession {
         status,
         requiresAttention: message.status === "failed",
         cumulativeTokens: message.usage?.total_tokens,
+        // The run's final tool count. No currentTool: the task has ended, and
+        // the projection drops it on a terminal row anyway.
+        toolUseCount: message.usage?.tool_uses,
       });
       // A workflow run settling here is also where its watcher tears down: do a
       // final transcript tail + run-state reconcile and settle the child rows.

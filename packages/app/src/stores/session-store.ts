@@ -23,6 +23,7 @@ import type {
   AgentPersistenceHandle,
 } from "@otto-code/protocol/agent-types";
 import type {
+  QueuedAgentMessagePayload,
   ServerInfoStatusPayload,
   ProjectPlacementPayload,
   ServerCapabilities,
@@ -118,6 +119,23 @@ export interface Agent {
    * provider that doesn't report it). See docs/agent-lifecycle.md.
    */
   cumulativeTokens?: number;
+  /**
+   * Sub-agents-track liveness: how much work this agent has done
+   * (`toolUseCount`, cumulative — it survives on a finished row) and what it is
+   * doing right now (`currentTool`, which the daemon clears once the agent is
+   * terminal). Absent ⇒ the row omits that readout — an old daemon or a
+   * provider that can't report it, never a guessed value.
+   * See docs/chat-lifecycle.md (the subagents track).
+   */
+  toolUseCount?: number;
+  currentTool?: string;
+  /**
+   * Messages the daemon is holding to run as this agent's next turn
+   * (`delivery: "queue"`). Absent ⇒ nothing queued, or a host without
+   * `features.steerQueue` — in which case the composer's own queue is the one
+   * in play. See packages/app/src/composer/queue.ts.
+   */
+  queuedMessages?: QueuedAgentMessagePayload[];
   lastError?: string | null;
   title: string | null;
   cwd: string;

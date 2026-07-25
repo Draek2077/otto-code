@@ -17,7 +17,6 @@ import {
   type UserMessageItem,
 } from "@/types/stream";
 import type { PickedImageAttachmentInput } from "@/hooks/image-attachment-picker";
-import { i18n } from "@/i18n/i18next";
 
 export interface QueuedComposerMessage {
   id: string;
@@ -48,7 +47,7 @@ export interface ComposerSendClient {
       images: Array<{ data: string; mimeType: string }>;
       attachments: ReturnType<typeof splitComposerAttachmentsForSubmit>["attachments"];
     },
-  ) => Promise<void>;
+  ) => Promise<unknown>;
   uploadFile: (input: { fileName: string; mimeType: string; bytes: Uint8Array }) => Promise<{
     requestId: string;
     file: {
@@ -267,51 +266,6 @@ export function editQueuedComposerMessage(
     text: item.text,
     attachments: userAttachmentsOnly(item.attachments),
   };
-}
-
-export interface SendQueuedComposerMessageNowInput {
-  agentId: string;
-  messageId: string;
-  queue: QueueWriter;
-  submitMessage: (input: { text: string; attachments: ComposerAttachment[] }) => Promise<void>;
-  failedToSendMessage?: string;
-}
-
-export type SendQueuedComposerMessageNowResult =
-  | { status: "missing" }
-  | { status: "submitted" }
-  | { status: "failed"; errorMessage: string };
-
-export async function sendQueuedComposerMessageNow(
-  input: SendQueuedComposerMessageNowInput,
-): Promise<SendQueuedComposerMessageNowResult> {
-  const item = input.queue.read(input.agentId).find((q) => q.id === input.messageId);
-  if (!item) return { status: "missing" };
-  input.queue.write((prev) => {
-    const next = new Map(prev);
-    next.set(
-      input.agentId,
-      (prev.get(input.agentId) ?? []).filter((q) => q.id !== input.messageId),
-    );
-    return next;
-  });
-  try {
-    await input.submitMessage({ text: item.text, attachments: item.attachments });
-    return { status: "submitted" };
-  } catch (error) {
-    input.queue.write((prev) => {
-      const next = new Map(prev);
-      next.set(input.agentId, [item, ...(prev.get(input.agentId) ?? [])]);
-      return next;
-    });
-    return {
-      status: "failed",
-      errorMessage:
-        error instanceof Error
-          ? error.message
-          : (input.failedToSendMessage ?? i18n.t("composer.errors.failedToSend")),
-    };
-  }
 }
 
 export interface OpenComposerAttachmentInput {

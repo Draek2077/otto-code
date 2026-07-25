@@ -1,159 +1,115 @@
 # Charter: Queued steering messages
 
-**Status:** Not started — charter drafted 2026-07-13.
-**Lineage:** Extends the existing agent-coordination surface (`send_agent_prompt`, `cancel_agent`) in
-[otto-tools.ts](../../packages/server/src/server/agent/tools/otto-tools.ts) and the turn lifecycle in
-[agent-manager.ts](../../packages/server/src/server/agent/agent-manager.ts). Sibling in spirit to the
-shipped subagents-cleanup work (folded into [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md#the-subagents-track))
-— legibility + control over agents you're supervising, not new agent kinds.
+**Status:** **SHIPPED 2026-07-25** (uncommitted at time of writing). Phases 1 and 2 are
+built end to end; Phase 3 is decided rather than deferred, except the two tail items in
+[Remaining](#remaining) below. Durable semantics are folded into
+[docs/chat-lifecycle.md](../../docs/chat-lifecycle.md#delivery--how-a-prompt-reaches-a-busy-agent)
+and [docs/glossary.md](../../docs/glossary.md) — **those are the source of truth now**;
+this file is kept only for the open tail.
 
-## Why
+## Why (unchanged — this is what shipped)
 
-Otto already lets you **interrupt-and-steer** a running agent without killing it: `send_agent_prompt`
-routes through `sendPromptToAgent` with `replaceRunning: true`, which calls `replaceAgentRun`
-([agent-manager.ts:2272](../../packages/server/src/server/agent/agent-manager.ts:2272)) — cancel the
-in-flight turn, immediately start the new prompt **in the same provider session** (history/context
-intact, process alive). `cancel_agent` is the interrupt-only variant ("abort the current run but keep
-the agent alive").
+Otto already let you **interrupt-and-steer** a running agent without killing it, and
+`cancel_agent` was the interrupt-only variant. The missing mode was the **non-interrupting
+queued nudge**: "let it finish what it's doing, then hand it this next thing." Every
+prompt to a busy agent clobbered the current turn.
 
-The missing mode is a **non-interrupting queued nudge**: "let it finish what it's doing, then hand it
-this next thing." Today every prompt to a busy agent clobbers the current turn — there is no way to
-say _append this as the next turn_. That's the gap the user asked to close.
+## What shipped
 
-Concrete motivating cases:
+**Delivery mode.** `startAgentRun` / `sendPromptToAgent` take
+`delivery: "interrupt" | "queue"`. `interrupt` is the default everywhere, so no existing
+caller changed behavior. Against an idle agent both modes run the prompt immediately —
+"queue" means "don't interrupt", not "wait".
 
-- **Supervising a long turn.** You're watching an agent grind through a refactor and think of a
-  follow-up constraint. You want it applied next, not to blow away the turn in progress.
-- **Batching guidance.** Drop two or three steering notes while it works; they run in order once it's
-  free.
-- **System-injected prompts that shouldn't clobber.** Chat @mentions, schedule fires, and
-  notify-on-finish all currently go through `sendPromptToAgent` → `replaceRunning: true`
-  ([agent-prompt.ts:200](../../packages/server/src/server/agent/agent-prompt.ts:200)). A mention
-  interrupting a running turn is arguably a bug; queue-by-default would fix it (see Open questions).
+**Provider-neutral by construction.** The whole feature lives in the turn lifecycle
+(`AgentManager`) above every provider adapter. There are no per-provider adapters; Claude,
+Codex, Copilot, OpenCode, Pi and openai-compat all got it in the same commit.
 
-## Design
+| File                                | What it owns                                                                                      |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `server/agent/steer-queue-state.ts` | `SteerQueueEntry`, batch selection, merge, preview, prompt↔parts — all pure, all unit-tested      |
+| `server/agent/agent-manager.ts`     | `steerQueue` + `pendingSteerDrain` on `ManagedAgent`; enqueue / drain / remove / clear            |
+| `server/agent/agent-prompt.ts`      | `delivery` + `source` threading; `StartAgentRunResult.queued` / `queuedMessageId`                 |
+| `server/agent/lifecycle-command.ts` | `cancelAgentRunCommand` clears the queue — one "stop everything" verb                             |
+| `server/agent/tools/otto-tools.ts`  | `delivery` arg on `send_agent_prompt`; agent-to-agent sends are `source: "system"`                |
+| `protocol/messages.ts`              | `delivery` on the send request; `queuedMessages` on the snapshot; `agent.queue.remove` / `.clear` |
+| `app/composer/queue.ts`             | `useComposerQueue` — daemon-backed or client-held, one interface either way                       |
+| `cli/commands/agent/send.ts`        | `otto agent send --queue`                                                                         |
 
-One new delivery mode layered onto the existing send path. `send_agent_prompt` gains a `delivery`
-selector:
+**Race safety.** The drain decision is synchronous inside `finalizeForegroundTurn`, before
+the state emit; `enqueueSteerMessage` reads lifecycle synchronously to choose
+dispatch-now vs buffer; `pendingSteerDrain` holds the agent visibly `running` across the
+async handoff (mirroring `pendingReplacement`), so a message sent in that window is
+buffered rather than raced into a second turn. If something else claims the turn slot
+while the drain awaits the previous run's cleanup, the batch goes back at the head.
 
-| `delivery`  | Busy target                                                    | Idle target       |
-| ----------- | -------------------------------------------------------------- | ----------------- |
-| `interrupt` | cancel current turn, run now (**today's behavior — default**)  | run now           |
-| `queue`     | buffer as the next turn; drain when the turn finalizes to idle | run now (no wait) |
+**On terminal error or `closed`:** hold, don't drain. A queued turn must never run
+unprompted into a broken session.
 
-`interrupt` stays the default so existing behavior and callers are unchanged.
+## Decisions taken (the Open questions are now closed)
 
-**The whole feature lives above the provider, in the turn lifecycle** — so it's provider-agnostic for
-free. No per-provider adapters, unlike observed-subagents. Same code path steers Claude, Codex,
-OpenCode, openai-compat, and any future provider identically. Strong fit for the fork mission.
+- **Multiple queued messages → MERGE.** Consecutive **user** entries are delivered as one
+  turn, joined FIFO with a blank line; images/attachments concatenate; the head entry's
+  `runOptions` (including `messageId`) win. This resolves the registry's separate "Queued
+  messages should merge into one send" item. Rationale: three notes dropped while an agent
+  grinds through a refactor are one instruction set, not three turns — separate turns make
+  it act on note 1 before it has seen the constraint in note 3, and pay a full context
+  re-send each time. The original charter leaned "separate FIFO turns"; that was wrong on
+  both correctness and cost.
+- **System-injected entries never merge.** `source: "system"` (mentions, schedule fires,
+  notify-on-finish, agent-to-agent sends) each carry their own envelope and mean something
+  on their own.
+- **Error/closed while queued → hold and surface** (as leaned).
+- **`cancel_agent` clears the queue** (as leaned). Interrupt-and-steer does **not** —
+  those queued notes are separate instructions, not part of the turn being replaced.
+- **System-injected prompts keep `delivery: "interrupt"`.** They are now _tagged_
+  `source: "system"` so the queue never merges them, but flipping their default is a
+  behavior change to existing paths and stays explicitly out of scope. See
+  [Remaining](#remaining).
+- **Envelope:** confirmed — queued user steering delivers as a normal user turn; callers
+  keep their existing envelope choice.
 
-### Where it hooks
+## Client surface
 
-- **Queue state (per agent).** A FIFO buffer of `{ prompt, runOptions, enqueuedAt, source }` on the
-  managed agent, owned by `AgentManager` alongside `foregroundRuns`. Either a field on `ManagedAgent`
-  or a small sibling to
-  [foreground-run-state.ts](../../packages/server/src/server/agent/foreground-run-state.ts)
-  (`steer-queue-state.ts`) — prefer the sibling so the queue's invariants are testable in isolation.
-- **Enqueue.** New `AgentManager.enqueueSteerMessage(agentId, prompt, options)`. If the agent is idle
-  _synchronously at enqueue time_, dispatch immediately (`streamAgent`) — the degenerate "no wait
-  needed" case. Otherwise push onto the buffer.
-- **Drain.** In `finalizeForegroundTurn`
-  ([agent-manager.ts:2229](../../packages/server/src/server/agent/agent-manager.ts:2229)): today it
-  computes `nextLifecycle = "idle"` when there's no error and no pending replacement. Insert a check
-  **before** emitting idle — if the queue is non-empty and there's no terminal error, pop the head and
-  dispatch it as the next turn instead of going idle. Reuse the exact `shouldHoldBusyForReplacement`
-  pattern (`pendingReplacement` holds lifecycle at `running` across the handoff) so the row never
-  flickers idle→running between queued turns.
-- **Send-path plumbing.** `sendPromptToAgent` / `startAgentRun`
-  ([agent-prompt.ts](../../packages/server/src/server/agent/agent-prompt.ts)) gain a `delivery`
-  option. `queue` calls `enqueueSteerMessage` instead of setting `replaceRunning: true`. Every surface
-  (WS/Session, MCP, CLI, chat mentions, notify-on-finish) already funnels through this one function —
-  so the mode is available everywhere the moment it's wired, and behavior can't drift.
-- **Tool arg.** `send_agent_prompt` in
-  [otto-tools.ts:2064](../../packages/server/src/server/agent/tools/otto-tools.ts:2064) gains
-  `delivery: z.enum(["interrupt", "queue"]).optional().default("interrupt")`, with a description that
-  spells out interrupt-vs-queue so the model picks correctly.
+`server_info.features.steerQueue` gates it (`COMPAT(steerQueue)`, v0.6.8). With it the
+composer's Queue track is daemon-backed: sends carry `delivery: "queue"`, rows render from
+`AgentSnapshotPayload.queuedMessages`, and Edit / Send now go through
+`agent.queue.remove`. Without it the composer keeps its own client-held queue drained on
+the running→idle edge — the behavior Otto has always had, **not** a degraded build of the
+daemon feature. Both live behind one interface (`useComposerQueue`), so the capability
+check happens in exactly one place.
 
-### Race safety
+The user-facing choice already existed: Settings → **Default send** is `Interrupt` /
+`Queue`, and the composer's alternate send action does the other one. Those labels match
+the wire enum exactly, so no new vocabulary was introduced.
 
-The enqueue/drain boundary is the only sharp edge. JS is single-threaded, so both the
-`finalizeForegroundTurn` drain check and the `enqueueSteerMessage` lifecycle check run to completion
-without interleaving; the risk is only across `await` points once dispatch (`streamAgent`) goes async.
-Mitigations:
+Attachments only ever exist client-side. The daemon-backed path keeps a local sidecar
+keyed by the daemon's entry id purely so Edit can put them back in the box; losing it
+(reload, other device) costs the attachments on edit, nothing else.
 
-- Drain decision is **synchronous** inside `finalizeForegroundTurn`, before `emitState`.
-- Enqueue reads lifecycle **synchronously** to choose dispatch-now vs buffer.
-- A `pendingSteerDrain` hold flag (mirroring `pendingReplacement`) keeps the agent `running` during
-  the async handoff, so a message enqueued in that window is buffered (agent looks busy), not raced
-  into a second concurrent turn.
-- On **terminal error**, do **not** auto-drain into a broken session — hold the queue, surface it, let
-  the supervisor decide (see Open questions). Same for `closed`.
+## Tests
 
-### Visibility & control
+`server/agent/steer-queue.test.ts` — 13 tests: merge + FIFO order, system entries never
+merging, images/attachments carried through, preview truncation, queued-while-running
+drains on turn end, **no `idle` ever emitted between the finished turn and the queued
+one**, several messages delivered as one turn, enqueue-while-idle runs immediately,
+interrupt still clobbers, a failed turn holds the queue, remove, clear.
 
-- **Protocol (additive).** `queuedMessageCount?: number` on the agent snapshot in
-  [messages.ts](../../packages/protocol/src/messages.ts) — additive `.optional()` leaf per the
-  protocol contract, no capability gate, old clients ignore it. Optionally a small `queuedPreviews?:
-string[]` (first N chars each) for a hover/expand.
-- **Row surface.** A "1 queued" badge on the agent/subagent row; tap to expand/clear. Mirrors the
-  subagents-cleanup row-action pattern.
-- **Clear.** Need a way to drop queued items. Options: fold into `cancel_agent` (stopping the agent's
-  planned work clears its queue) plus a dedicated `clear_agent_queue` / per-item removal. Lean:
-  `cancel_agent` clears the queue **and** aborts the run (one "stop everything" verb), with a distinct
-  tool for surgical queue edits later.
+## Remaining
 
-## Build sequence
+Not blocking; nothing else depends on them.
 
-**Phase 1 — daemon core (provider-agnostic).**
+- **Reorder queued entries.** Preview and per-item removal shipped; drag-to-reorder did
+  not. No UI affordance exists for it yet.
+- **Consume the Claude interrupt receipt.** SDK ≥ 0.3.212 resolves `query.interrupt()` to
+  `{ still_queued: string[] }` (feature-detected via `interrupt_receipt_v1` in
+  `system/init`), already captured and debug-logged as
+  `provider.claude.interrupt.still_queued` in `claude/agent.ts`. Otto's queue is
+  daemon-owned and is the source of truth for every provider including Claude, so nothing
+  is wrong today — reconciling against the receipt would only tighten the Claude case.
+- **Should system-injected prompts queue by default?** Deliberately left as `interrupt`.
+  It is the strongest correctness argument for the feature (a chat @mention interrupting a
+  running turn is arguably a bug), but it changes existing behavior on paths nobody asked
+  to change. Decide it on its own, not as a side effect of this charter.
 
-1. `steer-queue-state.ts` FIFO buffer + `ManagedAgent` wiring + `pendingSteerDrain` flag.
-2. `AgentManager.enqueueSteerMessage` (dispatch-now-if-idle, else buffer).
-3. Drain in `finalizeForegroundTurn` with the `shouldHoldBusyForReplacement`-style hold.
-4. `delivery` option threaded through `startAgentRun` / `sendPromptToAgent`.
-5. `delivery` arg on the `send_agent_prompt` tool. `interrupt` default → zero behavior change.
-6. `cancel_agent` clears the queue.
-7. Tests in `agent-manager.test.ts`: enqueue-while-running drains on idle; enqueue-while-idle runs
-   immediately; FIFO order across multiple; interrupt path unchanged; error turn holds (doesn't drain)
-   the queue; the enqueue-at-idle-boundary race. Context preserved across queued turns (same session).
-
-**Phase 2 — protocol + client surface.** 8. `queuedMessageCount?` (+ optional previews) on the snapshot protocol + projection. 9. Row badge + clear action; send-UI delivery toggle (Interrupt vs Queue) shown when the target is
-running. Trace the client @mention/composer send path to place the toggle. 10. CLI parity (`packages/cli`) if the send command exposes delivery.
-
-**Phase 3 — polish / decisions.** 11. Coalesce-vs-separate-turns for multiple queued messages (default: separate FIFO turns). 12. Reorder / preview / per-item removal. 13. Decide + wire whether system-injected prompts (mentions, schedule fires, notify-on-finish) switch
-to queue-by-default.
-
-## Open questions
-
-- **Multiple queued messages:** deliver as separate FIFO turns (predictable, simplest) or coalesce
-  into one turn? Lean separate.
-- **Error/closed while queued:** hold and surface (lean) vs auto-drain vs auto-clear. A queued turn
-  shouldn't run into a broken session unprompted.
-- **System-injected prompts default:** should @mentions / schedule fires / notify-on-finish queue
-  instead of interrupt? It's the strongest correctness argument for the feature, but it's a
-  behavior change to existing paths — gate it explicitly, don't fold it silently into Phase 1.
-- **Envelope:** queued user steering delivers as a normal user turn (no `<otto-system>` wrapper);
-  agent-to-agent queued sends keep the caller's existing envelope choice. Confirm.
-
-## Cross-cutting
-
-- **Protocol contract:** the one new snapshot field is an additive optional leaf — no gate, no
-  fallback. The `delivery` tool arg is per-daemon (MCP schema is served by the daemon), so a client
-  talking to an older daemon simply won't see the arg; no wire-compat concern.
-- **Provider parity (fork mission):** because the queue lives in the turn lifecycle above the
-  provider, it ships for **all** providers at once in Phase 1 — no observed→native→rest rollout.
-- **Rebuild:** Phase 1/2 touch the daemon → `npm run build:server` + daemon restart to serve.
-- **Fold-in on ship:** fold the durable "interrupt vs queue" delivery semantics into
-  [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md) (turn lifecycle / steering section), then
-  delete this folder.
-
-## SDK note — interrupt receipt (added 2026-07-17)
-
-Claude Agent SDK ≥ 0.3.212: `query.interrupt()` resolves to an **interrupt receipt** —
-`{ still_queued: string[] }`, the uuids of async user messages that survive the interrupt and WILL
-still run unless cancelled first (`cancel_async_message` handles individual uuids; see the
-SDK typedoc for coalesced-batch caveats). Availability is feature-detected via the
-`interrupt_receipt_v1` entry in the `system/init` message's `capabilities` array — older CLIs
-resolve `undefined`. The daemon already captures and debug-logs the receipt
-(`provider.claude.interrupt.still_queued` in claude/agent.ts); Phase 1's queue reconciliation
-should consume it on the Claude provider instead of re-deriving queue state, while other
-providers keep the daemon-owned queue as the source of truth.
+Delete this folder once the three above are decided or done.

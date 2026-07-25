@@ -55,11 +55,20 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation/decision · �
 
 ## Keyboard shortcuts
 
-- 🟡 **Full shortcut overhaul + "File Editor" section** — batch-07-24 #8.
-  **Detailed plan: [keyboard-shortcut-overhaul.md](keyboard-shortcut-overhaul.md).**
-  Editor shortcuts become first-class, customizable, and override general Otto
-  bindings while the editor is focused (specificity in the matcher; registry→CM6
-  bridge). The acute Cmd+S=Save fix already shipped this batch.
+- ✅ ~~**Full shortcut overhaul + "File Editor" section**~~ — batch-07-24 #8. SHIPPED.
+  A **File Editor** section in `SHORTCUT_BINDINGS` (save / find / go to line / go to
+  definition + F12 alias / find references Shift+F12 / rename symbol F2), all
+  `focusScope: "code-editor"`; `bindingSpecificity` in the matcher so a binding that
+  names the focused surface beats an unscoped one on the same combo; and
+  `editor/editor-key-bindings.ts` turning the user's _effective_ File Editor rows into
+  the CM6 keymap (own `Compartment`, so a rebind lands without a remount). `editor.*`
+  routes nowhere on purpose — matching-then-doing-nothing is what makes the shadowed
+  general action stand down. `codeEditor: false` is gone: a hardcoded guard could not
+  follow a rebind. Durable rules folded into
+  [docs/text-editor.md](../../docs/text-editor.md#keyboard-shortcuts-the-file-editor-scope).
+  Deferred from the plan: the "Full" dispatch stage (§4) — CM6 stays the executor, which
+  batch-07-24 #5's focused-controller path can revisit — and the dev-friendliness audit
+  (§6), now much smaller since the section removes the reason for per-binding guards.
 
 ## Git / Changes / comments
 
@@ -90,6 +99,12 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation/decision · �
 
 ## Background tasks / Subagents
 
+- ✅ ~~**Sub-agent row liveness — tool-use count + current tool**~~ — subagent-liveness
+  6b/6c. SHIPPED 2026-07-25, draining the charter (folder deleted). Additive optional
+  `toolUseCount` + `currentTool` on the agent snapshot; provider-reported for observed
+  rows, timeline-derived where no task report exists. Row now reads
+  `elapsed · tokens · N tools · Tool`. See
+  [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md#the-subagents-track).
 - 🔵 **Possible double-counting of background tasks + sub-agents** — batch-07-23.
   Check whether a provider emits one unit into both `backgroundShellTasks` and the
   subagents track.
@@ -116,8 +131,14 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation/decision · �
 
 ## Composer
 
-- 🟡 **Queued messages should merge into one send** — batch-07-23. Interacts with
-  `projects/steer-queue/`.
+- ~~🟡 **Queued messages should merge into one send** — batch-07-23. Interacts with
+  `projects/steer-queue/`.~~ — FIXED (2026-07-25, shipped with steer-queue). Consecutive
+  **user** messages in the queue are delivered as ONE turn, joined in FIFO order with a
+  blank line; images/attachments concatenate and the head entry's `runOptions` win. Three
+  notes dropped during a long turn are one instruction set, not three — and separate turns
+  paid a full context re-send each. System-injected entries (mentions, schedule fires,
+  notify-on-finish, agent-to-agent sends) never merge. See `docs/chat-lifecycle.md`
+  (Delivery).
 - ~~🔴 **Large pasted code blocks overflow the composer** — batch-07-23. Pushes the
   send button off-screen; needs max-height + internal scroll.~~ — FIXED. The cap
   and the internal scroll existed but were measured against the window, not the
@@ -208,6 +229,12 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation/decision · �
   is still low, the next lever is prompt-level guidance rather than more description
   text. Persistence of cards across daemon restart is separately deferred (in-memory
   by design). See `docs/suggested-tasks.md`.
+- 🔵 **Should system-injected prompts queue instead of interrupt?** — from the shipped
+  steer-queue work. Chat @mentions, schedule fires, and notify-on-finish all still send
+  `delivery: "interrupt"`, so they clobber a running turn. That is arguably a bug and the
+  strongest correctness argument for the queue — but flipping it changes existing behavior
+  on paths nobody asked to change, so it was left explicitly out of scope. Decide it on
+  its own. See `projects/steer-queue/`.
 
 ---
 
@@ -217,7 +244,7 @@ Initiatives that are Charter / Plan / Investigation, not yet shipped — the lon
 backlog, tracked one folder each:
 
 first-time-wizard · computer-use · dictation-refine · observed-subagents (rest) ·
-subagent-liveness · steer-queue · session-decomposition · mobile-daemon ·
+session-decomposition · mobile-daemon ·
 file-rendering · web-search-providers · site-demos · personality-memory ·
 preview-file-tabs · total-token-accounting · workflow-decomposition ·
 visualizer-node-richness (context ring) · history-management · context-management ·

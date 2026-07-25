@@ -120,6 +120,7 @@ interface ArchiveTestDependencies extends ArchiveDependencies {
   activeWorkspaces: ActiveWorkspaceRef[];
   archivedAgentIds: string[];
   archivedSnapshotIds: string[];
+  stoppedLanguageServerRoots: string[];
 }
 
 function createArchiveDeps(input: ArchiveDepsInput): ArchiveTestDependencies {
@@ -127,6 +128,7 @@ function createArchiveDeps(input: ArchiveDepsInput): ArchiveTestDependencies {
   const active = [...input.activeWorkspaces];
   const archivedAgentIds: string[] = [];
   const archivedSnapshotIds: string[] = [];
+  const stoppedLanguageServerRoots: string[] = [];
 
   return {
     ottoHome: input.ottoHome,
@@ -163,10 +165,14 @@ function createArchiveDeps(input: ArchiveDepsInput): ArchiveTestDependencies {
     markWorkspaceArchiving: vi.fn(),
     clearWorkspaceArchiving: vi.fn(),
     killTerminalsForWorkspace: vi.fn(async () => {}),
+    stopLanguageServers: async (rootPath: string) => {
+      stoppedLanguageServerRoots.push(rootPath);
+    },
     sessionLogger: createLogger(),
     activeWorkspaces: active,
     archivedAgentIds,
     archivedSnapshotIds,
+    stoppedLanguageServerRoots,
   };
 }
 
@@ -240,6 +246,49 @@ describe("archiveByScope", () => {
       removedDirectory: false,
     });
     expect(existsSync(worktree.worktreePath)).toBe(true);
+  });
+
+  // A language server is a child process keyed by directory, so nothing else in the
+  // system stops it: no session owns it and its idle allowance would keep it resident
+  // for minutes serving a workspace that no longer exists.
+  test("workspace scope stops the language servers rooted at the archived directory", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const ottoHome = path.join(tempDir, ".otto");
+    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "lsp-last-ref");
+    const workspaceId = "ws-lsp-last-ref";
+    const deps = createArchiveDeps({
+      ottoHome,
+      activeWorkspaces: [{ workspaceId, cwd: worktree.worktreePath, kind: "worktree" }],
+    });
+
+    await archiveByScope(deps, {
+      scope: { kind: "workspace", workspaceId },
+      repoRoot: repoDir,
+      requestId: "req-lsp-last-ref",
+    });
+
+    expect(deps.stoppedLanguageServerRoots).toEqual([path.resolve(worktree.worktreePath)]);
+  });
+
+  test("workspace scope leaves language servers running when a sibling still references the directory", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const ottoHome = path.join(tempDir, ".otto");
+    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "lsp-sibling");
+    const deps = createArchiveDeps({
+      ottoHome,
+      activeWorkspaces: [
+        { workspaceId: "ws-lsp-sibling-a", cwd: worktree.worktreePath, kind: "worktree" },
+        { workspaceId: "ws-lsp-sibling-b", cwd: worktree.worktreePath, kind: "local_checkout" },
+      ],
+    });
+
+    await archiveByScope(deps, {
+      scope: { kind: "workspace", workspaceId: "ws-lsp-sibling-a" },
+      repoRoot: repoDir,
+      requestId: "req-lsp-sibling",
+    });
+
+    expect(deps.stoppedLanguageServerRoots).toEqual([]);
   });
 
   test("worktree scope archives every workspace on the directory and removes it", async () => {

@@ -6,6 +6,7 @@ import {
   flattenDiffTree,
   type DiffTreeRow,
 } from "./diff-tree";
+import { treeRailContinuesAt } from "@/components/tree-rail-mask";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
 
 function createFile(path: string, additions = 1, deletions = 0): ParsedDiffFile {
@@ -138,6 +139,54 @@ describe("flattenDiffTree", () => {
     const root = compressed([createFile("src/a.ts", 3, 1), createFile("src/b.ts", 4, 0)]);
     const rows = flattenDiffTree(root, new Set(["src"]));
     expect(rows[0]).toMatchObject({ kind: "folder", additions: 7, deletions: 1 });
+  });
+});
+
+describe("flattenDiffTree indent rails", () => {
+  // Same reading as TreeIndentGuides: one char per rail column, column `i` holding
+  // the rail of depth `i + 1`. "|" runs full height, "L" stops at the row's tick,
+  // " " means that ancestor's branch already closed above.
+  function rails(rows: DiffTreeRow[]): string[] {
+    return rows.map((row) => {
+      let out = "";
+      for (let index = 0; index < row.depth; index += 1) {
+        const railDepth = index + 1;
+        if (treeRailContinuesAt(row.ancestorMask, railDepth)) {
+          out += "|";
+        } else {
+          out += railDepth === row.depth ? "L" : " ";
+        }
+      }
+      return out;
+    });
+  }
+
+  it("closes the rail on the last child and keeps it running on the others", () => {
+    const root = compressed(["src/a.ts", "src/b.ts", "src/c.ts"]);
+    const rows = flattenDiffTree(root, new Set());
+    // [src] sits at depth 0 (no rails); its three files are depth 1.
+    expect(rowLabels(rows)).toEqual(["[src]", "  a.ts", "  b.ts", "  c.ts"]);
+    expect(rails(rows)).toEqual(["", "|", "|", "L"]);
+  });
+
+  it("blanks the ancestor column once the parent folder was itself last", () => {
+    // [pkg]
+    // ├─ [a] ── x.ts        parent still has a sibling → column 0 keeps running
+    // └─ [b] ── y.ts        parent was last          → column 0 goes blank
+    const root = compressed(["pkg/a/x.ts", "pkg/a/x2.ts", "pkg/b/y.ts", "pkg/b/y2.ts"]);
+    const rows = flattenDiffTree(root, new Set());
+    const railByLabel = new Map(rowLabels(rows).map((label, index) => [label, rails(rows)[index]]));
+    expect(railByLabel.get("  [a]")).toBe("|");
+    expect(railByLabel.get("    x2.ts")).toBe("|L");
+    expect(railByLabel.get("  [b]")).toBe("L");
+    expect(railByLabel.get("    y2.ts")).toBe(" L");
+  });
+
+  it("does not let a collapsed folder's descendants affect its own rail", () => {
+    const root = compressed(["src/nested/a.ts", "src/z.ts"]);
+    const rows = flattenDiffTree(root, new Set(["src/nested"]));
+    expect(rowLabels(rows)).toEqual(["[src]", "  [nested]", "  z.ts"]);
+    expect(rails(rows)).toEqual(["", "|", "L"]);
   });
 });
 

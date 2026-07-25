@@ -142,6 +142,25 @@ Two appearance rules the spec exists to enforce, both learned the hard way:
 
 The **line-length ruler** (Settings → Appearance → Syntax; `rulerEnabled` / `rulerColumn`, default on at column 80, clamped to 80–240) is drawn as a 1px `linear-gradient` stripe on `.cm-content` — no decorations, no overlay element, and it paints behind the text. It uses the `ch` unit, so it tracks the code font size for free, and it needs no repeat on the active line: the active-line fill is translucent (see above), so the ruler shows straight through it. The stripe therefore spans the content box only — which is `max(longest line, viewport)`, so a column the ruler doesn't reach is also one the user could never scroll to.
 
+## Keyboard shortcuts: the File Editor scope
+
+Editor shortcuts are ordinary registry bindings that **override** the general Otto bindings while the editor has focus. Not a modal takeover — the override is per combo. `Mod+B` runs Go to definition in the editor and toggles the left sidebar everywhere else; `Ctrl+K` opens the command center in both places, because nothing in the editor claims it.
+
+Three pieces, and each is load-bearing:
+
+1. **The section.** `SHORTCUT_BINDINGS` (`keyboard/keyboard-shortcuts.ts`) has a `"editor"` section — **File Editor** — whose bindings all carry `when: { focusScope: "code-editor" }`. That scope comes from `focus-scope.ts`, which resolves the `data-testid="code-editor-surface"` wrapper before the generic contentEditable test (CM6's content node _is_ contentEditable, so without that check the editor would read as a plain text field). Being registry rows, they are listed and rebindable in Settings like everything else.
+2. **Specificity in the matcher.** `bindingSpecificity` ranks a binding that names the focused surface above one that applies everywhere, and `resolveInitialChordStep` / `resolveAdvancingChordStep` pick the most specific match rather than the first. Ties keep first-match-wins, so registry order still decides among equals.
+3. **The bridge.** `editor/editor-key-bindings.ts` turns the File Editor rows of the user's _effective_ bindings into a CM6 keymap (`Mod+S` → `Mod-s`), which `file-tab-pane` passes to the editor as `keyBindings`. The core mounts it in its own `Compartment` and exposes `setKeyBindings`, so a rebind lands on an editor that is already open.
+
+The rules that follow from that shape:
+
+- **An Otto shortcut that overlaps an editor one needs no guard.** Put the editor's version in the File Editor section and specificity does the rest. `codeEditor: false` existed only to hand `Mod+B` to the editor by hand and is **gone** — a hardcoded guard cannot follow a rebind, so rebinding Go to definition off `Mod+B` used to leave that combo dead in the editor. Reach for `editable: false` only for scopes with **no** editor binding to hand the combo to (`Mod+F` still carries it, to keep the file finder out of the composer and plain text fields).
+- **`editor.*` actions route nowhere.** `routeKeyboardShortcut` returns `none` for them on purpose: CodeMirror executes the command, and matching-then-doing-nothing is exactly what makes the shadowed general action stand down while the keystroke still reaches the editor (the global handler only calls `preventDefault` on an action it performed).
+- **The registry is the source of truth; `DEFAULT_EDITOR_KEY_BINDINGS` is its restatement** for hosts that cannot read it — the native webview, which has no shortcuts screen anyway. `editor-key-bindings.test.ts` asserts the two agree, so a default changed in one place fails there rather than silently giving phones a different editor.
+- **Not everything in the editor belongs in the registry.** CM6's `defaultKeymap` (select line, undo, indent, the clipboard) is the _platform's_ editor bindings, not Otto's, and stays outside the compartment so a user who never opens Settings still gets a complete editor. Escape-closes-find stays hardcoded too: "Escape, but only while a query is running, and otherwise not mine" is not something a binding can express.
+- **Hints must come from the registry.** `useEditorShortcutHints()` reads the four rebindable commands through `useShortcutKeys` and only hardcodes what CM6 owns. Hints are chords (`ShortcutKey[][]`) because a rebind may be one.
+- **A command rebound to a multi-step chord loses its editor key.** The chord state machine lives in the global handler; a second, partial one inside CM6 would give the same chord two owners. The Settings row still shows what the user chose.
+
 ## The overview ruler (the annotation lane)
 
 The full-height lane down the right edge of the editor — the IDE pattern where the vertical scrollbar also reports where the problems are. It answers "where am I in this file" (a translucent viewport thumb) and "where is everything I care about" (marks for problems, search hits, and the caret), and a click or drag anywhere on it scrolls there.

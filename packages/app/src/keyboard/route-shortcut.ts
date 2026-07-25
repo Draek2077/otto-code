@@ -172,10 +172,28 @@ function routeSettingsToggle(ctx: ShortcutRoutingContext): ShortcutAction {
   return { kind: "router-back" };
 }
 
+/**
+ * The File Editor section routes NOWHERE, and that is the design rather than a
+ * gap. Its bindings exist in the registry so they are listed and rebindable, and
+ * so that being focus-scoped they outrank the general binding on the same combo
+ * while the editor has focus. The keystroke itself is executed by CodeMirror,
+ * whose keymap is built out of those same bindings (editor/editor-key-bindings.ts)
+ * — matching here and returning `none` is precisely what makes the shadowed
+ * general action stand down while leaving the event to reach the editor: the
+ * caller only calls `preventDefault` on an action it actually performed.
+ */
+function isEditorAction(action: string): boolean {
+  return action.startsWith("editor.");
+}
+
 export function routeKeyboardShortcut(
   input: ShortcutRoutingInput,
   ctx: ShortcutRoutingContext,
 ): ShortcutAction {
+  if (isEditorAction(input.action)) {
+    return NONE;
+  }
+
   const passthrough = PASSTHROUGH_DISPATCH[input.action];
   if (passthrough) {
     return dispatch(passthrough);

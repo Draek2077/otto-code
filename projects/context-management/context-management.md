@@ -17,7 +17,10 @@
 > (Always load ↔ Link only, `load-mode-control.tsx`), Codex + OpenCode conventions, a persisted
 > window picker, and sidebar project-row entry points.
 >
-> **Not yet built:** demote-to-subdirectory, skills/MCP toggles, and AI compaction with per-hunk diff.
+> **Not yet built:** demote-to-subdirectory and skills/MCP toggles. **AI compaction (§7.4) SHIPPED
+> 2026-07-25** as a preset over Refine — the "Compact with AI" action in the file toolbar opens a
+> Refine job with this file rewritable and the rest of the graph as read-only context. See
+> [projects/refine/refine.md](../refine/refine.md) §15.3.
 > The §11 verification (fixture repo + differential measurement) is also still outstanding — the
 > scanner ships convention-first, and calibration multiplies in without structural change.
 >

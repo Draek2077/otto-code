@@ -1,3 +1,4 @@
+import { TREE_RAILS_ALL_CONTINUE } from "@/components/tree-rail-mask";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
 import {
   buildDiffTree,
@@ -15,11 +16,19 @@ export type DiffFlatItem =
       dirPath: string;
       displayName: string;
       depth: number;
+      ancestorMask: number;
       collapsed: boolean;
       additions: number;
       deletions: number;
     }
-  | { type: "header"; file: ParsedDiffFile; fileIndex: number; isExpanded: boolean; depth: number }
+  | {
+      type: "header";
+      file: ParsedDiffFile;
+      fileIndex: number;
+      isExpanded: boolean;
+      depth: number;
+      ancestorMask: number;
+    }
   | { type: "body"; file: ParsedDiffFile; fileIndex: number; depth: number };
 
 export interface DiffFlatItemsResult {
@@ -61,9 +70,14 @@ export function buildDiffFlatItems({
   const items: DiffFlatItem[] = [];
   const stickyHeaderIndices: number[] = [];
 
-  const pushFile = (file: ParsedDiffFile, fileIndex: number, depth: number): void => {
+  const pushFile = (
+    file: ParsedDiffFile,
+    fileIndex: number,
+    depth: number,
+    ancestorMask: number,
+  ): void => {
     const isExpanded = expandedPaths.has(file.path);
-    items.push({ type: "header", file, fileIndex, isExpanded, depth });
+    items.push({ type: "header", file, fileIndex, isExpanded, depth, ancestorMask });
     if (isExpanded) {
       stickyHeaderIndices.push(items.length - 1);
       items.push({ type: "body", file, fileIndex, depth });
@@ -71,8 +85,9 @@ export function buildDiffFlatItems({
   };
 
   if (viewMode === "flat") {
+    // The flat list is depth 0 throughout, so it draws no rails and the mask is moot.
     for (const [fileIndex, file] of files.entries()) {
-      pushFile(file, fileIndex, 0);
+      pushFile(file, fileIndex, 0, TREE_RAILS_ALL_CONTINUE);
     }
     return { items, stickyHeaderIndices };
   }
@@ -88,6 +103,7 @@ export function buildDiffFlatItems({
         dirPath: row.dirPath,
         displayName: row.displayName,
         depth: row.depth,
+        ancestorMask: row.ancestorMask,
         collapsed: collapsedFolders.has(row.dirPath),
         additions: row.additions,
         deletions: row.deletions,
@@ -99,7 +115,7 @@ export function buildDiffFlatItems({
       // Should never happen: the tree is built from the same `files` array.
       continue;
     }
-    pushFile(row.file, fileIndex, row.depth);
+    pushFile(row.file, fileIndex, row.depth, row.ancestorMask);
   }
 
   return { items, stickyHeaderIndices };

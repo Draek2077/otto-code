@@ -502,6 +502,10 @@ function getFallbackTabOptionDescription(
   if (tab.target.kind === "orchestrationGraph") {
     return "Graph";
   }
+  // A refine job is named for the document it is about — its primary path.
+  if (tab.target.kind === "refine") {
+    return tab.target.paths[0] ?? "";
+  }
   return tab.target.path;
 }
 

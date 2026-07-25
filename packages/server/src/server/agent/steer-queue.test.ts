@@ -1,0 +1,397 @@
+import { randomUUID } from "node:crypto";
+import { describe, expect, test } from "vitest";
+
+import { createTestLogger } from "../../test-utils/test-logger.js";
+import { AgentManager } from "./agent-manager.js";
+import { startAgentRun } from "./agent-prompt.js";
+import { toAgentPayload } from "./agent-projections.js";
+import {
+  createSteerQueueEntry,
+  mergeSteerQueueBatch,
+  steerQueuePreview,
+  steerQueuePromptParts,
+  takeNextSteerQueueBatch,
+} from "./steer-queue-state.js";
+import type {
+  AgentClient,
+  AgentPersistenceHandle,
+  AgentPromptInput,
+  AgentRunResult,
+  AgentSession,
+  AgentSessionConfig,
+  AgentStreamEvent,
+} from "./agent-sdk-types.js";
+
+const TEST_CAPABILITIES = {
+  streaming: true,
+  permissions: false,
+  modes: false,
+  models: false,
+  interrupts: true,
+  resume: true,
+  thinkingLevels: false,
+} as const;
+
+const logger = createTestLogger();
+
+/**
+ * A session whose turns stay open until the test completes them. The queue is
+ * all about what happens WHILE a turn is in flight, so the test has to own the
+ * turn boundary.
+ */
+class ControlledSession implements AgentSession {
+  readonly provider = "codex" as const;
+  readonly capabilities = TEST_CAPABILITIES;
+  readonly id = randomUUID();
+  readonly prompts: AgentPromptInput[] = [];
+  private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
+  private turnIdCounter = 0;
+  private openTurnId: string | null = null;
+
+  constructor(private readonly config: AgentSessionConfig) {}
+
+  async run(): Promise<AgentRunResult> {
+    return { sessionId: this.id, finalText: "", timeline: [] };
+  }
+
+  async startTurn(prompt: AgentPromptInput): Promise<{ turnId: string }> {
+    this.prompts.push(prompt);
+    const turnId = `turn-${++this.turnIdCounter}`;
+    this.openTurnId = turnId;
+    // setTimeout so the event lands after the caller has installed its waiter.
+    setTimeout(() => {
+      this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+    }, 0);
+    return { turnId };
+  }
+
+  completeTurn(): void {
+    const turnId = this.openTurnId;
+    if (!turnId) {
+      throw new Error("No open turn to complete");
+    }
+    this.openTurnId = null;
+    this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+  }
+
+  failTurn(error: string): void {
+    const turnId = this.openTurnId;
+    if (!turnId) {
+      throw new Error("No open turn to fail");
+    }
+    this.openTurnId = null;
+    this.pushEvent({ type: "turn_failed", provider: this.provider, error, turnId });
+  }
+
+  subscribe(callback: (event: AgentStreamEvent) => void): () => void {
+    this.subscribers.add(callback);
+    return () => {
+      this.subscribers.delete(callback);
+    };
+  }
+
+  private pushEvent(event: AgentStreamEvent): void {
+    for (const callback of this.subscribers) {
+      callback(event);
+    }
+  }
+
+  async *streamHistory(): AsyncGenerator<AgentStreamEvent> {}
+
+  async getRuntimeInfo() {
+    return {
+      provider: this.provider,
+      sessionId: this.id,
+      model: this.config.model ?? null,
+      modeId: null,
+    };
+  }
+
+  async getAvailableModes() {
+    return [];
+  }
+
+  async getCurrentMode() {
+    return null;
+  }
+
+  async setMode(): Promise<void> {}
+
+  getPendingPermissions() {
+    return [];
+  }
+
+  async respondToPermission(): Promise<void> {}
+
+  describePersistence() {
+    return { provider: this.provider, sessionId: this.id };
+  }
+
+  async interrupt(): Promise<void> {
+    if (this.openTurnId) {
+      const turnId = this.openTurnId;
+      this.openTurnId = null;
+      this.pushEvent({
+        type: "turn_canceled",
+        provider: this.provider,
+        reason: "interrupted",
+        turnId,
+      });
+    }
+  }
+
+  async close(): Promise<void> {}
+}
+
+class ControlledClient implements AgentClient {
+  readonly provider = "codex" as const;
+  readonly capabilities = TEST_CAPABILITIES;
+  session: ControlledSession | null = null;
+
+  async isAvailable(): Promise<boolean> {
+    return true;
+  }
+
+  async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+    this.session = new ControlledSession(config);
+    return this.session;
+  }
+
+  async resumeSession(
+    _handle: AgentPersistenceHandle,
+    config?: Partial<AgentSessionConfig>,
+  ): Promise<AgentSession> {
+    this.session = new ControlledSession({
+      provider: "codex",
+      cwd: config?.cwd ?? process.cwd(),
+    });
+    return this.session;
+  }
+}
+
+async function settle(): Promise<void> {
+  for (let i = 0; i < 8; i += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+interface Harness {
+  manager: AgentManager;
+  agentId: string;
+  session: ControlledSession;
+}
+
+async function createRunningAgent(): Promise<Harness> {
+  const client = new ControlledClient();
+  const manager = new AgentManager({ clients: { codex: client }, logger });
+  const agent = await manager.createAgent({ provider: "codex", cwd: process.cwd() }, undefined, {
+    workspaceId: undefined,
+  });
+  const session = client.session;
+  if (!session) {
+    throw new Error("Expected a created session");
+  }
+
+  startAgentRun(manager, agent.id, "first turn", logger);
+  await settle();
+  expect(manager.getAgent(agent.id)?.lifecycle).toBe("running");
+
+  return { manager, agentId: agent.id, session };
+}
+
+describe("steer queue state", () => {
+  test("merges consecutive user messages into one prompt and keeps FIFO order", () => {
+    const queue = [
+      createSteerQueueEntry({ prompt: "also update the tests", runOptions: { messageId: "m1" } }),
+      createSteerQueueEntry({ prompt: "and keep the public API stable" }),
+    ];
+
+    const batch = takeNextSteerQueueBatch(queue);
+    expect(batch?.entries).toHaveLength(2);
+    expect(batch?.rest).toHaveLength(0);
+    expect(mergeSteerQueueBatch(batch!.entries)).toEqual({
+      prompt: "also update the tests\n\nand keep the public API stable",
+      runOptions: { messageId: "m1" },
+    });
+  });
+
+  test("never merges a system-injected message with a user one", () => {
+    const queue = [
+      createSteerQueueEntry({ prompt: "user note" }),
+      createSteerQueueEntry({
+        prompt: "<otto-system>child finished</otto-system>",
+        source: "system",
+      }),
+      createSteerQueueEntry({ prompt: "later user note" }),
+    ];
+
+    const first = takeNextSteerQueueBatch(queue);
+    expect(first?.entries.map((entry) => entry.prompt)).toEqual(["user note"]);
+
+    const second = takeNextSteerQueueBatch(first!.rest);
+    expect(second?.entries.map((entry) => entry.prompt)).toEqual([
+      "<otto-system>child finished</otto-system>",
+    ]);
+    expect(second?.rest.map((entry) => entry.prompt)).toEqual(["later user note"]);
+  });
+
+  test("merging carries images and attachments through in order", () => {
+    const batch = [
+      createSteerQueueEntry({
+        prompt: [
+          { type: "text", text: "look at this" },
+          { type: "image", data: "AAAA", mimeType: "image/png" },
+        ],
+      }),
+      createSteerQueueEntry({ prompt: "and this too" }),
+    ];
+
+    const merged = mergeSteerQueueBatch(batch);
+    expect(steerQueuePromptParts(merged.prompt)).toEqual({
+      text: "look at this\n\nand this too",
+      images: [{ data: "AAAA", mimeType: "image/png" }],
+      attachments: [],
+    });
+  });
+
+  test("preview truncates long text and ignores non-text blocks", () => {
+    const entry = createSteerQueueEntry({
+      prompt: [
+        { type: "text", text: "x".repeat(500) },
+        { type: "image", data: "AAAA", mimeType: "image/png" },
+      ],
+    });
+    const preview = steerQueuePreview(entry);
+    expect(preview).toHaveLength(200);
+    expect(preview.endsWith("…")).toBe(true);
+  });
+
+  test("an empty queue has nothing to drain", () => {
+    expect(takeNextSteerQueueBatch([])).toBeNull();
+  });
+});
+
+describe("queued delivery", () => {
+  test("a queued message waits for the running turn, then runs as the next one", async () => {
+    const { manager, agentId, session } = await createRunningAgent();
+
+    const result = startAgentRun(manager, agentId, "next, run the linter", logger, {
+      delivery: "queue",
+    });
+    expect(result).toMatchObject({ outOfBand: false, queued: true });
+    // The turn in flight is untouched, and the queue is visible on the snapshot.
+    expect(session.prompts).toEqual(["first turn"]);
+    expect(toAgentPayload(manager.getAgent(agentId)!).queuedMessages).toMatchObject([
+      { preview: "next, run the linter" },
+    ]);
+
+    session.completeTurn();
+    await settle();
+
+    expect(session.prompts).toEqual(["first turn", "next, run the linter"]);
+    expect(manager.getAgent(agentId)?.lifecycle).toBe("running");
+    expect(manager.getSteerQueue(agentId)).toEqual([]);
+  });
+
+  test("the agent never reports idle between the finished turn and the queued one", async () => {
+    const { manager, agentId, session } = await createRunningAgent();
+    const lifecycles: string[] = [];
+    manager.subscribe(
+      (event) => {
+        if (event.type === "agent_state") {
+          lifecycles.push(event.agent.lifecycle);
+        }
+      },
+      { agentId, replayState: false },
+    );
+
+    startAgentRun(manager, agentId, "follow-up", logger, { delivery: "queue" });
+    session.completeTurn();
+    await settle();
+
+    expect(lifecycles).not.toContain("idle");
+  });
+
+  test("several messages queued before the turn ends are delivered as one turn", async () => {
+    const { manager, agentId, session } = await createRunningAgent();
+
+    startAgentRun(manager, agentId, "use the existing helper", logger, { delivery: "queue" });
+    startAgentRun(manager, agentId, "and add a test", logger, { delivery: "queue" });
+    startAgentRun(manager, agentId, "then run lint", logger, { delivery: "queue" });
+    expect(manager.getSteerQueue(agentId)).toHaveLength(3);
+
+    session.completeTurn();
+    await settle();
+
+    expect(session.prompts).toEqual([
+      "first turn",
+      "use the existing helper\n\nand add a test\n\nthen run lint",
+    ]);
+    expect(manager.getSteerQueue(agentId)).toEqual([]);
+  });
+
+  test("queueing to an idle agent runs it immediately instead of waiting", async () => {
+    const { manager, agentId, session } = await createRunningAgent();
+    session.completeTurn();
+    await settle();
+    expect(manager.getAgent(agentId)?.lifecycle).toBe("idle");
+
+    const result = startAgentRun(manager, agentId, "do it now", logger, { delivery: "queue" });
+    await settle();
+
+    expect(result.queued).toBe(false);
+    expect(session.prompts).toEqual(["first turn", "do it now"]);
+    expect(manager.getSteerQueue(agentId)).toEqual([]);
+  });
+
+  test("interrupt delivery still clobbers the running turn", async () => {
+    const { manager, agentId, session } = await createRunningAgent();
+
+    startAgentRun(manager, agentId, "stop, do this instead", logger, { replaceRunning: true });
+    await settle();
+
+    expect(session.prompts).toEqual(["first turn", "stop, do this instead"]);
+    expect(manager.getSteerQueue(agentId)).toEqual([]);
+  });
+
+  test("a failed turn holds the queue instead of running it into a broken session", async () => {
+    const { manager, agentId, session } = await createRunningAgent();
+    startAgentRun(manager, agentId, "queued behind a failure", logger, { delivery: "queue" });
+
+    session.failTurn("provider exploded");
+    await settle();
+
+    expect(manager.getAgent(agentId)?.lifecycle).toBe("error");
+    expect(session.prompts).toEqual(["first turn"]);
+    expect(manager.getSteerQueue(agentId).map((entry) => entry.prompt)).toEqual([
+      "queued behind a failure",
+    ]);
+  });
+
+  test("removing an entry hands its text back and drops it from the queue", async () => {
+    const { manager, agentId } = await createRunningAgent();
+    startAgentRun(manager, agentId, "first queued", logger, { delivery: "queue" });
+    startAgentRun(manager, agentId, "second queued", logger, { delivery: "queue" });
+
+    const [first] = manager.getSteerQueue(agentId);
+    const removed = manager.removeSteerQueueEntry(agentId, first!.id);
+
+    expect(removed?.prompt).toBe("first queued");
+    expect(manager.getSteerQueue(agentId).map((entry) => entry.prompt)).toEqual(["second queued"]);
+    expect(manager.removeSteerQueueEntry(agentId, "no-such-id")).toBeNull();
+  });
+
+  test("clearing empties the queue and reports how many were dropped", async () => {
+    const { manager, agentId, session } = await createRunningAgent();
+    startAgentRun(manager, agentId, "a", logger, { delivery: "queue" });
+    startAgentRun(manager, agentId, "b", logger, { delivery: "queue" });
+
+    expect(manager.clearSteerQueue(agentId)).toBe(2);
+    expect(manager.clearSteerQueue(agentId)).toBe(0);
+
+    session.completeTurn();
+    await settle();
+    expect(session.prompts).toEqual(["first turn"]);
+    expect(manager.getAgent(agentId)?.lifecycle).toBe("idle");
+  });
+});

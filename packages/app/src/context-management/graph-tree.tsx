@@ -202,7 +202,7 @@ function ContextTreeRowView({
       style={rowStyle}
       testID={`context-tree-row-${row.key}`}
     >
-      <TreeIndentGuides depth={row.depth} />
+      <TreeIndentGuides depth={row.depth} ancestorMask={row.ancestorMask} />
       <View style={styles.chevronSlot}>
         {row.expandable ? <TreeChevron expanded={expanded} /> : null}
       </View>

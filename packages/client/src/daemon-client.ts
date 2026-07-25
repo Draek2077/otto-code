@@ -26,6 +26,10 @@ import type {
   CodeSymbolLocation,
   CodeDefinitionLocation,
   CodeDefinitionStatus,
+  CodeRenameApplyStatus,
+  CodeRenameFileOutcome,
+  CodeRenameUndoFile,
+  CodeRenameUndoStatus,
   CodeHoverRange,
   CodeRenameEdit,
   CodeRenameFilePlan,
@@ -42,6 +46,9 @@ import type {
   FileExplorerResponse,
   FileWatchEventPayload,
   FileWriteResult,
+  FileRefineResult,
+  FileRefineDocument,
+  FileRefineReference,
   FetchAgentTimelineResponseMessage,
   AgentForkContextResponseMessage,
   GitSetupOptions,
@@ -131,6 +138,7 @@ import type {
   SessionInboundMessage,
   SessionOutboundMessage,
   SendAgentMessageRequest,
+  AgentPromptDelivery,
   TasksSuggestedStartMode,
   OttoConfigRaw,
   OttoConfigRevision,
@@ -325,6 +333,19 @@ export interface SendMessageOptions {
   messageId?: string;
   images?: Array<{ data: string; mimeType: string }>;
   attachments?: SendAgentMessageRequest["attachments"];
+  /**
+   * How to reach the agent if it is busy. Omit for `interrupt` (cancel the
+   * in-flight turn and run this now). `queue` parks the message and runs it as
+   * the agent's next turn. Requires `server_info.features.steerQueue`.
+   */
+  delivery?: AgentPromptDelivery;
+}
+
+export interface SendAgentMessageResult {
+  /** True when the daemon parked the message instead of dispatching it. */
+  queued: boolean;
+  /** The queue entry's id, for finding this message again in `queuedMessages`. */
+  queuedMessageId: string | null;
 }
 
 type AgentConfigOverrides = Partial<Omit<AgentSessionConfig, "provider" | "cwd">>;
@@ -448,12 +469,30 @@ export interface FileWriteOptions {
   eol?: FileEol;
   requestId?: string;
 }
+/**
+ * Refine — ask the daemon for proposed rewrites of a pinned set of documents.
+ * This call never writes: accepted proposals go back through {@link
+ * DaemonClient.writeFile}, one per file, like any other save.
+ */
+export interface FileRefineOptions {
+  /** Provider resolution only; the documents themselves travel inline. */
+  cwd: string;
+  /** What the model may rewrite — this list is the request's blast radius. */
+  documents: FileRefineDocument[];
+  /** What it may read for context but must never rewrite. */
+  references?: FileRefineReference[];
+  instruction: string;
+  requestId?: string;
+}
 export type {
   FileReplaceFileResult,
   FileSearchResultPayload,
   FileSearchSummary,
   FileWatchEventPayload,
   FileWriteResult,
+  FileRefineResult,
+  FileRefineDocument,
+  FileRefineReference,
 };
 
 export interface FileSearchOptions {
@@ -519,6 +558,35 @@ export interface CodeRenamePlan {
   /** Blast radius, so a dry-run surface can lead with it. */
   fileCount: number;
   editCount: number;
+  /** Identity of this exact plan. Send it back to apply; see `applyCodeRename`. */
+  planId: string;
+  error: string | null;
+}
+
+export interface CodeRenameApplyQuery extends CodeRenamePreviewQuery {
+  /** The `planId` of the plan that was actually shown to the user. */
+  planId: string;
+}
+
+export interface CodeRenameApplyOutcome {
+  status: CodeRenameApplyStatus;
+  /** Identity of the run, for undo. Null when nothing ran. */
+  runId: string | null;
+  files: CodeRenameFileOutcome[];
+  appliedFiles: number;
+  appliedEdits: number;
+  skippedEdits: number;
+  /** True only when every planned edit landed. */
+  complete: boolean;
+  error: string | null;
+}
+
+export interface CodeRenameUndoOutcome {
+  status: CodeRenameUndoStatus;
+  files: CodeRenameUndoFile[];
+  restoredFiles: number;
+  /** True only when every file the run wrote was put back. */
+  complete: boolean;
   error: string | null;
 }
 
@@ -3193,7 +3261,7 @@ export class DaemonClient {
     agentId: string,
     text: string,
     options?: SendMessageOptions,
-  ): Promise<void> {
+  ): Promise<SendAgentMessageResult> {
     const requestId = this.createRequestId();
     const messageId = options?.messageId ?? crypto.randomUUID();
     const message = SessionInboundMessageSchema.parse({
@@ -3204,6 +3272,7 @@ export class DaemonClient {
       ...(messageId ? { messageId } : {}),
       ...(options?.images ? { images: options.images } : {}),
       ...(options?.attachments ? { attachments: options.attachments } : {}),
+      ...(options?.delivery ? { delivery: options.delivery } : {}),
     });
     const payload = await this.sendRequest({
       requestId,
@@ -3222,10 +3291,78 @@ export class DaemonClient {
     if (!payload.accepted) {
       throw new Error(payload.error ?? "sendAgentMessage rejected");
     }
+    return {
+      queued: payload.queued ?? false,
+      queuedMessageId: payload.queuedMessageId ?? null,
+    };
   }
 
   async sendMessage(agentId: string, text: string, options?: SendMessageOptions): Promise<void> {
     await this.sendAgentMessage(agentId, text, options);
+  }
+
+  /**
+   * Pull one message back out of an agent's queue. Returns its text so the
+   * caller can put it back in the composer, or null when the turn already
+   * drained it. Requires `server_info.features.steerQueue`.
+   */
+  async removeQueuedAgentMessage(
+    agentId: string,
+    messageId: string,
+  ): Promise<{ id: string; text: string } | null> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "agent.queue.remove.request",
+      requestId,
+      agentId,
+      messageId,
+    });
+    const payload = await this.sendRequest({
+      requestId,
+      message,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "agent.queue.remove.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.removed;
+  }
+
+  /** Drop every message queued behind an agent's current turn. */
+  async clearAgentQueue(agentId: string): Promise<number> {
+    const requestId = this.createRequestId();
+    const message = SessionInboundMessageSchema.parse({
+      type: "agent.queue.clear.request",
+      requestId,
+      agentId,
+    });
+    const payload = await this.sendRequest({
+      requestId,
+      message,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "agent.queue.clear.response") {
+          return null;
+        }
+        if (msg.payload.requestId !== requestId) {
+          return null;
+        }
+        return msg.payload;
+      },
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.clearedCount;
   }
 
   async rewindAgent(
@@ -4672,6 +4809,21 @@ export class DaemonClient {
     return payload.result;
   }
 
+  async refineFile(options: FileRefineOptions): Promise<FileRefineResult> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "file.refine.request",
+        cwd: options.cwd,
+        documents: options.documents,
+        references: options.references,
+        instruction: options.instruction,
+      },
+      responseType: "file.refine.response",
+    });
+    return payload.result;
+  }
+
   /**
    * Project-wide search. Per-file results stream through onFileResult (the
    * daemon emits them in order, before the summary response resolves); the
@@ -4862,6 +5014,65 @@ export class DaemonClient {
       files: payload.files,
       fileCount: payload.fileCount,
       editCount: payload.editCount,
+      planId: payload.planId,
+      error: payload.error,
+    };
+  }
+
+  /**
+   * Execute a rename the user audited. Sends the  and NOT the edits: the daemon
+   * recomputes the plan and refuses unless the identity still matches, which is what keeps
+   * this from being an arbitrary-write RPC and what makes "what you approved is what
+   * happens" enforceable rather than merely intended.
+   */
+  async applyCodeRename(
+    input: CodeRenameApplyQuery,
+    requestId?: string,
+  ): Promise<CodeRenameApplyOutcome> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "code.rename.apply.request",
+        cwd: input.cwd,
+        path: input.path,
+        line: input.line,
+        column: input.column,
+        newName: input.newName,
+        planId: input.planId,
+      },
+      responseType: "code.rename.apply.response",
+    });
+    return {
+      status: payload.status,
+      runId: payload.runId,
+      files: payload.files,
+      appliedFiles: payload.appliedFiles,
+      appliedEdits: payload.appliedEdits,
+      skippedEdits: payload.skippedEdits,
+      complete: payload.complete,
+      error: payload.error,
+    };
+  }
+
+  /**
+   * Take a rename run back. Sends only the run id: the daemon holds the before-images, and
+   * restores a file only if it still holds exactly what the run wrote.
+   */
+  async undoCodeRename(
+    cwd: string,
+    runId: string,
+    requestId?: string,
+  ): Promise<CodeRenameUndoOutcome> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "code.rename.undo.request", cwd, runId },
+      responseType: "code.rename.undo.response",
+    });
+    return {
+      status: payload.status,
+      files: payload.files,
+      restoredFiles: payload.restoredFiles,
+      complete: payload.complete,
       error: payload.error,
     };
   }

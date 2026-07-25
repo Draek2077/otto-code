@@ -11,6 +11,8 @@ import {
   type FirstAgentContext,
   type SessionInboundMessage,
   type SessionOutboundMessage,
+  type FileRefineRequest,
+  type FileRefineResult,
   type GitSetupOptions,
   type StartWorkspaceScriptRequest,
   type CloseItemsRequest,
@@ -46,7 +48,9 @@ import {
   sendPromptToAgent,
   waitForAgentRunStartWithTimeout,
   unarchiveAgentState,
+  type StartAgentRunResult,
 } from "./agent/agent-prompt.js";
+import { steerQueuePromptText } from "./agent/steer-queue-state.js";
 import {
   resolveCreateAgentTitles,
   resolveFirstAgentPromptTitle,
@@ -188,6 +192,11 @@ import {
   type CueMoment,
   type VoiceCueGenerator,
 } from "./agent/voice-cue-generator.js";
+import {
+  RefineError,
+  createRefineGenerator,
+  type RefineGenerator,
+} from "./session/files/refine-generator.js";
 import { ChatScheduleLoopSession } from "./session/chat/chat-schedule-loop-session.js";
 import { ProviderCatalogSession } from "./session/provider/provider-catalog-session.js";
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
@@ -205,6 +214,7 @@ import { readLaunchConfig, LaunchConfigError } from "./preview/launch-config.js"
 import {
   archivePersistedWorkspaceRecord,
   archiveWorkspaceContents,
+  stopLanguageServersForArchivedDirectories,
 } from "./workspace-archive-service.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
 import type { ServiceProxySubsystem } from "./service-proxy.js";
@@ -683,6 +693,8 @@ export class Session {
   private readonly sessionLogger: pino.Logger;
   private readonly ottoHome: string;
   private readonly worktreesRoot: string | undefined;
+  /** Daemon-scoped, shared with every other session. Held here for archive teardown. */
+  private readonly lspService: LspService;
 
   private agentManager: AgentManager;
   private readonly runService: RunService | null | undefined;
@@ -717,6 +729,10 @@ export class Session {
   // Generates the Visualizer's short spoken cue lines for a personality (join /
   // thinking / done), via the Writer mini-task chain. Cached per personality.
   private readonly voiceCueGenerator: VoiceCueGenerator;
+  // Refine's one-shot document rewriter. It lives on the session rather than on
+  // WorkspaceFilesSession because that class is deliberately file I/O only —
+  // it reaches no agent, and this is a model call that touches no file.
+  private readonly refineGenerator: RefineGenerator;
   private readonly pushTokenStore: PushTokenStore;
   private unsubscribeAgentEvents: (() => void) | null = null;
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
@@ -845,6 +861,7 @@ export class Session {
     this.pushTokenStore = pushTokenStore;
     this.ottoHome = ottoHome;
     this.worktreesRoot = worktreesRoot;
+    this.lspService = lspService;
     this.sessionLogger = logger.child({
       module: "session",
       clientId: this.clientId,
@@ -937,6 +954,14 @@ export class Session {
       // Provider resolution needs a cwd; the editor passes none, so a live
       // agent's cwd is a sane fallback (global providers resolve regardless).
       fallbackCwd: () => this.agentManager.listAgents()[0]?.cwd ?? process.cwd(),
+    });
+    this.refineGenerator = createRefineGenerator({
+      generation: createAgentStructuredTextGeneration({
+        agentManager: this.agentManager,
+        providerSnapshotManager,
+        readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
+        getFocusedSelection: (cwd) => this.getFocusedAgentSelectionForCwd(cwd),
+      }),
     });
     this.workspaceGitObserver = createWorkspaceGitObserverService({
       workspaceGitService: this.workspaceGitService,
@@ -2150,6 +2175,10 @@ export class Session {
         return this.handleFetchAgentTimelineRequest(msg);
       case "agent.fork_context.request":
         return this.handleAgentForkContextRequest(msg);
+      case "agent.queue.remove.request":
+        return this.handleAgentQueueRemoveRequest(msg);
+      case "agent.queue.clear.request":
+        return this.handleAgentQueueClearRequest(msg);
       default:
         return undefined;
     }
@@ -2854,6 +2883,8 @@ export class Session {
         return undefined;
       case "file.write.request":
         return this.workspaceFilesSession.handleFileWriteRequest(msg);
+      case "file.refine.request":
+        return this.handleFileRefineRequest(msg);
       case "file.watch.subscribe.request":
         return this.workspaceFilesSession.handleFileWatchSubscribeRequest(msg);
       case "file.watch.unsubscribe.request":
@@ -2892,6 +2923,10 @@ export class Session {
         return this.workspaceFilesSession.handleCodeReferencesRequest(msg);
       case "code.rename.preview.request":
         return this.workspaceFilesSession.handleCodeRenamePreviewRequest(msg);
+      case "code.rename.apply.request":
+        return this.workspaceFilesSession.handleCodeRenameApplyRequest(msg);
+      case "code.rename.undo.request":
+        return this.workspaceFilesSession.handleCodeRenameUndoRequest(msg);
       case "lsp.servers.list.request":
         return this.workspaceFilesSession.handleLspServersListRequest(msg);
       case "lsp.server.stop.request":
@@ -3674,6 +3709,21 @@ export class Session {
         await this.projectRegistry.remove(projectId);
         // Cascade: a removed project's links disappear (gated-multi-root).
         await this.projectLinkStore.removeAllForProject(projectId);
+        // Same teardown archiveByScope does for a single workspace: the language
+        // servers rooted at these directories have nothing left to serve.
+        await stopLanguageServersForArchivedDirectories(
+          {
+            listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
+            stopLanguageServers: (rootPath) => this.lspService.stopWorkspace(rootPath),
+            sessionLogger: this.sessionLogger,
+          },
+          {
+            directories: projectWorkspaces
+              .filter((workspace) => removedWorkspaceIds.includes(workspace.workspaceId))
+              .map((workspace) => workspace.cwd),
+            archivedWorkspaceIds: removedWorkspaceIds,
+          },
+        );
       } finally {
         if (activeWorkspaceIds.length > 0) {
           this.clearWorkspaceArchiving(activeWorkspaceIds);
@@ -3850,6 +3900,49 @@ export class Session {
           links: [],
           error: getErrorMessageOr(error, "Failed to unlink projects"),
         },
+      });
+    }
+  }
+
+  /**
+   * Refine — propose rewrites of the documents the client pinned.
+   *
+   * Nothing here reads or writes the filesystem: every document arrives on the
+   * wire and every proposal goes back on it. Accepted results come back later
+   * as ordinary `file.write.request`s, one per file, so the conditional-write
+   * precondition — not this handler — is what protects them.
+   */
+  private async handleFileRefineRequest(msg: FileRefineRequest): Promise<void> {
+    const respond = (result: FileRefineResult): void => {
+      this.emit({
+        type: "file.refine.response",
+        payload: { cwd: msg.cwd, result, requestId: msg.requestId },
+      });
+    };
+    const cwd = msg.cwd.trim();
+    if (!cwd) {
+      respond({ status: "error", message: "cwd is required" });
+      return;
+    }
+    try {
+      const files = await this.refineGenerator.refine({
+        cwd,
+        documents: msg.documents,
+        ...(msg.references ? { references: msg.references } : {}),
+        instruction: msg.instruction,
+      });
+      respond({ status: "ok", files });
+    } catch (error) {
+      this.sessionLogger.error(
+        { err: error, cwd, documents: msg.documents.length },
+        "session: file.refine.request failed",
+      );
+      respond({
+        status: "error",
+        message:
+          error instanceof RefineError
+            ? error.message
+            : getErrorMessageOr(error, "Failed to refine this file"),
       });
     }
   }
@@ -5068,6 +5161,7 @@ export class Session {
         clearWorkspaceArchiving: (workspaceIds) => this.clearWorkspaceArchiving(workspaceIds),
         killTerminalsForWorkspace: (workspaceId) =>
           this.terminalController.killTerminalsForWorkspace(workspaceId),
+        stopLanguageServers: (rootPath) => this.lspService.stopWorkspace(rootPath),
         sessionLogger: this.sessionLogger,
       },
       msg,
@@ -6842,6 +6936,7 @@ export class Session {
           clearWorkspaceArchiving: (workspaceIds) => this.clearWorkspaceArchiving(workspaceIds),
           killTerminalsForWorkspace: (workspaceId) =>
             this.terminalController.killTerminalsForWorkspace(workspaceId),
+          stopLanguageServers: (rootPath) => this.lspService.stopWorkspace(rootPath),
           sessionLogger: this.sessionLogger,
         },
         {
@@ -7564,6 +7659,65 @@ export class Session {
     }
   }
 
+  private async handleAgentQueueRemoveRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.queue.remove.request" }>,
+  ): Promise<void> {
+    const resolved = await this.resolveAgentIdentifier(msg.agentId);
+    if (!resolved.ok) {
+      this.emit({
+        type: "agent.queue.remove.response",
+        payload: {
+          requestId: msg.requestId,
+          agentId: msg.agentId,
+          removed: null,
+          error: resolved.error,
+        },
+      });
+      return;
+    }
+
+    // A null `removed` is not an error: the turn can drain an entry between the
+    // client rendering the row and the tap landing.
+    const entry = this.agentManager.removeSteerQueueEntry(resolved.agentId, msg.messageId);
+    this.emit({
+      type: "agent.queue.remove.response",
+      payload: {
+        requestId: msg.requestId,
+        agentId: resolved.agentId,
+        removed: entry ? { id: entry.id, text: steerQueuePromptText(entry.prompt) } : null,
+        error: null,
+      },
+    });
+  }
+
+  private async handleAgentQueueClearRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.queue.clear.request" }>,
+  ): Promise<void> {
+    const resolved = await this.resolveAgentIdentifier(msg.agentId);
+    if (!resolved.ok) {
+      this.emit({
+        type: "agent.queue.clear.response",
+        payload: {
+          requestId: msg.requestId,
+          agentId: msg.agentId,
+          clearedCount: 0,
+          error: resolved.error,
+        },
+      });
+      return;
+    }
+
+    this.emit({
+      type: "agent.queue.clear.response",
+      payload: {
+        requestId: msg.requestId,
+        agentId: resolved.agentId,
+        clearedCount: this.agentManager.clearSteerQueue(resolved.agentId),
+        error: null,
+      },
+    });
+  }
+
   private async handleSendAgentMessageRequest(
     msg: Extract<SessionInboundMessage, { type: "send_agent_message_request" }>,
   ): Promise<void> {
@@ -7593,7 +7747,7 @@ export class Session {
         },
         "agent.session.send_agent_message",
       );
-      let dispatchResult: { outOfBand: boolean };
+      let dispatchResult: StartAgentRunResult;
       try {
         dispatchResult = await sendPromptToAgent({
           agentManager: this.agentManager,
@@ -7601,6 +7755,7 @@ export class Session {
           agentId,
           prompt,
           messageId: msg.messageId,
+          ...(msg.delivery ? { delivery: msg.delivery } : {}),
           logger: this.sessionLogger,
         });
       } catch (error) {
@@ -7626,6 +7781,26 @@ export class Session {
             agentId,
             accepted: true,
             error: null,
+          },
+        });
+        return;
+      }
+
+      // A queued message deliberately starts no run — waiting for one would
+      // stall for the whole turn and then time out. The entry id lets the
+      // sender find its own message in the agent's queuedMessages.
+      if (dispatchResult.queued) {
+        this.emit({
+          type: "send_agent_message_response",
+          payload: {
+            requestId: msg.requestId,
+            agentId,
+            accepted: true,
+            error: null,
+            queued: true,
+            ...(dispatchResult.queuedMessageId
+              ? { queuedMessageId: dispatchResult.queuedMessageId }
+              : {}),
           },
         });
         return;

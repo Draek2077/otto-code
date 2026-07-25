@@ -4,6 +4,7 @@ import type {
   ContextNode,
   ContextReport,
 } from "@otto-code/protocol/messages";
+import { TREE_RAILS_ALL_CONTINUE, withTreeRail } from "@/components/tree-rail-mask";
 
 /**
  * Flattens the report into the rows the tree renders.
@@ -20,6 +21,8 @@ export interface ContextTreeRow {
   key: string;
   kind: ContextRowKind;
   depth: number;
+  /** which indent rails keep running below this row — see tree-rail-mask.ts */
+  ancestorMask: number;
   /** Present on `node` rows. */
   node?: ContextNode;
   /** Present on `category` rows. */
@@ -86,7 +89,7 @@ export function buildContextTree(input: BuildContextTreeInput): ContextTreeRow[]
   const { childrenByNodeId, claimedNodeIds } = buildChildIndex(report);
   const rows: ContextTreeRow[] = [];
 
-  const emitNode = (link: ChildLink, depth: number): void => {
+  const emitNode = (link: ChildLink, depth: number, ancestorMask: number): void => {
     const node = nodesById.get(link.nodeId);
     if (!node) return;
     const children = childrenByNodeId.get(node.id) ?? [];
@@ -95,6 +98,7 @@ export function buildContextTree(input: BuildContextTreeInput): ContextTreeRow[]
       key: node.id,
       kind: "node",
       depth,
+      ancestorMask,
       node,
       estTokens: node.estTokens,
       edgeKind: link.edgeKind,
@@ -102,7 +106,17 @@ export function buildContextTree(input: BuildContextTreeInput): ContextTreeRow[]
       expandable: children.length > 0,
     });
     if (!expanded) return;
-    for (const child of children) emitNode(child, depth + 1);
+    emitSiblings(children, depth + 1, ancestorMask);
+  };
+
+  const emitSiblings = (links: readonly ChildLink[], depth: number, parentMask: number): void => {
+    // A link whose node is missing from the report emits no row, so it must not
+    // count when deciding which sibling is last — otherwise the rail closes early.
+    const emitted = links.filter((link) => nodesById.has(link.nodeId));
+    const lastIndex = emitted.length - 1;
+    emitted.forEach((link, index) => {
+      emitNode(link, depth, withTreeRail(parentMask, depth, index !== lastIndex));
+    });
   };
 
   for (const category of CATEGORY_ORDER) {
@@ -120,13 +134,18 @@ export function buildContextTree(input: BuildContextTreeInput): ContextTreeRow[]
       key: category,
       kind: "category",
       depth: 0,
+      ancestorMask: TREE_RAILS_ALL_CONTINUE,
       category,
       estTokens: total?.estTokens ?? roots.reduce((sum, node) => sum + node.estTokens, 0),
       hasChildren: roots.length > 0,
       expandable: roots.length > 0,
     });
     if (!expanded) continue;
-    for (const root of roots) emitNode({ nodeId: root.id, edgeKind: "import" }, 1);
+    emitSiblings(
+      roots.map((root) => ({ nodeId: root.id, edgeKind: "import" as const })),
+      1,
+      TREE_RAILS_ALL_CONTINUE,
+    );
   }
 
   return rows;

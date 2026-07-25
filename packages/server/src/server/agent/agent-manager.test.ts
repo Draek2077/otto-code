@@ -7774,3 +7774,107 @@ test("cumulativeTokens takes Pi's already-cumulative session usage directly inst
   await manager.flush();
   expect(manager.getAgent(snapshot.id)?.cumulativeTokens).toBe(200);
 });
+
+// A native (create_agent) sub-agent gets no provider task report, so its own
+// timeline is the liveness source. See docs/chat-lifecycle.md (the subagents track).
+function toolCallItem(callId: string, name: string): AgentTimelineItem {
+  return {
+    type: "tool_call",
+    callId,
+    name,
+    status: "running",
+    error: null,
+    detail: { type: "plain_text" },
+  };
+}
+
+test("a native sub-agent's tool calls drive its track-row liveness, counted once each", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-native-liveness-"));
+  let capturedSession: TestAgentSession | null = null;
+  class CapturingClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      capturedSession = new TestAgentSession(config);
+      return capturedSession;
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: { codex: new CapturingClient() },
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000203",
+  });
+
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    labels: { [PARENT_AGENT_ID_LABEL]: "parent-agent" },
+    workspaceId: undefined,
+  });
+
+  expect(manager.getAgent(snapshot.id)?.toolUseCount).toBeUndefined();
+
+  // Two flushes per step: the first drains the queued session event into the
+  // stream coalescer, the second flushes that buffer (a running tool call is
+  // coalesced — which is also what keeps the row from strobing in production).
+  const settle = async (): Promise<void> => {
+    await manager.flush();
+    await manager.flush();
+  };
+
+  capturedSession?.pushEvent({
+    type: "timeline",
+    provider: "codex",
+    item: toolCallItem("call-1", "Read"),
+  });
+  await settle();
+  expect(manager.getAgent(snapshot.id)?.toolUseCount).toBe(1);
+  expect(manager.getAgent(snapshot.id)?.currentTool).toBe("Read");
+
+  // The same call completing is the same tool use — the count must not double.
+  capturedSession?.pushEvent({
+    type: "timeline",
+    provider: "codex",
+    item: { ...toolCallItem("call-1", "Read"), status: "completed" },
+  });
+  await settle();
+  expect(manager.getAgent(snapshot.id)?.toolUseCount).toBe(1);
+
+  capturedSession?.pushEvent({
+    type: "timeline",
+    provider: "codex",
+    item: toolCallItem("call-2", "Bash"),
+  });
+  await settle();
+  expect(manager.getAgent(snapshot.id)?.toolUseCount).toBe(2);
+  expect(manager.getAgent(snapshot.id)?.currentTool).toBe("Bash");
+});
+
+test("a main chat is not counted — the liveness readout belongs to track rows", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-main-chat-liveness-"));
+  let capturedSession: TestAgentSession | null = null;
+  class CapturingClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      capturedSession = new TestAgentSession(config);
+      return capturedSession;
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: { codex: new CapturingClient() },
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000204",
+  });
+
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  capturedSession?.pushEvent({
+    type: "timeline",
+    provider: "codex",
+    item: toolCallItem("call-1", "Read"),
+  });
+  await manager.flush();
+  await manager.flush();
+
+  expect(manager.getAgent(snapshot.id)?.toolUseCount).toBeUndefined();
+  expect(manager.getAgent(snapshot.id)?.currentTool).toBeUndefined();
+});

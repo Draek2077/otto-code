@@ -369,6 +369,13 @@ const WS_CLOSE_INCOMPATIBLE_PROTOCOL = 4003;
 const WS_CLOSE_SERVER_SHUTDOWN = 1001;
 const WS_PROTOCOL_VERSION = 1;
 const WS_RUNTIME_METRICS_FLUSH_MS = 30_000;
+/**
+ * How often idle language servers are checked for expiry. The pool deliberately holds no
+ * timers — every decision reads an injected clock so the lifecycle is testable without
+ * waiting on wall time — so the daemon owns the tick. Well under the shortest allowance
+ * (the 2-minute background idle) so the setting means roughly what it says.
+ */
+const LSP_IDLE_REAP_INTERVAL_MS = 30_000;
 
 export class MissingDaemonVersionError extends Error {
   constructor() {
@@ -498,6 +505,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly runtimeMetrics = new WebSocketRuntimeMetricsWindow();
   private lastRuntimeMetricsSnapshot: WebSocketRuntimeDiagnosticPayload | null = null;
   private runtimeMetricsInterval: ReturnType<typeof setInterval> | null = null;
+  private lspIdleReapInterval: ReturnType<typeof setInterval> | null = null;
   private eventLoopDelayMonitor: ReturnType<typeof monitorEventLoopDelay> | null = null;
   private unsubscribeSpeechReadiness: (() => void) | null = null;
   private unsubscribeDaemonConfigChange: (() => void) | null = null;
@@ -706,6 +714,7 @@ export class VoiceAssistantWebSocketServer {
 
     this.wss = this.createWebSocketServer(server, wsConfig, auth);
     this.startRuntimeMetricsInterval();
+    this.startLspIdleReapInterval();
 
     this.logger.info("WebSocket server initialized on /ws");
   }
@@ -809,6 +818,21 @@ export class VoiceAssistantWebSocketServer {
     }, WS_RUNTIME_METRICS_FLUSH_MS);
     this.runtimeMetricsInterval = runtimeMetricsInterval;
     (runtimeMetricsInterval as unknown as { unref?: () => void }).unref?.();
+  }
+
+  /**
+   * The daemon half of the language-server idle policy. Without this tick nothing ever
+   * expires: a server started for one hover stays resident, holding a project model worth
+   * hundreds of megabytes, until the daemon exits or the LRU cap happens to evict it.
+   */
+  private startLspIdleReapInterval(): void {
+    const lspIdleReapInterval = setInterval(() => {
+      void this.lspService.reapIdle().catch((err: unknown) => {
+        this.logger.warn({ err }, "Failed to reap idle language servers");
+      });
+    }, LSP_IDLE_REAP_INTERVAL_MS);
+    this.lspIdleReapInterval = lspIdleReapInterval;
+    (lspIdleReapInterval as unknown as { unref?: () => void }).unref?.();
   }
 
   // Main-loop stall visibility: terminal frames and agent traffic share one event
@@ -946,6 +970,10 @@ export class VoiceAssistantWebSocketServer {
       clearInterval(this.runtimeMetricsInterval);
       this.runtimeMetricsInterval = null;
     }
+    if (this.lspIdleReapInterval) {
+      clearInterval(this.lspIdleReapInterval);
+      this.lspIdleReapInterval = null;
+    }
     this.flushRuntimeMetrics({ final: true });
     this.eventLoopDelayMonitor?.disable();
     this.eventLoopDelayMonitor = null;
@@ -1000,6 +1028,11 @@ export class VoiceAssistantWebSocketServer {
     }
 
     await Promise.all(cleanupPromises);
+    // Language servers are child processes we spawned, not ours to leave behind. Nothing
+    // else stops them: they outlive every session, so no session cleanup covers them.
+    await this.lspService.stopAll().catch((err: unknown) => {
+      this.logger.warn({ err }, "Failed to stop language servers during shutdown");
+    });
     this.providerSnapshotManager.destroy();
     this.checkoutDiffManager.dispose();
     this.workspaceGitService.dispose();
@@ -1420,6 +1453,8 @@ export class VoiceAssistantWebSocketServer {
         retainedTranscripts: true,
         // COMPAT(textEditor): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         textEditor: true,
+        // COMPAT(refine): added in v0.6.9, drop the gate when daemon floor >= v0.6.9.
+        refine: true,
         // COMPAT(projectSearch): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         projectSearch: true,
         // COMPAT(codeIndex): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
@@ -1482,6 +1517,8 @@ export class VoiceAssistantWebSocketServer {
         orchestrationGraphs: this.runService !== null && this.graphStore !== null,
         // COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
         suggestedTasks: true,
+        // COMPAT(steerQueue): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+        steerQueue: true,
         // COMPAT(backgroundShellTasks): wire field reserved in v0.5.3 but never
         // advertised; the daemon always emits background_shell_task events (Claude
         // provider), so populate it now. Drop the gate when daemon floor >= v0.6.7.

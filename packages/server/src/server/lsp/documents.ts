@@ -1,3 +1,4 @@
+import { readFile, stat } from "node:fs/promises";
 import type { Logger } from "pino";
 import type { LspConnection } from "./connection.js";
 import type { BoundServer, LspServerPool } from "./pool.js";
@@ -8,7 +9,7 @@ import { documentKey, toFileUri } from "./uri.js";
  * The daemon's mirror of the editor's open buffers, and the thing that keeps every
  * bound language server's view of them current.
  *
- * Two properties make this correct rather than approximately correct:
+ * Three properties make this correct rather than approximately correct:
  *
  * **Answers come from the draft, not the disk.** A definition resolved against saved
  * content is a subtly wrong answer whenever there are unsaved edits — which, in an
@@ -20,7 +21,22 @@ import { documentKey, toFileUri } from "./uri.js";
  * baseline it does not have. The same rule covers a server that crashed and restarted,
  * which is why the per-document record tracks *which connection* holds it open rather
  * than merely which server id.
+ *
+ * **A query never depends on some other tab being open.** When a position query names a
+ * file no editor is mirroring, the file is loaded from disk and opened before the query
+ * goes out. Without this, a language server that was never sent `didOpen` for the URI
+ * answers *empty* — not an error, just nothing — and the caller reports "no references"
+ * about a symbol that plainly has them. That is what a References tab restored after a
+ * client reload used to show: its own tab came back, the file's editor tab did not mount,
+ * so nothing mirrored the buffer and re-asking could never fix it.
  */
+
+/**
+ * Ceiling on a query-time disk load. A source file a user is querying is kilobytes; past
+ * this it is a bundle or a data blob, and handing it to a language server is worse than
+ * answering nothing.
+ */
+const MAX_LOADED_DOCUMENT_BYTES = 4 * 1024 * 1024;
 
 export interface LspDocumentsOptions {
   pool: LspServerPool;
@@ -118,9 +134,10 @@ export class LspDocuments {
    */
   async serversFor(rootPath: string, filePath: string): Promise<BoundServer[]> {
     const bound = await this.pool.serversForDocument(rootPath, filePath);
-    const document = this.documents.get(documentKey(filePath));
+    const document =
+      this.documents.get(documentKey(filePath)) ?? (await this.loadFromDisk(rootPath, filePath));
 
-    if (document === undefined) {
+    if (document === null) {
       return bound;
     }
 
@@ -132,6 +149,43 @@ export class LspDocuments {
     }
 
     return bound;
+  }
+
+  /**
+   * Mirror a file nobody has opened, so a query about it can be answered.
+   *
+   * Registered in the same map as an editor-mirrored document rather than opened and
+   * dropped: a results tab re-asks (the provisional-while-indexing poll does so several
+   * times), and paying a full `didOpen` per ask would be worse than holding kilobytes.
+   * When an editor tab does mount later, its first `sync` sees identical text and is a
+   * no-op; a differing draft bumps the version and sends `didChange`, exactly as if the
+   * tab had mirrored it from the start.
+   *
+   * Best-effort by design. A file that is gone, unreadable, or oversized simply leaves the
+   * servers unopened — the same state as before, which the caller already handles.
+   */
+  private async loadFromDisk(rootPath: string, filePath: string): Promise<OpenDocument | null> {
+    try {
+      const info = await stat(filePath);
+      if (!info.isFile() || info.size > MAX_LOADED_DOCUMENT_BYTES) {
+        return null;
+      }
+      const text = await readFile(filePath, "utf8");
+      const document: OpenDocument = {
+        rootPath,
+        filePath,
+        uri: toFileUri(filePath),
+        languageId: languageIdForPath(filePath),
+        version: 1,
+        text,
+        openedIn: new Map(),
+      };
+      this.documents.set(documentKey(filePath), document);
+      return document;
+    } catch (error) {
+      this.logger.debug({ err: error, filePath }, "could not load a queried document from disk");
+      return null;
+    }
   }
 
   async close(input: CloseDocumentInput): Promise<void> {

@@ -223,6 +223,8 @@ function buildAgentManagerSpies() {
     waitForAgentRunStart: vi.fn().mockResolvedValue(undefined),
     respondToPermission: vi.fn(),
     cancelAgentRun: vi.fn(),
+    clearSteerQueue: vi.fn().mockReturnValue(0),
+    enqueueSteerMessage: vi.fn().mockReturnValue({ queued: false }),
     getPendingPermissions: vi.fn(),
     getRegisteredProviderIds: vi.fn().mockReturnValue(["claude"]),
     listDraftFeatures: vi.fn(),

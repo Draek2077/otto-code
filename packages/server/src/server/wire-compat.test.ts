@@ -137,6 +137,7 @@ class InMemoryAgentManager {
       unsubscribeSession: null,
       session: null,
       activeForegroundTurnId: null,
+      steerQueue: [],
       labels: {},
     };
   }

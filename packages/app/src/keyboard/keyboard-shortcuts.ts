@@ -34,7 +34,13 @@ export interface KeyboardShortcutHelpRow {
   noteKey?: string;
 }
 
-export type ShortcutSectionId = "navigation" | "tabs-panes" | "projects" | "panels" | "agent-input";
+export type ShortcutSectionId =
+  | "navigation"
+  | "tabs-panes"
+  | "projects"
+  | "panels"
+  | "editor"
+  | "agent-input";
 
 export interface KeyboardShortcutHelpSection {
   id: ShortcutSectionId;
@@ -57,18 +63,17 @@ interface ShortcutWhen {
   desktop?: boolean;
   /** false = disabled when a text-editing surface is focused (the file editor counts) */
   editable?: false;
-  /**
-   * false = disabled when the file editor is focused, but still live in plain
-   * text fields. For combos the editor's own keymap claims (Mod+B) and a
-   * textarea has no use for; `editable: false` would be too broad, since it
-   * would also silence the shortcut while the composer is focused.
-   */
-  codeEditor?: false;
   /** false = disabled when terminal is focused */
   terminal?: false;
   /** false = disabled when command center is open */
   commandCenter?: false;
-  /** Exact focus scope match */
+  /**
+   * Exact focus scope match — and the binding's SPECIFICITY. A binding that
+   * names the focused surface beats one that applies everywhere on the same
+   * combo (see `bindingSpecificity`), which is how the File Editor section
+   * overrides the general bindings while the editor has focus. Nothing else in
+   * this file needs a per-binding "not in the editor" guard because of it.
+   */
   focusScope?: KeyboardFocusScope;
 }
 
@@ -114,6 +119,7 @@ const SHORTCUT_HELP_SECTION_TITLES: Record<ShortcutSectionId, string> = {
   "tabs-panes": "Tabs & Panes",
   projects: "Projects",
   panels: "Panels",
+  editor: "File Editor",
   "agent-input": "Agent Input",
 };
 
@@ -122,6 +128,7 @@ const SHORTCUT_HELP_SECTION_LABEL_KEYS: Record<ShortcutSectionId, string> = {
   "tabs-panes": "settings.shortcuts.sections.tabsPanes",
   projects: "settings.shortcuts.sections.projects",
   panels: "settings.shortcuts.sections.panels",
+  editor: "settings.shortcuts.sections.editor",
   "agent-input": "settings.shortcuts.sections.agentInput",
 };
 
@@ -165,6 +172,12 @@ const SHORTCUT_HELP_LABEL_KEYS: Record<string, string> = {
   "dictation-toggle": "settings.shortcuts.help.startStopDictation",
   "agent-interrupt": "settings.shortcuts.help.interruptAgent",
   "voice-mute-toggle": "settings.shortcuts.help.muteUnmuteVoiceMode",
+  "editor-save": "settings.shortcuts.help.editorSave",
+  "editor-find": "settings.shortcuts.help.editorFind",
+  "editor-go-to-line": "settings.shortcuts.help.editorGoToLine",
+  "editor-go-to-definition": "settings.shortcuts.help.editorGoToDefinition",
+  "editor-find-references": "settings.shortcuts.help.editorFindReferences",
+  "editor-rename-symbol": "settings.shortcuts.help.editorRenameSymbol",
 };
 
 const SHORTCUT_HELP_NOTE_KEYS: Record<string, string> = {
@@ -715,15 +728,19 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   },
 
   // --- Sidebar toggles ---
-  // Mod+B overlaps the file editor's Go to Definition, so both bindings carry
-  // codeEditor:false — not editable:false, which would also drop the toggle
-  // while the composer is focused, and the composer is focused most of the
-  // time. See the "find" note below for the general overlap rule.
+  // Mod+B overlaps the file editor's Go to Definition and carries NO guard for
+  // it: `editor.goToDefinition` in the File Editor section below is bound to the
+  // same combo with `focusScope: "code-editor"`, and a focus-scoped binding
+  // outranks an unscoped one, so the editor wins the combo while it has focus
+  // and the toggle wins everywhere else — composer included. That is the whole
+  // override mechanic, and it follows the editor binding: rebind Go to
+  // definition off Mod+B and this toggle simply starts working in the editor
+  // too, which a hardcoded guard could never do.
   {
     id: "sidebar-toggle-left-mac-cmd-b",
     action: "sidebar.toggle.left",
     combo: "Cmd+B",
-    when: { mac: true, codeEditor: false },
+    when: { mac: true },
     help: {
       id: "toggle-left-sidebar",
       section: "panels",
@@ -737,7 +754,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "sidebar-toggle-left-ctrl-period-non-mac",
     action: "sidebar.toggle.left",
     combo: "Ctrl+B",
-    when: { mac: false, commandCenter: false, terminal: false, codeEditor: false },
+    when: { mac: false, commandCenter: false, terminal: false },
     help: {
       id: "toggle-left-sidebar",
       section: "panels",
@@ -779,19 +796,19 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   // --- Find a file (Files tab + its filename finder) ---
   // The four "find" gestures, kept straight because they are easy to conflate:
   //   Mod+,         — find A FILE by name, anywhere (this pair, the documented one)
-  //   Mod+F         — find in this file (CodeMirror's own keymap, editor only)
+  //   Mod+F         — find in this file (`editor.find`, File Editor section)
   //   Mod+F         — find A FILE by name, everywhere else (the alias pair below)
   //   Mod+Shift+F   — find in project, i.e. text across every file (below)
   // Mod+, is the row we print because it is the only one that survives a focused
-  // text surface: the Mod+F pair carries editable:false so the editor's own Find
-  // wins while you are typing, which is also what lets the two Mod+F meanings
-  // share a combo. General rule: an Otto shortcut that OVERLAPS an editor
-  // shortcut steps aside so the editor's version takes over; non-overlapping
-  // Otto shortcuts keep working in the editor. Which flag to use depends on how
-  // far the overlap reaches — editable:false when the combo also means something
-  // in a plain text field (Mod+F does), and the narrower codeEditor:false when
-  // only the editor claims it (Mod+B does).
-  // (The planned "File Editor" section generalizes this via the registry.)
+  // text surface. In the editor `editor.find` outranks this pair on specificity,
+  // which is what lets the two Mod+F meanings share a combo; the editable:false
+  // below is doing the REST of the job — keeping Mod+F out of the composer and
+  // plain text fields, where there is no editor binding to yield to and the
+  // browser's own find is what the user means.
+  // General rule: an Otto shortcut that overlaps an editor shortcut needs no
+  // guard at all — put the editor's version in the File Editor section and it
+  // takes over while the editor has focus. Reach for editable:false only for
+  // scopes with no editor binding to hand the combo to.
   {
     id: "sidebar-open-files-cmd-comma-mac",
     action: "sidebar.open.files",
@@ -1107,6 +1124,113 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       keys: ["Space"],
     },
   },
+
+  // --- File Editor ---
+  // The only bindings here that carry `focusScope: "code-editor"`, and the only
+  // ones the app does not dispatch. Three things follow from that, and all three
+  // are the point of the section:
+  //
+  //  1. OVERRIDE. A focus-scoped binding outranks an unscoped one on the same
+  //     combo (see `bindingSpecificity`), so while the editor has focus these
+  //     win — and the general binding they shadow needs no guard of its own.
+  //     Outside the editor they never match, so nothing is taken away.
+  //  2. EXECUTION. `routeKeyboardShortcut` deliberately routes `editor.*`
+  //     nowhere; CodeMirror runs the command, from a keymap built out of these
+  //     bindings (editor/editor-key-bindings.ts). Matching here and doing
+  //     nothing is exactly what makes the shadowed general action stand down.
+  //  3. CUSTOMIZATION. Being registry bindings they are listed and rebindable in
+  //     Settings like every other row, and a rebind flows into the CM6 keymap.
+  //
+  // Written as single `Mod+` bindings rather than the Cmd/Ctrl pairs above: the
+  // focus scope already excludes the terminal, so there is no per-platform guard
+  // to split them over, and one binding means one rebindable row.
+  //
+  // NOT here, on purpose: Escape-closes-find (conditional on a query running, so
+  // it has to fall through to CM6's simplifySelection when idle — a condition the
+  // registry cannot express) and CodeMirror's `defaultKeymap` (select line,
+  // undo, indent…), which are the platform's editor bindings rather than Otto's.
+  {
+    id: "editor-save-mod-s",
+    action: "editor.save",
+    combo: "Mod+S",
+    when: { focusScope: "code-editor" },
+    help: {
+      id: "editor-save",
+      section: "editor",
+      label: "Save file",
+      keys: ["mod", "S"],
+    },
+  },
+  {
+    id: "editor-find-mod-f",
+    action: "editor.find",
+    combo: "Mod+F",
+    when: { focusScope: "code-editor" },
+    help: {
+      id: "editor-find",
+      section: "editor",
+      label: "Find in file",
+      keys: ["mod", "F"],
+    },
+  },
+  {
+    id: "editor-go-to-line-mod-g",
+    action: "editor.goToLine",
+    combo: "Mod+G",
+    when: { focusScope: "code-editor" },
+    help: {
+      id: "editor-go-to-line",
+      section: "editor",
+      label: "Go to line",
+      keys: ["mod", "G"],
+    },
+  },
+  {
+    id: "editor-go-to-definition-mod-b",
+    action: "editor.goToDefinition",
+    combo: "Mod+B",
+    when: { focusScope: "code-editor" },
+    help: {
+      id: "editor-go-to-definition",
+      section: "editor",
+      label: "Go to definition",
+      keys: ["mod", "B"],
+    },
+  },
+  // F12 stays as an alias with no help row — muscle memory splits (Mod+B is
+  // JetBrains, F12 is VS Code) but one feature gets one row, and that row has to
+  // be the combo that survives a laptop with media keys on the function row.
+  // Same shape as Ctrl+` aliasing the right sidebar.
+  {
+    id: "editor-go-to-definition-f12",
+    action: "editor.goToDefinition",
+    combo: "F12",
+    when: { focusScope: "code-editor" },
+  },
+  {
+    id: "editor-find-references-shift-f12",
+    action: "editor.findReferences",
+    combo: "Shift+F12",
+    when: { focusScope: "code-editor" },
+    help: {
+      id: "editor-find-references",
+      section: "editor",
+      label: "Find references",
+      keys: ["shift", "F12"],
+    },
+  },
+  {
+    id: "editor-rename-symbol-f2",
+    action: "editor.renameSymbol",
+    combo: "F2",
+    when: { focusScope: "code-editor" },
+    help: {
+      id: "editor-rename-symbol",
+      section: "editor",
+      label: "Rename symbol",
+      keys: ["F2"],
+    },
+  },
 ];
 
 // --- Parse bindings at module load ---
@@ -1215,11 +1339,26 @@ function matchesWhen(when: ShortcutWhen | undefined, context: KeyboardShortcutCo
   ) {
     return false;
   }
-  if (when.codeEditor === false && context.focusScope === "code-editor") return false;
   if (when.terminal === false && context.focusScope === "terminal") return false;
   if (when.commandCenter === false && context.commandCenterOpen) return false;
   if (when.focusScope !== undefined && context.focusScope !== when.focusScope) return false;
   return true;
+}
+
+/**
+ * How specific a binding is to the CURRENT context, for picking a winner when
+ * two of them claim the same combo. Only meaningful for a binding that has
+ * already passed `matchesWhen` — a declared `focusScope` has therefore matched
+ * exactly, which means the binding named the surface that happens to be focused
+ * and the other one did not.
+ *
+ * This is what makes the File Editor section OVERRIDE the general bindings while
+ * the editor has focus, without any general binding having to opt out. Ties keep
+ * the first match in `SHORTCUT_BINDINGS` order, so ordering still decides among
+ * equally specific bindings.
+ */
+function bindingSpecificity(binding: ParsedShortcutBinding): number {
+  return binding.when?.focusScope !== undefined ? 1 : 0;
 }
 
 function resolvePayload(
@@ -1299,6 +1438,7 @@ function resolveInitialChordStep(input: {
   const { event, context, chordState, onChordReset, bindings } = input;
   const advancingCandidateIndices: number[] = [];
   let singleComboMatch: KeyboardShortcutMatch | null = null;
+  let singleComboSpecificity = -1;
 
   for (const [index, binding] of bindings.entries()) {
     const firstCombo = binding.parsedChord[0];
@@ -1315,8 +1455,11 @@ function resolveInitialChordStep(input: {
       advancingCandidateIndices.push(index);
       continue;
     }
-    if (!singleComboMatch) {
+    // Strictly greater, so equally specific bindings keep first-match-wins.
+    const specificity = bindingSpecificity(binding);
+    if (specificity > singleComboSpecificity) {
       singleComboMatch = buildMatchFromBinding(binding, event);
+      singleComboSpecificity = specificity;
     }
   }
 
@@ -1353,6 +1496,7 @@ function resolveAdvancingChordStep(input: {
   const { event, context, chordState, onChordReset, bindings } = input;
   const matchingCandidateIndices: number[] = [];
   let completedMatch: KeyboardShortcutMatch | null = null;
+  let completedSpecificity = -1;
 
   for (const index of chordState.candidateIndices) {
     const binding = bindings[index];
@@ -1370,8 +1514,16 @@ function resolveAdvancingChordStep(input: {
       continue;
     }
     if (chordState.step + 1 === binding.parsedChord.length) {
-      completedMatch = buildMatchFromBinding(binding, event);
-      break;
+      // No early exit: a later candidate may name the focused surface, and a
+      // chord rebound onto the editor has to win the same way a single combo
+      // does. The still-advancing candidates collected below are discarded
+      // whenever a completion is returned, so scanning on costs nothing.
+      const specificity = bindingSpecificity(binding);
+      if (specificity > completedSpecificity) {
+        completedMatch = buildMatchFromBinding(binding, event);
+        completedSpecificity = specificity;
+      }
+      continue;
     }
     matchingCandidateIndices.push(index);
   }
@@ -1479,6 +1631,7 @@ export function buildKeyboardShortcutHelpSections(
     ["tabs-panes", []],
     ["projects", []],
     ["panels", []],
+    ["editor", []],
     ["agent-input", []],
   ]);
 
@@ -1515,6 +1668,7 @@ export function buildKeyboardShortcutHelpSections(
     "tabs-panes",
     "projects",
     "panels",
+    "editor",
     "agent-input",
   ];
 

@@ -37,6 +37,7 @@ import {
 import { useToast } from "@/contexts/toast-context";
 import { setFileViewModeFor } from "@/stores/file-view-store";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store/state";
+import { ContextRefineAction } from "./refine-action";
 import { ContextFindingsList, type ContextFindingTarget } from "./findings-list";
 import { ContextGraphTree } from "./graph-tree";
 import { ContextSidebarTabs, type ContextSidebarTab } from "./sidebar-tabs";
@@ -307,19 +308,31 @@ export function ContextManagementPanel(): ReactElement {
     [client, inbound, refresh, toast, workspaceId],
   );
 
+  // Two actions ride in the file toolbar: how this file is LOADED (link vs
+  // always) and how it is REWRITTEN (Refine). Both act on the selected file, so
+  // they share the slot rather than stacking a second bar over the editor.
   const loadModeControl = useMemo(
-    () =>
-      inbound && selectedNode ? (
-        <LoadModeControl
-          inbound={inbound}
-          estTokens={selectedNode.estTokens}
-          supportsImports={report?.supportsImports ?? false}
-          busy={converting}
-          onConvert={handleConvert}
-          layout={isCompact ? "strip" : "toolbar"}
+    () => (
+      <>
+        <ContextRefineAction
+          serverId={serverId}
+          workspaceId={workspaceId ?? ""}
+          report={report}
+          selectedNode={selectedNode}
         />
-      ) : null,
-    [converting, handleConvert, inbound, isCompact, report?.supportsImports, selectedNode],
+        {inbound && selectedNode ? (
+          <LoadModeControl
+            inbound={inbound}
+            estTokens={selectedNode.estTokens}
+            supportsImports={report?.supportsImports ?? false}
+            busy={converting}
+            onConvert={handleConvert}
+            layout={isCompact ? "strip" : "toolbar"}
+          />
+        ) : null}
+      </>
+    ),
+    [converting, handleConvert, inbound, isCompact, report, selectedNode, serverId, workspaceId],
   );
 
   const filePane = useMemo(() => {

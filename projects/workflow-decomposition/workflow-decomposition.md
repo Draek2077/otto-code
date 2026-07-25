@@ -51,7 +51,7 @@ Split the one Workflow row into one observed row per internal agent, from the **
 2. On first sight of a composite key, emit `observed_subagent_updated` with `parentKey: workflowKey` (reuse `observedParentKeyByToolUseId` — the exact nesting primitive already built for nested Task fan-out) so the per-agent row parents under the Workflow row.
 3. `ClaudeSidechainTracker` needs no structural change — it keys by whatever string it is handed.
 
-The track, pane, and Visualizer tree-rendering then light up for free (the Visualizer already renders `parentKey` nesting; per-row tokens/liveness from [subagent-liveness](../subagent-liveness/subagent-liveness.md) apply per agent).
+The track, pane, and Visualizer tree-rendering then light up for free (the Visualizer already renders `parentKey` nesting; per-row tokens/liveness (see [docs/chat-lifecycle.md](../../docs/chat-lifecycle.md#the-subagents-track)) apply per agent).
 
 **Blocked on one runtime fact** — the live stream must carry per-internal-agent identity. See "The gating capture" below.
 

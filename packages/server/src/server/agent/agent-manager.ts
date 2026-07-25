@@ -44,6 +44,7 @@ import {
   type AgentSessionConfig,
   type AgentStreamEvent,
   type AgentTimelineItem,
+  type ToolCallTimelineItem,
   type AgentUsage,
   type AgentRuntimeInfo,
   type ImportedTimelineEntry,
@@ -92,6 +93,12 @@ import {
   AgentStreamCoalescer,
 } from "./agent-stream-coalescer.js";
 import { ForegroundRunState, type ForegroundTurnWaiter } from "./foreground-run-state.js";
+import {
+  createSteerQueueEntry,
+  mergeSteerQueueBatch,
+  takeNextSteerQueueBatch,
+  type SteerQueueEntry,
+} from "./steer-queue-state.js";
 import { getAgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
 import { isSystemInjectedEnvelope } from "./agent-prompt.js";
@@ -398,6 +405,13 @@ interface ObservedSubagentDerivedState {
   // Cumulative model round-trips reported for this subagent; monotonic like
   // cumulativeTokens so a final update without it can't drop the count.
   usageRounds?: number;
+  // Tool invocations so far; monotonic like cumulativeTokens.
+  toolUseCount?: number;
+  // The tool the subagent is running (or ran last). Deliberately NOT monotonic:
+  // it tracks the LATEST tool, sticks when an update omits it (so a scalar-only
+  // progress update doesn't blank it), and is dropped by the projection once the
+  // row is terminal. See docs/chat-lifecycle.md (the subagents track).
+  currentTool?: string;
 }
 
 /**
@@ -415,19 +429,38 @@ function resolveObservedSubagentDerivedState(
   const title = shouldFreeze
     ? deriveObservedSubagentTitle(update)
     : (existing?.title ?? deriveObservedSubagentTitle(update));
-  const cumulativeTokens = monotonicCount(update.cumulativeTokens, existing?.cumulativeTokens);
-  // Carry the full split + model forward: a later update that only refreshes the
-  // scalar (run-state reconcile) must not blank the breakdown a prior tail set.
-  const lastUsage = update.usage ?? existing?.lastUsage;
-  const model = update.model ?? existing?.model;
-  const usageRounds = monotonicCount(update.usageRounds, existing?.usageRounds);
   return {
     title,
     titleFrozen: existing?.titleFrozen || shouldFreeze,
+    ...resolveObservedSubagentCarriedState(existing, update),
+  };
+}
+
+/**
+ * The accounting + liveness figures an observed subagent carries forward across
+ * updates. Counters take the running maximum; the rest take the newest value the
+ * update actually carried, so a scalar-only refresh (a run-state reconcile, a
+ * status-only settle) can never blank what an earlier frame established.
+ */
+function resolveObservedSubagentCarriedState(
+  existing: ObservedSubagentDerivedState | undefined,
+  update: ObservedSubagentUpdate,
+): Omit<ObservedSubagentDerivedState, "title" | "titleFrozen"> {
+  const cumulativeTokens = monotonicCount(update.cumulativeTokens, existing?.cumulativeTokens);
+  const lastUsage = update.usage ?? existing?.lastUsage;
+  const model = update.model ?? existing?.model;
+  const usageRounds = monotonicCount(update.usageRounds, existing?.usageRounds);
+  const toolUseCount = monotonicCount(update.toolUseCount, existing?.toolUseCount);
+  // Not monotonic, unlike the counters: the LATEST tool is the point. The
+  // projection is what drops it once the row is terminal.
+  const currentTool = update.currentTool ?? existing?.currentTool;
+  return {
     ...(cumulativeTokens !== undefined ? { cumulativeTokens } : {}),
     ...(lastUsage !== undefined ? { lastUsage } : {}),
     ...(model !== undefined ? { model } : {}),
     ...(usageRounds !== undefined ? { usageRounds } : {}),
+    ...(toolUseCount !== undefined ? { toolUseCount } : {}),
+    ...(currentTool !== undefined ? { currentTool } : {}),
   };
 }
 
@@ -464,28 +497,30 @@ function isTerminalObservedSubagentStatus(status: ObservedSubagentUpdate["status
 /**
  * The optional observed-subagent fields the registry record and the emitted
  * payload input carry identically (parentKey + the resolved token/usage/model
- * accounting). Built once and spread into both so onObservedSubagentUpdated
- * doesn't repeat the same four presence checks twice.
+ * accounting + the liveness counters). Built once and spread into both so
+ * onObservedSubagentUpdated doesn't repeat the same presence checks twice.
  */
-function observedSubagentOptionalFields(input: {
+interface ObservedSubagentOptionalFields {
   parentKey?: string;
   cumulativeTokens?: number;
   lastUsage?: AgentUsage;
   model?: string;
   usageRounds?: number;
-}): {
-  parentKey?: string;
-  cumulativeTokens?: number;
-  lastUsage?: AgentUsage;
-  model?: string;
-  usageRounds?: number;
-} {
+  toolUseCount?: number;
+  currentTool?: string;
+}
+
+function observedSubagentOptionalFields(
+  input: ObservedSubagentOptionalFields,
+): ObservedSubagentOptionalFields {
   return {
     ...(input.parentKey ? { parentKey: input.parentKey } : {}),
     ...(input.cumulativeTokens !== undefined ? { cumulativeTokens: input.cumulativeTokens } : {}),
     ...(input.lastUsage !== undefined ? { lastUsage: input.lastUsage } : {}),
     ...(input.model !== undefined ? { model: input.model } : {}),
     ...(input.usageRounds !== undefined ? { usageRounds: input.usageRounds } : {}),
+    ...(input.toolUseCount !== undefined ? { toolUseCount: input.toolUseCount } : {}),
+    ...(input.currentTool !== undefined ? { currentTool: input.currentTool } : {}),
   };
 }
 
@@ -758,6 +793,21 @@ interface ManagedAgentBase {
   >;
   inFlightPermissionResponses: Set<string>;
   pendingReplacement: boolean;
+  /**
+   * Steering messages parked for delivery as this agent's next turn
+   * (`delivery: "queue"`). FIFO; drained in `finalizeForegroundTurn` before the
+   * agent is allowed to go idle. Ephemeral by design — a queued nudge is about
+   * the run in progress, so it does not survive a daemon restart.
+   */
+  steerQueue: SteerQueueEntry[];
+  /**
+   * Mirrors `pendingReplacement` for the queue drain: held true from the moment
+   * `finalizeForegroundTurn` decides to drain until the next turn's
+   * `streamAgent` takes over, so the row never flickers idle→running between
+   * queued turns and a message sent in that window is buffered rather than
+   * raced into a second concurrent turn.
+   */
+  pendingSteerDrain: boolean;
   persistence: AgentPersistenceHandle | null;
   historyPrimed: boolean;
   lastUserMessageAt: Date | null;
@@ -770,6 +820,22 @@ interface ManagedAgentBase {
    * `lastUsage` — not persisted, resets on daemon restart.
    */
   cumulativeTokens?: number;
+  /**
+   * Sub-agents-track liveness for a NATIVE child agent (create_agent and the
+   * other spawn paths): cumulative tool invocations and the tool it is running
+   * or ran last, both derived from its own timeline because there is no provider
+   * task report to read (observed rows get theirs from the provider — see
+   * ObservedSubagentUpdate). Only maintained for agents that are somebody's
+   * child, so main chats pay nothing. Ephemeral like `cumulativeTokens`.
+   * See recordNativeSubagentToolActivity and docs/chat-lifecycle.md.
+   */
+  toolUseCount?: number;
+  currentTool?: string;
+  /**
+   * Tool-call ids already counted, so a call's running → completed transitions
+   * count once. Lives beside the counter it guards.
+   */
+  countedToolCallIds?: Set<string>;
   lastError?: string;
   attention: AttentionState;
   foregroundTurnWaiters: Set<ForegroundTurnWaiter>;
@@ -1117,6 +1183,15 @@ export class AgentManager {
       // Cumulative model round-trips reported for this subagent, remembered so a
       // later status-only update (which omits it) can still attribute the count.
       usageRounds?: number;
+      // Liveness signals for the track row: cumulative tool invocations (kept
+      // monotonic) and the tool this subagent is running or ran last (latest
+      // wins, sticky across updates that omit it, dropped by the projection once
+      // the row is terminal). Both provider-reported through the neutral
+      // ObservedSubagentUpdate; a provider that can't report them leaves the
+      // row's readout absent rather than wrong.
+      // See docs/chat-lifecycle.md (the subagents track).
+      toolUseCount?: number;
+      currentTool?: string;
       // Watermark of what has already been written to the itemized ledger. Each
       // time the subagent settles, only the DELTA above this is recorded — so a
       // duplicate terminal update writes nothing, while a genuine second stream
@@ -2256,6 +2331,8 @@ export class AgentManager {
         bufferedPermissionResolutions: new Map(),
         inFlightPermissionResponses: new Set(),
         pendingReplacement: false,
+        steerQueue: [],
+        pendingSteerDrain: false,
         activeForegroundTurnId: null,
         foregroundTurnWaiters: new Set(),
         finalizedForegroundTurnIds: new Set(),
@@ -2896,6 +2973,7 @@ export class AgentManager {
 
     const agent = existingAgent;
     agent.pendingReplacement = false;
+    agent.pendingSteerDrain = false;
     agent.lastError = undefined;
 
     const pendingRun = this.foregroundRuns.createPendingRun(agentId);
@@ -2964,8 +3042,22 @@ export class AgentManager {
     mutableAgent.activeForegroundTurnId = null;
     const terminalError = mutableAgent.lastError;
     const shouldHoldBusyForReplacement = mutableAgent.pendingReplacement && !terminalError;
+    // Queue drain. Decided SYNCHRONOUSLY here, before the state emit, so a
+    // message enqueued while the handoff is in flight sees a busy agent and is
+    // buffered instead of racing into a second concurrent turn. A terminal
+    // error (or a replacement already holding the slot) skips the drain: a
+    // queued turn must never run unprompted into a broken session — the queue
+    // is held and surfaced so the supervisor decides.
+    const drainBatch =
+      !shouldHoldBusyForReplacement && !terminalError
+        ? takeNextSteerQueueBatch(mutableAgent.steerQueue)
+        : null;
+    if (drainBatch) {
+      mutableAgent.steerQueue = drainBatch.rest;
+      mutableAgent.pendingSteerDrain = true;
+    }
     let nextLifecycle: "running" | "error" | "idle";
-    if (shouldHoldBusyForReplacement) {
+    if (shouldHoldBusyForReplacement || drainBatch) {
       nextLifecycle = "running";
     } else if (terminalError) {
       nextLifecycle = "error";
@@ -2990,6 +3082,8 @@ export class AgentManager {
         lifecycle: mutableAgent.lifecycle,
         terminalError,
         pendingReplacement: mutableAgent.pendingReplacement,
+        steerDrainSize: drainBatch?.entries.length ?? 0,
+        steerQueueSize: mutableAgent.steerQueue.length,
       },
       "agent.manager.finalize",
     );
@@ -2997,6 +3091,135 @@ export class AgentManager {
       this.touchUpdatedAt(mutableAgent);
       this.emitState(mutableAgent);
     }
+    if (drainBatch) {
+      void this.dispatchSteerQueueBatch(agent.id, drainBatch.entries);
+    }
+  }
+
+  /**
+   * Deliver a drained batch as the agent's next turn.
+   *
+   * Async because the just-finalized turn's stream generator settles its
+   * pending run in a `finally` that has not run yet — `streamAgent` rejects
+   * with "already has an active run" until it does. `pendingSteerDrain` holds
+   * the agent visibly `running` across that gap.
+   */
+  private async dispatchSteerQueueBatch(
+    agentId: string,
+    entries: SteerQueueEntry[],
+  ): Promise<void> {
+    try {
+      const pendingRun = this.foregroundRuns.getPendingRun(agentId);
+      if (pendingRun && !pendingRun.settled) {
+        await pendingRun.settledPromise;
+      }
+
+      // A closed agent is already out of `this.agents`, and prepareAgentForClosure
+      // empties its queue — nothing left to deliver.
+      const agent = this.agents.get(agentId);
+      if (!agent || !agent.pendingSteerDrain) {
+        return;
+      }
+      // Something else claimed the turn slot while we waited (an interrupting
+      // send, a rewind). Put the batch back at the head rather than starting a
+      // second concurrent turn — the next finalize drains it.
+      if (agent.activeForegroundTurnId || this.foregroundRuns.hasPendingRun(agentId)) {
+        agent.pendingSteerDrain = false;
+        agent.steerQueue = [...entries, ...agent.steerQueue];
+        this.emitState(agent);
+        return;
+      }
+
+      const merged = mergeSteerQueueBatch(entries);
+      this.logger.debug(
+        { agentId, provider: agent.provider, entryCount: entries.length },
+        "agent.manager.steer_queue.dispatch",
+      );
+      for await (const _ of this.streamAgent(agentId, merged.prompt, merged.runOptions)) {
+        // Events are broadcast via AgentManager subscribers.
+      }
+    } catch (error) {
+      this.logger.error({ err: error, agentId }, "agent.manager.steer_queue.dispatch_failed");
+      const agent = this.agents.get(agentId);
+      if (agent && agent.pendingSteerDrain) {
+        agent.pendingSteerDrain = false;
+        if (!agent.activeForegroundTurnId && agent.lifecycle === "running") {
+          (agent as ActiveManagedAgent).lifecycle = "idle";
+        }
+        this.touchUpdatedAt(agent);
+        this.emitState(agent);
+      }
+    }
+  }
+
+  /**
+   * Park a prompt for delivery as the agent's next turn instead of interrupting
+   * the one in flight (`delivery: "queue"`).
+   *
+   * Returns `{ queued: false }` when the agent is idle right now — the caller
+   * dispatches immediately, because "queue" means "don't interrupt", not "wait".
+   * The busy check and the push happen in one synchronous block, so the answer
+   * cannot go stale between them.
+   */
+  enqueueSteerMessage(
+    agentId: string,
+    prompt: AgentPromptInput,
+    options?: { runOptions?: AgentRunOptions; source?: "user" | "system" },
+  ): { queued: boolean; entry?: SteerQueueEntry } {
+    const agent = this.requireSessionAgent(agentId);
+    if (!this.hasInFlightRun(agentId) && !agent.pendingSteerDrain) {
+      return { queued: false };
+    }
+
+    const entry = createSteerQueueEntry({
+      prompt,
+      ...(options?.runOptions ? { runOptions: options.runOptions } : {}),
+      ...(options?.source ? { source: options.source } : {}),
+    });
+    agent.steerQueue = [...agent.steerQueue, entry];
+    this.logger.debug(
+      { agentId, provider: agent.provider, queueSize: agent.steerQueue.length },
+      "agent.manager.steer_queue.enqueue",
+    );
+    this.touchUpdatedAt(agent);
+    this.emitState(agent);
+    return { queued: true, entry };
+  }
+
+  getSteerQueue(agentId: string): SteerQueueEntry[] {
+    return this.agents.get(agentId)?.steerQueue ?? [];
+  }
+
+  /** Pull one entry back out of the queue (Queue-track edit / send now). */
+  removeSteerQueueEntry(agentId: string, entryId: string): SteerQueueEntry | null {
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      return null;
+    }
+    const entry = agent.steerQueue.find((candidate) => candidate.id === entryId);
+    if (!entry) {
+      return null;
+    }
+    agent.steerQueue = agent.steerQueue.filter((candidate) => candidate.id !== entryId);
+    this.touchUpdatedAt(agent);
+    this.emitState(agent);
+    return entry;
+  }
+
+  /**
+   * Drop every queued message. Cancelling an agent is one "stop everything"
+   * verb: aborting the run also abandons the work you had lined up behind it.
+   */
+  clearSteerQueue(agentId: string): number {
+    const agent = this.agents.get(agentId);
+    if (!agent || agent.steerQueue.length === 0) {
+      return 0;
+    }
+    const cleared = agent.steerQueue.length;
+    agent.steerQueue = [];
+    this.touchUpdatedAt(agent);
+    this.emitState(agent);
+    return cleared;
   }
 
   replaceAgentRun(
@@ -3049,11 +3272,12 @@ export class AgentManager {
     }
 
     const pendingRun = this.foregroundRuns.getPendingRun(agentId);
-    if ((snapshot.lifecycle === "running" || pendingRun?.started) && !snapshot.pendingReplacement) {
+    const heldForHandoff = snapshot.pendingReplacement || snapshot.pendingSteerDrain;
+    if ((snapshot.lifecycle === "running" || pendingRun?.started) && !heldForHandoff) {
       return;
     }
 
-    if (!snapshot.activeForegroundTurnId && !pendingRun && !snapshot.pendingReplacement) {
+    if (!snapshot.activeForegroundTurnId && !pendingRun && !heldForHandoff) {
       throw new Error(`Agent ${agentId} has no pending run`);
     }
 
@@ -3113,9 +3337,10 @@ export class AgentManager {
         }
 
         const currentPendingRun = this.foregroundRuns.getPendingRun(agentId);
+        const currentHeldForHandoff = current.pendingReplacement || current.pendingSteerDrain;
         if (
           (current.lifecycle === "running" || currentPendingRun?.started) &&
-          !current.pendingReplacement
+          !currentHeldForHandoff
         ) {
           finishOk();
           return true;
@@ -3126,7 +3351,7 @@ export class AgentManager {
           return true;
         }
 
-        if (!currentPendingRun && !current.activeForegroundTurnId && !current.pendingReplacement) {
+        if (!currentPendingRun && !current.activeForegroundTurnId && !currentHeldForHandoff) {
           finishErr(new Error(`Agent ${agentId} run finished before starting`));
           return true;
         }
@@ -3903,6 +4128,8 @@ export class AgentManager {
       bufferedPermissionResolutions: new Map(),
       inFlightPermissionResponses: new Set(),
       pendingReplacement: false,
+      steerQueue: [],
+      pendingSteerDrain: false,
       activeForegroundTurnId: null,
       foregroundTurnWaiters: new Set<ForegroundTurnWaiter>(),
       finalizedForegroundTurnIds: new Set<string>(),
@@ -3961,6 +4188,9 @@ export class AgentManager {
       lifecycle: "closed",
       session: null,
       activeForegroundTurnId: null,
+      // A closed session has no next turn to hand a queued message to.
+      steerQueue: [],
+      pendingSteerDrain: false,
     };
   }
 
@@ -4514,6 +4744,37 @@ export class AgentManager {
   }
 
   /**
+   * Fold a native child agent's own tool call into its track-row liveness
+   * counters. Observed rows get these from the provider's task report; a native
+   * (create_agent) child has no such report, so its transcript IS the source —
+   * the one signal every provider produces. Returns true only when the readout
+   * actually changed, so a tool call's running → completed transitions don't
+   * re-emit and the row never strobes.
+   *
+   * Scoped to agents that are somebody's child: main chats don't render a track
+   * row, so counting (and emitting) for them would be pure overhead.
+   * See docs/chat-lifecycle.md (the subagents track).
+   */
+  private recordNativeSubagentToolActivity(
+    agent: ManagedAgent,
+    item: ToolCallTimelineItem,
+  ): boolean {
+    if (!agent.labels[PARENT_AGENT_ID_LABEL]) {
+      return false;
+    }
+    const counted = (agent.countedToolCallIds ??= new Set<string>());
+    if (counted.has(item.callId)) {
+      return false;
+    }
+    counted.add(item.callId);
+    agent.toolUseCount = (agent.toolUseCount ?? 0) + 1;
+    if (item.name) {
+      agent.currentTool = item.name;
+    }
+    return true;
+  }
+
+  /**
    * Roll a turn's provider-reported usage into the agent's lifetime token total
    * and the daemon activity counters. Shared by turn_completed and the
    * failed/canceled paths so a turn that errors or is interrupted after burning
@@ -4683,7 +4944,12 @@ export class AgentManager {
     agent.lastUsage = this.withContextComposition(agent.id, event.usage);
     this.recordTurnUsage(agent, event.usage, event.provider);
     agent.lastError = undefined;
-    if (!isForegroundEvent && agent.lifecycle !== "idle" && !agent.pendingReplacement) {
+    if (
+      !isForegroundEvent &&
+      agent.lifecycle !== "idle" &&
+      !agent.pendingReplacement &&
+      !agent.pendingSteerDrain
+    ) {
       (agent as ActiveManagedAgent).lifecycle = "idle";
       this.emitState(agent);
     }
@@ -4754,7 +5020,7 @@ export class AgentManager {
       },
       "agent.manager.turn.canceled",
     );
-    if (!isForegroundEvent && !agent.pendingReplacement) {
+    if (!isForegroundEvent && !agent.pendingReplacement && !agent.pendingSteerDrain) {
       agent.lifecycle = "idle";
     }
     agent.lastError = undefined;
@@ -4904,6 +5170,8 @@ export class AgentManager {
     lastUsage?: AgentUsage;
     model?: string;
     usageRounds?: number;
+    toolUseCount?: number;
+    currentTool?: string;
     update: ObservedSubagentUpdate;
   }): void {
     const payload = toObservedSubagentPayload({
@@ -4938,14 +5206,24 @@ export class AgentManager {
     }
     const createdAt = existing?.createdAt ?? new Date().toISOString();
     const parentKey = event.update.parentKey ?? existing?.parentKey;
-    const { title, titleFrozen, cumulativeTokens, lastUsage, model, usageRounds } =
-      resolveObservedSubagentDerivedState(existing, event.update);
+    const {
+      title,
+      titleFrozen,
+      cumulativeTokens,
+      lastUsage,
+      model,
+      usageRounds,
+      toolUseCount,
+      currentTool,
+    } = resolveObservedSubagentDerivedState(existing, event.update);
     const optional = observedSubagentOptionalFields({
       parentKey,
       cumulativeTokens,
       lastUsage,
       model,
       usageRounds,
+      toolUseCount,
+      currentTool,
     });
     // Record the subagent's real usage to the itemized ledger on every settle,
     // but only the delta above what was already written (side effect inside the
@@ -5421,15 +5699,24 @@ export class AgentManager {
       timestamp: row.timestamp,
     });
 
-    if (
-      item.type === "tool_call" &&
-      item.status === "completed" &&
-      item.detail?.type === "shell" &&
-      commandMayHaveChangedExternalState(item.detail.command)
-    ) {
+    if (item.type === "tool_call") {
+      // The one place BOTH timeline delivery paths meet — the direct stream
+      // event and the coalescer's flush. The liveness hook lives here so a
+      // coalesced tool call still moves the row's readout. (The coalescer is
+      // also what keeps the row from strobing: running tool calls arrive
+      // batched, so this emits at the coalesce window's rate, not per event.)
       const agent = this.agents.get(agentId);
       if (agent) {
-        this.onWorkspaceStateMayHaveChanged?.({ cwd: agent.cwd });
+        if (this.recordNativeSubagentToolActivity(agent, item)) {
+          this.emitState(agent);
+        }
+        if (
+          item.status === "completed" &&
+          item.detail?.type === "shell" &&
+          commandMayHaveChangedExternalState(item.detail.command)
+        ) {
+          this.onWorkspaceStateMayHaveChanged?.({ cwd: agent.cwd });
+        }
       }
     }
 

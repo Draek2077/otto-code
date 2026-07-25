@@ -157,6 +157,9 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   if (tab.target.kind === "orchestrationGraph") {
     return `workspace-orchestration-graph-close-${tab.target.graphId}`;
   }
+  if (tab.target.kind === "refine") {
+    return `workspace-refine-close-${encodeFilePathForPathSegment(tab.target.paths[0] ?? "")}`;
+  }
   return `workspace-file-close-${encodeFilePathForPathSegment(tab.target.path)}`;
 }
 

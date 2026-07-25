@@ -1,5 +1,32 @@
 # Keyboard shortcut overhaul — "File Editor" scope that overrides Otto's
 
+> **STATUS: SHIPPED 2026-07-25.** Sequencing steps 1–4 are done; the durable rules
+> live in
+> [docs/text-editor.md](../../docs/text-editor.md#keyboard-shortcuts-the-file-editor-scope)
+> and that doc is now the source of truth. What actually shipped differs from the
+> plan below in three places, all deliberate:
+>
+> - **Specificity is two tiers, not three.** The plan's middle rung
+>   ("editable-guarded yields here") was written before the `code-editor` focus
+>   scope existed. A guarded binding that is still standing has already _passed_
+>   `matchesWhen`, so there was nothing for it to yield to: `bindingSpecificity`
+>   is simply `focusScope declared ? 1 : 0`.
+> - **`§4 MVP` is what shipped, and `codeEditor: false` was deleted rather than
+>   kept.** CM6 executes; the registry owns the combos and claims them. The guard
+>   the plan proposed keeping until the "Full" stage turned out to be actively
+>   wrong — a hardcoded guard cannot follow a rebind, so `Mod+B` stayed dead in
+>   the editor for anyone who moved Go to definition off it.
+> - **`§5`'s conflict UX was a non-issue**: the shortcuts settings screen has no
+>   conflict detector to teach about scopes.
+>
+> Still open, and tracked in
+> [remaining-work.md](remaining-work.md#keyboard-shortcuts): the `§4 Full`
+> dispatch stage (batch #5's focused-controller path can revisit it) and the `§6`
+> dev-friendliness audit, now much smaller because the section removes the reason
+> for per-binding guards. Not bound, and deliberately: word wrap, outline, and
+> CM6's `defaultKeymap` (select line, undo, indent, clipboard) — the last of
+> those is the platform's editor bindings rather than Otto's.
+
 Plan for bug-batch-2026-07-24 #8. Goal: shortcuts that are **dev-friendly**, and
 a first-class **File Editor** section of editor shortcuts that are customizable
 in Settings and **override** the general Otto shortcuts _while the editor is

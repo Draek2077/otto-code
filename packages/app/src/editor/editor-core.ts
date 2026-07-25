@@ -34,15 +34,18 @@ import {
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { getParserForFile, highlightCode } from "@otto-code/highlight";
-import type {
-  EditorCursorPosition,
-  EditorDiagnostic,
-  EditorFindState,
-  EditorHoverAnswer,
-  EditorMatchInfo,
-  EditorPointerSelect,
-  EditorScrollMetrics,
-  EditorThemeSpec,
+import {
+  DEFAULT_EDITOR_KEY_BINDINGS,
+  type EditorCursorPosition,
+  type EditorDiagnostic,
+  type EditorFindState,
+  type EditorHoverAnswer,
+  type EditorKeyAction,
+  type EditorKeyBinding,
+  type EditorMatchInfo,
+  type EditorPointerSelect,
+  type EditorScrollMetrics,
+  type EditorThemeSpec,
 } from "./editor-contract";
 import {
   createDiagnosticsExtension,
@@ -79,6 +82,12 @@ export interface EditorCoreOptions {
   onDirtyChanged?: (dirty: boolean) => void;
   onMatchInfo?: (info: EditorMatchInfo | null) => void;
   onCursorMoved?: (position: EditorCursorPosition) => void;
+  /**
+   * Which key runs which of the `on*Shortcut` callbacks. The app host feeds this
+   * from the user's shortcut registry; omitting it falls back to
+   * `DEFAULT_EDITOR_KEY_BINDINGS`, which is what the native webview does.
+   */
+  keyBindings?: readonly EditorKeyBinding[];
   onSaveShortcut?: () => void;
   onFindShortcut?: () => void;
   /**
@@ -89,6 +98,8 @@ export interface EditorCoreOptions {
   onCloseFindShortcut?: () => void;
   onGoToLineShortcut?: () => void;
   onGoToDefinitionShortcut?: () => void;
+  onFindReferencesShortcut?: () => void;
+  onRenameSymbolShortcut?: () => void;
   /** Fires on every doc change without content; callers pull getDoc as needed. */
   onDocChanged?: () => void;
   // Split-view scroll sync; both fire only for user-initiated interactions
@@ -151,6 +162,8 @@ export interface EditorCore {
   scrollToLineAtOffset(line: number, viewportOffsetY: number): void;
   setTheme(theme: EditorThemeSpec): void;
   setWordWrap(enabled: boolean): void;
+  /** Re-key the editor commands, so a rebind in Settings lands without a remount. */
+  setKeyBindings(bindings: readonly EditorKeyBinding[]): void;
   /** Replace the whole problem set; see the contract's note on why it is never a delta. */
   setDiagnostics(diagnostics: readonly EditorDiagnostic[]): void;
   destroy(): void;
@@ -800,9 +813,48 @@ function handleLineNumberMouseDown(view: EditorView, block: BlockInfo, event: Ev
   return true;
 }
 
+/**
+ * The rebindable half of the editor's keymap, built from whatever bindings the
+ * host handed us. Everything else CM6 binds — `defaultKeymap`, `historyKeymap`,
+ * `indentWithTab`, Escape-closes-find — is mounted separately and untouched by a
+ * rebind, so a user who never opens the shortcuts screen still gets a complete
+ * editor.
+ *
+ * A binding whose callback is absent returns false rather than swallowing the
+ * key: an unwired command must fall through to `defaultKeymap` (and then to the
+ * platform) instead of becoming a key that does nothing.
+ */
+function buildShortcutKeymap(
+  options: EditorCoreOptions,
+  bindings: readonly EditorKeyBinding[],
+): Extension {
+  const handlers: Record<EditorKeyAction, (() => void) | undefined> = {
+    save: options.onSaveShortcut,
+    find: options.onFindShortcut,
+    goToLine: options.onGoToLineShortcut,
+    goToDefinition: options.onGoToDefinitionShortcut,
+    findReferences: options.onFindReferencesShortcut,
+    renameSymbol: options.onRenameSymbolShortcut,
+  };
+  return keymap.of(
+    bindings.map((binding) => ({
+      key: binding.key,
+      run: () => {
+        const handler = handlers[binding.action];
+        if (!handler) {
+          return false;
+        }
+        handler();
+        return true;
+      },
+    })),
+  );
+}
+
 export function createEditorCore(options: EditorCoreOptions): EditorCore {
   const themeCompartment = new Compartment();
   const wrapCompartment = new Compartment();
+  const keymapCompartment = new Compartment();
   // The hover tooltip builds its own DOM with inline syntax colours, so it needs the
   // spec at render time rather than at mount: a theme switch reconfigures the
   // compartment, and a tooltip opened afterwards must use the new colours.
@@ -943,26 +995,22 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       search({
         createPanel: () => ({ dom: document.createElement("div") }),
       }),
+      // Otto's own editor commands, keyed by the user's shortcut registry.
+      // FIRST, so a command rebound onto a combo `defaultKeymap` also claims
+      // (Mod-l is select-line, say) still wins.
+      keymapCompartment.of(
+        buildShortcutKeymap(options, options.keyBindings ?? DEFAULT_EDITOR_KEY_BINDINGS),
+      ),
       keymap.of([
-        {
-          key: "Mod-s",
-          run: () => {
-            options.onSaveShortcut?.();
-            return true;
-          },
-        },
-        {
-          key: "Mod-f",
-          run: () => {
-            options.onFindShortcut?.();
-            return true;
-          },
-        },
         // Escape belongs to find while find is running: dismissing the strip
         // (and with it every match highlight) has to work from the file
         // contents, not only from the find box, because stepping through
         // results is done with focus back in the text. Returning false when no
         // query is active leaves Escape to defaultKeymap's simplifySelection.
+        //
+        // Stays hardcoded rather than joining the registry above precisely
+        // because of that condition: "Escape, but only while a query is running,
+        // and otherwise not mine" is not something a binding can say.
         {
           key: "Escape",
           run: () => {
@@ -970,29 +1018,6 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
               return false;
             }
             options.onCloseFindShortcut?.();
-            return true;
-          },
-        },
-        {
-          key: "Mod-g",
-          run: () => {
-            options.onGoToLineShortcut?.();
-            return true;
-          },
-        },
-        // Both bindings, because muscle memory splits: Mod-B is JetBrains, F12
-        // is VS Code. Neither is claimed by defaultKeymap.
-        {
-          key: "Mod-b",
-          run: () => {
-            options.onGoToDefinitionShortcut?.();
-            return true;
-          },
-        },
-        {
-          key: "F12",
-          run: () => {
-            options.onGoToDefinitionShortcut?.();
             return true;
           },
         },
@@ -1319,6 +1344,11 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
     setWordWrap: (enabled) => {
       view.dispatch({
         effects: wrapCompartment.reconfigure(enabled ? EditorView.lineWrapping : []),
+      });
+    },
+    setKeyBindings: (bindings) => {
+      view.dispatch({
+        effects: keymapCompartment.reconfigure(buildShortcutKeymap(options, bindings)),
       });
     },
     setDiagnostics: (diagnostics) => {

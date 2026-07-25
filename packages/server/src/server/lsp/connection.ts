@@ -445,6 +445,12 @@ export class LspConnection {
           },
         },
         workspace: { workspaceFolders: true, configuration: true },
+        // Without this a server MUST NOT start server-initiated progress (LSP spec), so
+        // it never tells us it is loading a project — which is exactly why TypeScript
+        // looked like it indexed instantly and then quietly under-reported references for
+        // the next several seconds. Answering `window/workDoneProgress/create` is not
+        // enough; the capability has to be advertised for the server to ask at all.
+        window: { workDoneProgress: true },
       },
       initializationOptions: this.spec.initializationOptions,
       workspaceFolders: [{ uri: rootUri, name: path.basename(this.spec.rootPath) }],

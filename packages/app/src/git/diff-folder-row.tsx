@@ -17,6 +17,8 @@ interface DiffFolderRowProps {
   dirPath: string;
   displayName: string;
   depth: number;
+  /** which indent rails keep running below this row — see tree-rail-mask.ts */
+  ancestorMask: number;
   collapsed: boolean;
   additions: number;
   deletions: number;
@@ -38,6 +40,7 @@ export function DiffFolderRow({
   dirPath,
   displayName,
   depth,
+  ancestorMask,
   collapsed,
   additions,
   deletions,
@@ -65,7 +68,7 @@ export function DiffFolderRow({
 
   return (
     <View style={styles.container} onLayout={handleLayout} testID={testID}>
-      <TreeIndentGuides depth={depth} />
+      <TreeIndentGuides depth={depth} ancestorMask={ancestorMask} />
       <Pressable
         onPress={handlePress}
         style={folderRowPressableStyle}

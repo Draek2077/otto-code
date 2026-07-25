@@ -42,6 +42,7 @@ import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-
 import { getFileIconSvg } from "@/components/material-file-icons";
 import { compactUp, useIconSize } from "@/styles/theme";
 import { TreeChevron, TreeIndentGuides, TREE_INDENT_PER_LEVEL } from "@/components/tree-primitives";
+import { TREE_RAILS_ALL_CONTINUE, withTreeRail } from "@/components/tree-rail-mask";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { AgentFileExplorerState, ExplorerEntry } from "@/stores/session-store";
@@ -92,6 +93,7 @@ const SORT_OPTIONS: { value: SortOption }[] = [
 interface TreeRowItemProps {
   entry: ExplorerEntry;
   depth: number;
+  ancestorMask: number;
   isExpanded: boolean;
   isSelected: boolean;
   loading: boolean;
@@ -150,6 +152,7 @@ function treeRowKeyExtractor(row: TreeRow) {
 function TreeRowItem({
   entry,
   depth,
+  ancestorMask,
   isExpanded,
   isSelected,
   loading,
@@ -277,7 +280,7 @@ function TreeRowItem({
         onContextMenu={isWeb && onShowContextMenu ? handleContextMenu : undefined}
         style={pressableStyle}
       >
-        <TreeIndentGuides depth={depth} />
+        <TreeIndentGuides depth={depth} ancestorMask={ancestorMask} />
         <View style={styles.entryInfo}>
           <View style={styles.entryIcon}>
             {(() => {
@@ -545,6 +548,8 @@ interface FileExplorerPaneProps {
 interface TreeRow {
   entry: ExplorerEntry;
   depth: number;
+  /** which indent rails keep running below this row — see tree-rail-mask.ts */
+  ancestorMask: number;
 }
 
 export function FileExplorerPane({
@@ -1322,6 +1327,7 @@ function buildTreeRows({
   showHiddenFiles,
   path,
   depth,
+  parentMask,
 }: {
   directories: Map<string, { path: string; entries: ExplorerEntry[] }>;
   expandedPaths: Set<string>;
@@ -1329,6 +1335,7 @@ function buildTreeRows({
   showHiddenFiles: boolean;
   path: string;
   depth: number;
+  parentMask: number;
 }): TreeRow[] {
   const directory = directories.get(path);
   if (!directory) {
@@ -1341,8 +1348,12 @@ function buildTreeRows({
     sortOption,
   );
 
-  for (const entry of entries) {
-    rows.push({ entry, depth });
+  // Sibling position is decided on the SORTED, hidden-file-filtered list above, so
+  // the rails follow what is actually on screen rather than the raw listing.
+  const lastIndex = entries.length - 1;
+  entries.forEach((entry, index) => {
+    const ancestorMask = withTreeRail(parentMask, depth, index !== lastIndex);
+    rows.push({ entry, depth, ancestorMask });
     if (entry.kind === "directory" && expandedPaths.has(entry.path)) {
       rows.push(
         ...buildTreeRows({
@@ -1352,10 +1363,11 @@ function buildTreeRows({
           showHiddenFiles,
           path: entry.path,
           depth: depth + 1,
+          parentMask: ancestorMask,
         }),
       );
     }
-  }
+  });
 
   return rows;
 }
@@ -1430,6 +1442,7 @@ function resolveTreeRows({
     showHiddenFiles,
     path: ".",
     depth: 0,
+    parentMask: TREE_RAILS_ALL_CONTINUE,
   });
 }
 
@@ -1548,6 +1561,7 @@ function TreeRowDispatcher({
     <TreeRowItem
       entry={entry}
       depth={depth}
+      ancestorMask={info.item.ancestorMask}
       isExpanded={isExpanded}
       isSelected={isSelected}
       loading={loading}

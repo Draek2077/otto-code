@@ -84,6 +84,7 @@ function createManagedAgent(overrides: ManagedAgentOverrides = {}): ManagedAgent
     currentModeId: "plan",
     pendingPermissions: pendingPermissionsOverride ?? new Map<string, AgentPermissionRequest>(),
     activeForegroundTurnId: activeForegroundTurnIdValue,
+    steerQueue: [],
     foregroundTurnWaiters: new Set(),
     unsubscribeSession: null,
     timeline: [],
@@ -454,6 +455,33 @@ describe("toAgentPayload", () => {
     expect(payload).not.toHaveProperty("cumulativeTokens");
   });
 
+  it("surfaces a native child's liveness pair, and drops the tool once it stops", () => {
+    const running = createManagedAgent({
+      lifecycle: "running",
+      toolUseCount: 12,
+      currentTool: "Edit",
+    });
+
+    expect(toAgentPayload(running)).toMatchObject({ toolUseCount: 12, currentTool: "Edit" });
+
+    const idle = createManagedAgent({
+      lifecycle: "idle",
+      toolUseCount: 12,
+      currentTool: "Edit",
+    });
+    const idlePayload = toAgentPayload(idle);
+
+    expect(idlePayload.toolUseCount).toBe(12);
+    expect(idlePayload).not.toHaveProperty("currentTool");
+  });
+
+  it("omits the liveness pair when nothing has been tracked", () => {
+    const payload = toAgentPayload(createManagedAgent({}));
+
+    expect(payload).not.toHaveProperty("toolUseCount");
+    expect(payload).not.toHaveProperty("currentTool");
+  });
+
   it("includes features in the snapshot payload", () => {
     const features = [createFeature()];
     const agent = createManagedAgent({ features });
@@ -679,5 +707,57 @@ describe("toObservedSubagentPayload", () => {
       cachedInputTokens: 68_161,
     });
     expect(payload.cumulativeTokens).toBe(40_229);
+  });
+
+  it("projects the liveness pair on a running row", () => {
+    const payload = toObservedSubagentPayload({
+      id: "parent::sub::task-1",
+      parentAgentId: "parent",
+      provider: "claude",
+      cwd: "/tmp/project",
+      createdAt: "2026-05-02T00:00:00.000Z",
+      title: "code-explorer",
+      toolUseCount: 89,
+      currentTool: "Bash",
+      update: { key: "task-1", status: "running", subAgentType: "code-explorer" },
+    });
+
+    expect(payload.toolUseCount).toBe(89);
+    expect(payload.currentTool).toBe("Bash");
+  });
+
+  it("keeps the tool count but drops the current tool once the row is terminal", () => {
+    // A finished sub-agent still DID 89 tool calls, but it isn't running Bash.
+    for (const status of ["idle", "error", "closed"] as const) {
+      const payload = toObservedSubagentPayload({
+        id: "parent::sub::task-1",
+        parentAgentId: "parent",
+        provider: "claude",
+        cwd: "/tmp/project",
+        createdAt: "2026-05-02T00:00:00.000Z",
+        title: "code-explorer",
+        toolUseCount: 89,
+        currentTool: "Bash",
+        update: { key: "task-1", status },
+      });
+
+      expect(payload.toolUseCount).toBe(89);
+      expect(payload).not.toHaveProperty("currentTool");
+    }
+  });
+
+  it("omits both signals when the provider reports neither", () => {
+    const payload = toObservedSubagentPayload({
+      id: "parent::sub::task-1",
+      parentAgentId: "parent",
+      provider: "claude",
+      cwd: "/tmp/project",
+      createdAt: "2026-05-02T00:00:00.000Z",
+      title: "code-explorer",
+      update: { key: "task-1", status: "running" },
+    });
+
+    expect(payload).not.toHaveProperty("toolUseCount");
+    expect(payload).not.toHaveProperty("currentTool");
   });
 });

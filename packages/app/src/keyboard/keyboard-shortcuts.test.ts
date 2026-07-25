@@ -282,6 +282,8 @@ describe("keyboard-shortcuts", () => {
     },
     // Mod+B steps aside only for the file editor, not for text fields at large:
     // the composer holds focus most of the time, and Mod+B means nothing there.
+    // Nothing on the sidebar binding says so — the editor's own Mod+B is
+    // focus-scoped and simply outranks it there. See the specificity block below.
     {
       name: "still toggles the left sidebar with Cmd+B from the composer",
       event: { key: "b", code: "KeyB", metaKey: true },
@@ -293,6 +295,63 @@ describe("keyboard-shortcuts", () => {
       event: { key: "b", code: "KeyB", ctrlKey: true },
       context: { isMac: false, focusScope: "editable" },
       action: "sidebar.toggle.left",
+    },
+    // --- File Editor section: the same combo, two owners, focus decides ---
+    {
+      name: "runs the editor's go-to-definition on Cmd+B while the editor is focused",
+      event: { key: "b", code: "KeyB", metaKey: true },
+      context: { isMac: true, focusScope: "code-editor" },
+      action: "editor.goToDefinition",
+    },
+    {
+      name: "runs the editor's find on Ctrl+F while the editor is focused",
+      event: { key: "f", code: "KeyF", ctrlKey: true },
+      context: { isMac: false, focusScope: "code-editor" },
+      action: "editor.find",
+    },
+    {
+      name: "runs the editor's save on Mod+S, a combo no general binding claims",
+      event: { key: "s", code: "KeyS", metaKey: true },
+      context: { isMac: true, focusScope: "code-editor" },
+      action: "editor.save",
+    },
+    {
+      name: "runs go-to-definition from the F12 alias too",
+      event: { key: "F12", code: "F12" },
+      context: { focusScope: "code-editor" },
+      action: "editor.goToDefinition",
+    },
+    {
+      name: "runs find references on Shift+F12",
+      event: { key: "F12", code: "F12", shiftKey: true },
+      context: { focusScope: "code-editor" },
+      action: "editor.findReferences",
+    },
+    {
+      name: "runs rename symbol on F2",
+      event: { key: "F2", code: "F2" },
+      context: { focusScope: "code-editor" },
+      action: "editor.renameSymbol",
+    },
+    {
+      name: "runs the editor's go-to-line on Mod+G, one combo across both platforms",
+      event: { key: "g", code: "KeyG", ctrlKey: true },
+      context: { isMac: false, focusScope: "code-editor" },
+      action: "editor.goToLine",
+    },
+    // Non-overlapping Otto shortcuts keep working in the editor — the override
+    // is per-combo, not a modal takeover of the whole keyboard.
+    {
+      name: "still opens the command center with Ctrl+K from the editor",
+      event: { key: "k", code: "KeyK", ctrlKey: true },
+      context: { isMac: false, focusScope: "code-editor" },
+      action: "command-center.toggle",
+    },
+    {
+      name: "still cycles the theme with Ctrl+Alt+T from the editor",
+      event: { key: "t", code: "KeyT", ctrlKey: true, altKey: true },
+      context: { isMac: false, focusScope: "code-editor" },
+      action: "theme.cycle",
     },
     {
       name: "routes Mod+. to toggle both sidebars on non-mac",
@@ -423,23 +482,30 @@ describe("keyboard-shortcuts", () => {
       event: { key: "?", code: "Slash", shiftKey: true },
       context: { focusScope: "message-input" },
     },
-    // Mod+B is the editor's Go to Definition; the sidebar toggle must not eat it.
+    // The file editor is also an editable surface, so editable:false bindings
+    // keep standing down there. (Mod+B and Mod+F resolving to the EDITOR's own
+    // actions in that scope is asserted in the matching cases above.)
     {
-      name: "leaves Cmd+B to the file editor on macOS",
-      event: { key: "b", code: "KeyB", metaKey: true },
+      name: "keeps Cmd+Shift+ArrowUp available for selection inside the file editor",
+      event: { key: "ArrowUp", code: "ArrowUp", metaKey: true, shiftKey: true },
       context: { isMac: true, focusScope: "code-editor" },
     },
+    // The File Editor section is scoped to the editor and to nothing else: its
+    // bindings must not leak into the composer or a plain text field.
     {
-      name: "leaves Ctrl+B to the file editor on non-mac",
-      event: { key: "b", code: "KeyB", ctrlKey: true },
-      context: { isMac: false, focusScope: "code-editor" },
+      name: "does not run the editor's save from the composer",
+      event: { key: "s", code: "KeyS", ctrlKey: true },
+      context: { isMac: false, focusScope: "message-input" },
     },
-    // The file editor is also an editable surface, so editable:false bindings
-    // keep standing down there — Mod+F stays CodeMirror's find-in-file.
     {
-      name: "leaves Ctrl+F to the file editor's find rather than opening Find a file",
-      event: { key: "f", code: "KeyF", ctrlKey: true },
-      context: { isMac: false, focusScope: "code-editor" },
+      name: "does not run rename symbol from outside the editor",
+      event: { key: "F2", code: "F2" },
+      context: { focusScope: "other" },
+    },
+    {
+      name: "does not run find references from a plain text field",
+      event: { key: "F12", code: "F12", shiftKey: true },
+      context: { focusScope: "editable" },
     },
     {
       name: "does not close tab with Ctrl+W on mac desktop (Cmd+W only)",
@@ -580,6 +646,93 @@ describe("keyboard-shortcuts", () => {
     expect(secondResult.nextChordState).toEqual(initialChordState());
   });
 
+  // The three cases the override mechanic has to get right, spelled out: which
+  // of two bindings on a shared combo wins where, and that a user override on
+  // EITHER side still beats the default.
+  describe("File Editor bindings override general ones while the editor is focused", () => {
+    it("gives the shared combo to the editor in the editor and to the app everywhere else", () => {
+      expect(
+        resolveShortcut({
+          event: { key: "b", code: "KeyB", ctrlKey: true },
+          context: { isMac: false, focusScope: "code-editor" },
+        }).match?.action,
+      ).toBe("editor.goToDefinition");
+
+      expect(
+        resolveShortcut({
+          event: { key: "b", code: "KeyB", ctrlKey: true },
+          context: { isMac: false, focusScope: "other" },
+        }).match?.action,
+      ).toBe("sidebar.toggle.left");
+    });
+
+    it("hands the combo back to the general binding once the editor is rebound off it", () => {
+      const bindings = buildEffectiveBindings({ "editor-go-to-definition-mod-b": "F4" });
+
+      expect(
+        resolveShortcut({
+          event: { key: "b", code: "KeyB", ctrlKey: true },
+          context: { isMac: false, focusScope: "code-editor" },
+          bindings,
+        }).match?.action,
+      ).toBe("sidebar.toggle.left");
+
+      expect(
+        resolveShortcut({
+          event: { key: "F4", code: "F4" },
+          context: { isMac: false, focusScope: "code-editor" },
+          bindings,
+        }).match?.action,
+      ).toBe("editor.goToDefinition");
+    });
+
+    it("lets an editor binding override a general one it did not previously share", () => {
+      // Mod+E is the right sidebar; rebinding the editor's find onto it must win
+      // inside the editor and leave the sidebar alone outside it.
+      const bindings = buildEffectiveBindings({ "editor-find-mod-f": "Ctrl+E" });
+
+      expect(
+        resolveShortcut({
+          event: { key: "e", code: "KeyE", ctrlKey: true },
+          context: { isMac: false, focusScope: "code-editor" },
+          bindings,
+        }).match?.action,
+      ).toBe("editor.find");
+
+      expect(
+        resolveShortcut({
+          event: { key: "e", code: "KeyE", ctrlKey: true },
+          context: { isMac: false, focusScope: "other" },
+          bindings,
+        }).match?.action,
+      ).toBe("sidebar.toggle.right");
+    });
+
+    it("keeps a rebound general binding out of the editor when the editor claims the combo", () => {
+      // The user moves the changes sidebar onto Mod+S. Save still wins in the
+      // editor, because specificity is decided per context, not per registry order.
+      const bindings = buildEffectiveBindings({
+        "sidebar-open-changes-ctrl-h-non-mac": "Ctrl+S",
+      });
+
+      expect(
+        resolveShortcut({
+          event: { key: "s", code: "KeyS", ctrlKey: true },
+          context: { isMac: false, focusScope: "code-editor" },
+          bindings,
+        }).match?.action,
+      ).toBe("editor.save");
+
+      expect(
+        resolveShortcut({
+          event: { key: "s", code: "KeyS", ctrlKey: true },
+          context: { isMac: false, focusScope: "other" },
+          bindings,
+        }).match?.action,
+      ).toBe("sidebar.open.changes");
+    });
+  });
+
   it("schedules a chord reset timeout for advancing candidates", () => {
     vi.useFakeTimers();
 
@@ -686,6 +839,50 @@ describe("keyboard-shortcut help sections", () => {
     expect(openProject?.label).toBe("Open project");
     expect(cycleAgentMode?.labelKey).toBe("settings.shortcuts.help.cycleAgentMode");
     expect(showShortcuts?.noteKey).toBe("settings.shortcuts.helpNotes.showKeyboardShortcuts");
+  });
+
+  it("lists the File Editor section, identically on every platform", () => {
+    for (const context of [
+      { isMac: true, isDesktop: true },
+      { isMac: false, isDesktop: false },
+    ]) {
+      const sections = buildKeyboardShortcutHelpSections(context);
+      const editor = sections.find((section) => section.id === "editor");
+
+      expect(editor?.titleKey).toBe("settings.shortcuts.sections.editor");
+      expect(editor?.title).toBe("File Editor");
+      // The section is written as single Mod+ bindings, so the same rows and the
+      // same keys serve mac and non-mac; only the rendering differs.
+      expect(editor?.rows.map((row) => row.id)).toEqual([
+        "editor-save",
+        "editor-find",
+        "editor-go-to-line",
+        "editor-go-to-definition",
+        "editor-find-references",
+        "editor-rename-symbol",
+      ]);
+      expect(findRow(sections, "editor-save")?.keys).toEqual(["mod", "S"]);
+      expect(findRow(sections, "editor-rename-symbol")?.keys).toEqual(["F2"]);
+      expect(findRow(sections, "editor-save")?.labelKey).toBe("settings.shortcuts.help.editorSave");
+    }
+  });
+
+  it("makes every File Editor row rebindable, and the F12 alias not a row of its own", () => {
+    const platform = { isMac: false, isDesktop: true };
+    for (const id of [
+      "editor-save",
+      "editor-find",
+      "editor-go-to-line",
+      "editor-go-to-definition",
+      "editor-find-references",
+      "editor-rename-symbol",
+    ]) {
+      expect(getBindingIdForAction(id, platform)).not.toBeNull();
+    }
+    // One feature, one row: F12 stays an alias with no row to rebind.
+    expect(getBindingIdForAction("editor-go-to-definition", platform)).toBe(
+      "editor-go-to-definition-mod-b",
+    );
   });
 
   it("does not expose Enter send behavior as rebindable shortcut rows", () => {

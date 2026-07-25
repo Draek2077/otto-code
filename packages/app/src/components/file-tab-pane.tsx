@@ -22,6 +22,7 @@ import {
   Search,
   TriangleAlert,
   Undo2,
+  WandStars,
   WrapText,
   X,
 } from "@/components/icons/material-icons";
@@ -59,7 +60,8 @@ import { useEditorBuffer } from "@/editor/use-editor-buffer";
 import { useEditorClipboardActions } from "@/editor/use-editor-clipboard-actions";
 import { DefinitionPickerDialog } from "@/editor/definition-picker-dialog";
 import { EditorOutlineSheet } from "@/editor/editor-outline-sheet";
-import { getEditorShortcutHints } from "@/editor/editor-shortcut-hints";
+import { useEditorShortcutHints } from "@/editor/editor-shortcut-hints";
+import { useEditorKeyBindings } from "@/editor/editor-key-bindings";
 import { EditorStatusBar, useBufferByteSize } from "@/editor/editor-status-bar";
 import { useEditorPrefsStore } from "@/editor/editor-prefs-store";
 import { GoToLineDialog } from "@/editor/go-to-line-dialog";
@@ -67,6 +69,9 @@ import { useCodeIndexFeature } from "@/editor/use-code-index-feature";
 import { useDefinitionSources } from "@/editor/use-definition-sources";
 import { useCodeHover } from "@/editor/use-code-hover";
 import { mirrorableText, useCodeDocument } from "@/editor/use-code-document";
+import { useFindReferences } from "@/editor/references/use-find-references";
+import { useRenameSymbol } from "@/editor/rename/use-rename-symbol";
+import { RenameSymbolDialog } from "@/editor/rename/rename-symbol-dialog";
 import { EditorDiagnosticsPanel, useDismissibleProblems } from "@/editor/editor-diagnostics-panel";
 import { useGoToDefinition, type GoToDefinitionTarget } from "@/editor/use-go-to-definition";
 import { useTextEditorFeature } from "@/editor/use-text-editor-feature";
@@ -74,6 +79,10 @@ import { revealFileInChanges, useChangedFilePaths } from "@/git/changes-reveal";
 import { openFileHistoryTab } from "@/git/file-history/open-file-history-tab";
 import type { FileHistoryRange } from "@/git/file-history/use-file-history-data";
 import { useGitFileHistoryFeature } from "@/git/use-git-file-history-feature";
+import { useToast } from "@/contexts/toast-context";
+import { openRefineTab } from "@/refine/open-refine-tab";
+import { isRefinableDocument } from "@/refine/refine-scope";
+import { useRefineFeature } from "@/refine/use-refine-feature";
 import {
   FilePreview,
   type FilePreviewFileInfo,
@@ -126,6 +135,7 @@ const ThemedSearch = withUnistyles(Search);
 const ThemedList = withUnistyles(List);
 const ThemedHistory = withUnistyles(History);
 const ThemedSourceControl = withUnistyles(SourceControlPanelIcon);
+const ThemedWandStars = withUnistyles(WandStars);
 const ThemedSave = withUnistyles(Save);
 const ThemedUndo2 = withUnistyles(Undo2);
 const ThemedWrapText = withUnistyles(WrapText);
@@ -467,6 +477,7 @@ function PreviewOnlyView({
   onFileInfo,
   onOpenHistory,
   onViewChanges,
+  onRefine,
 }: {
   serverId: string;
   workspaceId: string;
@@ -478,6 +489,8 @@ function PreviewOnlyView({
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
   onOpenHistory: ((range: FileHistoryRange | null) => void) | null;
   onViewChanges: (() => void) | null;
+  /** Opens the Refine job tab for this file; null when unavailable. */
+  onRefine: (() => void) | null;
 }) {
   const { t } = useTranslation();
   const draftOverride = useDraftOverride({ serverId, workspaceId, path: location.path });
@@ -590,6 +603,7 @@ function PreviewOnlyView({
         <FileGitToolbarGroup
           onOpenHistory={handleOpenHistory}
           onViewChanges={onViewChanges}
+          onRefine={onRefine}
           showLeadingSeparator={false}
         />
         <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
@@ -678,22 +692,43 @@ function PreviewOnlyView({
  * these ask what git knows. The preview toolbar opens with this cluster, so it
  * passes false: a separator with nothing on its left divides nothing.
  */
+/**
+ * The per-file jobs this document can be sent to: git investigation, the
+ * Changes view, and Refine.
+ *
+ * Refine sits here rather than being an "AI action" of its own because it is
+ * the same kind of thing as the other two — a job about THIS file that opens in
+ * its own tab and reports back. What is deliberately absent is an AI button
+ * that edits in place: the old "Refactor with AI" handed a prompt to a full
+ * agent with complete tool access and no diff. Refine can only ever propose,
+ * and the proposal is reviewed before a byte is written.
+ */
 function FileGitToolbarGroup({
   onOpenHistory,
   onViewChanges,
+  onRefine,
   showLeadingSeparator,
 }: {
   onOpenHistory: (() => void) | null;
   onViewChanges: (() => void) | null;
+  onRefine: (() => void) | null;
   showLeadingSeparator: boolean;
 }) {
   const { t } = useTranslation();
-  if (!onOpenHistory && !onViewChanges) {
+  if (!onOpenHistory && !onViewChanges && !onRefine) {
     return null;
   }
   return (
     <>
       {showLeadingSeparator ? <ToolbarSeparator /> : null}
+      {onRefine ? (
+        <ToolbarIconButton
+          label={t("refine.open")}
+          testID="file-refine-open"
+          Icon={ThemedWandStars}
+          onPress={onRefine}
+        />
+      ) : null}
       {onOpenHistory ? (
         <ToolbarIconButton
           label={t("gitFileHistory.open")}
@@ -733,6 +768,8 @@ function EditorContextMenu({
   cursor,
   canGoToDefinition,
   onGoToDefinition,
+  onFindReferences,
+  onRenameSymbol,
   onCut,
   onCopy,
   onPaste,
@@ -744,6 +781,10 @@ function EditorContextMenu({
   cursor: EditorCursorPosition | null;
   canGoToDefinition: boolean;
   onGoToDefinition: () => void;
+  /** Null when no language server covers this file — references have no ctags fallback. */
+  onFindReferences: (() => void) | null;
+  /** Null for the same reason: a rename with no server behind it is a find-and-replace. */
+  onRenameSymbol: (() => void) | null;
   onCut: () => void;
   onCopy: () => void;
   onPaste: () => void;
@@ -754,19 +795,23 @@ function EditorContextMenu({
   // Derived here rather than at the call site so the cursor readout's optional
   // hops stay out of the editor view's branch budget.
   const hasSelection = (cursor?.selectedChars ?? 0) > 0;
-  // Built once as elements rather than inline per item: the key hints never
-  // change for a session, and jsx-as-a-prop is a lint error besides.
-  const hints = useMemo(() => {
-    const keys = getEditorShortcutHints();
-    return {
-      goToDefinition: <Shortcut keys={keys.goToDefinition} />,
-      cut: <Shortcut keys={keys.cut} />,
-      copy: <Shortcut keys={keys.copy} />,
-      paste: <Shortcut keys={keys.paste} />,
-      selectLine: <Shortcut keys={keys.selectLine} />,
-      selectAll: <Shortcut keys={keys.selectAll} />,
-    };
-  }, []);
+  // Built as elements rather than inline per item, because jsx-as-a-prop is a
+  // lint error. Memoized on the resolved keys rather than once per mount: they
+  // move when the user rebinds one in Settings.
+  const keys = useEditorShortcutHints();
+  const hints = useMemo(
+    () => ({
+      goToDefinition: <Shortcut chord={keys.goToDefinition} />,
+      findReferences: <Shortcut chord={keys.findReferences} />,
+      renameSymbol: <Shortcut chord={keys.renameSymbol} />,
+      cut: <Shortcut chord={keys.cut} />,
+      copy: <Shortcut chord={keys.copy} />,
+      paste: <Shortcut chord={keys.paste} />,
+      selectLine: <Shortcut chord={keys.selectLine} />,
+      selectAll: <Shortcut chord={keys.selectAll} />,
+    }),
+    [keys],
+  );
   const handleOpenChange = useCallback(
     (open: boolean) => {
       if (!open) onClose();
@@ -777,17 +822,36 @@ function EditorContextMenu({
     <ContextMenu open={anchor !== null} onOpenChange={handleOpenChange} anchor={anchor}>
       <ContextMenuContent width={240} testID="editor-context-menu">
         {canGoToDefinition ? (
-          <>
-            <ContextMenuItem
-              testID="editor-context-go-to-definition"
-              onSelect={onGoToDefinition}
-              trailing={hints.goToDefinition}
-            >
-              {t("goToDefinition.action")}
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-          </>
+          <ContextMenuItem
+            testID="editor-context-go-to-definition"
+            onSelect={onGoToDefinition}
+            trailing={hints.goToDefinition}
+          >
+            {t("goToDefinition.action")}
+          </ContextMenuItem>
         ) : null}
+        {/* Language-server only. Unlike go-to-definition there is no ctags fallback: the
+            name index can list every symbol CALLED `foo`, which is not the same question as
+            "what refers to THIS foo" and would be a worse answer than none. */}
+        {onFindReferences ? (
+          <ContextMenuItem
+            testID="editor-context-find-references"
+            onSelect={onFindReferences}
+            trailing={hints.findReferences}
+          >
+            Find references
+          </ContextMenuItem>
+        ) : null}
+        {onRenameSymbol ? (
+          <ContextMenuItem
+            testID="editor-context-rename-symbol"
+            onSelect={onRenameSymbol}
+            trailing={hints.renameSymbol}
+          >
+            Rename symbol…
+          </ContextMenuItem>
+        ) : null}
+        {canGoToDefinition || onFindReferences || onRenameSymbol ? <ContextMenuSeparator /> : null}
         <ContextMenuItem disabled={!hasSelection} onSelect={onCut} trailing={hints.cut}>
           {t("editor.contextMenu.cut")}
         </ContextMenuItem>
@@ -1044,6 +1108,7 @@ function EditorModeView({
   onFileInfo,
   onOpenHistory,
   onViewChanges,
+  onRefine,
 }: {
   serverId: string;
   workspaceId: string;
@@ -1056,6 +1121,8 @@ function EditorModeView({
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
   onOpenHistory: ((range: FileHistoryRange | null) => void) | null;
   onViewChanges: (() => void) | null;
+  /** Opens the Refine job tab for this file; null when unavailable. */
+  onRefine: (() => void) | null;
 }) {
   const { t } = useTranslation();
   const path = location.path;
@@ -1080,10 +1147,13 @@ function EditorModeView({
 
   const wordWrap = useEditorPrefsStore((state) => state.wordWrap);
   const toggleWordWrap = useEditorPrefsStore((state) => state.toggleWordWrap);
-  // Only the buttons whose key is really bound inside CodeMirror get a hint;
-  // revert, history, outline and wrap have none, and inventing one would be a
-  // lie the tooltip cannot honour.
-  const shortcutHints = getEditorShortcutHints();
+  // Only the buttons with a real binding get a hint; revert, history, outline
+  // and wrap have none, and inventing one would be a lie the tooltip cannot
+  // honour.
+  const shortcutHints = useEditorShortcutHints();
+  // The File Editor section of the user's effective shortcuts, as a CM6 keymap.
+  // This is what makes those rows rebindable rather than merely listed.
+  const editorKeyBindings = useEditorKeyBindings();
 
   const { settings } = useAppSettings();
   const rulerColumn = resolveRulerColumn(settings);
@@ -1339,6 +1409,24 @@ function EditorModeView({
     enabled: hasLsp,
   });
   const problems = useDismissibleProblems(diagnostics);
+  const rename = useRenameSymbol({
+    serverId,
+    workspaceId,
+    path,
+    controllerRef,
+    cursor,
+    enabled: hasLsp,
+  });
+  // Opens a results tab rather than answering in place: a reference list is a surface you
+  // navigate from, and the search must survive visiting its own hits.
+  const findReferences = useFindReferences({
+    serverId,
+    workspaceId,
+    path,
+    controllerRef,
+    cursor,
+    enabled: hasLsp,
+  });
 
   // The keystroke reaches the editor even when the menu item is hidden, so the
   // capability gate has to be re-applied here rather than only on the item.
@@ -1348,6 +1436,15 @@ function EditorModeView({
     }
     void goToDefinition();
   }, [canGoToDefinition, goToDefinition]);
+
+  // Same shape for the two language-server actions, which are null when no
+  // server covers the file: the editor is always handed a callback, and the
+  // no-op inside it is the gate. Wiring `undefined` instead would make the key
+  // fall through to CodeMirror's own keymap, which is a different behaviour on a
+  // file that merely has no server yet.
+  const renameRequest = rename.request;
+  const handleFindReferencesShortcut = useCallback(() => findReferences?.(), [findReferences]);
+  const handleRenameSymbolShortcut = useCallback(() => renameRequest?.(), [renameRequest]);
 
   // Git investigation stays selection-aware from the toolbar rather than moving
   // into the right-click menu: selecting lines and pressing History is the same
@@ -1384,10 +1481,11 @@ function EditorModeView({
     selectLine: handleEditorSelectLine,
   } = useEditorClipboardActions(controllerRef);
 
-  // No AI action lives in this toolbar. The editor is a plain document editor;
-  // an AI rewrite belongs behind a surface that can scope and review it, which
-  // is what projects/refine/refine.md is for. The `@/editor/refactor-*` modules
-  // stay on disk for that work — they are simply not wired up here.
+  // No AI action edits *in this editor*. The one AI entry point in the toolbar
+  // is Refine, and it opens a job tab that can only propose — see
+  // FileGitToolbarGroup. The `@/editor/refactor-*` modules stay on disk but
+  // remain unwired: they hand a prompt to a full agent with complete tool
+  // access and no diff, which is exactly what Refine replaced.
 
   // Split-view sync. Both sides report only user-driven scrolls (their own
   // programmatic scrolls are suppressed at the source); the gate keeps a
@@ -1545,11 +1643,14 @@ function EditorModeView({
       onDocSync={onDocSync}
       onMatchInfo={setMatchInfo}
       onCursorMoved={setCursor}
+      keyBindings={editorKeyBindings}
       onSaveShortcut={handleSavePress}
       onFindShortcut={openFind}
       onCloseFindShortcut={closeFind}
       onGoToLineShortcut={openGoToLine}
       onGoToDefinitionShortcut={handleGoToDefinition}
+      onFindReferencesShortcut={handleFindReferencesShortcut}
+      onRenameSymbolShortcut={handleRenameSymbolShortcut}
       onScrolled={split ? handleEditorScrolled : undefined}
       onPointerSelect={split ? handleEditorPointerSelect : undefined}
       onContextMenu={handleEditorContextMenu}
@@ -1581,6 +1682,7 @@ function EditorModeView({
         <FileGitToolbarGroup
           onOpenHistory={handleOpenHistory}
           onViewChanges={onViewChanges}
+          onRefine={onRefine}
           showLeadingSeparator
         />
         <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
@@ -1707,11 +1809,20 @@ function EditorModeView({
         cursor={cursor}
         canGoToDefinition={canGoToDefinition}
         onGoToDefinition={handleGoToDefinitionFromMenu}
+        onFindReferences={findReferences}
+        onRenameSymbol={rename.request}
         onCut={handleEditorCut}
         onCopy={handleEditorCopy}
         onPaste={handleEditorPaste}
         onSelectAll={handleEditorSelectAll}
         onSelectLine={handleEditorSelectLine}
+      />
+
+      <RenameSymbolDialog
+        visible={rename.dialogOpen}
+        symbol={rename.symbol}
+        onClose={rename.closeDialog}
+        onSubmit={rename.submit}
       />
 
       <GoToLineDialog
@@ -1754,6 +1865,16 @@ function locationWithoutLines(location: WorkspaceFileLocation): WorkspaceFileLoc
   return { path: location.path };
 }
 
+/**
+ * Workspace-relative -> absolute, for the Refine working set. Refine addresses
+ * every file by absolute path because a set legitimately spans the repo and the
+ * home directory (a context set includes `~/.claude/CLAUDE.md`).
+ */
+function joinWorkspacePath(workspaceRoot: string, path: string): string {
+  const root = workspaceRoot.replace(/[/\\]$/, "");
+  return root ? `${root}/${path}` : path;
+}
+
 function resolveEffectiveMode(input: {
   mode: FileViewMode;
   editorAllowed: boolean;
@@ -1787,6 +1908,8 @@ export function FileTabPane({
    *  action in the existing bar instead of stacking a second one above it. */
   toolbarLeadingSlot?: ReactNode;
 }) {
+  const { t } = useTranslation();
+  const toast = useToast();
   const persistenceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
 
   // Editing an out-of-project file is no longer gated behind a confirm dialog —
@@ -1896,6 +2019,57 @@ export function FileTabPane({
     };
   }, [changedPaths, editGate.kind, location.path, serverId, workspaceRoot]);
 
+  // Refine — the AI rewrite, as a reviewable job in its own tab.
+  //
+  // In-project only, for the same reason as history and changes: the job runs
+  // against this workspace's root with a workspace-relative path, so a linked
+  // or outside-project file would be a question about the wrong tree.
+  //
+  // A dirty buffer blocks entry. Refine pins its base from DISK, so starting it
+  // over unsaved edits would show a diff against something the user is not
+  // looking at, and accepting it would write a document those edits were never
+  // part of. Save or revert first — the toast says so rather than silently
+  // picking one.
+  const hasRefine = useRefineFeature(serverId);
+  const onRefine = useMemo(() => {
+    // Prose and instruction files only (`isRefinableDocument`): Refine is a
+    // whole-document text rewrite with no symbol awareness, so over source code
+    // it would produce a plausible diff that silently breaks a call site. That
+    // is the objection that pulled the old "Refactor with AI" button, and a
+    // review loop does not answer it — nobody spots a broken import in a
+    // 400-line diff.
+    if (!hasRefine || !editorAllowed || editGate.kind !== "free") {
+      return null;
+    }
+    if (!isRefinableDocument(location.path)) {
+      return null;
+    }
+    return () => {
+      const bufferKey = buildEditorBufferKey({ serverId, workspaceId, path: location.path });
+      if (useEditorBufferStore.getState().buffers[bufferKey]?.dirty) {
+        toast.error(t("refine.saveFirst"));
+        return;
+      }
+      // From the editor the working set is this one file: the tab is the place
+      // to widen it, since that is where the blast radius is visible.
+      openRefineTab({
+        serverId,
+        workspaceId,
+        paths: [joinWorkspacePath(workspaceRoot, location.path)],
+      });
+    };
+  }, [
+    editGate.kind,
+    editorAllowed,
+    hasRefine,
+    location.path,
+    serverId,
+    t,
+    toast,
+    workspaceId,
+    workspaceRoot,
+  ]);
+
   const content =
     effectiveMode === "preview" ? (
       <PreviewOnlyView
@@ -1909,6 +2083,7 @@ export function FileTabPane({
         onFileInfo={setFileInfo}
         onOpenHistory={onOpenHistory}
         onViewChanges={onViewChanges}
+        onRefine={onRefine}
       />
     ) : (
       <EditorModeView
@@ -1923,6 +2098,7 @@ export function FileTabPane({
         onFileInfo={setFileInfo}
         onOpenHistory={onOpenHistory}
         onViewChanges={onViewChanges}
+        onRefine={onRefine}
       />
     );
 

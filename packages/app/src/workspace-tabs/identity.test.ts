@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspaceFileOrigin } from "@/workspace/file-open";
+import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import {
   buildDeterministicWorkspaceTabId,
   normalizeWorkspaceTabTarget,
@@ -86,5 +87,96 @@ describe("fileHistory tab targets", () => {
     expect(buildDeterministicWorkspaceTabId(wholeFile)).not.toBe(
       buildDeterministicWorkspaceTabId(scoped),
     );
+  });
+});
+
+describe("codeReferences tab identity", () => {
+  const base = {
+    kind: "codeReferences",
+    path: "a.ts",
+    line: 4,
+    column: 10,
+    symbol: "foo",
+  } as const;
+
+  // Two symbols can share a name and be entirely unrelated — which is the confusion a
+  // language server exists to remove, so the tab identity must not reintroduce it.
+  it("keys on position, not on the symbol name", () => {
+    const sameSpotDifferentName = { ...base, symbol: "renamedInTheTitleOnly" } as const;
+    const sameNameDifferentSpot = { ...base, line: 99 } as const;
+
+    expect(workspaceTabTargetsEqual(base, sameSpotDifferentName)).toBe(true);
+    expect(workspaceTabTargetsEqual(base, sameNameDifferentSpot)).toBe(false);
+  });
+
+  it("gives two searches distinct persisted ids so one cannot evict the other", () => {
+    expect(buildDeterministicWorkspaceTabId(base)).not.toBe(
+      buildDeterministicWorkspaceTabId({ ...base, column: 11 }),
+    );
+  });
+
+  // A search has no meaningful degraded form: without a position there is nothing to
+  // resolve, so a half-persisted tab is dropped rather than restored pointing at nothing.
+  it("rejects a target missing any of path, symbol or position", () => {
+    expect(normalizeWorkspaceTabTarget({ ...base, path: "  " })).toBeNull();
+    expect(normalizeWorkspaceTabTarget({ ...base, symbol: "" })).toBeNull();
+    expect(normalizeWorkspaceTabTarget({ ...base, line: 0 })).toBeNull();
+    expect(normalizeWorkspaceTabTarget({ ...base, column: -1 })).toBeNull();
+  });
+
+  it("keeps a well-formed target intact", () => {
+    expect(normalizeWorkspaceTabTarget(base)).toEqual(base);
+  });
+});
+
+describe("refine tab identity", () => {
+  const base: WorkspaceTabTarget = { kind: "refine", paths: ["/repo/docs/design.md"] };
+
+  // One job per primary document: refining the same file again is a fresh pin of
+  // it, which supersedes the first job rather than sitting beside it. Neither the
+  // rest of the working set nor the preset is part of that identity.
+  it("keys on the primary path alone", () => {
+    expect(workspaceTabTargetsEqual(base, { ...base, presetId: "compact-context-file" })).toBe(
+      true,
+    );
+    expect(workspaceTabTargetsEqual(base, { ...base, references: ["/repo/CLAUDE.md"] })).toBe(true);
+    expect(workspaceTabTargetsEqual(base, { kind: "refine", paths: ["/repo/other.md"] })).toBe(
+      false,
+    );
+    expect(buildDeterministicWorkspaceTabId(base)).toBe("refine_/repo/docs/design.md");
+  });
+
+  it("keeps the working set and preset, and drops a target with nothing to rewrite", () => {
+    expect(
+      normalizeWorkspaceTabTarget({
+        kind: "refine",
+        paths: ["/repo/CLAUDE.md", " ", "/repo/CLAUDE.md"],
+        references: ["/repo/docs/design.md"],
+        presetId: "tighten-prose",
+      }),
+    ).toEqual({
+      kind: "refine",
+      paths: ["/repo/CLAUDE.md"],
+      references: ["/repo/docs/design.md"],
+      presetId: "tighten-prose",
+    });
+    expect(normalizeWorkspaceTabTarget({ kind: "refine", paths: ["  "] })).toBeNull();
+    expect(normalizeWorkspaceTabTarget({ kind: "refine", paths: [] })).toBeNull();
+  });
+
+  // A file cannot be both rewritable and read-only; being rewritable wins, since
+  // the narrower role would silently shrink the blast radius the caller asked for.
+  it("never lists a rewritable path as a reference as well", () => {
+    expect(
+      normalizeWorkspaceTabTarget({
+        kind: "refine",
+        paths: ["/repo/CLAUDE.md"],
+        references: ["/repo/CLAUDE.md", "/repo/MEMORY.md"],
+      }),
+    ).toEqual({
+      kind: "refine",
+      paths: ["/repo/CLAUDE.md"],
+      references: ["/repo/MEMORY.md"],
+    });
   });
 });
