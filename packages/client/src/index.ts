@@ -33,7 +33,10 @@ export type {
   BrowserAutomationExecuteRequestMessage,
   BrowserAutomationExecuteResponseMessage,
   HostingAuthStatusPayload,
+  HostingListOwnersPayload,
+  HostingListRepositoriesPayload,
   HostingSearchPayload,
+  ProjectScaffoldPayload,
   WebSocketFactory,
   WebSocketLike,
 } from "./daemon-client.js";

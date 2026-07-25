@@ -2832,6 +2832,106 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     );
   }, [allFileDiffsExpanded, files, setDiffExpandedPathsForWorkspace, workspaceStateKey]);
 
+  // "View changes" from the Files tree or a file tab's toolbar. The request is
+  // stashed in the panel store before the tab switch, so this pane usually
+  // consumes it on mount — with the diff still loading and nothing measured.
+  // Hence a small state machine rather than one shot: each step below writes
+  // store state and returns, and the effect re-runs on the result until the
+  // file's header is reachable and can be scrolled to.
+  const changesRevealRequest = usePanelStore((state) => state.changesRevealRequest);
+  const [pendingRevealPath, setPendingRevealPath] = useState<string | null>(null);
+  // Read by the delayed re-assert below, which fires outside render and so
+  // cannot close over the offset math of the render that scheduled it.
+  const computeItemOffsetRef = useRef(computeItemOffset);
+  computeItemOffsetRef.current = computeItemOffset;
+  // Held in a ref rather than returned as effect cleanup: consuming the reveal
+  // re-runs that effect immediately, which would cancel the timer it just set.
+  const revealSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (revealSettleTimerRef.current !== null) {
+        clearTimeout(revealSettleTimerRef.current);
+      }
+    },
+    [],
+  );
+  useEffect(() => {
+    setPendingRevealPath(null);
+  }, [workspaceStateKey]);
+  useEffect(() => {
+    if (!changesRevealRequest || !workspaceStateKey) {
+      return;
+    }
+    usePanelStore.getState().clearChangesRevealRequest();
+    setPendingRevealPath(changesRevealRequest.path);
+  }, [changesRevealRequest, workspaceStateKey]);
+  useEffect(() => {
+    if (!pendingRevealPath || !workspaceStateKey) {
+      return;
+    }
+    if (!files.some((file) => file.path === pendingRevealPath)) {
+      // Still arriving, or the file simply isn't in this diff (the user may have
+      // switched the compare mode since). Wait for the payload, then give up.
+      if (!isDiffLoading) {
+        setPendingRevealPath(null);
+      }
+      return;
+    }
+    // A collapsed ancestor folder keeps the header out of the row list entirely.
+    if (viewMode === "tree") {
+      const blocking = Array.from(collapsedFolders).filter((dirPath) =>
+        pendingRevealPath.startsWith(`${dirPath}/`),
+      );
+      if (blocking.length > 0) {
+        const blockingSet = new Set(blocking);
+        setDiffCollapsedFoldersForWorkspace(
+          workspaceStateKey,
+          Array.from(collapsedFolders).filter((dirPath) => !blockingSet.has(dirPath)),
+        );
+        return;
+      }
+    }
+    // Revealing a file means showing its diff, not just its name.
+    if (!expandedPaths.has(pendingRevealPath)) {
+      setDiffExpandedPathsForWorkspace(workspaceStateKey, [...expandedPaths, pendingRevealPath]);
+      return;
+    }
+    const matchesTarget = (item: DiffFlatItem) =>
+      item.type === "header" && item.file.path === pendingRevealPath;
+    const offset = computeItemOffset(matchesTarget);
+    if (offset === null) {
+      return;
+    }
+    // One-shot: the reveal is consumed here, so a later re-render can never
+    // yank the user back to this file.
+    setPendingRevealPath(null);
+    diffListRef.current?.scrollToOffset({ offset, animated: false });
+    // Rows above the target are estimated until they render and measure
+    // themselves, so that first landing can be off. Re-assert once they have
+    // settled — the same correction the Files tree makes after a reveal.
+    if (revealSettleTimerRef.current !== null) {
+      clearTimeout(revealSettleTimerRef.current);
+    }
+    revealSettleTimerRef.current = setTimeout(() => {
+      revealSettleTimerRef.current = null;
+      const settledOffset = computeItemOffsetRef.current(matchesTarget);
+      if (settledOffset !== null && settledOffset !== offset) {
+        diffListRef.current?.scrollToOffset({ offset: settledOffset, animated: false });
+      }
+    }, 100);
+  }, [
+    collapsedFolders,
+    computeItemOffset,
+    expandedPaths,
+    files,
+    isDiffLoading,
+    pendingRevealPath,
+    setDiffCollapsedFoldersForWorkspace,
+    setDiffExpandedPathsForWorkspace,
+    viewMode,
+    workspaceStateKey,
+  ]);
+
   const hasFiles = files.length > 0;
   // The full toolbar catalog in fixed order. Each entry's icon/label reflect
   // the current state (the action it performs), shared verbatim by the pinned

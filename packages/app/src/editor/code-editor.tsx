@@ -35,6 +35,11 @@ export function CodeEditor(props: CodeEditorProps) {
   // mounted on CM6's own scroller. Not gated on width: a narrow browser still
   // draws the platform's dated bar, and the overlay's container is box-none, so
   // touch scrolling passes straight through everywhere except the thin handle.
+  //
+  // Horizontal only. The vertical lane belongs to the overview ruler, which
+  // draws its own always-visible viewport thumb over the problem marks — an
+  // auto-hiding bar beside it would be a second answer to "where am I", 12px
+  // further right.
   const scrollerRef = useRef<HTMLElement | null>(null);
   const scrollerContentRef = useRef<HTMLElement | null>(null);
   const [scrollerReady, setScrollerReady] = useState(false);
@@ -42,6 +47,7 @@ export function CodeEditor(props: CodeEditorProps) {
     enabled: scrollerReady,
     contentRef: scrollerContentRef,
     horizontal: true,
+    vertical: false,
   });
 
   // The core mounts once per (tab, document identity); doc updates flow
@@ -73,6 +79,7 @@ export function CodeEditor(props: CodeEditorProps) {
       onCursorMoved: (position) => callbacksRef.current.onCursorMoved?.(position),
       onSaveShortcut: () => callbacksRef.current.onSaveShortcut?.(),
       onFindShortcut: () => callbacksRef.current.onFindShortcut?.(),
+      onCloseFindShortcut: () => callbacksRef.current.onCloseFindShortcut?.(),
       onGoToLineShortcut: () => callbacksRef.current.onGoToLineShortcut?.(),
       onGoToDefinitionShortcut: () => callbacksRef.current.onGoToDefinitionShortcut?.(),
       onScrolled: (metrics) => callbacksRef.current.onScrolled?.(metrics),
@@ -82,6 +89,13 @@ export function CodeEditor(props: CodeEditorProps) {
       onContextMenu: callbacksRef.current.onContextMenu
         ? (point) => callbacksRef.current.onContextMenu?.(point)
         : undefined,
+      // Same shape as the context menu: no provider, no hover extension at all.
+      hoverProvider: callbacksRef.current.hoverProvider
+        ? (position) =>
+            callbacksRef.current.hoverProvider?.(position) ??
+            Promise.resolve({ kind: "unavailable" as const })
+        : undefined,
+      diagnostics: callbacksRef.current.diagnostics,
       onDocChanged: () => {
         if (docSyncTimer !== null) {
           clearTimeout(docSyncTimer);
@@ -118,6 +132,7 @@ export function CodeEditor(props: CodeEditorProps) {
       getScrollMetrics: () => core.getScrollMetrics(),
       scrollToFraction: (fraction) => core.scrollToFraction(fraction),
       scrollToLineAtOffset: (line, offset) => core.scrollToLineAtOffset(line, offset),
+      setDiagnostics: (diagnostics) => core.setDiagnostics(diagnostics),
     };
     callbacksRef.current.onReady?.(controller);
 
@@ -145,6 +160,15 @@ export function CodeEditor(props: CodeEditorProps) {
   useEffect(() => {
     coreRef.current?.setWordWrap(props.wordWrap);
   }, [props.wordWrap]);
+
+  // The store hands out a stable array while the set is unchanged, so this fires on a
+  // real republish rather than on every keystroke that re-renders the pane.
+  const diagnostics = props.diagnostics;
+  useEffect(() => {
+    if (diagnostics !== undefined) {
+      coreRef.current?.setDiagnostics(diagnostics);
+    }
+  }, [diagnostics]);
 
   // The saved text is a prop, not a command: the buffer's baseline is the single
   // source of truth for what clean means, so a save landing or the disk version

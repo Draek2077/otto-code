@@ -79,6 +79,7 @@ import {
   MetadataGenerationRows,
   OttoToolsSection,
 } from "@/screens/settings/otto-tools-section";
+import { CodeIntelligenceSection } from "./code-intelligence-section";
 import { restartDaemonFromSettings } from "./daemon-restart";
 
 const ThemedArrowUp = withUnistyles(ArrowUp);
@@ -368,6 +369,30 @@ export function HostTeamsPage({ serverId }: { serverId: string }) {
 
 // Git-provider settings are folded into the Workspaces page as a "Git" panel —
 // too few options to warrant their own sidebar category.
+// Daemon-side language servers. Its own section rather than a card under Tools:
+// the running-servers table needs the width, and the off-switch has to be findable.
+export function HostCodePage({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
+  const host = useHostProfile(serverId);
+  const isConnected = useHostRuntimeIsConnected(serverId);
+
+  if (!host) {
+    return <HostNotFound />;
+  }
+
+  return (
+    <View>
+      {isConnected ? (
+        <CodeIntelligenceSection serverId={serverId} />
+      ) : (
+        <View style={EMPTY_CARD_STYLE}>
+          <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export function HostWorkspacesPage({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
   const host = useHostProfile(serverId);

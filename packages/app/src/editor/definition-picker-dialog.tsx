@@ -8,10 +8,28 @@ import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { isWeb } from "@/constants/platform";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 
-// The multi-hit half of go-to-definition. The symbol index is name-based with
-// no type resolution, so two `render` definitions are genuinely ambiguous —
-// this lists them (file + line, JetBrains style) instead of guessing. A single
-// hit never reaches here; it jumps.
+// The multi-hit half of go-to-definition. Two sources reach here and both are
+// genuine ambiguity rather than a guess: the ctags index is name-based with no
+// type resolution, and a language server reports real overloads and
+// implementations. A single hit never reaches here; it jumps.
+
+/**
+ * A location the picker can show. `kind` is present only for ctags hits — a
+ * language server answers with positions, and inventing a glyph for one would be
+ * showing the user something we do not know.
+ */
+export interface DefinitionCandidate {
+  path: string;
+  line: number;
+  column: number;
+  kind?: CodeSymbolLocation["kind"];
+  /**
+   * Which source produced this row — a language server id, or the name index. Shown
+   * because it changes how much the list is worth trusting: a server resolved real
+   * overloads, the index only matched a name.
+   */
+  source?: string;
+}
 
 const KIND_GLYPH: Record<CodeSymbolLocation["kind"], string> = {
   function: "ƒ",
@@ -29,27 +47,27 @@ export function DefinitionPickerDialog({
 }: {
   name: string;
   /** Empty means closed — the picker only ever exists with hits to show. */
-  candidates: CodeSymbolLocation[];
+  candidates: DefinitionCandidate[];
   onClose: () => void;
-  onSelect: (candidate: CodeSymbolLocation) => void;
+  onSelect: (candidate: DefinitionCandidate) => void;
 }) {
   const { t } = useTranslation();
   // Ungated on compact, matching the outline sheet: the app's overlay bar is
   // wanted on mobile web too. No-ops off web.
   const showWebScrollbar = isWeb;
-  const listRef = useRef<FlatList<CodeSymbolLocation>>(null);
+  const listRef = useRef<FlatList<DefinitionCandidate>>(null);
   const scrollbar = useWebScrollViewScrollbar(listRef, { enabled: showWebScrollbar });
 
   const renderRow = useCallback(
-    (info: ListRenderItemInfo<CodeSymbolLocation>) => (
+    (info: ListRenderItemInfo<DefinitionCandidate>) => (
       <CandidateRow candidate={info.item} onSelect={onSelect} />
     ),
     [onSelect],
   );
 
   const keyExtractor = useCallback(
-    (candidate: CodeSymbolLocation) =>
-      `${candidate.path}:${candidate.line}:${candidate.column}:${candidate.kind}`,
+    (candidate: DefinitionCandidate) =>
+      `${candidate.path}:${candidate.line}:${candidate.column}:${candidate.kind ?? ""}`,
     [],
   );
 
@@ -95,8 +113,8 @@ function CandidateRow({
   candidate,
   onSelect,
 }: {
-  candidate: CodeSymbolLocation;
-  onSelect: (candidate: CodeSymbolLocation) => void;
+  candidate: DefinitionCandidate;
+  onSelect: (candidate: DefinitionCandidate) => void;
 }) {
   const handlePress = useCallback(() => onSelect(candidate), [candidate, onSelect]);
   return (
@@ -107,13 +125,14 @@ function CandidateRow({
       accessibilityRole="button"
     >
       <Text style={styles.glyph} dataSet={CODE_SURFACE_DATASET}>
-        {KIND_GLYPH[candidate.kind]}
+        {candidate.kind ? KIND_GLYPH[candidate.kind] : "◆"}
       </Text>
       {/* The path is the disambiguator, so it truncates from the LEFT: the tail
           of a deep path is what tells two same-named symbols apart. */}
       <Text style={styles.path} numberOfLines={1} ellipsizeMode="head">
         {candidate.path}
       </Text>
+      {candidate.source ? <Text style={styles.source}>{candidate.source}</Text> : null}
       <Text style={styles.line}>{candidate.line}</Text>
     </Pressable>
   );
@@ -179,6 +198,11 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+  },
+  source: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontFamily: theme.fontFamily.mono,
   },
   line: {
     color: theme.colors.foregroundMuted,

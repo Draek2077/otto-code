@@ -551,6 +551,10 @@ function createSessionForWorkspaceTests(
   const agentManager = asAgentManager({
     subscribe: () => () => {},
     listAgents: () => [],
+    // Every workspace-descriptor build funnels through listAgentPayloads, which
+    // folds in observed subagents. Unstubbed, the stub proxy throws and the
+    // descriptor never gets emitted.
+    listObservedSubagentPayloads: () => [],
     getAgent: () => null,
     archiveAgent: async () => ({ archivedAt: new Date().toISOString() }),
     archiveSnapshot: async () => ({}),
@@ -6514,6 +6518,67 @@ test("project.rename.request with whitespace-only customName clears the override
     error: null,
   });
   expect(projects.get(project.projectId)?.customName).toBeNull();
+});
+
+test("project.rename.request announces a project with no active workspaces on the project channel", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = asTestSession(
+    createSessionForWorkspaceTests({ onMessage: (message) => emitted.push(message) }),
+  );
+
+  const project = createPersistedProjectRecord({
+    projectId: "remote:github.com/acme/repo",
+    rootPath: REPO_CWD,
+    kind: "git",
+    displayName: "acme/repo",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+
+  const projects = new Map([[project.projectId, project]]);
+  session.projectRegistry.get = async (id: string) => projects.get(id) ?? null;
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.projectRegistry.upsert = async (record: unknown) => {
+    const parsed = record as typeof project;
+    projects.set(parsed.projectId, parsed);
+  };
+  // Archived workspaces resolve to no descriptor, so the workspace channel can
+  // carry nothing for this project — the project channel is the only way the
+  // rename reaches the client.
+  session.workspaceRegistry.list = async () => [
+    createPersistedWorkspaceRecord({
+      workspaceId: "ws-archived",
+      projectId: project.projectId,
+      cwd: REPO_CWD,
+      kind: "local_checkout",
+      displayName: "main",
+      createdAt: "2026-03-01T12:00:00.000Z",
+      updatedAt: "2026-03-01T12:00:00.000Z",
+      archivedAt: "2026-03-02T12:00:00.000Z",
+    }),
+  ];
+
+  await session.handleMessage({
+    type: "project.rename.request",
+    projectId: project.projectId,
+    customName: "Ouroboroz",
+    requestId: "req-rename-empty",
+  });
+
+  const notification = findByType(emitted, "project.updated.notification");
+  expect(notification?.payload).toEqual({
+    project: {
+      projectId: project.projectId,
+      projectDisplayName: "Ouroboroz",
+      projectCustomName: "Ouroboroz",
+      projectRootPath: REPO_CWD,
+      projectKind: "git",
+    },
+    hasActiveWorkspaces: false,
+  });
+  // No visible workspace ⇒ no workspace traffic at all, not even a spurious
+  // remove for the archived one.
+  expect(findByType(emitted, "workspace_update")).toBeUndefined();
 });
 
 test("project.rename.request returns accepted=false when project is not found", async () => {

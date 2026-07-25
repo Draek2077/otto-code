@@ -103,6 +103,9 @@ function forwardPushedEvent(message: EditorWebViewOutbound, props: CodeEditorPro
     case "findShortcut":
       props.onFindShortcut?.();
       break;
+    case "closeFindShortcut":
+      props.onCloseFindShortcut?.();
+      break;
     case "goToLineShortcut":
       props.onGoToLineShortcut?.();
       break;
@@ -196,6 +199,7 @@ export function CodeEditor(props: CodeEditorProps) {
         sendToWebView({ type: "selectLines", startLine, endLine, reveal: options?.reveal }),
       selectAll: () => sendToWebView({ type: "selectAll" }),
       replaceSelection: (text) => sendToWebView({ type: "replaceSelection", text }),
+      setDiagnostics: (diagnostics) => sendToWebView({ type: "setDiagnostics", diagnostics }),
     }),
     [sendToWebView],
   );
@@ -216,6 +220,13 @@ export function CodeEditor(props: CodeEditorProps) {
     const queued = pendingMessagesRef.current.splice(0);
     for (const queuedMessage of queued) {
       sendToWebView(queuedMessage);
+    }
+    // `mount` carries no diagnostics — it is the doc-and-theme contract — so a webview
+    // that remounts mid-session (render-process death) has to be re-told what is broken,
+    // or the file reads as clean until the server next republishes.
+    const known = callbacksRef.current.diagnostics;
+    if (known !== undefined && known.length > 0) {
+      sendToWebView({ type: "setDiagnostics", diagnostics: known });
     }
     if (!controllerAnnouncedRef.current) {
       controllerAnnouncedRef.current = true;
@@ -278,6 +289,13 @@ export function CodeEditor(props: CodeEditorProps) {
     }
     sendToWebView({ type: "setWordWrap", enabled: props.wordWrap });
   }, [props.wordWrap, sendToWebView]);
+
+  const diagnostics = props.diagnostics;
+  useEffect(() => {
+    if (bridgeReadyRef.current && diagnostics !== undefined) {
+      sendToWebView({ type: "setDiagnostics", diagnostics });
+    }
+  }, [diagnostics, sendToWebView]);
 
   // The saved text is a prop, not a command (see CodeEditorProps.cleanDoc). The
   // mount message already carries the current value, so only later changes are

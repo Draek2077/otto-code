@@ -25,6 +25,8 @@ Resolutions are cached 30s per cwd; `invalidateAll()` fires on any daemon-config
 
 `router.ts` is a `GitHubService`-shaped facade: each method resolves the cwd's provider, then delegates. Existing call sites (session, checkout, workspace-git-service, auto-archive, otto-tools) go through the router unchanged.
 
+**Three methods deliberately bypass the router: `listRepositories`, `listOwners`, `createRepository`.** Every other method takes a cwd, because it describes a checkout that already exists. These describe an _account_, and the New project page calls them before any repository is on disk — there is no cwd to resolve a provider from. They go through `resolveForProvider(id)` instead, and they are optional on the interface: a provider without the capability leaves the method undefined rather than throwing at call time. See [docs/new-project.md](new-project.md).
+
 **No fake parity.** Each provider advertises a `GitHostingCapabilities` descriptor and the client renders only capability-true actions:
 
 | Capability         | GitHub | Bitbucket Cloud v1 |
@@ -36,6 +38,8 @@ Resolutions are cached 30s per cwd; `invalidateAll()` fires on any daemon-config
 | `checkAnnotations` |   ✓    |         ✗          |
 | `checkDetails`     |   ✓    |         ✗          |
 | `issues`           |   ✓    | ✗ (teams use Jira) |
+| `listRepositories` |   ✓    |         ✓          |
+| `createRepository` |   ✓    |         ✓          |
 
 The GitHub adapter (`github/`) wraps the existing gh-CLI service with no behavior change. Bitbucket Cloud (`bitbucket-cloud-service.ts`) is a native REST 2.0 client (`https://api.bitbucket.org/2.0`) that mirrors the GitHub service's discipline — 30s TTL cache, single-flight, retain-based polling — with more conservative poll intervals (30s pending / 180s settled) to respect Bitbucket's ~1000 req/hour budget. Its `listIssues` returns `[]`; check-details and auto-merge throw an unsupported-capability error.
 

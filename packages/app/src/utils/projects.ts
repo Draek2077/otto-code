@@ -68,15 +68,27 @@ interface ProjectGroup {
   hostsByServerId: Map<string, HostGroup>;
 }
 
+// A project's custom name rides on whichever descriptor currently represents it:
+// its workspaces, or the empty-project entry when it has none. Reading only the
+// workspaces left renamed empty projects with projectCustomName === null, which
+// hides the Reset affordance and blanks the rename field's prefill.
 function findProjectCustomName(
-  workspaces: WorkspaceDescriptor[],
+  host: ProjectHost,
   projectKey: string,
 ): { customName: string; displayName: string } | null {
-  for (const workspace of workspaces) {
+  for (const workspace of host.workspaces) {
     if (workspace.projectId === projectKey && workspace.projectCustomName) {
       return {
         customName: workspace.projectCustomName,
         displayName: workspace.projectDisplayName,
+      };
+    }
+  }
+  for (const emptyProject of host.emptyProjects ?? []) {
+    if (emptyProject.projectId === projectKey && emptyProject.projectCustomName) {
+      return {
+        customName: emptyProject.projectCustomName,
+        displayName: emptyProject.projectDisplayName,
       };
     }
   }
@@ -177,7 +189,7 @@ export function buildProjects(input: BuildProjectsInput): BuildProjectsResult {
 
     const hostProjects = buildHostProjectEntries(host);
     for (const hostProject of hostProjects) {
-      const customName = findProjectCustomName(host.workspaces, hostProject.projectKey);
+      const customName = findProjectCustomName(host, hostProject.projectKey);
       let group = groups.get(hostProject.projectKey);
       if (!group) {
         group = {

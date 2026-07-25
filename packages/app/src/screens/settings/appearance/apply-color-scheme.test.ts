@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { BLACK_LIGHT_VARIANT_COLORS, darkClaudeTheme, meadowTheme } from "@/styles/theme";
 import { applyColorScheme, type ColorSchemeInput } from "./apply-color-scheme";
+
+// These assertions are about *which variant* got painted into a mirror, not
+// about any particular hex. Read the expected accent off the variant itself so
+// a theme retune doesn't turn into a test edit.
+const MEADOW_ACCENT = meadowTheme.colors.accent;
+const EMBER_ACCENT = darkClaudeTheme.colors.accent;
+const BLACK_SHERBET_ACCENT = BLACK_LIGHT_VARIANT_COLORS.pastel.accent;
 
 // Override the global react-native-unistyles mock (vitest.setup.ts) so that
 // UnistylesRuntime.updateTheme/setAdaptiveThemes/setTheme are spies that record calls.
@@ -108,7 +116,7 @@ describe("applyColorScheme", () => {
 
     const updater = findUpdater("light");
     const result = updater(makeFakeTheme("light"));
-    expect(result.colors.accent).toBe("#20744A"); // meadowTheme's accent
+    expect(result.colors.accent).toBe(MEADOW_ACCENT); // meadowTheme's accent
   });
 
   it("paints the dark mirror with the chosen dark variant's colors", () => {
@@ -116,7 +124,7 @@ describe("applyColorScheme", () => {
 
     const updater = findUpdater("dark");
     const result = updater(makeFakeTheme("dark"));
-    expect(result.colors.accent).toBe("#d96b45"); // emberDarkColors' accent
+    expect(result.colors.accent).toBe(EMBER_ACCENT); // emberDarkColors' accent
   });
 
   it("paints the black mirror from the dark pick when the dark spectrum is active", () => {
@@ -124,7 +132,7 @@ describe("applyColorScheme", () => {
 
     const updater = findUpdater("black");
     const result = updater(makeFakeTheme("dark"));
-    expect(result.colors.accent).toBe("#d96b45"); // emberDarkColors' accent
+    expect(result.colors.accent).toBe(EMBER_ACCENT); // emberDarkColors' accent
   });
 
   it("paints the black mirror as a dark counterpart of the light pick when light is active", () => {
@@ -132,7 +140,7 @@ describe("applyColorScheme", () => {
 
     const updater = findUpdater("black");
     const result = updater(makeFakeTheme("dark"));
-    expect(result.colors.accent).toBe("#c73d8f"); // black-Sherbet accent, not the dark pick's
+    expect(result.colors.accent).toBe(BLACK_SHERBET_ACCENT); // black-Sherbet accent, not the dark pick's
   });
 
   it("resolves the black mirror's spectrum from the OS scheme in system mode", () => {
@@ -142,7 +150,7 @@ describe("applyColorScheme", () => {
 
     const updater = findUpdater("black");
     const result = updater(makeFakeTheme("dark"));
-    expect(result.colors.accent).toBe("#c73d8f"); // black-Sherbet accent
+    expect(result.colors.accent).toBe(BLACK_SHERBET_ACCENT); // black-Sherbet accent
   });
 
   it("falls back to the dark spectrum for the black mirror when the OS scheme is unknown", () => {
@@ -152,7 +160,7 @@ describe("applyColorScheme", () => {
 
     const updater = findUpdater("black");
     const result = updater(makeFakeTheme("dark"));
-    expect(result.colors.accent).toBe("#d96b45"); // emberDarkColors' accent
+    expect(result.colors.accent).toBe(EMBER_ACCENT); // emberDarkColors' accent
   });
 
   it("preserves the mirror's existing colors.syntax instead of overwriting it", () => {

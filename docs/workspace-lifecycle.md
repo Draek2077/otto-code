@@ -42,6 +42,24 @@ Full reasoning and evidence: [projects/\_archive/duplicate-base-workspaces/](../
 
 Gated behind `server_info.features.worktreeArchiveBranchCleanup` (`COMPAT(worktreeArchiveBranchCleanup)`, added in v0.6.7) and `features.worktreeReattach`. Without them the client archives exactly as before — risk warning only, branch untouched. Key files: `workspace-archive-branch.ts` (`detectWorktreeArchiveBranch`, `deleteLocalBranch`), `worktree-reattach.ts`, `workspace-archive-service.ts`, and on the client `git/worktree-archive-warning.ts` + `workspace/use-workspace-archive.ts`.
 
+## A project's name has two carriers, so it needs its own channel
+
+A project's resolved name (`customName ?? displayName`) reaches the client on **two** buckets, and which one applies depends on state the client cannot infer from the message alone:
+
+- **`projectDisplayName` / `projectCustomName` on each workspace descriptor** — for a project that currently has visible workspaces.
+- **the empty-project descriptor** (`fetch_workspaces_response.emptyProjects`, and `workspace_update{kind:"remove", emptyProject}`) — for a project whose workspaces are all archived or hidden. The sidebar still renders it, so it still needs a name.
+
+`project.rename.request` originally propagated **only** by re-emitting workspace descriptors. That made the rename invisible for exactly the projects in the second bucket: no visible workspaces ⇒ no descriptors ⇒ nothing emitted ⇒ the name only changed on the next full `fetch_workspaces` (reconnect or sidebar refetch). From the user's side this reads as "renaming sometimes doesn't work at all, and sometimes fixes itself later".
+
+The fix is `project.updated.notification` — a **project-level** channel that fires on every rename regardless of workspace count, carries the project descriptor plus `hasActiveWorkspaces`, and is fanned out to **every** connected session (`SessionOptions.broadcastToAllSessions`) because project metadata is host-global, not per-client. The client applies it in one place (`applyProjectDescriptor`): it writes the empty-project bucket **and** patches the name fields of that project's workspace descriptors, so the update lands without waiting on the workspace channel. Old clients ignore the unknown message type and fall back to their next fetch — no capability gate, no fallback path.
+
+Two rules follow for anything that changes project-level metadata:
+
+- **Never fan a project change out over the workspace channel alone.** Announce the project itself.
+- **Only list workspaces the client can see** when re-emitting descriptors. Archived and hidden workspaces resolve to no descriptor, so the emission chokepoint turns each one into a spurious `remove` — a rename on a long-lived project used to emit one per archived worktree.
+
+The client's project list is derived from the store, not from a react-query cache: `useProjects` → `buildProjects` reads `session.workspaces` + `session.emptyProjects`. `invalidateQueries({queryKey:["projects"]})` does not refresh it — only a store write does.
+
 ## Workspace activity
 
 Workspace status is an aggregate activity signal computed **per `workspaceId`**: a workspace's status reflects only records whose `workspaceId === workspace.id`. Ownership is never derived from `cwd` — many workspaces may share one directory, and same-`cwd` siblings do not clump under one status.

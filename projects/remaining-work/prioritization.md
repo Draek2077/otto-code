@@ -83,16 +83,16 @@ this correction fixes.
 Every row here is something a developer hits while trying to get work done in Otto today.
 This is where the queue starts.
 
-| Project                             | Scope | Diff | Impact | Enab | Why here                                                                                                                                                                                 |
-| ----------------------------------- | :---: | :--: | :----: | :--: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Push-disabled-after-commit**      |   1   |  2   | **4**  |  0   | You commit and cannot push. A core git workflow is dead on GitHub remotes. Already root-caused to exact line ranges in [remaining-work.md](remaining-work.md) — pure execution           |
-| **App-wide FPS degrades over time** |   3   |  4   | **4**  |  1   | The app gets worse the longer it stays open — brutal for a tool you leave running all day. Measure first; "no resource reporting at all" is the instrument. Underrated in v1             |
-| ~~**diff-base**~~ _(shipped)_       |   2   |  2   | **4**  |  0   | Was: Changes view fills with other teams' merged work on a stacked branch. Shipped 2026-07-24 — fork-point base resolution + per-worktree base override. See `docs/changes-view.md`      |
-| **Go-to-definition (client half)**  |   2   |  2   | **4**  |  0   | IDE table stakes, and the daemon `code.symbols` RPC **already shipped** — the client just never calls it. Best impact-per-hour on the board. `projects/todos/editor-go-to-definition.md` |
-| **steer-queue**                     |   2   |  3   | **4**  |  1   | Changes every supervision interaction: today any prompt to a busy agent clobbers its turn. Absorbs "queued messages should merge into one send"                                          |
-| Composer paste overflow             |   1   |  1   |   3    |  0   | Pasting a large block pushes Send off-screen. You paste code all day                                                                                                                     |
-| **file-rendering (mermaid first)**  |   3   |  2   |   3    |  1   | Mermaid is a _listed bug_. Diagrams are dead in both chat and the file viewer; one pipeline fixes both                                                                                   |
-| Keyboard shortcut overhaul          |   3   |  3   |   3    |  0   | Editor shortcuts fight Otto's global ones. Hit constantly; plan already written                                                                                                          |
+| Project                                            | Scope | Diff | Impact | Enab | Why here                                                                                                                                                                                                                                                                                                                |
+| -------------------------------------------------- | :---: | :--: | :----: | :--: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Push-disabled-after-commit**                     |   1   |  2   | **4**  |  0   | You commit and cannot push. A core git workflow is dead on GitHub remotes. Already root-caused to exact line ranges in [remaining-work.md](remaining-work.md) — pure execution                                                                                                                                          |
+| **App-wide FPS degrades over time**                |   3   |  4   | **4**  |  1   | The app gets worse the longer it stays open — brutal for a tool you leave running all day. Measure first; "no resource reporting at all" is the instrument. Underrated in v1                                                                                                                                            |
+| ~~**diff-base**~~ _(shipped)_                      |   2   |  2   | **4**  |  0   | Was: Changes view fills with other teams' merged work on a stacked branch. Shipped 2026-07-24 — fork-point base resolution + per-worktree base override. See `docs/changes-view.md`                                                                                                                                     |
+| ~~**Go-to-definition (client half)**~~ _(shipped)_ |   2   |  2   | **4**  |  0   | Shipped: `use-go-to-definition.ts`, `word-at-cursor.ts`, `definition-picker-dialog.tsx` calling `code.symbols`. Note it runs on the **ctags** path — `lsp-code-intelligence` §3.4 replaces that word-based lookup with a position-based one, so this client wiring is rewritten in that charter's Phase 3, not extended |
+| **steer-queue**                                    |   2   |  3   | **4**  |  1   | Changes every supervision interaction: today any prompt to a busy agent clobbers its turn. Absorbs "queued messages should merge into one send"                                                                                                                                                                         |
+| Composer paste overflow                            |   1   |  1   |   3    |  0   | Pasting a large block pushes Send off-screen. You paste code all day                                                                                                                                                                                                                                                    |
+| **file-rendering (mermaid first)**                 |   3   |  2   |   3    |  1   | Mermaid is a _listed bug_. Diagrams are dead in both chat and the file viewer; one pipeline fixes both                                                                                                                                                                                                                  |
+| Keyboard shortcut overhaul                         |   3   |  3   |   3    |  0   | Editor shortcuts fight Otto's global ones. Hit constantly; plan already written                                                                                                                                                                                                                                         |
 
 ### 3.2 Small tails worth taking opportunistically
 
@@ -131,12 +131,13 @@ The fork's thesis — a capability isn't done when one provider has it.
 
 ### 3.4 Big new capability
 
-| Project                 | Scope | Diff | Impact | Enab | Why here                                                                                                                                           |
-| ----------------------- | :---: | :--: | :----: | :--: | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **refine**              |   3   |  3   | **5**  |  2   | The AI rewrite is the operation people actually reach for, and Otto supports it worst. Also unlocks context-compaction + editor "explain" (trap 2) |
-| **personality-memory**  |   3   |  3   | **4**  |  1   | Every spawn starts from zero today, so the same corrections get re-taught forever. Compounding daily value                                         |
-| history-management      |   3   |  2   |   3    |  0   | Archive is a one-way door with no delete anywhere in the app. Annoying and untidy rather than blocking                                             |
-| **agent-orchestration** |   5   |  5   | **5**  |  1   | Changes what a developer can do with Otto at all. But a quarter, not a sprint — see Wave 5                                                         |
+| Project                   | Scope | Diff | Impact | Enab | Why here                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------- | :---: | :--: | :----: | :--: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **refine**                |   3   |  3   | **5**  |  2   | The AI rewrite is the operation people actually reach for, and Otto supports it worst. Also unlocks context-compaction + editor "explain" (trap 2)                                                                                                                                                                                               |
+| **personality-memory**    |   3   |  3   | **4**  |  1   | Every spawn starts from zero today, so the same corrections get re-taught forever. Compounding daily value                                                                                                                                                                                                                                       |
+| history-management        |   3   |  2   |   3    |  0   | Archive is a one-way door with no delete anywhere in the app. Annoying and untidy rather than blocking                                                                                                                                                                                                                                           |
+| **agent-orchestration**   |   5   |  5   | **5**  |  1   | Changes what a developer can do with Otto at all. But a quarter, not a sprint — see Wave 5                                                                                                                                                                                                                                                       |
+| **lsp-code-intelligence** |   5   |  4   | **4**  |  3   | Phase 1 daemon core built 2026-07-24. Impact 4 for the definition rewrite — today's ctags index is cold on nearly every press and structurally cannot resolve _which_ `foo` — rising to 5 once Phase 5 lands, since hover/references/rename/diagnostics are new capability on machinery already paid for. Enablement 3: it gates that entire set |
 
 ### 3.5 Long horizon
 
@@ -222,7 +223,10 @@ Everything a developer hits while trying to use Otto for real work. Highest impa
 hour on the board, and all of it independently shippable.
 
 1. **Push-disabled-after-commit** — root-caused; pure execution
-2. **Go-to-definition, client half** — daemon RPC already shipped, best impact-per-hour
+2. ~~**Go-to-definition, client half**~~ — **shipped**; verified in the tree 2026-07-24
+   (`use-go-to-definition.ts` + `definition-picker-dialog.tsx`). It answers from the ctags
+   index, which `lsp-code-intelligence` replaces — do not invest further in the word-based
+   path
 3. ~~**diff-base**~~ — **shipped 2026-07-24** (`docs/changes-view.md`); only the
    auto-fetch decision and non-worktree overrides remain, both parked in
    `projects/diff-base/`
@@ -238,6 +242,11 @@ The two things you do all day in Otto that currently feel worst.
    and the editor's "explain this" action, converting two backlog items into presets)
 3. **Keyboard shortcut overhaul** — editor scope that overrides Otto's globals
 4. **subagent-liveness 6b/6c** — "alive or hung?" without opening the row
+5. **lsp-code-intelligence Phases 2–3** — Phase 1's daemon core is built and tested; Phase 2
+   (document sync off the existing buffer mirror) and Phase 3 (the `code.definition` RPC,
+   Daemon → Code settings, client rewiring from word to position) are what a user actually
+   sees. Belongs here rather than Wave 1 because Wave 1's go-to-definition already shipped —
+   this replaces its answer quality, it does not unblock a dead workflow
 
 ### Wave 3 — the performance floor
 

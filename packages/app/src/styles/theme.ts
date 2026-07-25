@@ -411,21 +411,21 @@ const daylightColors = buildLightSemanticColors({
   surface0: "#ffffff",
   surface1: "#fafafa",
   surface2: "#f4f4f5",
-  surface3: "#e4e4e7",
-  surface4: "#d4d4d8",
+  surface3: "#dcdce1", // was #e4e4e7 — deepened so elevated layers separate from the white base
+  surface4: "#c3c3ca", // was #d4d4d8 — the bottom of the light ramp, pushed down for range
   surfaceDiffEmpty: "#f6f6f6",
   surfaceSidebar: "#f4f4f5",
   surfaceSidebarHover: "#e9e9ec",
-  foreground: "#37373c", // charcoal, lifted from near-black #1a1a1e — softer than pure black, ~11:1 on white
-  foregroundMuted: "#62626b", // was #71717a — stronger secondary text
-  scrollbarHandle: "#3f3f46",
-  border: "#dcdce0", // was #e4e4e7 — clearer panel separation
-  borderAccent: "#ececf1",
-  accent: "#b98d00", // golden sun (hue ~46°, yellow not orange) — ~3.1:1 on white, max chroma at that lightness; shared with spinnerPrimary
-  accentBright: "#c29200", // brighter step (links, selected-tab icons) — ~2.8:1 on white
+  foreground: "#26262b", // was #37373c — charcoal pushed back toward ink for range; still off pure black
+  foregroundMuted: "#55555e", // was #62626b — stronger secondary text
+  scrollbarHandle: "#2f2f36",
+  border: "#d1d1d8", // was #dcdce0 — clearer panel separation
+  borderAccent: "#e3e3ea",
+  accent: "#c69700", // golden sun (hue ~46°, yellow not orange), chroma pushed a step past #b98d00; shared with spinnerPrimary
+  accentBright: "#d1a000", // brighter step (links, selected-tab icons)
   accentForeground: "#181300", // deep warm ink on gold fills — ~6.1:1 (white on gold washes out)
   destructive: "#b04138", // dark warm red on white — calm but unambiguously red
-  spinnerPrimary: "#b98d00", // namesake gold — the daylight sun, held just dark enough for white
+  spinnerPrimary: "#c69700", // namesake gold — the daylight sun, held just dark enough for white
   spinnerSecondary: "#0d8ede", // clear azure — the daytime sky behind it
 });
 
@@ -436,18 +436,18 @@ const sherbetColors = buildLightSemanticColors({
   surface0: "#fdf7f2",
   surface1: "#f9efe8",
   surface2: "#f4e6dd",
-  surface3: "#e9d4c8",
-  surface4: "#dbbfb0",
+  surface3: "#ddc2b3", // deepened from #e9d4c8 for range against the near-white base
+  surface4: "#cba895", // deepened from #dbbfb0
   surfaceDiffEmpty: "#f6ebe2",
   surfaceSidebar: "#f7ebe2",
   surfaceSidebarHover: "#f0e0d3",
-  foreground: "#453a4d", // plum charcoal, lifted from near-black #2b2233
-  foregroundMuted: "#6b5f6e",
-  scrollbarHandle: "#55495a",
-  border: "#e8d5ca",
-  borderAccent: "#f0e0d5",
-  accent: "#b83280",
-  accentBright: "#99286b",
+  foreground: "#322740", // plum charcoal, pushed back down from #453a4d
+  foregroundMuted: "#5e5162",
+  scrollbarHandle: "#46394c",
+  border: "#ddc8bb",
+  borderAccent: "#e9d6c9",
+  accent: "#d4187e", // raspberry, chroma pushed past the old #b83280 so it clears the peach surfaces
+  accentBright: "#b30f66",
   destructive: "#b04138",
   spinnerPrimary: "#d02580", // namesake raspberry sherbet, deep and saturated
   spinnerSecondary: "#e87410", // tangerine scoop
@@ -460,18 +460,18 @@ const meadowColors = buildLightSemanticColors({
   surface0: "#f6faf7",
   surface1: "#eef6f1",
   surface2: "#e3eee7",
-  surface3: "#cfe0d6",
-  surface4: "#b7cdc0",
+  surface3: "#bcd2c4", // deepened from #cfe0d6 for range
+  surface4: "#9fbcac", // deepened from #b7cdc0
   surfaceDiffEmpty: "#eef5f0",
   surfaceSidebar: "#eef6f1",
   surfaceSidebarHover: "#e3eee7",
-  foreground: "#334339", // green charcoal, lifted from near-black #16261d
-  foregroundMuted: "#5c6f64",
-  scrollbarHandle: "#3f4a44",
-  border: "#dbe8e0",
-  borderAccent: "#e3eee7",
-  accent: "#20744A",
-  accentBright: "#1f8a52",
+  foreground: "#1f3227", // green charcoal, pushed back down from #334339
+  foregroundMuted: "#4e6357",
+  scrollbarHandle: "#2f3d36",
+  border: "#cadcd2",
+  borderAccent: "#d8e7dd",
+  accent: "#0b9354", // brand green with the chroma opened up — the old #20744A sank into the sage surfaces
+  accentBright: "#0aa85f",
   destructive: "#b04138",
   spinnerPrimary: "#1a9155", // namesake meadow green, deep and saturated
   spinnerSecondary: "#ca8a04", // buttercup gold
@@ -483,18 +483,18 @@ const terracottaColors = buildLightSemanticColors({
   surface0: "#fdf8f5",
   surface1: "#f9f1ec",
   surface2: "#f3e6dd",
-  surface3: "#e6d0c1",
-  surface4: "#d6b8a4",
+  surface3: "#dbc0ac", // deepened from #e6d0c1 for range
+  surface4: "#c8a488", // deepened from #d6b8a4
   surfaceDiffEmpty: "#f7ede4",
   surfaceSidebar: "#f8efe8",
   surfaceSidebarHover: "#f1e2d5",
-  foreground: "#473b31", // warm clay charcoal, lifted from near-black #2e2019
-  foregroundMuted: "#75655a",
-  scrollbarHandle: "#5c4c40",
-  border: "#ecdccd",
-  borderAccent: "#f1e2d5",
-  accent: "#b8552f",
-  accentBright: "#9c4526",
+  foreground: "#34291f", // warm clay charcoal, pushed back down from #473b31
+  foregroundMuted: "#66564b",
+  scrollbarHandle: "#4b3c31",
+  border: "#e0cbb7",
+  borderAccent: "#ead7c7",
+  accent: "#d9541c", // burnt orange, chroma pushed past #b8552f so it reads against the cream surfaces
+  accentBright: "#b84210",
   destructive: "#b04138",
   spinnerPrimary: "#c9511c", // namesake terracotta clay, deep and saturated
   spinnerSecondary: "#d97706", // warm amber gold
@@ -506,42 +506,43 @@ const horizonColors = buildLightSemanticColors({
   surface0: "#f6f9fd",
   surface1: "#eef4fb",
   surface2: "#e1ebf7",
-  surface3: "#c6d9ef",
-  surface4: "#a9c3e2",
+  surface3: "#b2cbe9", // deepened from #c6d9ef for range
+  surface4: "#8fb2d9", // deepened from #a9c3e2
   surfaceDiffEmpty: "#eef3fa",
   surfaceSidebar: "#eef4fb",
   surfaceSidebarHover: "#e1ebf7",
-  foreground: "#343d4e", // blue charcoal, lifted from near-black #161e2e
-  foregroundMuted: "#5a6b85",
-  scrollbarHandle: "#3f4d63",
-  border: "#d7e4f3",
-  borderAccent: "#e1ebf7",
-  accent: "#2159c9",
-  accentBright: "#1a49a8",
+  foreground: "#212a3b", // blue charcoal, pushed back down from #343d4e
+  foregroundMuted: "#4c5d78",
+  scrollbarHandle: "#2f3d53",
+  border: "#c7d9ee",
+  borderAccent: "#d5e4f4",
+  accent: "#0d5ce8", // azure taken to full chroma — #2159c9 was only a step off the sky-blue surfaces
+  accentBright: "#0b4cc4",
   destructive: "#b04138",
   spinnerPrimary: "#2563eb", // namesake horizon blue, deep and saturated
   spinnerSecondary: "#ea580c", // sunrise orange on the horizon line
 });
 
 // Powder — muted blue-grey light variant, mirroring dark Slate. Foggier and
-// greyer than Horizon, with a desaturated slate-blue accent instead of a
-// saturated one.
+// greyer than Horizon: the *surfaces* stay desaturated, but the accent leans
+// periwinkle at full chroma so it can't be mistaken for another grey step (and
+// so it stays distinguishable from Horizon's pure azure).
 const powderColors = buildLightSemanticColors({
   surface0: "#f6f7f9",
   surface1: "#eef0f4",
   surface2: "#e3e7ee",
-  surface3: "#cbd2de",
-  surface4: "#b0b9ca",
+  surface3: "#b8c1d2", // deepened from #cbd2de for range
+  surface4: "#99a4ba", // deepened from #b0b9ca
   surfaceDiffEmpty: "#eef1f5",
   surfaceSidebar: "#eef0f4",
   surfaceSidebarHover: "#e3e7ee",
-  foreground: "#3a3f4a", // slate charcoal, lifted from near-black #1e222b
-  foregroundMuted: "#636c7d",
-  scrollbarHandle: "#454e5f",
-  border: "#dde1e9",
-  borderAccent: "#e3e7ee",
-  accent: "#4a6fa5",
-  accentBright: "#3a5a8a",
+  foreground: "#272c38", // slate charcoal, pushed back down from #3a3f4a
+  foregroundMuted: "#545d70",
+  scrollbarHandle: "#353e4f",
+  border: "#ced4e0",
+  borderAccent: "#d8dde8",
+  accent: "#4a5fd0", // periwinkle — the old #4a6fa5 was a saturated-grey, indistinguishable from the surfaces
+  accentBright: "#3a4dba",
   destructive: "#b04138",
   spinnerPrimary: "#3e6db8", // namesake powder blue, deepened to hold on white
   spinnerSecondary: "#7b5fd0", // periwinkle violet
@@ -573,12 +574,14 @@ interface DarkThemeConfig {
 }
 
 // Primary text ink for every dark variant. A neutral off-white rather than
-// pure #fafafa — a few points darker so long reading sessions on dark
+// pure #fafafa — a couple of points darker so long reading sessions on dark
 // surfaces don't glare, but zero saturation so it can't clash with any
 // theme's tint (the earlier warm eggshell read yellow on cool themes).
 // Shared across foreground, its legacy aliases, and the terminal so all
-// dark "white" text moves together.
-const darkForeground = "#e4e4e4";
+// dark "white" text moves together. Lifted from #e4e4e4 in the range refresh:
+// the dark variants widen upward (elevated surfaces, muted text, borders all
+// step lighter), so the ink at the top of the ramp moves with them.
+const darkForeground = "#ededee";
 
 const darkTerminalAnsi = {
   red: "#e07070",
@@ -693,18 +696,18 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
 const neutralDarkColors = buildDarkSemanticColors({
   surface0: "#1e1e22", // was #18181b — all dark surfaces lifted +2.5 L pts
   surface1: "#252529",
-  surface2: "#2d2d31",
-  surface3: "#45454d",
-  surface4: "#585862",
-  surfaceDiffEmpty: "#2a2a2e",
+  surface2: "#323238",
+  surface3: "#52525c", // lifted from #45454d — the dark ramp widens upward, not downward
+  surface4: "#6e6e7a", // lifted from #585862
+  surfaceDiffEmpty: "#2e2e33",
   surfaceSidebar: "#19191d",
   surfaceSidebarHover: "#212125",
-  foregroundMuted: "#a9a9b2",
-  scrollbarHandle: "#7b7b84",
-  border: "#2b2b30",
-  borderAccent: "#36363d",
-  accent: "#7ea6d9",
-  accentBright: "#bcd6f2",
+  foregroundMuted: "#b6b6bf",
+  scrollbarHandle: "#8b8b95",
+  border: "#33333a",
+  borderAccent: "#414149",
+  accent: "#5aa0ee", // was #7ea6d9 — same azure, chroma opened up so it reads as a colour, not a grey-blue
+  accentBright: "#a9d0ff",
   destructive: "#c44a4a", // neutral red, hue 0 — clearly red without screaming
   spinnerPrimary: "#79b3f2", // namesake twilight blue, lifted to glow on dark
   spinnerSecondary: "#f591b5", // Belt-of-Venus rose — the pink dusk band opposite the sunset
@@ -716,44 +719,47 @@ const neutralDarkColors = buildDarkSemanticColors({
 const evergreenDarkColors = buildDarkSemanticColors({
   surface0: "#1e2221", // was #181B1A — all dark surfaces lifted +2.5 L pts
   surface1: "#242826",
-  surface2: "#2d312f",
-  surface3: "#494d4b",
-  surface4: "#5f6161",
-  surfaceDiffEmpty: "#2b2f2d",
+  surface2: "#333835",
+  surface3: "#545b58", // lifted from #494d4b — widen the ramp upward
+  surface4: "#737a77", // lifted from #5f6161
+  surfaceDiffEmpty: "#2f3432",
   surfaceSidebar: "#1a1e1d",
   surfaceSidebarHover: "#222624",
-  foregroundMuted: "#aab0ae", // was #A1A5A4
-  scrollbarHandle: "#7d8280",
-  border: "#2c3331", // was #252B2A — clearer panel separation
-  borderAccent: "#3a4240",
-  accent: "#20744A",
-  accentBright: "#8ce0af", // was #7ccba0 — brighter accent text on dark surfaces
+  foregroundMuted: "#b6bebb", // was #aab0ae
+  scrollbarHandle: "#8d9491",
+  border: "#343d3a", // was #2c3331 — clearer panel separation
+  borderAccent: "#454f4c",
+  accent: "#149159", // was #20744A — the brand green was near-identical to the tinted surfaces; same hue, real chroma
+  accentBright: "#6ef0b0", // was #8ce0af — brighter accent text on dark surfaces
   destructive: "#c64f43", // warm red, hue ~7 — reads as red (not pink) against the green tint
   spinnerPrimary: "#5ee8a4", // namesake evergreen, lifted to glow on dark
   spinnerSecondary: "#f5d06b", // warm gold — sunlight through the canopy
 });
 
-// Graphite — monochrome. Surfaces deepened toward true black and borders
-// lifted so the near-white accent lands on real contrast instead of gray soup.
+// Graphite — monochrome *surfaces*, one coloured accent. The near-white accent
+// this shipped with was indistinguishable from the theme's own light tones —
+// the CTA looked like any other bright text — so the accent is now an icy cyan:
+// the only hue in the theme, which is exactly what an accent is for. Surfaces,
+// text, and borders stay strictly grey, so nothing else competes with it.
 const graphiteDarkColors = buildDarkSemanticColors({
   surface0: "#1a1a1e", // was #141417 — all dark surfaces lifted +2.5 L pts
   surface1: "#222226",
-  surface2: "#2d2d31",
-  surface3: "#45454d",
-  surface4: "#585862",
-  surfaceDiffEmpty: "#27272b",
+  surface2: "#323236",
+  surface3: "#525259", // lifted from #45454d — widen the ramp upward
+  surface4: "#6e6e78", // lifted from #585862
+  surfaceDiffEmpty: "#2b2b30",
   surfaceSidebar: "#151518",
   surfaceSidebarHover: "#1d1d21",
-  foregroundMuted: "#b0b0b8", // was #a1a1aa
-  scrollbarHandle: "#83838d",
-  border: "#2e2e33", // was #27272a — no longer identical to surface2
-  borderAccent: "#3a3a41",
-  accent: "#e4e4e7",
-  accentBright: "#ffffff",
-  accentForeground: "#141417", // monochrome accent is near-white — needs dark text
+  foregroundMuted: "#bcbcc4", // was #b0b0b8
+  scrollbarHandle: "#93939d",
+  border: "#37373d", // was #2e2e33 — no longer identical to surface2
+  borderAccent: "#45454d",
+  accent: "#35c8e0", // icy cyan — the graphite-steel hue, and the only colour in the theme
+  accentBright: "#7fe4f5",
+  accentForeground: "#0d1416", // bright cyan fill — needs dark text
   destructive: "#c44a4a", // neutral red, hue 0 — clearly red without screaming
   spinnerPrimary: "#f5f6fa", // namesake graphite silver — stays monochrome
-  spinnerSecondary: "#b3bcd1", // icy steel — light enough to glow on near-black
+  spinnerSecondary: "#4fd8ee", // the accent cyan, so the glow carries the theme's one hue
 });
 
 // Nightfall — deep blue night. Base surfaces deepened and the accent blue
@@ -761,18 +767,18 @@ const graphiteDarkColors = buildDarkSemanticColors({
 const nightfallDarkColors = buildDarkSemanticColors({
   surface0: "#171925", // was #12141d — all dark surfaces lifted +2.5 L pts
   surface1: "#1d202c",
-  surface2: "#2a2d38",
-  surface3: "#424453",
-  surface4: "#595b6b",
-  surfaceDiffEmpty: "#252834",
+  surface2: "#2f3340",
+  surface3: "#4d5163", // lifted from #424453 — widen the ramp upward
+  surface4: "#6a6e84", // lifted from #595b6b
+  surfaceDiffEmpty: "#292d3a",
   surfaceSidebar: "#121522",
   surfaceSidebarHover: "#1b1d2e",
-  foregroundMuted: "#a6aabf", // was #9a9db0
-  scrollbarHandle: "#787c94",
-  border: "#2a2c3f", // was #242636
-  borderAccent: "#383a50",
-  accent: "#3b6fcf",
-  accentBright: "#92bcff", // was #7eaaeb
+  foregroundMuted: "#b3b7cc", // was #a6aabf
+  scrollbarHandle: "#888ca4",
+  border: "#333648", // was #2a2c3f
+  borderAccent: "#43465e",
+  accent: "#2f7ff0", // was #3b6fcf — electric blue, so the accent clears the navy surfaces it sits on
+  accentBright: "#a5c9ff", // was #92bcff
   destructive: "#c44a52", // red with a hint of cool lean against the blue tint
   spinnerPrimary: "#7fb3ff", // namesake nightfall blue, lifted to glow on dark
   spinnerSecondary: "#b79cff", // dusk violet
@@ -783,18 +789,18 @@ const nightfallDarkColors = buildDarkSemanticColors({
 const emberDarkColors = buildDarkSemanticColors({
   surface0: "#232120", // was #1c1b1a — all dark surfaces lifted +2.5 L pts
   surface1: "#2b2826",
-  surface2: "#363331",
-  surface3: "#514d4b",
-  surface4: "#676361",
-  surfaceDiffEmpty: "#312e2c",
+  surface2: "#3b3835",
+  surface3: "#5c5754", // lifted from #514d4b — widen the ramp upward
+  surface4: "#7b7572", // lifted from #676361
+  surfaceDiffEmpty: "#353230",
   surfaceSidebar: "#1d1b1a",
   surfaceSidebarHover: "#252322",
-  foregroundMuted: "#b8b3ae", // was #ada9a5
-  scrollbarHandle: "#847f7a",
-  border: "#35322e", // was #2c2a27
-  borderAccent: "#423e39",
-  accent: "#d96b45", // was #d97757 — more saturated ember
-  accentBright: "#ffab88", // was #e89a7f
+  foregroundMuted: "#c4bfb9", // was #b8b3ae
+  scrollbarHandle: "#948e88",
+  border: "#3e3a36", // was #35322e
+  borderAccent: "#4d4842",
+  accent: "#f2662f", // was #d96b45 — the ember burns hotter, clear of the warm-charcoal surfaces
+  accentBright: "#ffb495", // was #ffab88
   destructive: "#cf513e", // warm orange-red, hue ~10 — sits with the ember accent
   spinnerPrimary: "#ff9866", // namesake ember orange, lifted to glow on dark
   spinnerSecondary: "#ffd07e", // glowing coal gold
@@ -806,21 +812,21 @@ const emberDarkColors = buildDarkSemanticColors({
 const slateDarkColors = buildDarkSemanticColors({
   surface0: "#2e323b", // was #282c34 — all dark surfaces lifted +2.5 L pts
   surface1: "#353944",
-  surface2: "#3e424f",
-  surface3: "#505565",
-  surface4: "#61677c",
-  surfaceDiffEmpty: "#373c4a",
+  surface2: "#444956",
+  surface3: "#5b6172", // lifted from #505565 — widen the ramp upward
+  surface4: "#737a90", // lifted from #61677c
+  surfaceDiffEmpty: "#3b4150",
   surfaceSidebar: "#232831", // was #1e222a
   surfaceSidebarHover: "#2b303a",
-  foregroundMuted: "#c8ccd8",
-  scrollbarHandle: "#a0a4b2",
-  border: "#3d4352", // was #353a47
-  borderAccent: "#4a5062",
-  accent: "#89b4fa",
-  accentBright: "#c4dafd",
-  accentForeground: "#14181f", // light blue accent — needs dark text (white was ~2:1)
+  foregroundMuted: "#d2d6e2",
+  scrollbarHandle: "#aeb2c0",
+  border: "#454c5c", // was #3d4352
+  borderAccent: "#545b6e",
+  accent: "#6ba6ff", // was #89b4fa — same lineage blue with the grey squeezed out, so it separates from the blue-grey surfaces
+  accentBright: "#b3d0ff",
+  accentForeground: "#0f1622", // light blue accent — needs dark text (white was ~2:1)
   destructive: "#c44a55", // red with slight cool lean against the slate-blue surfaces
-  spinnerPrimary: "#89b4fa", // namesake slate-blue accent
+  spinnerPrimary: "#6ba6ff", // namesake slate-blue accent
   spinnerSecondary: "#cba6f7", // soft mauve
 });
 
@@ -831,17 +837,17 @@ const slateDarkColors = buildDarkSemanticColors({
 const neotokyoDarkColors = buildDarkSemanticColors({
   surface0: "#151522", // was #0b0b12 — lifted +5 L pts, off the near-black base
   surface1: "#1c1c2a",
-  surface2: "#242435",
-  surface3: "#38384f",
-  surface4: "#4a4a67",
-  surfaceDiffEmpty: "#21212e",
+  surface2: "#29293d",
+  surface3: "#434360", // lifted from #38384f — widen the ramp upward
+  surface4: "#5a5a7d", // lifted from #4a4a67
+  surfaceDiffEmpty: "#252534",
   surfaceSidebar: "#10101c",
   surfaceSidebarHover: "#1a1a2a",
-  foregroundMuted: "#a2a6c8",
-  scrollbarHandle: "#7478a2",
-  border: "#23233a",
-  borderAccent: "#2f2f4e",
-  accent: "#c2188f",
+  foregroundMuted: "#b0b4d4",
+  scrollbarHandle: "#8488b2",
+  border: "#2b2b46",
+  borderAccent: "#39395c",
+  accent: "#c2188f", // left alone — this is the accent the rest of the set was retuned toward
   accentBright: "#ff5ad1",
   destructive: "#d94848", // clearly red so errors never blur into the magenta accent
   spinnerPrimary: "#ff5ad1", // namesake neon magenta
@@ -1286,7 +1292,7 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     scrollbarHandle: "#8a8a93",
     border: "#26262c",
     borderAccent: "#323239",
-    accent: "#b98d00", // ~6.9:1 on black — same golden sun as light Daylight
+    accent: "#c69700", // same golden sun as light Daylight
     accentBright: "#ffd54f", // sunny gold, ~14.9:1 on black
     accentForeground: "#181300", // match light Daylight's ink-on-gold fills
     destructive: "#c44a4a",
@@ -1307,7 +1313,7 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     scrollbarHandle: "#998894",
     border: "#322630",
     borderAccent: "#41323e",
-    accent: "#c73d8f",
+    accent: "#e02a90", // light Sherbet's raspberry, lifted for black
     accentBright: "#ff85cd",
     destructive: "#cf4f46",
     spinnerPrimary: "#ff5aa8", // namesake raspberry, lifted for black
@@ -1327,8 +1333,8 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     scrollbarHandle: "#87948c",
     border: "#25322a",
     borderAccent: "#32423a",
-    accent: "#20744A",
-    accentBright: "#8ce0af",
+    accent: "#0b9354",
+    accentBright: "#6ef0b0",
     destructive: "#c64f43",
     spinnerPrimary: "#4fd68a", // namesake meadow green, lifted
     spinnerSecondary: "#e8be55", // buttercup gold, lifted
@@ -1347,7 +1353,7 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     scrollbarHandle: "#988b7f",
     border: "#33291f",
     borderAccent: "#423528",
-    accent: "#cf6236",
+    accent: "#ef6a2f",
     accentBright: "#ff9d70",
     destructive: "#cf513e",
     spinnerPrimary: "#ff8a50", // namesake clay, lifted
@@ -1367,13 +1373,13 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     scrollbarHandle: "#8590aa",
     border: "#222c44",
     borderAccent: "#2f3b5a",
-    accent: "#3b6fcf",
-    accentBright: "#92bcff",
+    accent: "#2f7ff0",
+    accentBright: "#a5c9ff",
     destructive: "#c44a52",
     spinnerPrimary: "#6ea3ff", // namesake horizon blue, lifted
     spinnerSecondary: "#ff8a4d", // sunrise orange, lifted
   }),
-  // Powder — foggy slate-blue cast; desaturated accent goes light enough on
+  // Powder — foggy slate-blue cast; the periwinkle accent goes light enough on
   // black that it needs dark text, like Slate's.
   powder: buildBlackFromLightColors({
     surface0: "#000000",
@@ -1388,8 +1394,8 @@ export const BLACK_LIGHT_VARIANT_COLORS: Record<
     scrollbarHandle: "#8f96a8",
     border: "#293040",
     borderAccent: "#363e50",
-    accent: "#7d9ecf",
-    accentBright: "#b3ccf2",
+    accent: "#8a94ee",
+    accentBright: "#b9c0ff",
     accentForeground: "#10141c",
     destructive: "#c44a55",
     spinnerPrimary: "#7da3e8", // namesake powder blue, lifted
@@ -1423,17 +1429,17 @@ export type Theme = typeof darkTheme | typeof daylightTheme;
 // whichever variant is the user's current per-spectrum preference, for both
 // explicit Light/Dark mode and System (adaptive) mode alike.
 export const THEME_SWATCHES: Record<ThemeVariantName, string> = {
-  daylight: "#f4f4f5",
-  pastel: "#e8a3c8",
-  meadow: "#2f8f5c",
-  terracotta: "#c2663a",
-  horizon: "#3b6fd1",
-  powder: "#7d93b3",
-  dark: "#3f3f46",
-  evergreen: "#2D8B62",
-  zinc: "#808080",
-  midnight: "#4A6BA8",
-  claude: "#D96B45",
-  ghostty: "#8caaee",
+  daylight: "#f4f4f5", // the neutral light surface — Daylight is picked for being untinted
+  pastel: "#e86bb0",
+  meadow: "#0f9c5b",
+  terracotta: "#dd5b25",
+  horizon: "#1a63e6",
+  powder: "#6d7ed8",
+  dark: "#3f3f46", // the neutral dark surface — Twilight is picked for being untinted
+  evergreen: "#16a066",
+  zinc: "#808080", // Graphite's swatch stays grey: the theme is monochrome, the cyan is only its accent
+  midnight: "#3d7fe0",
+  claude: "#f2662f",
+  ghostty: "#6ba6ff",
   cyberpunk: "#ff5ad1",
 };

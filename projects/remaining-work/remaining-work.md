@@ -38,6 +38,17 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation/decision · �
   files; web/Electron render in-page, iOS/Android in a self-contained webview payload.
   Durable facts folded into
   [docs/markdown-rendering.md](../../docs/markdown-rendering.md).
+- 🟡 **LSP code intelligence — Phases 4–5** — Phases 1–3 complete (2026-07-25).
+  `packages/server/src/server/lsp/` (uri / connection / registry / pool / documents /
+  service) with a real `typescript-language-server` handshake and a real `csharp-ls` one;
+  `code.definition` + `code.document.*` behind `features.lsp`; and a **Daemon → Code**
+  settings section (master switch, per-language rows with cost copy, running-servers
+  table with Stop). Go-to-definition is position-based now, with the ctags index demoted
+  to the no-server fallback. **Never run against a live daemon** — every test is
+  daemon-side or type-level. Open: Angular's second server per document (Phase 4), hover /
+  references / rename / diagnostics (Phase 5), and a live pass over the editor path and
+  the settings screen. Charter:
+  [lsp-code-intelligence.md](../lsp-code-intelligence/lsp-code-intelligence.md).
 - 🔵 **Verify caret auto-scroll follow + search-match-scroll fixes** — batch-07-23.
   Both marked fixed but carry "verify on the live repro across plain and split
   mode before deleting the note." (See memory `editor-caret-follow-reassert`.)
@@ -211,6 +222,7 @@ file-rendering · web-search-providers · site-demos · personality-memory ·
 preview-file-tabs · total-token-accounting · workflow-decomposition ·
 visualizer-node-richness (context ring) · history-management · context-management ·
 refine · visualizer-pip · upstream-subagent-convergence ·
+lsp-code-intelligence (Phase 1 core built 2026-07-24, Phases 2–5 open) ·
 git-hosting-providers (GitLab+) ·
 git-file-history (presentation) · e2e-qa-coverage (build-out) ·
 marketing-strategy · outreach _(non-product)_.

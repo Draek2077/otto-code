@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { getLanguageDisplayName } from "@otto-code/highlight";
-import type { FileEol } from "@otto-code/protocol/messages";
+import type { CodeDiagnostic, FileEol } from "@otto-code/protocol/messages";
 import {
   Abc,
   DataObject,
@@ -10,6 +10,7 @@ import {
   Pilcrow,
   TextSelectStart,
 } from "@/components/icons/material-icons";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isWeb } from "@/constants/platform";
 import { useIconSize, type Theme } from "@/styles/theme";
 import { formatFileSize, utf8ByteSize } from "@/utils/format-file-size";
@@ -77,12 +78,100 @@ interface EditorStatusBarProps {
   isText: boolean;
   /** Null in preview mode, and until the editor reports its first position. */
   cursor: EditorCursorPosition | null;
+  /**
+   * Problems the language servers found. Rendered as per-severity totals at the far right,
+   * behind a divider, and absent entirely when there are none — a clean file earns no
+   * chrome, and a count of zero would be indistinguishable from a file nothing analysed.
+   */
+  diagnostics?: readonly CodeDiagnostic[];
 }
 
-export function EditorStatusBar({ path, byteSize, eol, isText, cursor }: EditorStatusBarProps) {
+/** Totals per severity, most severe first, skipping the ones at zero. */
+function diagnosticTotals(
+  diagnostics: readonly CodeDiagnostic[],
+): { severity: CodeDiagnostic["severity"]; count: number }[] {
+  const order: CodeDiagnostic["severity"][] = ["error", "warning", "info", "hint"];
+  return order
+    .map((severity) => ({
+      severity,
+      count: diagnostics.filter((entry) => entry.severity === severity).length,
+    }))
+    .filter((entry) => entry.count > 0);
+}
+
+/**
+ * Same tokens the squiggle and the gutter glyph use, so one problem is one colour wherever
+ * it appears. `hint` is the muted foreground rather than a fifth hue, on purpose — a hint is
+ * the server being helpful, and giving it its own colour would let advice compete with
+ * failures for attention.
+ */
+const SEVERITY_DOT_STYLE: Readonly<
+  Record<CodeDiagnostic["severity"], "dotError" | "dotWarning" | "dotInfo" | "dotHint">
+> = {
+  error: "dotError",
+  warning: "dotWarning",
+  info: "dotInfo",
+  hint: "dotHint",
+};
+
+// Written into each variant rather than composed at the call site — an inline style array
+// is a new array per render, which the react-perf rule rejects as a prop.
+const SEVERITY_DOT = { width: 7, height: 7, borderRadius: 999, flexShrink: 0 } as const;
+
+const SEVERITY_NOUN: Readonly<Record<CodeDiagnostic["severity"], [string, string]>> = {
+  error: ["error", "errors"],
+  warning: ["warning", "warnings"],
+  info: ["suggestion", "suggestions"],
+  hint: ["hint", "hints"],
+};
+
+/**
+ * One severity's total, with a tooltip that says what it is.
+ *
+ * A coloured dot and a number is unreadable on its own — the whole reason this bar needed
+ * fixing was that severity was being carried by colour alone. `info` reads as "suggestion"
+ * rather than "info", which is what a language server actually means by it.
+ */
+function SeverityTotal({
+  severity,
+  count,
+}: {
+  severity: CodeDiagnostic["severity"];
+  count: number;
+}) {
+  const [singular, plural] = SEVERITY_NOUN[severity];
+
+  return (
+    <Tooltip delayDuration={300}>
+      <TooltipTrigger
+        accessibilityRole="text"
+        accessibilityLabel={`${count} ${count === 1 ? singular : plural}`}
+        style={styles.item}
+      >
+        <View style={styles[SEVERITY_DOT_STYLE[severity]]} />
+        <Text style={styles.numericText} numberOfLines={1}>
+          {count}
+        </Text>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        <Text style={styles.tooltipText}>{`${count} ${count === 1 ? singular : plural}`}</Text>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function EditorStatusBar({
+  path,
+  byteSize,
+  eol,
+  isText,
+  cursor,
+  diagnostics,
+}: EditorStatusBarProps) {
   const iconSize = useIconSize();
   const language = useMemo(() => getLanguageDisplayName(path), [path]);
   const size = useMemo(() => formatFileSize({ size: byteSize }), [byteSize]);
+  const totals = useMemo(() => diagnosticTotals(diagnostics ?? []), [diagnostics]);
 
   return (
     <View style={styles.container} testID="editor-status-bar">
@@ -101,6 +190,13 @@ export function EditorStatusBar({ path, byteSize, eol, isText, cursor }: EditorS
         </View>
       </View>
       <View style={styles.group}>
+        {/* Problems lead the right-hand group, ahead of the divider: they are a fact about
+            the file's health, and the encoding/caret readouts stay rightmost because that is
+            where the eye already goes for them. */}
+        {totals.map((entry) => (
+          <SeverityTotal key={entry.severity} severity={entry.severity} count={entry.count} />
+        ))}
+        {totals.length > 0 ? <View style={styles.divider} /> : null}
         {eol ? (
           <View style={styles.item}>
             <ThemedPilcrow size={iconSize.xs} uniProps={mutedIconColor} />
@@ -173,4 +269,21 @@ const styles = StyleSheet.create((theme) => ({
     fontVariant: ["tabular-nums"],
     flexShrink: 1,
   },
+  // Separates the problem totals from the caret readout: they are a different kind of
+  // fact about the file, and without a rule they read as one run of numbers.
+  divider: {
+    width: 1,
+    alignSelf: "stretch",
+    marginVertical: theme.spacing[1],
+    backgroundColor: theme.colors.border,
+    flexShrink: 0,
+  },
+  tooltipText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+  },
+  dotError: { ...SEVERITY_DOT, backgroundColor: theme.colors.statusDanger },
+  dotWarning: { ...SEVERITY_DOT, backgroundColor: theme.colors.statusWarning },
+  dotInfo: { ...SEVERITY_DOT, backgroundColor: theme.colors.statusInfo },
+  dotHint: { ...SEVERITY_DOT, backgroundColor: theme.colors.foregroundMuted },
 }));

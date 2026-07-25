@@ -106,6 +106,11 @@ export interface PanelState {
   // wants a file revealed in the Files tree; the file explorer consumes it
   // back to null. The token disambiguates repeat reveals of the same path.
   filesRevealRequest: { path: string; token: number } | null;
+  // Ephemeral (not persisted): the mirror image of filesRevealRequest — set when
+  // another surface (the Files tree's "View changes", the file tab's toolbar)
+  // wants a file revealed in the Changes tab; the diff pane consumes it back to
+  // null after expanding the file's diff and scrolling its header into view.
+  changesRevealRequest: { path: string; token: number } | null;
   // Ephemeral (not persisted): true only while the workspace explorer sidebar is
   // actually painted under the window controls. The window-controls overlay
   // background follows this so it stays surface0 during the workspace load pause
@@ -155,6 +160,8 @@ export interface PanelState {
   clearFileFinderOpenRequest: () => void;
   requestFilesReveal: (path: string) => void;
   clearFilesRevealRequest: () => void;
+  requestChangesReveal: (path: string) => void;
+  clearChangesRevealRequest: () => void;
   setExplorerSidebarVisible: (visible: boolean) => void;
   setFocusModeTabStripVisible: (visible: boolean) => void;
 }
@@ -197,6 +204,7 @@ export const usePanelStore = create<PanelState>()(
       projectSearchFocusToken: 0,
       fileFinderOpenToken: 0,
       filesRevealRequest: null,
+      changesRevealRequest: null,
       explorerSidebarVisible: false,
       focusModeTabStripVisible: false,
 
@@ -353,6 +361,11 @@ export const usePanelStore = create<PanelState>()(
           filesRevealRequest: { path, token: (state.filesRevealRequest?.token ?? 0) + 1 },
         })),
       clearFilesRevealRequest: () => set({ filesRevealRequest: null }),
+      requestChangesReveal: (path) =>
+        set((state) => ({
+          changesRevealRequest: { path, token: (state.changesRevealRequest?.token ?? 0) + 1 },
+        })),
+      clearChangesRevealRequest: () => set({ changesRevealRequest: null }),
       setExplorerSidebarVisible: (visible) =>
         set((state) =>
           state.explorerSidebarVisible === visible ? state : { explorerSidebarVisible: visible },

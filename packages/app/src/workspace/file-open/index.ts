@@ -158,7 +158,12 @@ function isWindowsPath(value: string): boolean {
   return /^[A-Za-z]:\//.test(value);
 }
 
-function pathsEqual(left: string, right: string): boolean {
+/**
+ * Compares two already-normalized paths (as produced by `resolveWorkspaceFilePaths`).
+ * Case-insensitive for Windows paths, exact otherwise — a POSIX filesystem is
+ * case-sensitive, and folding case there would merge two distinct files.
+ */
+export function absolutePathsEqual(left: string, right: string): boolean {
   return isWindowsPath(left) || isWindowsPath(right)
     ? left.toLowerCase() === right.toLowerCase()
     : left === right;
@@ -197,7 +202,7 @@ export function resolveWorkspaceFilePaths(input: {
     if (!normalizedFile) {
       return null;
     }
-    if (pathsEqual(normalizedFile, workspaceRoot)) {
+    if (absolutePathsEqual(normalizedFile, workspaceRoot)) {
       return null;
     }
     const prefix = `${workspaceRoot}/`;

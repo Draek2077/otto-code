@@ -198,6 +198,32 @@ const MutableBrowserToolsConfigSchema = z
   })
   .passthrough();
 
+/**
+ * Language-server code intelligence, host-scoped because the servers are processes
+ * on the daemon's machine — they follow the host, not the client.
+ *
+ * `enabled` defaults **on** and that is safe: nothing spawns until a
+ * code-intelligence action needs a language in a workspace, so an unused language
+ * costs nothing. What the switch guarantees is that off means off — no server
+ * spawns for any workspace, and the ctags index still serves the outline and the
+ * fuzzy finder.
+ *
+ * `languages` keys are registry row ids (`typescript`, `python`, `csharp`, …). An
+ * absent key means "use the row's own default", so a new row ships with its
+ * intended default rather than reading as disabled.
+ */
+const MutableLspConfigSchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    languages: z.record(z.string(), z.boolean()).default({}),
+    /** Hard LRU cap on simultaneously running servers, across all workspaces. */
+    maxRunningServers: z.number().int().positive().default(6),
+    idleMinutes: z.number().int().positive().default(10),
+    /** Shorter allowance for workspaces the user is not currently looking at. */
+    backgroundIdleMinutes: z.number().int().positive().default(2),
+  })
+  .passthrough();
+
 // Speech engine ids and model ids stay plain strings on the wire so adding an
 // engine or model never breaks an older peer; the daemon validates values
 // against its own catalog when applying a patch.
@@ -558,6 +584,16 @@ export const MutableDaemonConfigSchema = z
     // empty so a new client parsing an old daemon's config still sees a
     // well-formed array.
     savedProviderEndpoints: z.array(SavedProviderEndpointSchema).default([]),
+    // Language-server code intelligence. Gated by server_info features.lsp; the
+    // default section is well-formed so a new client parsing an old daemon's config
+    // still renders the screen.
+    lsp: MutableLspConfigSchema.default({
+      enabled: true,
+      languages: {},
+      maxRunningServers: 6,
+      idleMinutes: 10,
+      backgroundIdleMinutes: 2,
+    }),
   })
   .passthrough();
 
@@ -599,6 +635,9 @@ export const MutableDaemonConfigPatchSchema = z
     // Gated by server_info features.savedProviderEndpoints. Replaces the full
     // array (read-modify-write), so forgetting an endpoint drops it from disk.
     savedProviderEndpoints: z.array(SavedProviderEndpointSchema).optional(),
+    // Gated by server_info features.lsp; patches deep-merge, so a `languages`
+    // patch replaces only the keys it names.
+    lsp: MutableLspConfigSchema.partial().optional(),
   })
   .partial()
   .passthrough();
@@ -3430,6 +3469,108 @@ export const ProjectAddRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// ── New project scaffolding ──────────────────────────────────────────────
+// project.add takes a directory that already exists. Scaffolding is the other
+// half: create the directory, optionally give it a git repo (fresh, or cloned
+// from a remote), optionally create that remote on a connected hosting
+// provider, then register the result as a project. One RPC rather than a
+// client-driven sequence so a half-finished project can never be left behind by
+// a dropped socket — the daemon owns the whole transaction.
+// COMPAT(projectScaffold): added in v0.6.9. Gated by server_info.features.projectScaffold.
+
+// Built-in .gitignore starters. Deliberately a short list of the ecosystems Otto
+// itself works in — this is a convenience, not a mirror of github/gitignore. The
+// wire field stays an open string so a newer daemon can add one without an older
+// client's validator rejecting the message.
+export const PROJECT_SCAFFOLD_GITIGNORE_TEMPLATE_IDS = [
+  "node",
+  "python",
+  "go",
+  "rust",
+  "java",
+  "dotnet",
+] as const;
+
+export type ProjectScaffoldGitignoreTemplateId =
+  (typeof PROJECT_SCAFFOLD_GITIGNORE_TEMPLATE_IDS)[number];
+
+// Where the working tree comes from.
+export const ProjectScaffoldGitSchema = z.discriminatedUnion("kind", [
+  // A plain directory. No repository is created.
+  z.object({ kind: z.literal("none") }),
+  z.object({
+    kind: z.literal("init"),
+    // Branch the fresh repo starts on. Absent means the daemon's git default.
+    initialBranch: z.string().optional(),
+    // Starter files written before the first commit.
+    addReadme: z.boolean().optional(),
+    // Identifier of a built-in .gitignore template (see PROJECT_SCAFFOLD_GITIGNORE_TEMPLATE_IDS).
+    gitignoreTemplate: z.string().optional(),
+    // Commit whatever starter files were written. Required for a push.
+    initialCommit: z.boolean().optional(),
+    // Create the repository on a hosting provider, wire it as `origin`, and push.
+    // Requires the provider's createRepository capability.
+    remote: z
+      .object({
+        providerId: GitHostingProviderIdWireSchema,
+        // Account/organization/workspace to create under. Null means the
+        // provider's default for the authenticated identity.
+        owner: z.string().nullable(),
+        name: z.string(),
+        description: z.string().optional(),
+        visibility: z.enum(["private", "public"]),
+      })
+      .optional(),
+  }),
+  z.object({
+    kind: z.literal("clone"),
+    // Any URL `git clone` accepts (https, ssh, scp-style).
+    url: z.string(),
+  }),
+]);
+
+export const ProjectScaffoldRequestSchema = z.object({
+  type: z.literal("project.scaffold.request"),
+  requestId: z.string(),
+  // Existing directory that will contain the new project folder.
+  parentDirectory: z.string(),
+  // Single path segment created inside parentDirectory. For a clone this may be
+  // omitted, in which case the daemon derives it from the repository URL.
+  folderName: z.string().optional(),
+  git: ProjectScaffoldGitSchema,
+});
+
+// Steps are reported in the order the daemon runs them. New daemons may add
+// steps, so the wire form stays an open string and clients label unknown ids
+// generically instead of dropping the progress message.
+export const ProjectScaffoldStepIdSchema = z.string();
+
+export const ProjectScaffoldStepStatusSchema = z.enum(["running", "done", "skipped", "failed"]);
+
+export const ProjectScaffoldStepSchema = z.object({
+  id: ProjectScaffoldStepIdSchema,
+  status: ProjectScaffoldStepStatusSchema,
+  detail: z.string().nullable(),
+});
+
+// Repository enumeration for the clone picker, and owner enumeration for the
+// "create a new remote" form. Both are host-level (no repo cwd exists yet), so
+// they address a provider directly instead of resolving one from a checkout.
+export const HostingListRepositoriesRequestSchema = z.object({
+  type: z.literal("hosting.list_repositories.request"),
+  provider: GitHostingProviderIdWireSchema,
+  // Substring filter applied by the provider where it supports one.
+  query: z.string().optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  requestId: z.string(),
+});
+
+export const HostingListOwnersRequestSchema = z.object({
+  type: z.literal("hosting.list_owners.request"),
+  provider: GitHostingProviderIdWireSchema,
+  requestId: z.string(),
+});
+
 export const ArchiveWorkspaceRequestSchema = z.object({
   type: z.literal("archive_workspace_request"),
   workspaceId: z.string(),
@@ -3686,6 +3827,104 @@ export const CodeOutlineRequestSchema = z.object({
   type: z.literal("code.outline.request"),
   cwd: z.string(),
   path: z.string(),
+  requestId: z.string(),
+});
+
+/**
+ * LSP-backed code intelligence (projects/lsp-code-intelligence). Distinct from the
+ * ctags `code.symbols` RPC above in the only way that matters: it carries a
+ * **position**, so the daemon can resolve the reference under the cursor instead of
+ * matching a name.
+ *
+ * Line and column are **1-based** here, matching `CodeSymbolLocation` and the rest of
+ * Otto. LSP itself is 0-based; that conversion is the daemon's business and does not
+ * reach the wire.
+ */
+export const CodeDefinitionRequestSchema = z.object({
+  type: z.literal("code.definition.request"),
+  cwd: z.string(),
+  path: z.string(),
+  line: z.number().int().positive(),
+  column: z.number().int().positive(),
+  requestId: z.string(),
+});
+
+/**
+ * The editor's current buffer text, so definitions resolve against unsaved edits
+ * rather than stale disk content. Sent debounced, not per keystroke.
+ */
+export const CodeDocumentSyncRequestSchema = z.object({
+  type: z.literal("code.document.sync.request"),
+  cwd: z.string(),
+  path: z.string(),
+  text: z.string(),
+  requestId: z.string(),
+});
+
+export const CodeDocumentCloseRequestSchema = z.object({
+  type: z.literal("code.document.close.request"),
+  cwd: z.string(),
+  path: z.string(),
+  requestId: z.string(),
+});
+
+/**
+ * The rest of the position-based code-intelligence family. All three carry a 1-based
+ * position like `code.definition`, and all three are answered against the mirrored
+ * buffer rather than the file on disk.
+ */
+export const CodeHoverRequestSchema = z.object({
+  type: z.literal("code.hover.request"),
+  cwd: z.string(),
+  path: z.string(),
+  line: z.number().int().positive(),
+  column: z.number().int().positive(),
+  requestId: z.string(),
+});
+
+export const CodeReferencesRequestSchema = z.object({
+  type: z.literal("code.references.request"),
+  cwd: z.string(),
+  path: z.string(),
+  line: z.number().int().positive(),
+  column: z.number().int().positive(),
+  requestId: z.string(),
+});
+
+/**
+ * A rename **dry run**. Deliberately not "do the rename": the daemon computes every edit
+ * and returns them for the user to audit, because a rename's blast radius is the whole
+ * project. Nothing is written by this request.
+ */
+export const CodeRenamePreviewRequestSchema = z.object({
+  type: z.literal("code.rename.preview.request"),
+  cwd: z.string(),
+  path: z.string(),
+  line: z.number().int().positive(),
+  column: z.number().int().positive(),
+  newName: z.string().min(1),
+  requestId: z.string(),
+});
+
+/**
+ * Live language-server state for the Daemon → Code screen. Separate from the daemon
+ * config RPCs because none of it is configuration: which servers this machine can
+ * actually supply, and which are running right now.
+ *
+ * `cwd` scopes the availability check — a server can be present in one workspace's
+ * `node_modules` and absent in another's.
+ */
+export const LspServersListRequestSchema = z.object({
+  type: z.literal("lsp.servers.list.request"),
+  cwd: z.string(),
+  requestId: z.string(),
+});
+
+/** Stop one running server, so a user who suspects it of hogging memory can kill it. */
+export const LspServerStopRequestSchema = z.object({
+  type: z.literal("lsp.server.stop.request"),
+  rootPath: z.string(),
+  serverId: z.string(),
   requestId: z.string(),
 });
 
@@ -4024,6 +4263,9 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   LegacyOpenInEditorRequestSchema,
   OpenProjectRequestSchema,
   ProjectAddRequestSchema,
+  ProjectScaffoldRequestSchema,
+  HostingListRepositoriesRequestSchema,
+  HostingListOwnersRequestSchema,
   ArchiveWorkspaceRequestSchema,
   WorkspaceArchivePreflightRequestSchema,
   WorktreeBaseRefSetRequestSchema,
@@ -4043,6 +4285,14 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   CodeListFilesRequestSchema,
   CodeSymbolsRequestSchema,
   CodeOutlineRequestSchema,
+  CodeDefinitionRequestSchema,
+  CodeDocumentSyncRequestSchema,
+  CodeDocumentCloseRequestSchema,
+  CodeHoverRequestSchema,
+  CodeReferencesRequestSchema,
+  CodeRenamePreviewRequestSchema,
+  LspServersListRequestSchema,
+  LspServerStopRequestSchema,
   ClearAgentAttentionMessageSchema,
   ClientHeartbeatMessageSchema,
   PingMessageSchema,
@@ -4271,6 +4521,12 @@ export const ServerInfoStatusPayloadSchema = z
         projectRemove: z.boolean().optional(),
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectAdd: z.boolean().optional(),
+        // COMPAT(projectScaffold): added in v0.6.9, drop the gate when floor >= v0.6.9.
+        // The daemon can create a project directory from scratch (mkdir, git
+        // init/clone, optional remote creation) instead of only adopting one
+        // that already exists. Without it the New project page offers the
+        // open-an-existing-folder path only.
+        projectScaffold: z.boolean().optional(),
         // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97
         worktreeRestore: z.boolean().optional(),
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
@@ -4312,6 +4568,11 @@ export const ServerInfoStatusPayloadSchema = z
         projectSearch: z.boolean().optional(),
         // COMPAT(codeIndex): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         codeIndex: z.boolean().optional(),
+        // Language-server-backed definitions (`code.definition`, `code.document.*`).
+        // Separate from `codeIndex`: that gate covers the ctags path, which stays as
+        // the outline/fuzzy-finder source and the no-server fallback.
+        // COMPAT(lsp): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
+        lsp: z.boolean().optional(),
         // COMPAT(artifactsToolGroup): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
         artifactsToolGroup: z.boolean().optional(),
         // COMPAT(speechSettings): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
@@ -4534,7 +4795,74 @@ export const DaemonConfigChangedStatusPayloadSchema = z
   })
   .passthrough();
 
+/**
+ * Which workspaces currently have a language server starting up or indexing. Sent as
+ * the whole busy set rather than per-workspace transitions: the only consumer is a
+ * spinner, so an idempotent snapshot cannot drift out of sync the way a missed
+ * transition would.
+ *
+ * Separate from the workspace status bucket on purpose — indexing is not the workspace
+ * "working", and folding it in would mislabel a quiet workspace as busy with agent work.
+ */
+export const LspActivityChangedStatusPayloadSchema = z
+  .object({
+    status: z.literal("lsp_activity_changed"),
+    /** Absolute workspace roots with language-server work in flight. */
+    busyRoots: z.array(z.string()),
+  })
+  .passthrough();
+
+/**
+ * Compiler severity, named rather than numbered. LSP uses 1–4; a magic number on the
+ * wire would have every consumer re-deriving which one is a warning.
+ */
+export const CodeDiagnosticSeveritySchema = z.enum(["error", "warning", "info", "hint"]);
+
+/** One problem the language server reported, 1-based like every other position. */
+export const CodeDiagnosticSchema = z.object({
+  line: z.number().int().positive(),
+  column: z.number().int().positive(),
+  endLine: z.number().int().positive(),
+  endColumn: z.number().int().positive(),
+  severity: CodeDiagnosticSeveritySchema,
+  message: z.string(),
+  /** Who says so — `ts`, `pyright`, a linter behind the server. */
+  source: z.string().optional(),
+  /** The server's own code for the rule or error, e.g. TypeScript's `2345`. */
+  code: z.string().optional(),
+  /** Documentation for that rule, when the server offers one — oxlint does. */
+  codeHref: z.string().optional(),
+  /** Which registry row published it, so two servers on one file stay attributable. */
+  serverId: z.string().optional(),
+});
+
+/**
+ * Diagnostics for one open document, pushed unsolicited.
+ *
+ * This is the one part of code intelligence that is not request/response:
+ * `textDocument/publishDiagnostics` arrives whenever the server has recomputed, which is
+ * whenever it feels like it. So it is a status broadcast, and the payload is the document's
+ * **whole** current set — never a delta. A missed delta would leave a stale squiggle on a
+ * line the user already fixed, and an idempotent snapshot cannot drift.
+ *
+ * Only documents a client has synced produce these. A server may know about every file in
+ * the project; pushing all of it would be unbounded, and nothing can render a marker in a
+ * file that is not open.
+ */
+export const LspDiagnosticsChangedStatusPayloadSchema = z
+  .object({
+    status: z.literal("lsp_diagnostics_changed"),
+    /** Workspace root the document belongs to. */
+    cwd: z.string(),
+    /** Absolute path of the document these describe. */
+    path: z.string(),
+    diagnostics: z.array(CodeDiagnosticSchema),
+  })
+  .passthrough();
+
 export const KnownStatusPayloadSchema = z.discriminatedUnion("status", [
+  LspActivityChangedStatusPayloadSchema,
+  LspDiagnosticsChangedStatusPayloadSchema,
   AgentCreatedStatusPayloadSchema,
   AgentCreateFailedStatusPayloadSchema,
   AgentResumedStatusPayloadSchema,
@@ -4888,6 +5216,23 @@ export const WorkspaceUpdateMessageSchema = z.object({
   ]),
 });
 
+// A project's own metadata changed (today: the user renamed it). The workspace
+// channel can only carry a project's name inside its workspaces' descriptors, so
+// a project with no active workspaces had no live channel at all — its name only
+// refreshed on the next full workspace fetch. This is the project-level channel:
+// it fires whether or not the project currently has workspaces, and the daemon
+// fans it out to every connected session because project metadata is host-global.
+export const ProjectUpdatedNotificationSchema = z.object({
+  type: z.literal("project.updated.notification"),
+  payload: z.object({
+    project: WorkspaceProjectDescriptorPayloadSchema,
+    // False means the project has no active workspaces right now, so the client
+    // keeps it in the empty-project bucket instead of expecting a workspace
+    // descriptor to carry its name.
+    hasActiveWorkspaces: z.boolean(),
+  }),
+});
+
 export const ScriptStatusUpdateMessageSchema = z.object({
   type: z.literal("script_status_update"),
   payload: z.object({
@@ -4939,6 +5284,95 @@ export const ProjectAddResponseSchema = z.object({
     project: WorkspaceProjectDescriptorPayloadSchema.nullable(),
     error: z.string().nullable(),
     errorCode: z.enum(["directory_not_found"]).nullish().catch(null),
+  }),
+});
+
+// COMPAT(projectScaffold): added in v0.6.9.
+export const ProjectScaffoldResponseSchema = z.object({
+  type: z.literal("project.scaffold.response"),
+  payload: z.object({
+    requestId: z.string(),
+    // Registered project on success. Null whenever any step failed — the
+    // daemon does not register a half-built directory.
+    project: WorkspaceProjectDescriptorPayloadSchema.nullable(),
+    // Absolute path of the created directory. Non-null even on a late failure
+    // (e.g. push rejected) so the UI can tell the user what is on disk.
+    path: z.string().nullable(),
+    // Remote the repo was wired to, when one was created or cloned from.
+    remoteUrl: z.string().nullable(),
+    error: z.string().nullable(),
+    // Unknown codes from newer daemons degrade to null; clients fall back to `error`.
+    errorCode: z
+      .enum([
+        "parent_not_found",
+        "invalid_name",
+        "already_exists",
+        "git_unavailable",
+        "git_failed",
+        "provider_unavailable",
+        "remote_failed",
+        "clone_failed",
+        "register_failed",
+      ])
+      .nullish()
+      .catch(null),
+    // Terminal state of every step the daemon ran, in run order.
+    steps: z.array(ProjectScaffoldStepSchema),
+  }),
+});
+
+// Uncorrelated progress stream for an in-flight scaffold, keyed by the request's
+// requestId. Purely advisory: the response carries the authoritative step list,
+// so a client that ignores these still gets a correct result.
+export const ProjectScaffoldProgressSchema = z.object({
+  type: z.literal("project.scaffold.progress"),
+  payload: z.object({
+    requestId: z.string(),
+    step: ProjectScaffoldStepIdSchema,
+    status: ProjectScaffoldStepStatusSchema,
+    detail: z.string().nullable(),
+  }),
+});
+
+export const HostingRepositorySummarySchema = z.object({
+  // Provider-unique identifier, e.g. "owner/name" or "workspace/slug".
+  fullName: z.string(),
+  name: z.string(),
+  owner: z.string(),
+  cloneUrl: z.string(),
+  isPrivate: z.boolean(),
+  description: z.string().nullable(),
+  // ISO-8601. Clients sort most-recent-first when present.
+  updatedAt: z.string().nullable(),
+});
+
+export const HostingOwnerSummarySchema = z.object({
+  // Value to send back as `owner` when creating a repository.
+  id: z.string(),
+  label: z.string(),
+  // Open string: providers name this differently (org, workspace, team).
+  kind: z.string(),
+});
+
+// COMPAT(projectScaffold): added in v0.6.9.
+export const HostingListRepositoriesResponseSchema = z.object({
+  type: z.literal("hosting.list_repositories.response"),
+  payload: z.object({
+    requestId: z.string(),
+    provider: GitHostingProviderIdWireSchema,
+    repositories: z.array(HostingRepositorySummarySchema),
+    error: z.string().nullable(),
+  }),
+});
+
+// COMPAT(projectScaffold): added in v0.6.9.
+export const HostingListOwnersResponseSchema = z.object({
+  type: z.literal("hosting.list_owners.response"),
+  payload: z.object({
+    requestId: z.string(),
+    provider: GitHostingProviderIdWireSchema,
+    owners: z.array(HostingOwnerSummarySchema),
+    error: z.string().nullable(),
   }),
 });
 
@@ -6598,6 +7032,172 @@ export const CodeSymbolsResponseSchema = z.object({
   }),
 });
 
+/** 1-based, like `CodeSymbolLocation`. The end pair is present when the server gave a range. */
+export const CodeDefinitionLocationSchema = z.object({
+  path: z.string(),
+  line: z.number().int().positive(),
+  column: z.number().int().positive(),
+  endLine: z.number().int().positive().optional(),
+  endColumn: z.number().int().positive().optional(),
+  /**
+   * Which registry row answered (`typescript`, `csharp`, …). The multi-hit picker
+   * shows it, so a user looking at two candidates can tell whether a language server
+   * resolved them or the name index guessed — which changes how much to trust the
+   * list. Absent from old daemons.
+   */
+  serverId: z.string().optional(),
+});
+
+/**
+ * Three-valued on purpose. `unavailable` (no server for this language on the host) and
+ * `indexing` (the server is up but still building its project model) are different
+ * answers to the user, and neither is "not found" — reporting either as an empty
+ * result is how a working feature reads as broken.
+ */
+export const CodeDefinitionStatusSchema = z.enum(["ok", "indexing", "unavailable"]);
+
+export const CodeDefinitionResponseSchema = z.object({
+  type: z.literal("code.definition.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    status: CodeDefinitionStatusSchema,
+    locations: z.array(CodeDefinitionLocationSchema),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CodeDocumentSyncResponseSchema = z.object({
+  type: z.literal("code.document.sync.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    ok: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CodeDocumentCloseResponseSchema = z.object({
+  type: z.literal("code.document.close.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    ok: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+/** 1-based, like every other position on the wire. */
+export const CodeHoverRangeSchema = z.object({
+  line: z.number().int().positive(),
+  column: z.number().int().positive(),
+  endLine: z.number().int().positive(),
+  endColumn: z.number().int().positive(),
+});
+
+export const CodeHoverResponseSchema = z.object({
+  type: z.literal("code.hover.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    status: CodeDefinitionStatusSchema,
+    /** Markdown, or null when the server had nothing to say about this position. */
+    markdown: z.string().nullable(),
+    range: CodeHoverRangeSchema.nullable(),
+    serverId: z.string().nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CodeReferencesResponseSchema = z.object({
+  type: z.literal("code.references.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    status: CodeDefinitionStatusSchema,
+    locations: z.array(CodeDefinitionLocationSchema),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const CodeRenameEditSchema = z.object({
+  line: z.number().int().positive(),
+  column: z.number().int().positive(),
+  endLine: z.number().int().positive(),
+  endColumn: z.number().int().positive(),
+  newText: z.string(),
+});
+
+export const CodeRenameFilePlanSchema = z.object({
+  path: z.string(),
+  edits: z.array(CodeRenameEditSchema),
+});
+
+export const CodeRenamePreviewResponseSchema = z.object({
+  type: z.literal("code.rename.preview.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    newName: z.string(),
+    status: CodeDefinitionStatusSchema,
+    /** Sorted by path, and by position within each file, so an audit reads in order. */
+    files: z.array(CodeRenameFilePlanSchema),
+    /** Blast radius, so the dry-run tab can lead with it. */
+    fileCount: z.number().int().nonnegative(),
+    editCount: z.number().int().nonnegative(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const LspLanguageStateSchema = z.object({
+  id: z.string(),
+  enabled: z.boolean(),
+  /** Whether the host can actually supply this server right now. */
+  installed: z.boolean(),
+  running: z.boolean(),
+  /** Which discovery rung supplied it (`workspaceBin` / `bundled` / `path`), or null. */
+  rung: z.string().nullable(),
+  bin: z.string(),
+  extensions: z.array(z.string()),
+  /** Plain-words index cost, so the toggle states its own price. */
+  indexCost: z.string(),
+});
+
+export const LspRunningServerSchema = z.object({
+  rootPath: z.string(),
+  serverId: z.string(),
+  uptimeMs: z.number(),
+  lastUsedAt: z.number(),
+});
+
+export const LspServersListResponseSchema = z.object({
+  type: z.literal("lsp.servers.list.response"),
+  payload: z.object({
+    cwd: z.string(),
+    languages: z.array(LspLanguageStateSchema),
+    running: z.array(LspRunningServerSchema),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const LspServerStopResponseSchema = z.object({
+  type: z.literal("lsp.server.stop.response"),
+  payload: z.object({
+    rootPath: z.string(),
+    serverId: z.string(),
+    ok: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
 export const CodeOutlineResponseSchema = z.object({
   type: z.literal("code.outline.response"),
   payload: z.object({
@@ -7074,6 +7674,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FetchRecentProviderSessionsResponseMessageSchema,
   FetchWorkspacesResponseMessageSchema,
   ProjectAddResponseSchema,
+  ProjectScaffoldResponseSchema,
+  ProjectScaffoldProgressSchema,
   OpenProjectResponseMessageSchema,
   StartWorkspaceScriptResponseMessageSchema,
   LegacyListAvailableEditorsResponseMessageSchema,
@@ -7122,6 +7724,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AgentRewindResponseMessageSchema,
   UpdateAgentResponseMessageSchema,
   ProjectRenameResponseSchema,
+  ProjectUpdatedNotificationSchema,
   ProjectRemoveResponseSchema,
   ProjectLinksListResponseSchema,
   ProjectLinksSetResponseSchema,
@@ -7189,6 +7792,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   GitHubSearchResponseSchema,
   HostingSearchResponseSchema,
   HostingAuthStatusResponseSchema,
+  HostingListRepositoriesResponseSchema,
+  HostingListOwnersResponseSchema,
   DirectorySuggestionsResponseSchema,
   OttoWorktreeListResponseSchema,
   OttoWorktreeArchiveResponseSchema,
@@ -7207,6 +7812,14 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CodeListFilesResponseSchema,
   CodeSymbolsResponseSchema,
   CodeOutlineResponseSchema,
+  CodeDefinitionResponseSchema,
+  CodeDocumentSyncResponseSchema,
+  CodeDocumentCloseResponseSchema,
+  CodeHoverResponseSchema,
+  CodeReferencesResponseSchema,
+  CodeRenamePreviewResponseSchema,
+  LspServersListResponseSchema,
+  LspServerStopResponseSchema,
   ListProviderModelsResponseMessageSchema,
   ListProviderModesResponseMessageSchema,
   ListProviderFeaturesResponseMessageSchema,
@@ -7317,6 +7930,14 @@ export type FetchRecentProviderSessionsResponseMessage = z.infer<
 >;
 export type FetchWorkspacesResponseMessage = z.infer<typeof FetchWorkspacesResponseMessageSchema>;
 export type ProjectAddResponse = z.infer<typeof ProjectAddResponseSchema>;
+export type ProjectScaffoldResponse = z.infer<typeof ProjectScaffoldResponseSchema>;
+export type ProjectScaffoldProgress = z.infer<typeof ProjectScaffoldProgressSchema>;
+export type ProjectScaffoldStep = z.infer<typeof ProjectScaffoldStepSchema>;
+export type ProjectScaffoldStepStatus = z.infer<typeof ProjectScaffoldStepStatusSchema>;
+export type HostingRepositorySummary = z.infer<typeof HostingRepositorySummarySchema>;
+export type HostingOwnerSummary = z.infer<typeof HostingOwnerSummarySchema>;
+export type HostingListRepositoriesResponse = z.infer<typeof HostingListRepositoriesResponseSchema>;
+export type HostingListOwnersResponse = z.infer<typeof HostingListOwnersResponseSchema>;
 export type ScriptStatusUpdateMessage = z.infer<typeof ScriptStatusUpdateMessageSchema>;
 export type OpenProjectResponseMessage = z.infer<typeof OpenProjectResponseMessageSchema>;
 export type StartWorkspaceScriptResponseMessage = z.infer<
@@ -7389,6 +8010,8 @@ export type TasksSuggestedDismissResponseMessage = z.infer<
 export type AgentRewindResponseMessage = z.infer<typeof AgentRewindResponseMessageSchema>;
 export type UpdateAgentResponseMessage = z.infer<typeof UpdateAgentResponseMessageSchema>;
 export type ProjectRenameResponse = z.infer<typeof ProjectRenameResponseSchema>;
+export type ProjectUpdatedNotification = z.infer<typeof ProjectUpdatedNotificationSchema>;
+export type ProjectUpdatedNotificationPayload = ProjectUpdatedNotification["payload"];
 export type ProjectRemoveResponse = z.infer<typeof ProjectRemoveResponseSchema>;
 export type ProjectLink = z.infer<typeof ProjectLinkSchema>;
 export type ProjectLinksListResponse = z.infer<typeof ProjectLinksListResponseSchema>;
@@ -7713,6 +8336,10 @@ export type LegacyListAvailableEditorsRequest = z.infer<
 export type LegacyOpenInEditorRequest = z.infer<typeof LegacyOpenInEditorRequestSchema>;
 export type OpenProjectRequest = z.infer<typeof OpenProjectRequestSchema>;
 export type ProjectAddRequest = z.infer<typeof ProjectAddRequestSchema>;
+export type ProjectScaffoldRequest = z.infer<typeof ProjectScaffoldRequestSchema>;
+export type ProjectScaffoldGit = z.infer<typeof ProjectScaffoldGitSchema>;
+export type HostingListRepositoriesRequest = z.infer<typeof HostingListRepositoriesRequestSchema>;
+export type HostingListOwnersRequest = z.infer<typeof HostingListOwnersRequestSchema>;
 export type ArchiveWorkspaceRequest = z.infer<typeof ArchiveWorkspaceRequestSchema>;
 export type WorkspaceClearAttentionRequest = z.infer<typeof WorkspaceClearAttentionRequestSchema>;
 export type FileExplorerRequest = z.infer<typeof FileExplorerRequestSchema>;
@@ -7749,6 +8376,36 @@ export type CodeOutlineRequest = z.infer<typeof CodeOutlineRequestSchema>;
 export type CodeOutlineResponse = z.infer<typeof CodeOutlineResponseSchema>;
 export type CodeSymbolLocation = z.infer<typeof CodeSymbolLocationSchema>;
 export type CodeSymbolKind = z.infer<typeof CodeSymbolKindSchema>;
+export type CodeDefinitionRequest = z.infer<typeof CodeDefinitionRequestSchema>;
+export type CodeDefinitionResponse = z.infer<typeof CodeDefinitionResponseSchema>;
+export type CodeDefinitionLocation = z.infer<typeof CodeDefinitionLocationSchema>;
+export type CodeDefinitionStatus = z.infer<typeof CodeDefinitionStatusSchema>;
+export type CodeDocumentSyncRequest = z.infer<typeof CodeDocumentSyncRequestSchema>;
+export type CodeDocumentSyncResponse = z.infer<typeof CodeDocumentSyncResponseSchema>;
+export type CodeDocumentCloseRequest = z.infer<typeof CodeDocumentCloseRequestSchema>;
+export type CodeDocumentCloseResponse = z.infer<typeof CodeDocumentCloseResponseSchema>;
+export type CodeHoverRequest = z.infer<typeof CodeHoverRequestSchema>;
+export type CodeHoverResponse = z.infer<typeof CodeHoverResponseSchema>;
+export type CodeHoverRange = z.infer<typeof CodeHoverRangeSchema>;
+export type CodeReferencesRequest = z.infer<typeof CodeReferencesRequestSchema>;
+export type CodeReferencesResponse = z.infer<typeof CodeReferencesResponseSchema>;
+export type CodeRenamePreviewRequest = z.infer<typeof CodeRenamePreviewRequestSchema>;
+export type CodeRenamePreviewResponse = z.infer<typeof CodeRenamePreviewResponseSchema>;
+export type CodeRenameEdit = z.infer<typeof CodeRenameEditSchema>;
+export type CodeRenameFilePlan = z.infer<typeof CodeRenameFilePlanSchema>;
+export type LspServersListRequest = z.infer<typeof LspServersListRequestSchema>;
+export type LspServersListResponse = z.infer<typeof LspServersListResponseSchema>;
+export type LspServerStopRequest = z.infer<typeof LspServerStopRequestSchema>;
+export type LspServerStopResponse = z.infer<typeof LspServerStopResponseSchema>;
+export type LspLanguageState = z.infer<typeof LspLanguageStateSchema>;
+export type LspRunningServer = z.infer<typeof LspRunningServerSchema>;
+export type MutableLspConfig = z.infer<typeof MutableLspConfigSchema>;
+export type LspActivityChangedStatusPayload = z.infer<typeof LspActivityChangedStatusPayloadSchema>;
+export type CodeDiagnosticSeverity = z.infer<typeof CodeDiagnosticSeveritySchema>;
+export type CodeDiagnostic = z.infer<typeof CodeDiagnosticSchema>;
+export type LspDiagnosticsChangedStatusPayload = z.infer<
+  typeof LspDiagnosticsChangedStatusPayloadSchema
+>;
 export type RestartServerRequestMessage = z.infer<typeof RestartServerRequestMessageSchema>;
 export type ShutdownServerRequestMessage = z.infer<typeof ShutdownServerRequestMessageSchema>;
 export type ClearAgentAttentionMessage = z.infer<typeof ClearAgentAttentionMessageSchema>;

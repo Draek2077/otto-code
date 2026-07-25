@@ -36,7 +36,6 @@ import { QuitConfirmListener } from "@/desktop/components/quit-confirm-listener"
 import { LeftSidebar } from "@/components/left-sidebar";
 import { SidebarModelProvider } from "@/components/sidebar/sidebar-model";
 import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
-import { ProjectPickerModal } from "@/components/project-picker-modal";
 import { ProviderSettingsHost } from "@/components/provider-settings-host";
 import { RootErrorBoundary } from "@/components/root-error-boundary";
 import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
@@ -545,7 +544,6 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <WorktreeSetupCalloutSource />
       <CommandCenter />
       <HostChooserModal />
-      <ProjectPickerModal />
       <ProviderSettingsHost />
       <WorkspaceSetupDialog />
       <KeyboardShortcutsDialog />
@@ -885,6 +883,7 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
     storeReady &&
     (pathname === "/open-project" ||
       pathname === "/new" ||
+      pathname === "/new-project" ||
       pathname === "/sessions" ||
       pathname === "/schedules" ||
       pathname === "/runs" ||
@@ -918,6 +917,7 @@ function RootStack() {
         <Stack.Screen name="settings/projects/index" />
         <Stack.Screen name="settings/projects/[projectKey]" />
         <Stack.Screen name="new" />
+        <Stack.Screen name="new-project" />
         <Stack.Screen name="open-project" />
         <Stack.Screen name="sessions" />
         <Stack.Screen name="schedules" />

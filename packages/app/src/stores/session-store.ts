@@ -573,6 +573,10 @@ interface SessionStoreActions {
   setEmptyProjects: (serverId: string, emptyProjects: Iterable<EmptyProjectDescriptor>) => void;
   addEmptyProject: (serverId: string, emptyProject: EmptyProjectDescriptor) => void;
   removeEmptyProject: (serverId: string, projectId: string) => void;
+  applyProjectDescriptor: (
+    serverId: string,
+    input: { project: EmptyProjectDescriptor; hasActiveWorkspaces: boolean },
+  ) => void;
   setWorkspaceRestoreStatus: (
     serverId: string,
     workspaceId: string,
@@ -1490,6 +1494,72 @@ export const useSessionStore = create<SessionStore>()(
             sessions: {
               ...prev.sessions,
               [serverId]: { ...session, emptyProjects: next },
+            },
+          };
+        });
+      },
+
+      // The daemon announced a project's own metadata (a rename). A project's
+      // name reaches the UI through two buckets — the descriptors of its
+      // workspaces, and the empty-project bucket when it has none — so this
+      // writes both from one message. That makes the update land without
+      // depending on a workspace re-emission arriving, which is what a project
+      // with zero active workspaces never gets.
+      applyProjectDescriptor: (serverId, { project, hasActiveWorkspaces }) => {
+        set((prev) => {
+          const session = prev.sessions[serverId];
+          if (!session) {
+            return prev;
+          }
+
+          let nextEmptyProjects = session.emptyProjects;
+          if (hasActiveWorkspaces) {
+            if (nextEmptyProjects.has(project.projectId)) {
+              nextEmptyProjects = new Map(nextEmptyProjects);
+              nextEmptyProjects.delete(project.projectId);
+            }
+          } else {
+            const existing = nextEmptyProjects.get(project.projectId);
+            if (!existing || !equal(existing, project)) {
+              nextEmptyProjects = new Map(nextEmptyProjects);
+              nextEmptyProjects.set(project.projectId, project);
+            }
+          }
+
+          let nextWorkspaces = session.workspaces;
+          for (const [key, workspace] of session.workspaces) {
+            if (
+              workspace.projectId !== project.projectId ||
+              (workspace.projectDisplayName === project.projectDisplayName &&
+                (workspace.projectCustomName ?? null) === project.projectCustomName)
+            ) {
+              continue;
+            }
+            if (nextWorkspaces === session.workspaces) {
+              nextWorkspaces = new Map(session.workspaces);
+            }
+            nextWorkspaces.set(key, {
+              ...workspace,
+              projectDisplayName: project.projectDisplayName,
+              projectCustomName: project.projectCustomName,
+            });
+          }
+
+          if (
+            nextEmptyProjects === session.emptyProjects &&
+            nextWorkspaces === session.workspaces
+          ) {
+            return prev;
+          }
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [serverId]: {
+                ...session,
+                workspaces: nextWorkspaces,
+                emptyProjects: nextEmptyProjects,
+              },
             },
           };
         });

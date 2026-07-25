@@ -66,6 +66,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   scriptIconKind = null,
   isHovered,
   isLoading,
+  isIndexing = false,
   isCreating = false,
   shortcutNumber = null,
   showShortcutBadge = false,
@@ -76,6 +77,8 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   scriptIconKind?: SidebarWorkspaceScriptIconKind | null;
   isHovered: boolean;
   isLoading: boolean;
+  /** A language server for this workspace is starting up or indexing. */
+  isIndexing?: boolean;
   isCreating?: boolean;
   shortcutNumber?: number | null;
   showShortcutBadge?: boolean;
@@ -98,7 +101,11 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   return (
     <View style={styles.workspaceRowContent}>
       <View style={styles.workspaceRowMain}>
-        <WorkspaceStatusIndicator bucket={workspace.statusBucket} loading={isLoading} />
+        <WorkspaceStatusIndicator
+          bucket={workspace.statusBucket}
+          loading={isLoading}
+          indexing={isIndexing}
+        />
         <View style={styles.workspaceContentColumn}>
           <View style={styles.workspaceTitleRow}>
             <View style={styles.workspaceTitleLeft}>
@@ -150,9 +157,16 @@ function WorkspaceScriptIcon({ kind }: { kind: SidebarWorkspaceScriptIconKind })
 function WorkspaceStatusIndicator({
   bucket,
   loading = false,
+  indexing = false,
 }: {
   bucket: SidebarWorkspaceEntry["statusBucket"];
   loading?: boolean;
+  /**
+   * Language-server startup/indexing. Deliberately the *lowest* priority branch below:
+   * it fills a slot that would otherwise draw nothing, and never masks an attention
+   * badge — a workspace that needs review must keep saying so while a server warms up.
+   */
+  indexing?: boolean;
 }) {
   const shouldShowSyncedLoader = shouldRenderSyncedStatusLoader({ bucket });
 
@@ -181,6 +195,14 @@ function WorkspaceStatusIndicator({
     return (
       <View style={styles.workspaceStatusDot} testID={`workspace-status-indicator-${bucket}`}>
         <StatusBucketIcon bucket={bucket} size={14} />
+      </View>
+    );
+  }
+
+  if (indexing) {
+    return (
+      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-indexing">
+        <ThemedActivityIndicator size={8} uniProps={blueColorMapping} />
       </View>
     );
   }
