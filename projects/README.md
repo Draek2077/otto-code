@@ -59,7 +59,7 @@ Everything currently in this tree. Status vocabulary: **Charter** (nothing built
 | ----------------------------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [agent-orchestration](agent-orchestration/agent-orchestration.md)                               | Charter            | The **control layer** — Teams as the way work is invoked, typed tasks, recognize → plan → delegate → synthesize. Quarter-scale. Companion: [invocation.md](agent-orchestration/invocation.md)                                       |
 | [bug-reporting](bug-reporting/bug-reporting.md)                                                 | Charter            | In-app bug/suggestion reporting; the daemon files the GitHub issue so reporters need no account                                                                                                                                     |
-| [claude-extensions](claude-extensions/claude-extensions.md)                                     | Charter            | Full plugin, marketplace, skill and MCP management from the Claude provider settings panel. **Deliberately Claude-only** — plugins are a Claude Code product concept, not a general agent one                                       |
+| [claude-extensions](claude-extensions/claude-extensions.md)                                     | Charter            | Plugins, marketplaces, skills and MCP in the Claude provider settings panel — management plus the always-on context budget nothing else totals. **Deliberately Claude-only**                                                        |
 | [computer-use](computer-use/computer-use.md)                                                    | Charter            | Agents see and control the desktop via a shared computer-control library; layered safety. Companion: [computer-control-library.md](computer-use/computer-control-library.md)                                                        |
 | [context-management](context-management/context-management.md)                                  | Partial            | Everything sent before you type, plus the 3-pane tab. Built and committed. Open: demote-to-subdirectory, skills/MCP toggles, the §11 calibration                                                                                    |
 | [dictation-refine](dictation-refine/dictation-refine.md)                                        | Charter            | AI cleanup over dictated text via a latency-ordered ladder (lexical → ONNX → optional LLM)                                                                                                                                          |
@@ -246,8 +246,9 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
 
 ## Build order
 
-Waves 0–2 are complete. This section is the judgement layer over the inventory above: what to do
-next, and why that rather than the highest-scoring item.
+**Waves 0–2 are complete; Wave 3 is 3 of 4 done with FPS wrapping up. Wave 4 is unstarted and
+ready.** This section is the judgement layer over the inventory above: what to do next, and why that
+rather than the highest-scoring item.
 
 ### Four ordering traps that outrank raw scoring
 
@@ -268,8 +269,10 @@ Cut 2026-07-25. The four items touch different code on purpose.
 1. ✅ **personality-memory** — done 2026-07-25. Pulled forward from Wave 4 and expanded. Impact is
    compounding: every spawn used to start from zero, so the same corrections got re-taught forever.
    Shipped design: [docs/agent-personalities.md § Memory](../docs/agent-personalities.md#memory-accrued-lessons).
-2. **App-wide FPS degradation** — the spine. Measurement-first: build the resource reporting, _then_
-   find the leak.
+2. 🔄 **App-wide FPS degradation** — the spine, and the only item still open. The instrument came
+   first as planned: `app/src/diagnostics/resource-report/`, `client/daemon-client-runtime-metrics.ts`,
+   and a soak harness (`e2e/client-resource-soak.spec.ts` + `e2e/helpers/resource-monitor.ts`). The
+   fix is being wrapped up. Trap 2 held — nothing was optimized before it was measured.
 3. ✅ **System-injected delivery decision** — done. Mentions and notify-on-finish queue; the schedule
    case turned out to be a different question and is tracked above. Both steer-queue tails (reorder,
    interrupt receipt) shipped with it.
@@ -303,6 +306,15 @@ the reasoning, and the charter has drained to `archive/`.
 
 ### Wave 4 — provider parity and continuity
 
+**Readiness checked 2026-07-25: not started, and ready.** No Wave 4 identifier exists in the tree —
+no `server/solution-model/`, no convergence work beyond its charter, no exact-injected context
+accounting. Wave 3's last item (FPS) does not block any of it; they touch different code.
+
+**Item 1 should start now rather than when Wave 3 closes.** Trap 1's cost is monotonically
+increasing, and Wave 3 just widened the gap on purpose — personality memory has no upstream
+counterpart to merge against, and the Wave 5 candidate would widen it much further. It is the last
+item whose whole point is reducing divergence cost, so every wave it waits, it buys less.
+
 1. **Upstream merge → subagent convergence → provider adapters** (trap 1, non-negotiable order).
    Impact is conditional: transformative for OpenCode/Codex/Pi users, invisible to Claude users.
 2. Shared context instrumentation → the Visualizer ring + usage-log View B (trap 3).
@@ -310,6 +322,29 @@ the reasoning, and the charter has drained to `archive/`.
 4. **solution-view Phase 1** — the read-only Solution lens. Impact is provider-shaped in the same way
    the adapters are: a 5 for .NET developers, a 1 for everyone else. Phase 2 (general file mutations)
    is not .NET work and enables mutation paths beyond it.
+5. **claude-extensions** — new charter, scope approved 2026-07-25, unstarted. Full management of the
+   Claude Code extension surface (plugins, marketplaces, skills, MCP) from Otto's Claude settings
+   panel. Placed here with a caveat, below.
+
+#### The tension in putting claude-extensions in a parity wave
+
+`claude-extensions` is **deliberately Claude-only**, consciously setting aside the fork's standing
+rule that a capability is not done until every provider has it. Its charter argues the exception
+holds: plugins and marketplaces are a Claude Code _product_ concept, not a general agent one — Codex
+has `~/.codex/prompts/`, OpenCode has npm plugins, Copilot and Pi have no installable-extension model
+at all — so there is no shared abstraction to build against, and a provider-neutral version would be
+an invention rather than a generalization. That reasoning is sound.
+
+But it sits in the wave whose entire theme is the opposite, so **name the exception rather than let
+it blur the wave's meaning.** Two consequences worth deciding deliberately:
+
+- It competes for the same hours as item 1, which is the wave's actual justification. If both cannot
+  run, item 1 wins — divergence cost compounds and this does not.
+- Its real case is not management-parity with the CLI (that saves an SSH session). It is the four
+  things Otto can do that the CLI cannot: total always-on token cost across everything installed,
+  distinguish installed from actually-loaded, turn MCP failures into a cause and a next action, and
+  host the plugin authoring loop next to an editor. **Sequence its phases so one of those lands
+  early**, or the wave slot is buying a settings mirror.
 
 ### Wave 5 candidate — agentic architectures for coding tasks
 
@@ -341,14 +376,24 @@ the Claude provider settings panel — the most-asked-for capability Otto does n
 one thing you still have to leave the app and SSH into the host to do.
 
 It does **not** consume the pick-one slot. That rule exists because two quarter-scale bets cannot
-share one working tree; this is roughly six sessions across five independently shippable phases, and
-it touches disjoint code — the Claude provider adapter and one settings sheet, neither of which the
-orchestration or mobile-daemon work goes near.
+share one working tree; this is roughly seven to nine sessions across five independently shippable
+phases, and it touches disjoint code — the Claude provider adapter and one settings sheet, neither of
+which the orchestration or mobile-daemon work goes near.
 
-Two things to settle before Phase 4 rather than during it: whether v1 shows user-scope only (the
-provider settings sheet is host-level, but plugins and MCP servers can be project-scoped), and how
-this reconciles with context-management's open "skills/MCP toggles" tail — two surfaces will describe
-the same installed set and must not each grow their own read path.
+**The scope is enablement, not CRUD.** Install/remove is the floor. The reason this earns a wave slot
+is the context budget: `claude plugin details` reports each plugin's always-on token cost, nothing in
+Claude Code totals it across everything installed, and users accumulate plugins for months without
+knowing what they pay before typing a word. Otto can total it, rank by it, and put it next to the
+Disable button — the same move [docs/token-economy.md](../docs/token-economy.md) makes everywhere
+else. That ships in Phase 1, not later. Behind it: installed-vs-actually-loaded (Otto is the only
+place that knows both), MCP failures reported as cause-and-next-action rather than a red dot, and a
+plugin authoring loop built on `plugin eval --json`, which scores against a no-plugin baseline.
+
+Three things to settle before the phase that needs them, not during it: whether v1 shows user-scope
+only (the provider settings sheet is host-level, but plugins and MCP servers can be project-scoped);
+how the token-cost presentation stays unified with context-management's open "skills/MCP toggles"
+tail — two surfaces will describe the same context consumption in different units if nobody decides;
+and the default cost ceiling for `plugin eval`, which spends real money per run.
 
 ### ⚠️ Divergence from upstream Paseo
 
