@@ -5,8 +5,8 @@
  * marker is only recognized at the start of a real list item; task syntax
  * inside code fences or mid-sentence is untouched. Rendering is a glyph
  * substitution (read-only checkboxes), which keeps the renderer's text
- * pipeline unchanged; upgrading to icon checkboxes is tracked in
- * projects/file-rendering.
+ * pipeline unchanged; upgrading to icon checkboxes is tracked in the File
+ * rendering section of projects/README.md.
  */
 
 interface TaskListToken {

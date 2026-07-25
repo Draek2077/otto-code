@@ -36,6 +36,7 @@ All live in `packages/server/src/server/session/files/workspace-files-session.ts
 - **`file.watch.subscribe.request` / `.response`**, **`file.watch.unsubscribe.request` / `.response`**, and a pushed **`file.watch.event`** (`changed` | `deleted` | `recreated`, with fresh `modifiedAt`/hash). Subscriptions exist only for paths open in tabs and are cleaned up on socket close. Editor and viewer share the subscription through a refcounted client API.
 - **`file.search.request`** → streamed **`file.search.result`** events + a terminal **`file.search.response`** (JetBrains "Find in Files" semantics — press-enter, not per-keystroke).
 - **`file.replace.request` / `.response`** — per-file edit list, each edit preconditioned on `expectedHash`.
+- **`file.create` / `file.delete` / `file.rename`** — the mutation surface: what exists in a directory, rather than what is inside a file. Gated separately on `features.fileMutations`, and — unlike `file.write` above — **workspace-bounded**. See [file-mutations.md](file-mutations.md).
 - **`code.list_files.response`**, **`code.symbols.response`**, **`code.outline.response`** — the navigation trio (see below).
 
 ## What "dirty" means

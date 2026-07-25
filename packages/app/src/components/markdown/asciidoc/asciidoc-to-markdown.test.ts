@@ -171,6 +171,22 @@ describe("inline formatting", () => {
     expect(convert("Icon image:i.svg[] here.")).toBe("Icon ![](i.svg) here.");
   });
 
+  it("prefixes an image target with imagesdir, as Asciidoctor does", () => {
+    expect(convert("= T\n:imagesdir: assets/img\n\nimage::diagram.png[A diagram]")).toBe(
+      "# T\n\n![A diagram](assets/img/diagram.png)",
+    );
+    expect(convert("= T\n:imagesdir: assets/\n\nIcon image:i.svg[] here.")).toBe(
+      "# T\n\nIcon ![](assets/i.svg) here.",
+    );
+  });
+
+  it("leaves a URL or a root-relative image target untouched by imagesdir", () => {
+    expect(convert("= T\n:imagesdir: assets\n\nimage::https://x.dev/a.png[]")).toBe(
+      "# T\n\n![](https://x.dev/a.png)",
+    );
+    expect(convert("= T\n:imagesdir: assets\n\nimage::/logo.png[]")).toBe("# T\n\n![](/logo.png)");
+  });
+
   it("reduces cross references to their text", () => {
     expect(convert("See <<intro,the intro>> and xref:api.adoc[the API].")).toBe(
       "See the intro and the API.",
@@ -255,6 +271,12 @@ describe("test-documents fixture", () => {
     expect(body).toContain("not resolved in preview");
     expect(body).toContain("[the AsciiDoc site](https://asciidoc.org)");
     expect(body).toContain("`literal {monospace}`");
+
+    // Both image macros reach the markdown image path, targets intact — that is
+    // what the renderer then resolves against the document's own directory.
+    expect(body).toContain("![Orbit via the block macro](logo.svg)");
+    expect(body).toContain("![Orbit inline](logo.svg)");
+    expect(body).toContain("![Refused: escaping path](../../../../etc/passwd.png)");
 
     // And nothing raw leaked through.
     expect(body).not.toContain("|===");

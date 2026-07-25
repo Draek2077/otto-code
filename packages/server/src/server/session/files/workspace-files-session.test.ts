@@ -1069,4 +1069,158 @@ describe("WorkspaceFilesSession known-workspace boundary", () => {
     expect(result.error).toBeNull();
     subsystem.dispose();
   });
+
+  // ...but the mutation RPCs are NOT exempt. Reading and editing a stray file is
+  // a deliberate affordance; creating, renaming and unlinking one on any path
+  // the host can reach is not, so all three take the boundary guard.
+  test("refuses to create outside every known workspace", async () => {
+    const known = makeDir("workspace-files-known-create-");
+    const stranger = makeDir("workspace-files-stranger-create-");
+    const { subsystem, emitted } = makeSubsystem({ allowedRoots: [known] });
+
+    await subsystem.handleFileCreateRequest({
+      type: "file.create.request",
+      cwd: stranger,
+      path: "planted.txt",
+      kind: "file",
+      requestId: "req-stranger-create",
+    });
+
+    expect(lastMutationResult(emitted, "file.create.response")).toEqual({
+      status: "error",
+      message: "Access outside of known workspaces is not allowed",
+    });
+    expect(existsSync(join(stranger, "planted.txt"))).toBe(false);
+  });
+
+  test("refuses to delete outside every known workspace", async () => {
+    const known = makeDir("workspace-files-known-delete-");
+    const stranger = makeDir("workspace-files-stranger-delete-");
+    writeFileSync(join(stranger, "secret.txt"), "secret");
+    const { subsystem, emitted } = makeSubsystem({ allowedRoots: [known] });
+
+    await subsystem.handleFileDeleteRequest({
+      type: "file.delete.request",
+      cwd: stranger,
+      path: "secret.txt",
+      requestId: "req-stranger-delete",
+    });
+
+    expect(lastMutationResult(emitted, "file.delete.response")).toEqual({
+      status: "error",
+      message: "Access outside of known workspaces is not allowed",
+    });
+    expect(readFileSync(join(stranger, "secret.txt"), "utf8")).toBe("secret");
+  });
+
+  test("refuses to rename outside every known workspace", async () => {
+    const known = makeDir("workspace-files-known-rename-");
+    const stranger = makeDir("workspace-files-stranger-rename-");
+    writeFileSync(join(stranger, "a.txt"), "alpha");
+    const { subsystem, emitted } = makeSubsystem({ allowedRoots: [known] });
+
+    await subsystem.handleFileRenameRequest({
+      type: "file.rename.request",
+      cwd: stranger,
+      path: "a.txt",
+      newPath: "b.txt",
+      requestId: "req-stranger-rename",
+    });
+
+    expect(lastMutationResult(emitted, "file.rename.response")).toEqual({
+      status: "error",
+      message: "Access outside of known workspaces is not allowed",
+    });
+    expect(existsSync(join(stranger, "a.txt"))).toBe(true);
+  });
+});
+
+function lastMutationResult(
+  emitted: SessionOutboundMessage[],
+  type: "file.create.response" | "file.delete.response" | "file.rename.response",
+) {
+  const message = emitted.at(-1);
+  if (message?.type !== type) {
+    throw new Error(`expected ${type}, got ${message?.type}`);
+  }
+  return message.payload.result;
+}
+
+describe("WorkspaceFilesSession file mutations", () => {
+  test("creates a file inside a known workspace", async () => {
+    const cwd = makeDir("workspace-files-create-");
+    const { subsystem, emitted } = makeSubsystem();
+
+    await subsystem.handleFileCreateRequest({
+      type: "file.create.request",
+      cwd,
+      path: "notes.txt",
+      kind: "file",
+      requestId: "req-create",
+    });
+
+    expect(lastMutationResult(emitted, "file.create.response")).toMatchObject({
+      status: "ok",
+      path: "notes.txt",
+      kind: "file",
+    });
+    expect(readFileSync(join(cwd, "notes.txt"), "utf8")).toBe("");
+  });
+
+  test("reports a non-empty directory rather than wiping it", async () => {
+    const cwd = makeDir("workspace-files-delete-guard-");
+    mkdirSync(join(cwd, "pkg"));
+    writeFileSync(join(cwd, "pkg", "index.ts"), "export {};");
+    const { subsystem, emitted } = makeSubsystem();
+
+    await subsystem.handleFileDeleteRequest({
+      type: "file.delete.request",
+      cwd,
+      path: "pkg",
+      requestId: "req-delete-guard",
+    });
+
+    expect(lastMutationResult(emitted, "file.delete.response")).toEqual({ status: "not_empty" });
+    expect(existsSync(join(cwd, "pkg", "index.ts"))).toBe(true);
+  });
+
+  test("moves a file into another directory", async () => {
+    const cwd = makeDir("workspace-files-rename-");
+    mkdirSync(join(cwd, "src"));
+    writeFileSync(join(cwd, "a.txt"), "alpha");
+    const { subsystem, emitted } = makeSubsystem();
+
+    await subsystem.handleFileRenameRequest({
+      type: "file.rename.request",
+      cwd,
+      path: "a.txt",
+      newPath: "src/a.txt",
+      requestId: "req-rename",
+    });
+
+    expect(lastMutationResult(emitted, "file.rename.response")).toEqual({
+      status: "ok",
+      from: "a.txt",
+      to: "src/a.txt",
+      kind: "file",
+    });
+    expect(readFileSync(join(cwd, "src", "a.txt"), "utf8")).toBe("alpha");
+    expect(existsSync(join(cwd, "a.txt"))).toBe(false);
+  });
+
+  test("surfaces an empty cwd as an error result", async () => {
+    const { subsystem, emitted } = makeSubsystem();
+
+    await subsystem.handleFileDeleteRequest({
+      type: "file.delete.request",
+      cwd: "  ",
+      path: "a.txt",
+      requestId: "req-delete-empty",
+    });
+
+    expect(lastMutationResult(emitted, "file.delete.response")).toEqual({
+      status: "error",
+      message: "cwd is required",
+    });
+  });
 });

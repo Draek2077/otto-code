@@ -683,6 +683,8 @@ function toolGroupLabel(t: TFunction, group: OttoToolGroup): string {
       return t("settings.providers.tools.groups.schedules");
     case "artifacts":
       return t("settings.providers.tools.groups.artifacts");
+    case "widgets":
+      return t("settings.providers.tools.groups.widgets");
     case "workspace":
       return t("settings.providers.tools.groups.workspace");
   }

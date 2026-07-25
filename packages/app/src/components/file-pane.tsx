@@ -31,6 +31,8 @@ import { lineNumberGutterWidth } from "@/components/code-insets";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { renderedDocumentKind } from "@/components/file-pane-render-mode";
 import { toRenderedDocument } from "@/components/markdown/rendered-document";
+import type { WorkspaceImageSource } from "@/components/markdown/image-context";
+import { createWorkspaceImageBase } from "@/components/markdown/workspace-image-source";
 import {
   findPreviewMatches,
   splitTokensForMatches,
@@ -139,6 +141,8 @@ interface FilePreviewBodyProps {
   location: WorkspaceFileLocation;
   imagePreviewUri: string | null;
   svgXml: string | null;
+  /** Where a rendered document's own relative image srcs resolve; null outside a workspace. */
+  workspaceImages: WorkspaceImageSource | null;
   /**
    * Soft-wrap long code lines instead of scrolling sideways — the same
    * preference the editor toolbar toggles, so the two views agree. Compact
@@ -430,6 +434,7 @@ function FilePreviewBody({
   location,
   imagePreviewUri,
   svgXml,
+  workspaceImages,
   wrapLines = false,
   contentOverride,
   findQuery,
@@ -691,8 +696,14 @@ function FilePreviewBody({
                   </Text>
                 </View>
               ) : null}
-              {/* A repo document must not be able to reach the network just by being previewed. */}
-              <MarkdownRenderer text={body} remoteImages="altText" enableHtmlish={enableHtmlish} />
+              {/* A repo document must not be able to reach the network just by being previewed —
+                  but it may show its own images, read back through the daemon. */}
+              <MarkdownRenderer
+                text={body}
+                remoteImages="altText"
+                enableHtmlish={enableHtmlish}
+                workspaceImages={workspaceImages}
+              />
             </View>
           </RNScrollView>
           {scrollbar.overlay}
@@ -913,6 +924,21 @@ export function FilePreview({
   });
   const imagePreviewUri = useAttachmentPreviewUrl(query.data?.imageAttachment ?? null);
 
+  // What a rendered document resolves `![](docs/x.png)` against. Reads go out with
+  // the workspace root as their cwd, and only for paths contained under it — a
+  // document outside the workspace gets no base at all, and keeps showing alt text.
+  const workspaceImages = useMemo<WorkspaceImageSource | null>(() => {
+    if (!client || !normalizedFilePath) {
+      return null;
+    }
+    const base = createWorkspaceImageBase({
+      serverId,
+      workspaceRoot: normalizedWorkspaceRoot,
+      documentPath: normalizedFilePath,
+    });
+    return base ? { base, reader: client } : null;
+  }, [client, normalizedFilePath, normalizedWorkspaceRoot, serverId]);
+
   // The viewer is always clean, so it simply follows the disk: any watch
   // event re-reads the file. COMPAT(textEditor): old daemons ignore the
   // subscription; the viewer falls back to its tab-activation refetch.
@@ -964,6 +990,7 @@ export function FilePreview({
         location={location}
         imagePreviewUri={imagePreviewUri}
         svgXml={query.data?.svgXml ?? null}
+        workspaceImages={workspaceImages}
         wrapLines={wrapLines}
         contentOverride={contentOverride}
         findQuery={findQuery}

@@ -14,6 +14,7 @@ import { normalizePersonalityRoles } from "@otto-code/protocol/agent-personaliti
 import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
 import { composeTeamAndPersonalityPrompt } from "./agent-teams.js";
 import { deltaAgentUsage } from "./subagent-usage.js";
+import { normalizeWidgetTimelineItem } from "../widget/widget-timeline.js";
 import {
   accumulateLifetimeUsage,
   toTurnSpend,
@@ -1093,6 +1094,16 @@ function normalizeUserMessageForDisplay(item: AgentTimelineItem): AgentTimelineI
   return { ...item, text: unwrapped };
 }
 
+/**
+ * The single display-normalization pass for timeline items. Both steps are
+ * idempotent, which matters: the chokepoint normalizes on the way to the stream
+ * AND the store re-normalizes on append, and history import runs it again on
+ * replay.
+ */
+function normalizeTimelineItemForDisplay(item: AgentTimelineItem): AgentTimelineItem {
+  return normalizeWidgetTimelineItem(normalizeUserMessageForDisplay(item));
+}
+
 function buildImportedTimelineRows(entries: readonly ImportedTimelineEntry[]): AgentTimelineRow[] {
   const rows: AgentTimelineRow[] = [];
   for (const entry of entries) {
@@ -1102,7 +1113,7 @@ function buildImportedTimelineRows(entries: readonly ImportedTimelineEntry[]): A
     rows.push({
       seq: rows.length + 1,
       timestamp: entry.timestamp ?? new Date().toISOString(),
-      item: normalizeUserMessageForDisplay(entry.item),
+      item: normalizeTimelineItemForDisplay(entry.item),
     });
   }
   return rows;
@@ -5828,8 +5839,9 @@ export class AgentManager {
     turnId?: string,
   ): AgentStreamEvent {
     // Normalize once so persistence, the dispatched event, and activity
-    // counters all see the same display-clean item (unwraps voice spoken-input).
-    const item = normalizeUserMessageForDisplay(rawItem);
+    // counters all see the same display-clean item (unwraps voice spoken-input,
+    // and turns a show_widget call into a renderable widget).
+    const item = normalizeTimelineItemForDisplay(rawItem);
     const row = this.recordTimeline(agentId, item);
     this.recordTimelineActivity(item);
     const event: AgentStreamEvent = {
@@ -5951,7 +5963,7 @@ export class AgentManager {
     item: AgentTimelineItem,
     options?: { timestamp?: string },
   ): AgentTimelineRow {
-    const row = this.timelineStore.append(agentId, normalizeUserMessageForDisplay(item), options);
+    const row = this.timelineStore.append(agentId, normalizeTimelineItemForDisplay(item), options);
     this.enqueueDurableTimelineAppend(agentId, row);
     return row;
   }

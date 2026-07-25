@@ -10,6 +10,7 @@ export const es: TranslationResources = {
       confirm: "Confirmar",
       close: "Cerca",
       copy: "Copiar",
+      create: "Crear",
       dismiss: "Descartar",
       ok: "Aceptar",
       retry: "Reintentar",
@@ -643,6 +644,10 @@ export const es: TranslationResources = {
         findInFiles: "Buscar en archivos",
         addToContext: "Añadir al chat",
         removeFromContext: "Quitar del chat",
+        newFile: "Nuevo archivo…",
+        newFolder: "Nueva carpeta…",
+        rename: "Renombrar…",
+        delete: "Eliminar",
       },
       actions: {
         back: "Atrás",
@@ -651,6 +656,38 @@ export const es: TranslationResources = {
         refreshing: "Actualizar archivos",
         hideHiddenFiles: "Ocultar archivos ocultos",
         showHiddenFiles: "Mostrar archivos ocultos",
+        newFile: "Nuevo archivo",
+        newFolder: "Nueva carpeta",
+      },
+      dialogs: {
+        nameLabel: "Nombre",
+        inFolder: "En {{folder}}",
+        newFile: {
+          title: "Nuevo archivo",
+          placeholder: "notes.md",
+        },
+        newFolder: {
+          title: "Nueva carpeta",
+          placeholder: "components",
+        },
+        rename: {
+          title: "Renombrar",
+          confirm: "Renombrar",
+        },
+        delete: {
+          titleFile: "¿Eliminar el archivo?",
+          titleFolder: "¿Eliminar la carpeta?",
+          subjectFile: "«{{name}}» se eliminará del disco.",
+          subjectFolder: "«{{name}}» se eliminará del disco.",
+          permanentLine:
+            "Es permanente: se elimina del disco, no se mueve a la papelera, y Otto no puede deshacerlo.",
+          confirm: "Eliminar",
+        },
+        deleteContents: {
+          title: "¿Eliminar la carpeta y su contenido?",
+          subject: "«{{name}}» no está vacía. También se eliminará todo lo que contiene.",
+          confirm: "Eliminar todo",
+        },
       },
       empty: {
         noFiles: "Sin archivos",
@@ -662,6 +699,8 @@ export const es: TranslationResources = {
       },
       errors: {
         failedToListDirectory: "No se pudo listar el directorio",
+        alreadyExists: "«{{name}}» ya existe aquí.",
+        noLongerExists: "Ese elemento ya no existe en el disco.",
       },
     },
     setup: {
@@ -3395,6 +3434,7 @@ export const es: TranslationResources = {
           terminals: "Terminales",
           schedules: "Programaciones",
           artifacts: "Artefactos",
+          widgets: "Widgets",
           workspace: "Espacios de trabajo",
         },
       },

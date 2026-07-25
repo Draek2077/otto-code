@@ -16,6 +16,12 @@ This is deliberately _not_ "render a safe subset of HTML". We render markdown; H
 format we translate on the way in. The translation lives in
 `components/markdown/html-ish.ts`, which runs before markdown-it (which itself has `html: false`).
 
+**This is also why [widgets](widgets.md) do not go through here.** An agent that wants to draw
+something emits a `show_widget` tool call carrying an HTML/SVG fragment, and the client renders it
+in a sandboxed frame anchored to that tool call — beside the markdown, never inside it, exactly as
+the Suggested Tasks card is. Widgets exist so that this policy never has to be weakened: the answer
+to "the model wants to show a chart" is a separate, contained renderer, not `html: true`.
+
 The five rules that follow from it, and that are easy to break:
 
 1. **The default for an unrecognized tag is unwrap, not passthrough.** `<table>` has no markdown
@@ -28,7 +34,9 @@ The five rules that follow from it, and that are easy to break:
    difference.
 3. **Image srcs are gated by scheme, and that gate is the only thing between a document and a
    network fetch.** An image that fails the gate renders as its `alt` text (or is dropped if it has
-   none). Never as raw markup, and never as a blank sized box.
+   none). Never as raw markup, and never as a blank sized box. Workspace-relative srcs are an
+   additive allowed _class_ routed through the daemon, not a loosening of the scheme check — see
+   [Relative images](#relative-images-a-documents-own-files).
 4. **Whitespace changes meaning at the boundary.** It is insignificant in HTML and structural in
    markdown, so text coming out of a tag has its line indentation stripped — otherwise a
    pretty-printed nested `<div>` body arrives with 4+ leading spaces and markdown-it reads it as an
@@ -57,6 +65,83 @@ Note the desktop app shell's CSP (`packages/desktop/src/main.ts`) sets `img-src 
 with no `https:`, so remote images cannot load there regardless of this setting — `"load"` only
 takes effect on native. Do not widen that CSP to "fix" a blank image; the alt-text fallback is the
 intended behavior.
+
+**Both image forms are now behind this one gate.** There is a shared `image` render rule
+(`markdown/renderer.tsx`) as well as the HTML `<img>` translation. Before it existed, only the HTML
+path honoured `remoteImages` — markdown `![](x)` fell through to `react-native-markdown-display`'s
+default rule, which matched the src against `allowedImageHandlers` and otherwise prefixed
+`defaultImageHandler`, so a viewer `![](docs/x.png)` became a fetch of `https://docs/x.png`. Do not
+remove that rule to "simplify"; the library default is a network fetch.
+
+## Relative images: a document's own files
+
+A document may show images that live beside it — `![](assets/flow.png)`,
+`<img src="packages/website/public/logo.svg">`, AsciiDoc's `image::flow.png[]` — resolved against
+the document's location the way GitHub resolves them against a repo. Only the file viewer opts in,
+by passing `workspaceImages` to `MarkdownRenderer`.
+
+| Module                      | Role                                                                                                                       |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `workspace-image-source.ts` | Pure. Resolves a src against the document's directory and **contains it under the workspace root**. The security boundary. |
+| `workspace-image-cache.ts`  | The daemon read, deduplicated by path. Bytes → the attachment store.                                                       |
+| `image-context.tsx`         | The context both image paths resolve through, so the gate is applied once.                                                 |
+| `svg-intrinsic-size.ts`     | An SVG's size from its `width`/`height` or `viewBox` — native never sends SVG through `Image.getSize`.                     |
+
+The load-bearing decisions:
+
+- **Containment is app-side, and it happens before any RPC.** The daemon deliberately does not bound
+  a single-file read to a known workspace (`file-explorer/workspace-files-session.ts`), so
+  `resolveWorkspaceImagePath` refusing a path is the whole of the protection: `../../../etc/passwd`,
+  `C:/…`, `//host/share`, `file:` and percent-encoded or backslash-spelled variants of all of them
+  never become a read. It shares its `..`-collapsing primitive (`containRelativePath`, `utils/path`)
+  with the assistant-file-link resolver — one containment algorithm, not two.
+- **Only known image extensions are read.** Containment alone would happily allow `![](.env)`. The
+  extension allowlist is what makes a document unable to use this path as a file reader.
+- **The transport is the file-read RPC the viewer already uses.** No protocol change, no
+  image-serving endpoint. `client.readFile` → `persistAttachmentFromBytes` → `useAttachmentPreviewUrl`
+  is exactly `createFilePanePreview`'s shape, so blob-URL (web) / `file://` (native) lifecycle and GC
+  are the store's, not a second caching layer. Reads are capped at 8 MB after the fact — the daemon
+  read has no size limit of its own — and an oversized image falls back to alt text.
+- **Resolution is cached per daemon + workspace + path, not per component.** A badge table naming the
+  same file twenty times is one read; a remount is none. The trade: an image edited on disk keeps
+  showing its cached copy until the entry is evicted.
+- **`remoteImages: "altText"` still means what it says.** The raw src of a relative image never
+  reaches an `<Image>` — only the store URL the read produced. `localImages: "workspace"` in
+  `HtmlishOptions` adds an allowed _class_ (scheme-less paths); it does not widen the scheme
+  allowlist, which is what `html-ish.test.ts` pins.
+- **AsciiDoc arrives already folded in.** `asciiDocToMarkdown` emits `![alt](target)` for both image
+  macros and applies `:imagesdir:` to the target, so an AsciiDoc image takes the identical route from
+  there. There is no second resolver on that side.
+- **Native SVG splits, as it already did for whole-file previews.** `Image` cannot decode SVG on
+  iOS/Android, so the read hands back markup for `SvgXml` instead of a store URL, and its size comes
+  from the markup rather than from `Image.getSize`.
+- **Unresolvable is not a special case.** An escaping path, a missing file, an oversized one and a
+  blocked scheme all land on the standing rule: show the `alt` text, or nothing when there is no alt.
+
+`test-documents/markdown.md` and `test-documents/asciidoc.adoc` carry the fixture — relative,
+root-relative, HTML, escaping, missing and remote images in one document each.
+
+### Two resolvers, on purpose — do not unify them
+
+Chat has its own, older path for the same-looking problem: `utils/assistant-image-source.ts` →
+`AssistantMarkdownImage` (`message.tsx`), which reads an agent-authored `![](screenshots/out.png)`
+through the identical `readFile` → attachment-store transport. It looks like a duplicate. It is not,
+and merging them would be a security regression.
+
+|                       | Viewer (`workspace-image-source.ts`) | Chat (`assistant-image-source.ts`)                                      |
+| --------------------- | ------------------------------------ | ----------------------------------------------------------------------- |
+| Who wrote the src     | A repo file — **untrusted**          | The agent this user is talking to — trusted                             |
+| Base                  | The document's own directory         | The workspace root; chat messages have no directory                     |
+| Outside the workspace | **Refused**                          | **Deliberately allowed** — falls back to the filesystem/drive/home root |
+| Non-image paths       | Refused by extension                 | Read, then rejected on `kind !== "image"`                               |
+
+Chat's breadth is a feature: an agent screenshots to `/tmp/otto-codex-screenshot.png` or
+`~/.otto/screenshots/`, and chat has to show it. Applying the viewer's containment there would break
+that. Applying chat's breadth to the viewer would let any README name any file on the host. The
+shared thing between them is the transport, and that is already shared.
+
+The HTML `<img>` half stays off in chat for a separate reason: chat renders with
+`enableHtmlish={false}`, so the translation pass never runs at all.
 
 ## Fences: one dispatch point
 
@@ -121,6 +206,6 @@ The load-bearing decisions:
 
 ## What is still missing
 
-Tracked in `projects/file-rendering/`: relative image resolution (a workspace-local
-`![](docs/x.png)` still shows alt text — see `relative-image-resolution.md`), CSV, notebooks,
-GitHub alerts (`> [!NOTE]` renders its literal marker), tables, footnotes, math.
+Tracked in the File rendering section of [`projects/README.md`](../projects/README.md#file-rendering):
+CSV/TSV table view, Jupyter notebooks, GitHub alerts (`> [!NOTE]` renders its literal marker),
+HTML `<table>` (it drops to its cell text), footnotes, math, and PDF.

@@ -174,6 +174,45 @@ describe("splitHtmlishMarkdown", () => {
     expect(splitHtmlishMarkdown('<img src="javascript:alert(1)">')).toEqual([]);
   });
 
+  it("keeps a workspace-relative src as an image when the surface has a workspace", () => {
+    const source =
+      '<p align="center"><img src="packages/website/public/logo.svg" width="64" height="64" alt="Otto logo" /></p>';
+
+    expect(
+      splitHtmlishMarkdown(source, { remoteImages: "altText", localImages: "workspace" }),
+    ).toEqual([
+      {
+        kind: "inlineImage",
+        alt: "Otto logo",
+        src: "packages/website/public/logo.svg",
+        width: 64,
+        height: 64,
+      },
+    ]);
+  });
+
+  it("still shows a relative src as alt text on a surface with no workspace", () => {
+    const source = '<img src="docs/diagram.png" alt="Flow">';
+
+    expect(splitHtmlishMarkdown(source, { remoteImages: "altText" })).toEqual([
+      { kind: "markdown", text: "Flow" },
+    ]);
+  });
+
+  it("does not let localImages widen the scheme allowlist", () => {
+    const options = { remoteImages: "altText", localImages: "workspace" } as const;
+
+    expect(splitHtmlishMarkdown('<img alt="Bad" src="javascript:alert(1)">', options)).toEqual([
+      { kind: "markdown", text: "Bad" },
+    ]);
+    expect(splitHtmlishMarkdown('<img alt="Bad" src="file:///etc/passwd">', options)).toEqual([
+      { kind: "markdown", text: "Bad" },
+    ]);
+    expect(
+      splitHtmlishMarkdown('<img alt="Badge" src="https://img.shields.io/x.svg">', options),
+    ).toEqual([{ kind: "markdown", text: "Badge" }]);
+  });
+
   it("never hands a remote src to an image when remoteImages is altText", () => {
     const source =
       '<a href="https://example.com"><img alt="GitHub stars" src="https://img.shields.io/x.svg"></a>';

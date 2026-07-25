@@ -57,6 +57,7 @@ export const OTTO_TOOL_GROUPS = [
   "terminals",
   "schedules",
   "artifacts",
+  "widgets",
   "workspace",
 ] as const;
 
@@ -74,6 +75,7 @@ export function ottoToolGroupForName(name: string): OttoToolGroup {
   if (name.includes("terminal")) return "terminals";
   if (name.includes("schedule") || name === "create_heartbeat") return "schedules";
   if (name.includes("artifact")) return "artifacts";
+  if (name === "show_widget" || name === "widget_contract") return "widgets";
   if (name.includes("worktree") || name.includes("workspace")) return "workspace";
   return "agents";
 }

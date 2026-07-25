@@ -63,6 +63,7 @@ import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { ToolCallDetailsContent } from "@/components/tool-call-details";
 import { QuestionFormCard } from "@/components/question-form-card";
 import { ToolCallSheetProvider } from "@/components/tool-call-sheet";
+import { WidgetChatProvider } from "@/widgets/widget-chat-context";
 import { type AgentStreamRenderModel, buildAgentStreamRenderModel } from "./model";
 import { resolveStreamRenderStrategy } from "./strategy-resolver";
 import { type StreamSegmentRenderers, type StreamViewportHandle } from "./strategy";
@@ -1028,59 +1029,61 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     return (
       <ToolCallSheetProvider>
-        <View style={stylesheet.container}>
-          <MessageOuterSpacingProvider disableOuterSpacing>
-            {streamRenderStrategy.render({
-              agentId,
-              segments: renderModel.segments,
-              boundary,
-              renderers,
-              listEmptyComponent,
-              viewportRef,
-              routeBottomAnchorRequest,
-              isAuthoritativeHistoryReady,
-              onNearBottomChange: setIsNearBottom,
-              onNearHistoryStart: loadOlder,
-              isLoadingOlderHistory: isLoadingOlder,
-              hasOlderHistory: hasOlder,
-              scrollEnabled: streamScrollEnabled,
-              listStyle: stylesheet.list,
-              baseListContentContainerStyle: stylesheet.listContentContainer,
-              forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
-            })}
-          </MessageOuterSpacingProvider>
-          {/* Seam fades. Both live INSIDE the stream view (not at panel level)
+        <WidgetChatProvider serverId={resolvedServerId} agentId={agentId}>
+          <View style={stylesheet.container}>
+            <MessageOuterSpacingProvider disableOuterSpacing>
+              {streamRenderStrategy.render({
+                agentId,
+                segments: renderModel.segments,
+                boundary,
+                renderers,
+                listEmptyComponent,
+                viewportRef,
+                routeBottomAnchorRequest,
+                isAuthoritativeHistoryReady,
+                onNearBottomChange: setIsNearBottom,
+                onNearHistoryStart: loadOlder,
+                isLoadingOlderHistory: isLoadingOlder,
+                hasOlderHistory: hasOlder,
+                scrollEnabled: streamScrollEnabled,
+                listStyle: stylesheet.list,
+                baseListContentContainerStyle: stylesheet.listContentContainer,
+                forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
+              })}
+            </MessageOuterSpacingProvider>
+            {/* Seam fades. Both live INSIDE the stream view (not at panel level)
               so they share a stacking context with the desktop web scrollbar
               overlay (zIndex 10, rendered by the web strategy) — the scrollbar
               stays visible over the fades. Must stay rendered BEFORE the
               scroll-to-bottom overlay: neither fade carries a zIndex, so
               later-sibling paint order is what keeps the button above them. */}
-          <ChatSeamFade edge="top" />
-          <ChatSeamFade edge="bottom" />
-          {!isNearBottom && (
-            <Animated.View
-              style={stylesheet.scrollToBottomContainer}
-              entering={scrollIndicatorFadeIn}
-              exiting={scrollIndicatorFadeOut}
-              // Prop, not style: unistyles emits style pointerEvents as literal
-              // (invalid) CSS on web, so only the prop actually stops this strip
-              // from eating clicks. RNW's box-none sets direct children back to
-              // auto, so the button must be the direct child — no full-width
-              // wrapper in between.
-              pointerEvents="box-none"
-            >
-              <Pressable
-                style={stylesheet.scrollToBottomButton}
-                onPress={scrollToBottom}
-                accessibilityRole="button"
-                accessibilityLabel={t("agentStream.scrollToBottom")}
-                testID="scroll-to-bottom-button"
+            <ChatSeamFade edge="top" />
+            <ChatSeamFade edge="bottom" />
+            {!isNearBottom && (
+              <Animated.View
+                style={stylesheet.scrollToBottomContainer}
+                entering={scrollIndicatorFadeIn}
+                exiting={scrollIndicatorFadeOut}
+                // Prop, not style: unistyles emits style pointerEvents as literal
+                // (invalid) CSS on web, so only the prop actually stops this strip
+                // from eating clicks. RNW's box-none sets direct children back to
+                // auto, so the button must be the direct child — no full-width
+                // wrapper in between.
+                pointerEvents="box-none"
               >
-                <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
-              </Pressable>
-            </Animated.View>
-          )}
-        </View>
+                <Pressable
+                  style={stylesheet.scrollToBottomButton}
+                  onPress={scrollToBottom}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("agentStream.scrollToBottom")}
+                  testID="scroll-to-bottom-button"
+                >
+                  <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
+                </Pressable>
+              </Animated.View>
+            )}
+          </View>
+        </WidgetChatProvider>
       </ToolCallSheetProvider>
     );
   },

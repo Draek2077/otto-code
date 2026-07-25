@@ -69,6 +69,12 @@ import {
   registerArtifactWebviewSessionGuards,
 } from "./features/artifact-webview.js";
 import {
+  hardenWidgetWebviewPreferences,
+  isWidgetWebviewAttach,
+  lockDownWidgetWebviewContents,
+  registerWidgetWebviewSessionGuards,
+} from "./features/widget-webview.js";
+import {
   hardenVisualizerWebviewPreferences,
   isVisualizerWebviewAttach,
   lockDownVisualizerWebviewContents,
@@ -244,6 +250,7 @@ function readActiveBrowserInput(
 type PendingWebviewAttach =
   | { kind: "browser"; browserId: string }
   | { kind: "artifact" }
+  | { kind: "widget" }
   | { kind: "visualizer" };
 const pendingWebviewAttaches: PendingWebviewAttach[] = [];
 
@@ -796,6 +803,18 @@ async function createWindow(
       registerArtifactWebviewSessionGuards();
       return;
     }
+    if (isWidgetWebviewAttach(params)) {
+      pendingWebviewAttaches.push({ kind: "widget" });
+      // Order matters: drop whatever preload the renderer asked for FIRST, then
+      // let the hardener install the main-process-owned path. A widget guest is
+      // the one guest type that gets a preload at all — it has to report its
+      // own content height — and the renderer never gets to choose the file.
+      delete params.preload;
+      delete (params as { preloadURL?: string }).preloadURL;
+      hardenWidgetWebviewPreferences(webPreferences);
+      registerWidgetWebviewSessionGuards();
+      return;
+    }
     if (isVisualizerWebviewAttach(params)) {
       pendingWebviewAttaches.push({ kind: "visualizer" });
       hardenVisualizerWebviewPreferences(webPreferences);
@@ -827,6 +846,10 @@ async function createWindow(
     const pending = pendingWebviewAttaches.shift() ?? null;
     if (pending?.kind === "artifact") {
       lockDownArtifactWebviewContents(contents);
+      return;
+    }
+    if (pending?.kind === "widget") {
+      lockDownWidgetWebviewContents(contents);
       return;
     }
     if (pending?.kind === "visualizer") {

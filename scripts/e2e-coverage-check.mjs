@@ -35,28 +35,42 @@ const scoreboard = sections.map((section) => {
   const covered = (section.match(/\|\s*✅\s*\|/g) ?? []).length;
   const partial = (section.match(/\|\s*🟡\s*\|/g) ?? []).length;
   const gaps = (section.match(/\|\s*❌\s*\|/g) ?? []).length;
-  return { title, covered, partial, gaps, total: covered + partial + gaps };
+  // 📊 rows are measurement instruments, not behavior coverage. They are counted
+  // separately and kept out of the percentage on purpose: scoring an instrument
+  // as covered would inflate coverage with a spec that asserts no product
+  // behavior, and scoring it as a gap would invent work nobody owes.
+  const instruments = (section.match(/\|\s*📊\s*\|/g) ?? []).length;
+  return { title, covered, partial, gaps, instruments, total: covered + partial + gaps };
 });
 
 console.log("E2E coverage scoreboard\n");
 const width = Math.max(...scoreboard.map((row) => row.title.length));
-let totals = { covered: 0, partial: 0, gaps: 0, total: 0 };
+let totals = { covered: 0, partial: 0, gaps: 0, instruments: 0, total: 0 };
 for (const row of scoreboard) {
   totals = {
     covered: totals.covered + row.covered,
     partial: totals.partial + row.partial,
     gaps: totals.gaps + row.gaps,
+    instruments: totals.instruments + row.instruments,
     total: totals.total + row.total,
   };
-  const pct = row.total === 0 ? 0 : Math.round((row.covered / row.total) * 100);
+  // A section holding only instruments has nothing to take a percentage of;
+  // printing "0% covered" there would read as an uncovered feature area.
+  const verdict =
+    row.total === 0
+      ? `${row.instruments} instrument${row.instruments === 1 ? "" : "s"}, not scored`
+      : `${Math.round((row.covered / row.total) * 100)}% covered`;
   console.log(
-    `  ${row.title.padEnd(width)}  ✅ ${String(row.covered).padStart(2)}  🟡 ${row.partial}  ❌ ${String(row.gaps).padStart(2)}  (${pct}% covered)`,
+    `  ${row.title.padEnd(width)}  ✅ ${String(row.covered).padStart(2)}  🟡 ${row.partial}  ❌ ${String(row.gaps).padStart(2)}  (${verdict})`,
   );
 }
 const totalPct = totals.total === 0 ? 0 : Math.round((totals.covered / totals.total) * 100);
 console.log(
   `\n  ${"TOTAL".padEnd(width)}  ✅ ${totals.covered}  🟡 ${totals.partial}  ❌ ${totals.gaps}  (${totalPct}% covered)`,
 );
+if (totals.instruments > 0) {
+  console.log(`  ${"".padEnd(width)}  📊 ${totals.instruments} (instruments, not scored)`);
+}
 console.log(
   `\n  Spec files on disk: ${diskSpecs.size} — all claimed by the matrix: ${unmapped.length === 0 ? "yes" : "NO"}`,
 );

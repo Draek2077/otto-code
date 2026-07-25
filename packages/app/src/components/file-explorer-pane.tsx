@@ -31,12 +31,16 @@ import {
   Download,
   Eye,
   EyeOff,
+  FilePlus,
+  FolderPlus,
   History,
   MoreVertical,
   Paperclip,
+  Pencil,
   RotateCw,
   Search,
   SquarePen,
+  Trash2,
 } from "@/components/icons/material-icons";
 import { SourceControlPanelIcon } from "@/components/icons/source-control-panel-icon";
 import { getFileIconSvg } from "@/components/material-file-icons";
@@ -85,7 +89,10 @@ import { SolutionTreePane } from "@/solution/solution-tree-pane";
 import { useSolutionsQuery } from "@/solution/use-solution-queries";
 import { formatFileSize } from "@/utils/format-file-size";
 import { formatTimeAgo } from "@/utils/time";
-import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
+import { buildAbsoluteExplorerPath, explorerParentPath } from "@/utils/explorer-paths";
+import { useFileMutationsFeature } from "@/file-explorer/use-file-mutations-feature";
+import { useFileMutations } from "@/file-explorer/use-file-mutations";
+import { FileNameSheet, type FileNameSheetMode } from "@/file-explorer/file-name-sheet";
 import { filterVisibleExplorerEntries, isHiddenExplorerPath } from "@/file-explorer/visibility";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
@@ -116,6 +123,11 @@ interface TreeRowItemProps {
   onShowHistory?: (entry: ExplorerEntry) => void;
   onViewChanges?: (entry: ExplorerEntry) => void;
   onShowContextMenu?: (request: EntryContextMenuRequest) => void;
+  /** All four are undefined on a host without `features.fileMutations`. */
+  onNewFile?: (entry: ExplorerEntry) => void;
+  onNewFolder?: (entry: ExplorerEntry) => void;
+  onRename?: (entry: ExplorerEntry) => void;
+  onDelete?: (entry: ExplorerEntry) => void;
   isInContext: boolean;
   /** This file is in the workspace's current diff, so it has changes to view. */
   isChanged: boolean;
@@ -174,6 +186,10 @@ function TreeRowItem({
   onShowHistory,
   onViewChanges,
   onShowContextMenu,
+  onNewFile,
+  onNewFolder,
+  onRename,
+  onDelete,
   isInContext,
   isChanged,
 }: TreeRowItemProps) {
@@ -371,11 +387,183 @@ function TreeRowItem({
                   {t("workspace.fileExplorer.context.download")}
                 </DropdownMenuItem>
               ) : null}
+              <EntryMutationMenuItems
+                entry={entry}
+                onNewFile={onNewFile}
+                onNewFolder={onNewFolder}
+                onRename={onRename}
+                onDelete={onDelete}
+              />
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
       </Pressable>
     </View>
+  );
+}
+
+interface EntryMutationItemsProps {
+  entry: ExplorerEntry;
+  onNewFile?: (entry: ExplorerEntry) => void;
+  onNewFolder?: (entry: ExplorerEntry) => void;
+  onRename?: (entry: ExplorerEntry) => void;
+  onDelete?: (entry: ExplorerEntry) => void;
+}
+
+/**
+ * The four things that change what is on disk, shared in spirit by the row's
+ * "..." dropdown and the pane's right-click menu (the two menu primitives have
+ * different item components, so each gets a thin wrapper below).
+ *
+ * They sit below a separator, after everything that only reads, and Delete is
+ * last and destructive-styled — the pointer never crosses it on the way to a
+ * harmless item. All four are absent, not disabled, when the host cannot serve
+ * them: an item that exists but refuses is a worse answer than no item.
+ */
+function useEntryMutationHandlers({
+  entry,
+  onNewFile,
+  onNewFolder,
+  onRename,
+  onDelete,
+}: EntryMutationItemsProps) {
+  const { theme } = useUnistyles();
+  const iconSize = useIconSize();
+  const handleNewFile = useCallback(() => onNewFile?.(entry), [entry, onNewFile]);
+  const handleNewFolder = useCallback(() => onNewFolder?.(entry), [entry, onNewFolder]);
+  const handleRename = useCallback(() => onRename?.(entry), [entry, onRename]);
+  const handleDelete = useCallback(() => onDelete?.(entry), [entry, onDelete]);
+  const newFileLeading = useMemo(
+    () => <FilePlus size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
+  );
+  const newFolderLeading = useMemo(
+    () => <FolderPlus size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
+  );
+  const renameLeading = useMemo(
+    () => <Pencil size={iconSize.sm} color={theme.colors.foregroundMuted} />,
+    [iconSize.sm, theme.colors.foregroundMuted],
+  );
+  const deleteLeading = useMemo(
+    () => <Trash2 size={iconSize.sm} color={theme.colors.destructive} />,
+    [iconSize.sm, theme.colors.destructive],
+  );
+  return {
+    handleNewFile,
+    handleNewFolder,
+    handleRename,
+    handleDelete,
+    newFileLeading,
+    newFolderLeading,
+    renameLeading,
+    deleteLeading,
+  };
+}
+
+function EntryMutationMenuItems(props: EntryMutationItemsProps) {
+  const { t } = useTranslation();
+  const handlers = useEntryMutationHandlers(props);
+  const { onNewFile, onNewFolder, onRename, onDelete } = props;
+
+  if (!onNewFile && !onNewFolder && !onRename && !onDelete) {
+    return null;
+  }
+
+  return (
+    <>
+      <DropdownMenuSeparator />
+      {onNewFile ? (
+        <DropdownMenuItem
+          leading={handlers.newFileLeading}
+          onSelect={handlers.handleNewFile}
+          testID="file-explorer-new-file"
+        >
+          {t("workspace.fileExplorer.context.newFile")}
+        </DropdownMenuItem>
+      ) : null}
+      {onNewFolder ? (
+        <DropdownMenuItem
+          leading={handlers.newFolderLeading}
+          onSelect={handlers.handleNewFolder}
+          testID="file-explorer-new-folder"
+        >
+          {t("workspace.fileExplorer.context.newFolder")}
+        </DropdownMenuItem>
+      ) : null}
+      {onRename ? (
+        <DropdownMenuItem
+          leading={handlers.renameLeading}
+          onSelect={handlers.handleRename}
+          testID="file-explorer-rename"
+        >
+          {t("workspace.fileExplorer.context.rename")}
+        </DropdownMenuItem>
+      ) : null}
+      {onDelete ? (
+        <DropdownMenuItem
+          leading={handlers.deleteLeading}
+          onSelect={handlers.handleDelete}
+          destructive
+          testID="file-explorer-delete"
+        >
+          {t("workspace.fileExplorer.context.delete")}
+        </DropdownMenuItem>
+      ) : null}
+    </>
+  );
+}
+
+function EntryMutationContextItems(props: EntryMutationItemsProps) {
+  const { t } = useTranslation();
+  const handlers = useEntryMutationHandlers(props);
+  const { onNewFile, onNewFolder, onRename, onDelete } = props;
+
+  if (!onNewFile && !onNewFolder && !onRename && !onDelete) {
+    return null;
+  }
+
+  return (
+    <>
+      <ContextMenuSeparator />
+      {onNewFile ? (
+        <ContextMenuItem
+          leading={handlers.newFileLeading}
+          onSelect={handlers.handleNewFile}
+          testID="file-explorer-context-menu-new-file"
+        >
+          {t("workspace.fileExplorer.context.newFile")}
+        </ContextMenuItem>
+      ) : null}
+      {onNewFolder ? (
+        <ContextMenuItem
+          leading={handlers.newFolderLeading}
+          onSelect={handlers.handleNewFolder}
+          testID="file-explorer-context-menu-new-folder"
+        >
+          {t("workspace.fileExplorer.context.newFolder")}
+        </ContextMenuItem>
+      ) : null}
+      {onRename ? (
+        <ContextMenuItem
+          leading={handlers.renameLeading}
+          onSelect={handlers.handleRename}
+          testID="file-explorer-context-menu-rename"
+        >
+          {t("workspace.fileExplorer.context.rename")}
+        </ContextMenuItem>
+      ) : null}
+      {onDelete ? (
+        <ContextMenuItem
+          leading={handlers.deleteLeading}
+          onSelect={handlers.handleDelete}
+          destructive
+          testID="file-explorer-context-menu-delete"
+        >
+          {t("workspace.fileExplorer.context.delete")}
+        </ContextMenuItem>
+      ) : null}
+    </>
   );
 }
 
@@ -417,6 +605,10 @@ function EntryContextMenu({
   onToggleContextEntry,
   onShowHistory,
   onViewChanges,
+  onNewFile,
+  onNewFolder,
+  onRename,
+  onDelete,
   isInContext,
   isChanged,
 }: {
@@ -429,6 +621,10 @@ function EntryContextMenu({
   onToggleContextEntry?: (entry: ExplorerEntry) => void;
   onShowHistory?: (entry: ExplorerEntry) => void;
   onViewChanges?: (entry: ExplorerEntry) => void;
+  onNewFile?: (entry: ExplorerEntry) => void;
+  onNewFolder?: (entry: ExplorerEntry) => void;
+  onRename?: (entry: ExplorerEntry) => void;
+  onDelete?: (entry: ExplorerEntry) => void;
   isInContext: boolean;
   isChanged: boolean;
 }) {
@@ -458,7 +654,6 @@ function EntryContextMenu({
   const handleDownload = useCallback(() => {
     if (entry) onDownloadEntry(entry);
   }, [entry, onDownloadEntry]);
-
   const contextLeading = useMemo(
     () => <Paperclip size={iconSize.sm} color={theme.colors.foregroundMuted} />,
     [iconSize.sm, theme.colors.foregroundMuted],
@@ -540,6 +735,13 @@ function EntryContextMenu({
                 {t("workspace.fileExplorer.context.download")}
               </ContextMenuItem>
             ) : null}
+            <EntryMutationContextItems
+              entry={entry}
+              onNewFile={onNewFile}
+              onNewFolder={onNewFolder}
+              onRename={onRename}
+              onDelete={onDelete}
+            />
           </>
         ) : null}
       </ContextMenuContent>
@@ -578,6 +780,12 @@ export function FileExplorerPane({
     [daemons, serverId],
   );
   const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot]);
+  // The root has no relative path to show, so the name sheet's "In …" hint names
+  // the workspace folder instead of printing a bare ".".
+  const workspaceLabel = useMemo(() => {
+    const segments = normalizedWorkspaceRoot.split(/[\\/]+/).filter(Boolean);
+    return segments[segments.length - 1] ?? normalizedWorkspaceRoot;
+  }, [normalizedWorkspaceRoot]);
   const workspaceStateKey = useMemo(
     () =>
       buildWorkspaceExplorerStateKey({
@@ -726,6 +934,115 @@ export function FileExplorerPane({
       revealFileInChanges({ serverId, cwd: workspaceRoot, path: entry.path });
     },
     [serverId, workspaceRoot],
+  );
+
+  // Create / rename / delete. Gated on `features.fileMutations`: the client
+  // never touches the filesystem, so there is nothing to degrade to — an old
+  // host simply has no such menu items and no header buttons.
+  const canMutateFiles = useFileMutationsFeature(serverId);
+  const refreshDirectory = useCallback(
+    (path: string) => {
+      void requestDirectoryListing(path, { recordHistory: false, setCurrentPath: false });
+    },
+    [requestDirectoryListing],
+  );
+  const { createEntry, renameEntry, deleteEntry } = useFileMutations({
+    serverId,
+    workspaceRoot: normalizedWorkspaceRoot,
+    refreshDirectory,
+  });
+
+  const [nameSheet, setNameSheet] = useState<NameSheetRequest | null>(null);
+  const closeNameSheet = useCallback(() => setNameSheet(null), []);
+
+  const openNameSheet = useCallback((request: NameSheetRequest) => {
+    setNameSheet(request);
+  }, []);
+
+  const handleNewFileEntry = useMemo(() => {
+    if (!canMutateFiles) {
+      return undefined;
+    }
+    return (entry: ExplorerEntry) =>
+      openNameSheet({ mode: "create-file", parentPath: resolveCreateParentPath(entry) });
+  }, [canMutateFiles, openNameSheet]);
+
+  const handleNewFolderEntry = useMemo(() => {
+    if (!canMutateFiles) {
+      return undefined;
+    }
+    return (entry: ExplorerEntry) =>
+      openNameSheet({ mode: "create-folder", parentPath: resolveCreateParentPath(entry) });
+  }, [canMutateFiles, openNameSheet]);
+
+  const handleRenameEntry = useMemo(() => {
+    if (!canMutateFiles) {
+      return undefined;
+    }
+    return (entry: ExplorerEntry) =>
+      openNameSheet({
+        mode: "rename",
+        parentPath: explorerParentPath(entry.path),
+        targetPath: entry.path,
+        initialValue: entry.name,
+      });
+  }, [canMutateFiles, openNameSheet]);
+
+  const handleDeleteEntry = useMemo(() => {
+    if (!canMutateFiles) {
+      return undefined;
+    }
+    return (entry: ExplorerEntry) => {
+      void deleteEntry({ path: entry.path, name: entry.name, kind: entry.kind });
+    };
+  }, [canMutateFiles, deleteEntry]);
+
+  // Root-level create. Without these the only way to make the first file in an
+  // empty workspace would be a row menu on a row that does not exist yet.
+  const handleNewRootFile = useMemo(() => {
+    if (!canMutateFiles) {
+      return undefined;
+    }
+    return () => openNameSheet({ mode: "create-file", parentPath: "." });
+  }, [canMutateFiles, openNameSheet]);
+  const handleNewRootFolder = useMemo(() => {
+    if (!canMutateFiles) {
+      return undefined;
+    }
+    return () => openNameSheet({ mode: "create-folder", parentPath: "." });
+  }, [canMutateFiles, openNameSheet]);
+
+  const handleNameSheetSubmit = useCallback(
+    async (name: string): Promise<string | null> => {
+      if (!nameSheet) {
+        return null;
+      }
+      if (nameSheet.mode === "rename" && nameSheet.targetPath) {
+        return renameEntry({ path: nameSheet.targetPath, newName: name });
+      }
+      const failure = await createEntry({
+        parentPath: nameSheet.parentPath,
+        name,
+        kind: nameSheet.mode === "create-folder" ? "directory" : "file",
+      });
+      // Creating into a collapsed folder that then stays collapsed reads as
+      // nothing having happened — expand it so the new entry is on screen.
+      if (!failure && workspaceStateKey && !expandedPaths.has(nameSheet.parentPath)) {
+        setExpandedPathsForWorkspace(workspaceStateKey, [
+          ...Array.from(expandedPaths),
+          nameSheet.parentPath,
+        ]);
+      }
+      return failure;
+    },
+    [
+      createEntry,
+      expandedPaths,
+      nameSheet,
+      renameEntry,
+      setExpandedPathsForWorkspace,
+      workspaceStateKey,
+    ],
   );
 
   // "Add to chat" mirrors the diff pane's review comments: the file lands
@@ -905,6 +1222,10 @@ export function FileExplorerPane({
         onShowHistory={handleShowHistoryEntry}
         onViewChanges={handleViewChangesEntry}
         onShowContextMenu={handleShowContextMenu}
+        onNewFile={handleNewFileEntry}
+        onNewFolder={handleNewFolderEntry}
+        onRename={handleRenameEntry}
+        onDelete={handleDeleteEntry}
         contextFilePaths={contextFilePaths}
         changedPaths={changedPaths}
       />
@@ -922,6 +1243,10 @@ export function FileExplorerPane({
       handleShowHistoryEntry,
       handleViewChangesEntry,
       handleShowContextMenu,
+      handleNewFileEntry,
+      handleNewFolderEntry,
+      handleRenameEntry,
+      handleDeleteEntry,
       isDirectoryLoading,
       selectedEntryPath,
     ],
@@ -1161,6 +1486,8 @@ export function FileExplorerPane({
         handleRetry={handleRetry}
         handleScrollToIndexFailed={handleScrollToIndexFailed}
         onOpenFinder={canIndexCode ? openFinder : undefined}
+        onNewRootFile={handleNewRootFile}
+        onNewRootFolder={handleNewRootFolder}
         sortTriggerStyle={sortTriggerStyle}
         iconButtonStyle={iconButtonStyle}
         solutions={solutions}
@@ -1189,13 +1516,45 @@ export function FileExplorerPane({
         onToggleContextEntry={handleToggleContextEntry}
         onShowHistory={handleShowHistoryEntry}
         onViewChanges={handleViewChangesEntry}
+        onNewFile={handleNewFileEntry}
+        onNewFolder={handleNewFolderEntry}
+        onRename={handleRenameEntry}
+        onDelete={handleDeleteEntry}
         isInContext={Boolean(
           contextMenuRequest && contextFilePaths.has(contextMenuRequest.entry.path),
         )}
         isChanged={Boolean(contextMenuRequest && changedPaths.has(contextMenuRequest.entry.path))}
       />
+      {nameSheet ? (
+        <FileNameSheet
+          visible
+          onClose={closeNameSheet}
+          mode={nameSheet.mode}
+          initialValue={nameSheet.initialValue}
+          parentLabel={nameSheet.parentPath === "." ? workspaceLabel : nameSheet.parentPath}
+          onSubmit={handleNameSheetSubmit}
+        />
+      ) : null}
     </View>
   );
+}
+
+/**
+ * Where a "New file/folder" from a given row lands. A directory takes the new
+ * entry inside itself; a file takes it alongside — the same rule VS Code uses,
+ * and the one users expect when they right-click a file to add its neighbour.
+ */
+function resolveCreateParentPath(entry: ExplorerEntry): string {
+  return entry.kind === "directory" ? entry.path : explorerParentPath(entry.path);
+}
+
+interface NameSheetRequest {
+  mode: FileNameSheetMode;
+  /** Directory the entry lands in — for rename, the target's existing parent. */
+  parentPath: string;
+  /** Rename only: the entry being renamed. */
+  targetPath?: string;
+  initialValue?: string;
 }
 
 interface FileExplorerPaneContentProps {
@@ -1216,6 +1575,9 @@ interface FileExplorerPaneContentProps {
   handleRetry: () => void;
   handleScrollToIndexFailed: (info: { index: number; averageItemLength: number }) => void;
   onOpenFinder?: () => void;
+  /** Both undefined on a host without `features.fileMutations`. */
+  onNewRootFile?: () => void;
+  onNewRootFolder?: () => void;
   sortTriggerStyle: (state: PressableStateCallbackType) => StyleProp<ViewStyle>;
   iconButtonStyle: (state: PressableStateCallbackType) => StyleProp<ViewStyle>;
   /** Empty ⇒ no switcher, and this pane is exactly what it was before the feature existed. */
@@ -1252,6 +1614,8 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
     handleRetry,
     handleScrollToIndexFailed,
     onOpenFinder,
+    onNewRootFile,
+    onNewRootFolder,
     sortTriggerStyle: sortTriggerStyleProp,
     iconButtonStyle: iconButtonStyleProp,
     solutions,
@@ -1337,6 +1701,47 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
           )}
         </View>
         <View style={styles.headerActions}>
+          {/* Root-level create. The Solution lens is a build-system view, where
+              "add a file to this folder" has no meaning — membership is the
+              project file's business, not the filesystem's. */}
+          {!isSolutionLens && onNewRootFile ? (
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger
+                onPress={onNewRootFile}
+                hitSlop={8}
+                style={iconButtonStyleProp}
+                accessibilityRole="button"
+                accessibilityLabel={t("workspace.fileExplorer.actions.newFile")}
+                testID="file-explorer-new-root-file"
+              >
+                <FilePlus size={iconSize.sm} color={theme.colors.foregroundMuted} />
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="center" offset={8}>
+                <Text style={styles.tooltipText}>
+                  {t("workspace.fileExplorer.actions.newFile")}
+                </Text>
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
+          {!isSolutionLens && onNewRootFolder ? (
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger
+                onPress={onNewRootFolder}
+                hitSlop={8}
+                style={iconButtonStyleProp}
+                accessibilityRole="button"
+                accessibilityLabel={t("workspace.fileExplorer.actions.newFolder")}
+                testID="file-explorer-new-root-folder"
+              >
+                <FolderPlus size={iconSize.sm} color={theme.colors.foregroundMuted} />
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="center" offset={8}>
+                <Text style={styles.tooltipText}>
+                  {t("workspace.fileExplorer.actions.newFolder")}
+                </Text>
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
           {onOpenFinder ? (
             <Tooltip delayDuration={300}>
               <TooltipTrigger
@@ -1805,6 +2210,10 @@ function TreeRowDispatcher({
   onShowHistory,
   onViewChanges,
   onShowContextMenu,
+  onNewFile,
+  onNewFolder,
+  onRename,
+  onDelete,
   contextFilePaths,
   changedPaths,
 }: {
@@ -1821,6 +2230,10 @@ function TreeRowDispatcher({
   onShowHistory?: (entry: ExplorerEntry) => void;
   onViewChanges?: (entry: ExplorerEntry) => void;
   onShowContextMenu?: (request: EntryContextMenuRequest) => void;
+  onNewFile?: (entry: ExplorerEntry) => void;
+  onNewFolder?: (entry: ExplorerEntry) => void;
+  onRename?: (entry: ExplorerEntry) => void;
+  onDelete?: (entry: ExplorerEntry) => void;
   contextFilePaths: ReadonlySet<string>;
   changedPaths: ReadonlySet<string>;
 }) {
@@ -1848,6 +2261,10 @@ function TreeRowDispatcher({
       onShowHistory={onShowHistory}
       onViewChanges={onViewChanges}
       onShowContextMenu={onShowContextMenu}
+      onNewFile={onNewFile}
+      onNewFolder={onNewFolder}
+      onRename={onRename}
+      onDelete={onDelete}
       isInContext={contextFilePaths.has(entry.path)}
       isChanged={changedPaths.has(entry.path)}
     />

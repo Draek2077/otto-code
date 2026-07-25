@@ -4070,6 +4070,9 @@ const FileExplorerEntrySchema = z.object({
 
 export const FileEolSchema = z.enum(["lf", "crlf"]);
 
+/** What a directory entry is. Shared by the file-mutation RPCs below. */
+export const FileEntryKindSchema = z.enum(["file", "directory"]);
+
 const FileExplorerFileSchema = z.object({
   path: z.string(),
   kind: z.enum(["text", "image", "binary"]),
@@ -4139,6 +4142,57 @@ export const FileWriteRequestSchema = z.object({
   allowCreate: z.boolean().optional(),
   // EOL to apply when creating (there is no on-disk EOL to detect).
   eol: FileEolSchema.optional(),
+  requestId: z.string(),
+});
+
+/**
+ * The general file-mutation surface: create, delete, rename/move.
+ *
+ * Deliberately separate from `file.write.request`, which is the text editor's
+ * conditional *content* save. These three change what exists in the directory
+ * rather than what is inside a file, and unlike `file.write` they are
+ * **workspace-bounded**: the daemon refuses a `cwd` outside every known Otto
+ * workspace, the way directory listing already does. Editing a stray file the
+ * user opened by path is one thing; unlinking one is another.
+ *
+ * `path` is workspace-relative throughout, matching every other file RPC.
+ */
+export const FileCreateRequestSchema = z.object({
+  type: z.literal("file.create.request"),
+  cwd: z.string(),
+  path: z.string(),
+  kind: FileEntryKindSchema,
+  requestId: z.string(),
+});
+
+/**
+ * Permanent delete — an unlink, not a move to the OS trash. The daemon may be
+ * headless, remote, or inside WSL, where there is no reliable trash to move to;
+ * a "deleted" file that silently stayed on disk in one environment and vanished
+ * in another would be worse than either. The client's confirmation says so.
+ */
+export const FileDeleteRequestSchema = z.object({
+  type: z.literal("file.delete.request"),
+  cwd: z.string(),
+  path: z.string(),
+  // Required to delete a directory that has children. Absent (the default) a
+  // non-empty directory comes back as `not_empty` and nothing is removed, so a
+  // client that never asks can never recursively wipe a tree by accident.
+  recursive: z.boolean().optional(),
+  requestId: z.string(),
+});
+
+/**
+ * Rename and move are the same operation — a move is a rename whose new path
+ * has a different parent. Never clobbers: an occupied destination comes back as
+ * `exists` and nothing moves. There is no overwrite flag on purpose, so this
+ * RPC cannot destroy a file the user did not name.
+ */
+export const FileRenameRequestSchema = z.object({
+  type: z.literal("file.rename.request"),
+  cwd: z.string(),
+  path: z.string(),
+  newPath: z.string(),
   requestId: z.string(),
 });
 
@@ -4765,6 +4819,9 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   FileDownloadTokenRequestSchema,
   FileUploadRequestSchema,
   FileWriteRequestSchema,
+  FileCreateRequestSchema,
+  FileDeleteRequestSchema,
+  FileRenameRequestSchema,
   FileRefineRequestSchema,
   FileWatchSubscribeRequestSchema,
   FileWatchUnsubscribeRequestSchema,
@@ -5244,6 +5301,13 @@ export const ServerInfoStatusPayloadSchema = z
         // clear_archived schema). The client hides both affordances when this is
         // absent rather than shipping a degraded path.
         historyDelete: z.boolean().optional(),
+        // COMPAT(fileMutations): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
+        // Set when the daemon serves `file.create`, `file.delete` and
+        // `file.rename` — creating, removing and moving entries, as opposed to
+        // `file.write`, which only changes what is inside an existing file.
+        // There is no client-side substitute (the client never touches the
+        // filesystem), so an old daemon simply does not get the menu items.
+        fileMutations: z.boolean().optional(),
       })
       .optional(),
   })
@@ -7579,6 +7643,85 @@ export const FileWriteResponseSchema = z.object({
 });
 
 /**
+ * Create outcome. `exists` is its own status rather than an error string: it is
+ * the one failure the client can act on (offer a different name) instead of
+ * merely reporting.
+ */
+export const FileCreateResultSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("ok"),
+    // Echoed back normalized (forward slashes, workspace-relative) so the client
+    // selects the entry it will actually see in the next listing.
+    path: z.string(),
+    kind: FileEntryKindSchema,
+    modifiedAt: z.string(),
+    size: z.number(),
+  }),
+  z.object({ status: z.literal("exists") }),
+  z.object({ status: z.literal("error"), message: z.string() }),
+]);
+
+export const FileCreateResponseSchema = z.object({
+  type: z.literal("file.create.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    result: FileCreateResultSchema,
+    requestId: z.string(),
+  }),
+});
+
+/**
+ * Delete outcome. `not_empty` means the target is a directory with children and
+ * the request did not set `recursive` — nothing was removed, and the client can
+ * re-ask with the stronger confirmation.
+ */
+export const FileDeleteResultSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("ok"),
+    path: z.string(),
+    kind: FileEntryKindSchema,
+  }),
+  z.object({ status: z.literal("not_found") }),
+  z.object({ status: z.literal("not_empty") }),
+  z.object({ status: z.literal("error"), message: z.string() }),
+]);
+
+export const FileDeleteResponseSchema = z.object({
+  type: z.literal("file.delete.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    result: FileDeleteResultSchema,
+    requestId: z.string(),
+  }),
+});
+
+/** Rename/move outcome. `exists` means the destination was occupied; nothing moved. */
+export const FileRenameResultSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("ok"),
+    from: z.string(),
+    to: z.string(),
+    kind: FileEntryKindSchema,
+  }),
+  z.object({ status: z.literal("not_found") }),
+  z.object({ status: z.literal("exists") }),
+  z.object({ status: z.literal("error"), message: z.string() }),
+]);
+
+export const FileRenameResponseSchema = z.object({
+  type: z.literal("file.rename.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    newPath: z.string(),
+    result: FileRenameResultSchema,
+    requestId: z.string(),
+  }),
+});
+
+/**
  * A refine proposal: the whole rewritten text of each document the model chose
  * to change, keyed by the id the request minted. Documents it left alone are
  * simply absent, and ids the request never sent are dropped by the daemon.
@@ -8672,6 +8815,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FileDownloadTokenResponseSchema,
   FileUploadResponseSchema,
   FileWriteResponseSchema,
+  FileCreateResponseSchema,
+  FileDeleteResponseSchema,
+  FileRenameResponseSchema,
   FileRefineResponseSchema,
   FileWatchSubscribeResponseSchema,
   FileWatchUnsubscribeResponseSchema,
@@ -9257,6 +9403,16 @@ export type FileEol = z.infer<typeof FileEolSchema>;
 export type FileWriteRequest = z.infer<typeof FileWriteRequestSchema>;
 export type FileWriteResponse = z.infer<typeof FileWriteResponseSchema>;
 export type FileWriteResult = z.infer<typeof FileWriteResultSchema>;
+export type FileEntryKind = z.infer<typeof FileEntryKindSchema>;
+export type FileCreateRequest = z.infer<typeof FileCreateRequestSchema>;
+export type FileCreateResponse = z.infer<typeof FileCreateResponseSchema>;
+export type FileCreateResult = z.infer<typeof FileCreateResultSchema>;
+export type FileDeleteRequest = z.infer<typeof FileDeleteRequestSchema>;
+export type FileDeleteResponse = z.infer<typeof FileDeleteResponseSchema>;
+export type FileDeleteResult = z.infer<typeof FileDeleteResultSchema>;
+export type FileRenameRequest = z.infer<typeof FileRenameRequestSchema>;
+export type FileRenameResponse = z.infer<typeof FileRenameResponseSchema>;
+export type FileRenameResult = z.infer<typeof FileRenameResultSchema>;
 export type FileRefineRequest = z.infer<typeof FileRefineRequestSchema>;
 export type FileRefineDocument = z.infer<typeof FileRefineDocumentSchema>;
 export type FileRefineReference = z.infer<typeof FileRefineReferenceSchema>;

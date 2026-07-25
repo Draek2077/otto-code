@@ -76,7 +76,9 @@ import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import { TodoTaskList, useTodoCounts } from "@/components/todo-task-list";
 import type { AgentAttachment } from "@otto-code/protocol/messages";
 import type { AgentUsage, ToolCallDetail } from "@otto-code/protocol/agent-types";
+import { readWidgetPayload } from "@otto-code/protocol/widgets/types";
 import { buildToolCallPresentation } from "@/tool-calls/presentation";
+import { WidgetCard } from "@/widgets/widget-card";
 import { resolveToolCallIcon } from "@/utils/tool-call-icon";
 import { getMarkdownListMarker, getMarkdownListSpacing } from "@/utils/markdown-list";
 import { markdownNodeContainsType } from "@/utils/markdown-ast";
@@ -3438,6 +3440,8 @@ export const ToolCall = memo(function ToolCall({
     return undefined;
   }, [detail, args, result]);
 
+  const widgetPayload = useMemo(() => readWidgetPayload(metadata), [metadata]);
+
   const presentation = useMemo(
     () =>
       buildToolCallPresentation({
@@ -3524,6 +3528,14 @@ export const ToolCall = memo(function ToolCall({
       />
     );
   }, [shouldRenderInline, effectiveDetail, presentation.errorText, presentation.isLoadingDetails]);
+
+  // A widget renders as its own content, not as an action row — same treatment
+  // as a plan card, and for the same reason: the payload IS what the model is
+  // saying, so it must not sit behind a badge the user has to open. The payload
+  // rides in `metadata` rather than `detail`; see WIDGET_METADATA_KEY.
+  if (widgetPayload) {
+    return <WidgetCard payload={widgetPayload} />;
+  }
 
   if (presentation.isPlan && effectiveDetail?.type === "plan") {
     return (

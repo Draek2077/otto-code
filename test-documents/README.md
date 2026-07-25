@@ -5,6 +5,12 @@ rendered previews, and the editor/split/preview mode bar. Every file is
 **self-contained and valid** — no imports of sibling files, no external data, no
 network. Open any of them and the whole document should render.
 
+**The one deliberate exception:** the Images section of `markdown.md` and
+`asciidoc.adoc` references the sibling `logo.svg`, because resolving a document's
+own images against its directory is exactly what those sections test. Each also
+carries an escaping path, a missing file, and a remote URL, all of which must
+render as their alt text rather than being fetched.
+
 These are fixtures, not app code. `test-documents/**` is excluded from oxlint
 and oxfmt (see `.oxlintrc.json`, `.oxfmtrc.json`) so the deliberately varied
 formatting and unused declarations survive — the same treatment
@@ -16,8 +22,8 @@ These open in **Preview** mode by default; use the mode bar for raw source.
 
 | File | Exercises |
 | --- | --- |
-| [asciidoc.adoc](asciidoc.adoc) | Every AsciiDoc construct the converter handles, **including two `[mermaid]` diagrams** |
-| [markdown.md](markdown.md) | The markdown counterpart, with the **same two diagrams** for A/B comparison |
+| [asciidoc.adoc](asciidoc.adoc) | Every AsciiDoc construct the converter handles, **including two `[mermaid]` diagrams** and both image macros |
+| [markdown.md](markdown.md) | The markdown counterpart, with the **same two diagrams** for A/B comparison, plus relative, root-relative, HTML, escaping, missing and remote images |
 | [diagram.mmd](diagram.mmd) | A standalone mermaid file — a state diagram with a note |
 | [logo.svg](logo.svg) | Renders as an image, not as XML source |
 

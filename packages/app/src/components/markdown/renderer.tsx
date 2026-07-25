@@ -14,6 +14,7 @@ import {
   Pressable,
   Text,
   View,
+  type ImageStyle,
   type StyleProp,
   type TextProps,
   type TextStyle,
@@ -34,6 +35,7 @@ import { markdownNodeContainsType } from "@/utils/markdown-ast";
 import { createCompactMarkdownStyles, createMarkdownStyles } from "@/styles/markdown-styles";
 import type { Theme } from "@/styles/theme";
 import { openLink } from "@/utils/open-link";
+import { SvgXml } from "react-native-svg";
 import {
   splitHtmlishMarkdown,
   type HtmlishOptions,
@@ -43,6 +45,13 @@ import {
 import { MarkdownFence } from "./fence";
 import { applyTaskListMarkers } from "./task-lists";
 import { resolveInlineImageSize, type InlineImageDimensions } from "./inline-image-size";
+import { parseSvgIntrinsicSize } from "./svg-intrinsic-size";
+import {
+  MarkdownImageProvider,
+  useMarkdownImageSource,
+  type MarkdownImageSource,
+  type WorkspaceImageSource,
+} from "./image-context";
 import { groupMarkdownParts, type MarkdownPartGroup } from "./part-groups";
 
 export type MarkdownStyles = Record<string, TextStyle & ViewStyle & { [key: string]: unknown }>;
@@ -72,6 +81,8 @@ const defaultMarkdownParser = applyTaskListMarkers(
   MarkdownIt({ typographer: true, linkify: true }),
 );
 const EMPTY_TEXT_STYLE: TextStyle = {};
+/** A markdown `![]()` carries no width/height attributes; only HTML `<img>` does. */
+const EMPTY_IMAGE_DIMENSIONS: { width?: number; height?: number } = {};
 const MARKDOWN_LIST_ITEM_CONTENT_FLEX: ViewStyle = { flex: 1, flexShrink: 1, minWidth: 0 };
 export interface MarkdownRendererProps {
   text: string;
@@ -88,6 +99,12 @@ export interface MarkdownRendererProps {
    * {@link HtmlishOptions}.
    */
   remoteImages?: HtmlishOptions["remoteImages"];
+  /**
+   * The workspace a document's own relative image srcs — `![](docs/x.png)` — resolve against, read
+   * through the daemon. Unset (chat, the pull-request panel) keeps the previous behavior: a
+   * relative src has nothing to resolve against and renders as its alt text.
+   */
+  workspaceImages?: WorkspaceImageSource | null;
 }
 
 export function MarkdownRenderer({
@@ -100,14 +117,18 @@ export function MarkdownRenderer({
   topLevelMaxExceededItem,
   enableHtmlish = true,
   remoteImages,
+  workspaceImages = null,
 }: MarkdownRendererProps) {
   const markdownRules = useMemo(() => rules ?? createSharedMarkdownRules(), [rules]);
   const parts = useMemo(
     () =>
       enableHtmlish
-        ? splitHtmlishMarkdown(text, { remoteImages })
+        ? splitHtmlishMarkdown(text, {
+            remoteImages,
+            localImages: workspaceImages ? "workspace" : "off",
+          })
         : [{ kind: "markdown" as const, text }],
-    [enableHtmlish, remoteImages, text],
+    [enableHtmlish, remoteImages, text, workspaceImages],
   );
   const rendererProps = useMemo(
     () => ({
@@ -130,7 +151,9 @@ export function MarkdownRenderer({
 
   return (
     <AppearanceStyleBoundary>
-      <MarkdownPartList parts={parts} rendererProps={rendererProps} />
+      <MarkdownImageProvider remoteImages={remoteImages} workspaceImages={workspaceImages}>
+        <MarkdownPartList parts={parts} rendererProps={rendererProps} />
+      </MarkdownImageProvider>
     </AppearanceStyleBoundary>
   );
 }
@@ -220,22 +243,39 @@ function MarkdownFragment({
   );
 }
 
-function useNaturalImageDimensions(part: MarkdownInlineImagePart): {
+/**
+ * The natural size of whatever the src resolved to.
+ *
+ * `Image.getSize` answers for anything `Image` can decode; a native SVG never
+ * reaches `Image`, so its own markup is measured instead. Both feed the same
+ * `natural` slot, which is what lets one sizing rule serve every image shape.
+ */
+function useNaturalImageDimensions(
+  source: MarkdownImageSource | null,
+  explicit: { width?: number; height?: number },
+): {
   natural: InlineImageDimensions | null;
   failed: boolean;
   setFailed: (failed: boolean) => void;
 } {
   const [natural, setNatural] = useState<InlineImageDimensions | null>(null);
   const [failed, setFailed] = useState(false);
+  const explicitWidth = explicit.width;
+  const explicitHeight = explicit.height;
 
   useEffect(() => {
-    if (part.width && part.height) {
+    if (!source || (explicitWidth && explicitHeight)) {
+      return;
+    }
+
+    if (source.kind === "svg") {
+      setNatural(parseSvgIntrinsicSize(source.xml));
       return;
     }
 
     let cancelled = false;
     Image.getSize(
-      part.src,
+      source.uri,
       (width, height) => {
         if (!cancelled) {
           setNatural({ width, height });
@@ -251,9 +291,82 @@ function useNaturalImageDimensions(part: MarkdownInlineImagePart): {
     return () => {
       cancelled = true;
     };
-  }, [part.height, part.src, part.width]);
+  }, [explicitHeight, explicitWidth, source]);
 
   return { natural, failed, setFailed };
+}
+
+/**
+ * Draw a resolved image at a size the caller worked out. The split is by
+ * platform capability, not by source: on native `Image` cannot decode SVG, so
+ * the read hands back markup instead of a store URL and it renders here.
+ */
+function MarkdownImageContent({
+  source,
+  style,
+  alt,
+  onError,
+}: {
+  source: MarkdownImageSource;
+  /** Carries the laid-out size; the content fills it either way. */
+  style: StyleProp<ImageStyle>;
+  alt: string;
+  onError: () => void;
+}) {
+  if (source.kind === "svg") {
+    return (
+      <View style={style}>
+        <SvgXml
+          xml={source.xml}
+          width="100%"
+          height="100%"
+          onError={onError}
+          accessibilityLabel={alt || undefined}
+        />
+      </View>
+    );
+  }
+
+  return <MarkdownUriImage uri={source.uri} style={style} alt={alt} onError={onError} />;
+}
+
+function MarkdownUriImage({
+  uri,
+  style,
+  alt,
+  onError,
+}: {
+  uri: string;
+  style: StyleProp<ImageStyle>;
+  alt: string;
+  onError: () => void;
+}) {
+  const source = useMemo(() => ({ uri }), [uri]);
+  return (
+    <Image
+      source={source}
+      style={style}
+      resizeMode="contain"
+      accessibilityLabel={alt || undefined}
+      onError={onError}
+    />
+  );
+}
+
+/**
+ * The standing rule for anything that cannot be drawn — a blocked scheme, an
+ * escaping path, a file that isn't there: show what the image was meant to
+ * convey, and show nothing at all when it conveys nothing.
+ */
+function MarkdownImageFallback({ alt }: { alt: string }) {
+  if (!alt) {
+    return null;
+  }
+  return (
+    <View style={detailsStyles.flowImageFallback}>
+      <Text style={detailsStyles.flowImageFallbackText}>{alt}</Text>
+    </View>
+  );
 }
 
 function MarkdownInlineImage({
@@ -263,44 +376,41 @@ function MarkdownInlineImage({
   part: Extract<MarkdownDisplayPart, { kind: "inlineImage" }>;
   onLinkPress?: (url: string) => boolean;
 }) {
-  const { natural: naturalDimensions, failed, setFailed } = useNaturalImageDimensions(part);
-  const handleError = useCallback(() => setFailed(true), [setFailed]);
   const explicitDimensions = useMemo(
     () => ({ width: part.width, height: part.height }),
     [part.height, part.width],
   );
+  const { source, pending } = useMarkdownImageSource(part.src);
+  const {
+    natural: naturalDimensions,
+    failed,
+    setFailed,
+  } = useNaturalImageDimensions(source, explicitDimensions);
+  const handleError = useCallback(() => setFailed(true), [setFailed]);
   const handlePress = useCallback(() => {
     if (!part.href) return;
     if (onLinkPress?.(part.href) === false) return;
     void openLink(part.href);
   }, [onLinkPress, part.href]);
-  const source = useMemo(() => ({ uri: part.src }), [part.src]);
   const imageSize = useMemo(
     () => resolveInlineImageSize({ explicit: explicitDimensions, natural: naturalDimensions }),
     [explicitDimensions, naturalDimensions],
   );
   const imageStyle = useMemo(() => [detailsStyles.inlineImage, imageSize], [imageSize]);
 
+  // A read that hasn't landed yet is not a failure — drawing the alt text and
+  // then replacing it would flash on every document open.
+  if (pending) {
+    return null;
+  }
+
   // A blocked or broken image otherwise leaves a sized empty box with no explanation.
-  if (failed) {
-    if (!part.alt) {
-      return null;
-    }
-    return (
-      <View style={detailsStyles.flowImageFallback}>
-        <Text style={detailsStyles.flowImageFallbackText}>{part.alt}</Text>
-      </View>
-    );
+  if (failed || !source) {
+    return <MarkdownImageFallback alt={part.alt} />;
   }
 
   const image = (
-    <Image
-      source={source}
-      style={imageStyle}
-      resizeMode="contain"
-      accessibilityLabel={part.alt || undefined}
-      onError={handleError}
-    />
+    <MarkdownImageContent source={source} style={imageStyle} alt={part.alt} onError={handleError} />
   );
 
   if (!part.href) {
@@ -323,43 +433,35 @@ function MarkdownFlowImage({
   part: MarkdownInlineImagePart;
   onLinkPress?: (url: string) => boolean;
 }) {
-  const { natural, failed, setFailed } = useNaturalImageDimensions(part);
+  const explicitDimensions = useMemo(
+    () => ({ width: part.width, height: part.height }),
+    [part.height, part.width],
+  );
+  const { source, pending } = useMarkdownImageSource(part.src);
+  const { natural, failed, setFailed } = useNaturalImageDimensions(source, explicitDimensions);
   const handlePress = useCallback(() => {
     if (!part.href) return;
     if (onLinkPress?.(part.href) === false) return;
     void openLink(part.href);
   }, [onLinkPress, part.href]);
   const handleError = useCallback(() => setFailed(true), [setFailed]);
-  const source = useMemo(() => ({ uri: part.src }), [part.src]);
   const imageSize = useMemo(() => {
-    const size = resolveInlineImageSize({
-      explicit: { width: part.width, height: part.height },
-      natural,
-    });
+    const size = resolveInlineImageSize({ explicit: explicitDimensions, natural });
     const scale = Math.min(1, FLOW_IMAGE_MAX_HEIGHT / size.height);
     return { width: Math.round(size.width * scale), height: Math.round(size.height * scale) };
-  }, [natural, part.height, part.width]);
+  }, [explicitDimensions, natural]);
   const imageStyle = useMemo(() => [detailsStyles.flowImage, imageSize], [imageSize]);
 
-  if (failed) {
-    if (!part.alt) {
-      return null;
-    }
-    return (
-      <View style={detailsStyles.flowImageFallback}>
-        <Text style={detailsStyles.flowImageFallbackText}>{part.alt}</Text>
-      </View>
-    );
+  if (pending) {
+    return null;
+  }
+
+  if (failed || !source) {
+    return <MarkdownImageFallback alt={part.alt} />;
   }
 
   const image = (
-    <Image
-      source={source}
-      style={imageStyle}
-      resizeMode="contain"
-      accessibilityLabel={part.alt || undefined}
-      onError={handleError}
-    />
+    <MarkdownImageContent source={source} style={imageStyle} alt={part.alt} onError={handleError} />
   );
 
   if (!part.href) {
@@ -370,6 +472,55 @@ function MarkdownFlowImage({
     <Pressable onPress={handlePress} accessibilityRole="link">
       {image}
     </Pressable>
+  );
+}
+
+const BLOCK_IMAGE_MAX_WIDTH = 560;
+/** An SVG that declares neither a size nor a `viewBox` still has to occupy something. */
+const BLOCK_IMAGE_FALLBACK_SIZE: InlineImageDimensions = { width: 240, height: 240 };
+
+/**
+ * A markdown `![alt](src)` image.
+ *
+ * There was no rule for this before, so `react-native-markdown-display`'s default
+ * ran: it matched the src against `allowedImageHandlers` and, failing that,
+ * prefixed `defaultImageHandler` — which turned `![](docs/x.png)` into a fetch of
+ * `https://docs/x.png` and made `remoteImages: "altText"` true only of the HTML
+ * path. Owning the rule is what puts both image forms behind one gate.
+ */
+function MarkdownBlockImage({ src, alt }: { src: string; alt: string }) {
+  const { source, pending } = useMarkdownImageSource(src);
+  const { natural, failed, setFailed } = useNaturalImageDimensions(source, EMPTY_IMAGE_DIMENSIONS);
+  const handleError = useCallback(() => setFailed(true), [setFailed]);
+  // Fill the pane but never upscale, and keep the aspect ratio while shrinking —
+  // a README screenshot is wider than a phone and a logo is not.
+  const frameStyle = useMemo(() => {
+    const size = natural ?? BLOCK_IMAGE_FALLBACK_SIZE;
+    return [
+      detailsStyles.blockImageFrame,
+      {
+        width: Math.min(size.width, BLOCK_IMAGE_MAX_WIDTH),
+        aspectRatio: size.width / size.height,
+      },
+    ];
+  }, [natural]);
+
+  if (pending) {
+    return null;
+  }
+
+  if (failed || !source) {
+    return <MarkdownImageFallback alt={alt} />;
+  }
+
+  // Drawing before `Image.getSize` lands would size the frame from the fallback
+  // and then snap; an SVG measures synchronously and has nothing to wait for.
+  if (source.kind === "uri" && !natural) {
+    return null;
+  }
+
+  return (
+    <MarkdownImageContent source={source} style={frameStyle} alt={alt} onError={handleError} />
   );
 }
 
@@ -732,6 +883,13 @@ export function createSharedMarkdownRules(): RenderRules {
         {children}
       </MarkdownParagraphView>
     ),
+    image: (node: ASTNode) => (
+      <MarkdownBlockImage
+        key={node.key}
+        src={typeof node.attributes?.src === "string" ? node.attributes.src : ""}
+        alt={typeof node.attributes?.alt === "string" ? node.attributes.alt : ""}
+      />
+    ),
     link: (
       node: ASTNode,
       children: ReactNode[],
@@ -788,6 +946,11 @@ const detailsStyles = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[1],
   },
   inlineImage: {},
+  blockImageFrame: {
+    maxWidth: "100%",
+    alignSelf: "flex-start",
+    marginBottom: theme.spacing[2],
+  },
   imageTextRow: {
     flexDirection: "row",
     alignItems: "flex-start",

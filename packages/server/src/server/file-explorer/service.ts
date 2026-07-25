@@ -3,7 +3,7 @@ import { constants, promises as fs, type Stats } from "fs";
 import type { FileHandle } from "fs/promises";
 import path from "path";
 import { writeFileAtomic } from "../atomic-file.js";
-import { expandUserPath, resolvePathFromBase } from "../path-utils.js";
+import { expandUserPath, isSameOrDescendantPath, resolvePathFromBase } from "../path-utils.js";
 
 export type ExplorerEntryKind = "file" | "directory";
 export type ExplorerFileKind = "text" | "image" | "binary";
@@ -88,6 +88,7 @@ const FILE_TYPE_SAMPLE_BYTES = 8192;
 const READ_FILE_OPEN_FLAGS =
   process.platform === "win32" ? constants.O_RDONLY : constants.O_RDONLY | constants.O_NOFOLLOW;
 const ACCESS_OUTSIDE_WORKSPACE_MESSAGE = "Access outside of workspace is not allowed";
+const WORKSPACE_ROOT_TARGET_MESSAGE = "The workspace root cannot be created, renamed, or deleted";
 
 const IMAGE_MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -322,6 +323,232 @@ async function createExplorerFile({
     hash: sha256Hex(outputBytes),
     size: outputBytes.length,
     eol,
+  };
+}
+
+export type CreateExplorerEntryResult =
+  | { status: "ok"; path: string; kind: ExplorerEntryKind; modifiedAt: string; size: number }
+  | { status: "exists" };
+
+export type DeleteExplorerEntryResult =
+  | { status: "ok"; path: string; kind: ExplorerEntryKind }
+  | { status: "not_found" }
+  | { status: "not_empty" };
+
+export type RenameExplorerEntryResult =
+  | { status: "ok"; from: string; to: string; kind: ExplorerEntryKind }
+  | { status: "not_found" }
+  | { status: "exists" };
+
+/**
+ * Create an entry. Never overwrites: both branches use an exclusive create, so
+ * a target that already exists comes back as `exists` and the file on disk is
+ * untouched.
+ */
+export async function createExplorerEntry({
+  root,
+  relativePath,
+  kind,
+}: {
+  root: string;
+  relativePath: string;
+  kind: ExplorerEntryKind;
+}): Promise<CreateExplorerEntryResult> {
+  const target = await resolveMutationPath({ root, relativePath });
+
+  try {
+    if (kind === "directory") {
+      await fs.mkdir(target.resolvedPath);
+    } else {
+      // "wx" — exclusive create. `writeFile` would happily truncate an existing
+      // file, which is the one thing this must never do.
+      const handle = await fs.open(target.resolvedPath, "wx");
+      await handle.close();
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | null)?.code === "EEXIST") {
+      return { status: "exists" };
+    }
+    throw error;
+  }
+
+  const stats = await fs.stat(target.resolvedPath);
+  return {
+    status: "ok",
+    path: target.relativePath,
+    kind,
+    modifiedAt: stats.mtime.toISOString(),
+    size: stats.size,
+  };
+}
+
+/**
+ * Permanently remove an entry. This is an unlink, not a move to any trash — see
+ * `FileDeleteRequestSchema` for why the daemon does not pretend to have one.
+ *
+ * `lstat` and `unlink`, never `stat`: a symlink is deleted as the link it is,
+ * not followed to whatever it points at.
+ */
+export async function deleteExplorerEntry({
+  root,
+  relativePath,
+  recursive,
+}: {
+  root: string;
+  relativePath: string;
+  recursive?: boolean;
+}): Promise<DeleteExplorerEntryResult> {
+  const target = await resolveMutationPath({ root, relativePath });
+
+  let stats: Stats;
+  try {
+    stats = await fs.lstat(target.resolvedPath);
+  } catch (error) {
+    if (isMissingEntryError(error)) {
+      return { status: "not_found" };
+    }
+    throw error;
+  }
+
+  if (stats.isDirectory()) {
+    if (!recursive) {
+      const entries = await fs.readdir(target.resolvedPath);
+      if (entries.length > 0) {
+        return { status: "not_empty" };
+      }
+    }
+    await fs.rm(target.resolvedPath, { recursive: true });
+    return { status: "ok", path: target.relativePath, kind: "directory" };
+  }
+
+  await fs.unlink(target.resolvedPath);
+  return { status: "ok", path: target.relativePath, kind: "file" };
+}
+
+/**
+ * Rename, which is also move — the destination may sit in a different parent.
+ *
+ * Never clobbers. POSIX `rename` silently replaces an existing destination
+ * while Windows refuses it; the explicit pre-check is what makes both hosts
+ * behave the same way, and the safe way.
+ */
+export async function renameExplorerEntry({
+  root,
+  relativePath,
+  newRelativePath,
+}: {
+  root: string;
+  relativePath: string;
+  newRelativePath: string;
+}): Promise<RenameExplorerEntryResult> {
+  const source = await resolveMutationPath({ root, relativePath });
+  const destination = await resolveMutationPath({ root, relativePath: newRelativePath });
+
+  let stats: Stats;
+  try {
+    stats = await fs.lstat(source.resolvedPath);
+  } catch (error) {
+    if (isMissingEntryError(error)) {
+      return { status: "not_found" };
+    }
+    throw error;
+  }
+
+  if (source.resolvedPath === destination.resolvedPath) {
+    return { status: "exists" };
+  }
+
+  // A directory moved inside itself would orphan the whole subtree; `rename`
+  // reports this as a bare EINVAL, which is not a sentence anyone can act on.
+  if (
+    stats.isDirectory() &&
+    isSameOrDescendantPath(source.resolvedPath, destination.resolvedPath)
+  ) {
+    throw new Error("Cannot move a folder into itself");
+  }
+
+  try {
+    await fs.lstat(destination.resolvedPath);
+    return { status: "exists" };
+  } catch (error) {
+    if (!isMissingEntryError(error)) {
+      throw error;
+    }
+  }
+
+  await fs.rename(source.resolvedPath, destination.resolvedPath);
+  return {
+    status: "ok",
+    from: source.relativePath,
+    to: destination.relativePath,
+    kind: stats.isDirectory() ? "directory" : "file",
+  };
+}
+
+/**
+ * The path guard for every mutation, and the reason they are a separate
+ * resolver from `resolveScopedPath`.
+ *
+ * Reads resolve the *target's* realpath, which is right for reading: a symlink
+ * to a file inside the workspace should serve that file. A mutation must not do
+ * that — deleting a link would delete its target, and renaming one would move
+ * the target instead. So the final component is never followed. What is
+ * resolved is the **parent**, because a symlinked parent directory is exactly
+ * how `a/../..` style traversal sneaks past a lexical check: `root/link/x` is
+ * lexically inside `root` no matter where `link` points.
+ *
+ * Three refusals, in order:
+ *  - the workspace root itself is not a target (the explorer cannot delete the
+ *    workspace it is browsing),
+ *  - the requested path must be lexically inside the root,
+ *  - the parent's *real* path must be inside the root's real path.
+ */
+async function resolveMutationPath({
+  root,
+  relativePath,
+}: {
+  root: string;
+  relativePath: string;
+}): Promise<{ resolvedPath: string; relativePath: string }> {
+  const trimmed = relativePath.trim();
+  if (!trimmed) {
+    throw new Error("path is required");
+  }
+
+  const normalizedRoot = expandUserPath(root);
+  const requestedPath = resolvePathFromBase(normalizedRoot, trimmed);
+  const relative = path.relative(normalizedRoot, requestedPath);
+
+  if (relative === "") {
+    throw new Error(WORKSPACE_ROOT_TARGET_MESSAGE);
+  }
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(ACCESS_OUTSIDE_WORKSPACE_MESSAGE);
+  }
+
+  const realRoot = await fs.realpath(normalizedRoot);
+  let realParent: string;
+  try {
+    realParent = await fs.realpath(path.dirname(requestedPath));
+  } catch (error) {
+    if (isMissingEntryError(error)) {
+      throw new Error("Parent directory does not exist", { cause: error });
+    }
+    throw error;
+  }
+
+  const parentRelative = path.relative(realRoot, realParent);
+  if (
+    parentRelative !== "" &&
+    (parentRelative.startsWith("..") || path.isAbsolute(parentRelative))
+  ) {
+    throw new Error(ACCESS_OUTSIDE_WORKSPACE_MESSAGE);
+  }
+
+  const resolvedPath = path.join(realParent, path.basename(requestedPath));
+  return {
+    resolvedPath,
+    relativePath: normalizeRelativePath({ root, targetPath: requestedPath }),
   };
 }
 

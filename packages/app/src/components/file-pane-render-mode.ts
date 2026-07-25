@@ -36,7 +36,8 @@ export function renderedDocumentKind(filePath: string): RenderedDocumentKind | n
 
 // Formats whose preview is not just the highlighted source: rendered (SVG as
 // an image), viewable-only (images, media), or binary. Grows as the
-// file-rendering project ships more rich previews (CSV, notebooks).
+// File rendering section of projects/README.md ships more rich previews
+// (CSV, notebooks).
 const PREVIEW_FIRST_EXTENSIONS = new Set([
   // Images (the viewer renders them; SVG renders as an image, not XML).
   "png",

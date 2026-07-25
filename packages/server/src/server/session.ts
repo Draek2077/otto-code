@@ -2953,6 +2953,12 @@ export class Session {
         return undefined;
       case "file.write.request":
         return this.workspaceFilesSession.handleFileWriteRequest(msg);
+      case "file.create.request":
+        return this.workspaceFilesSession.handleFileCreateRequest(msg);
+      case "file.delete.request":
+        return this.workspaceFilesSession.handleFileDeleteRequest(msg);
+      case "file.rename.request":
+        return this.workspaceFilesSession.handleFileRenameRequest(msg);
       case "file.refine.request":
         return this.handleFileRefineRequest(msg);
       case "file.watch.subscribe.request":

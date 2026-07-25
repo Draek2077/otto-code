@@ -2,6 +2,7 @@ import {
   getOttoToolLeafName,
   normalizeToolName,
 } from "@otto-code/protocol/tool-name-normalization";
+import { readWidgetPayload } from "@otto-code/protocol/widgets/types";
 import type { TextEffectActivity } from "@/styles/text-effects";
 import type { ActionGroupItem, ActionGroupMemberItem, StreamItem } from "@/types/stream";
 
@@ -35,6 +36,11 @@ export function isGroupableActionItem(item: StreamItem): item is ActionGroupMemb
   // Plans render as a full PlanCard, which reads as content rather than an
   // action row — keep them out of groups so they stay prominent.
   if (item.payload.source === "agent" && item.payload.data.detail.type === "plan") {
+    return false;
+  }
+  // Same for widgets: the fragment IS the content the model is showing, so it
+  // must never collapse into a "used 3 tools" summary.
+  if (item.payload.source === "agent" && readWidgetPayload(item.payload.data.metadata) !== null) {
     return false;
   }
   return true;

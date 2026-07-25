@@ -83,14 +83,16 @@ An unlisted page is an invisible page.
 
 ## Editor and code intelligence
 
-| Page                                           | What's in it                                                                                                                                                                              |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [text-editor.md](text-editor.md)               | IDE-grade text editing — daemon file RPCs, the CM6 editor, AI Refactor, the unified file tab, the File Editor shortcut scope                                                              |
-| [refine.md](refine.md)                         | The reviewed AI rewrite — the propose-then-accept invariant, the job tab, the document/reference working set, and **why it is prose-only**                                                |
-| [code-intelligence.md](code-intelligence.md)   | The LSP client — go-to-definition, hover, references, rename, diagnostics; the pool's lifecycle obligation, the indexing-cost policy, language rows, why linters are language servers too |
-| [solution-view.md](solution-view.md)           | The Solution lens — the tree as the build system sees it (.NET first); why LSP gives no project structure, the sidecar, "disabled does no work", the out-of-workspace policy              |
-| [markdown-rendering.md](markdown-rendering.md) | The shared markdown pipeline — we translate embedded HTML rather than render it, and `remoteImages` decides which surfaces may fetch                                                      |
-| [file-icons.md](file-icons.md)                 | Material icon theme integration for the file explorer                                                                                                                                     |
+| Page                                           | What's in it                                                                                                                                                                                            |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [text-editor.md](text-editor.md)               | IDE-grade text editing — daemon file RPCs, the CM6 editor, AI Refactor, the unified file tab, the File Editor shortcut scope                                                                            |
+| [refine.md](refine.md)                         | The reviewed AI rewrite — the propose-then-accept invariant, the job tab, the document/reference working set, and **why it is prose-only**                                                              |
+| [file-mutations.md](file-mutations.md)         | Create/delete/rename — why delete is a permanent unlink and not the trash, the opt-in `recursive` and no-overwrite rules, and the parent-resolving path guard that never follows the final component    |
+| [code-intelligence.md](code-intelligence.md)   | The LSP client — go-to-definition, hover, references, rename, diagnostics; the pool's lifecycle obligation, the indexing-cost policy, language rows, why linters are language servers too               |
+| [solution-view.md](solution-view.md)           | The Solution lens — the tree as the build system sees it (.NET first); why LSP gives no project structure, the sidecar, "disabled does no work", the out-of-workspace policy                            |
+| [markdown-rendering.md](markdown-rendering.md) | The shared markdown pipeline — we translate embedded HTML rather than render it, `remoteImages` decides which surfaces may fetch, and a document's own relative images resolve under the workspace root |
+| [widgets.md](widgets.md)                       | Inline widgets — the `show_widget` tool, why the payload rides in `metadata`, the three sandboxes and the `sendPrompt` privilege, and why there is no network at all                                    |
+| [file-icons.md](file-icons.md)                 | Material icon theme integration for the file explorer                                                                                                                                                   |
 
 ## Providers and integration
 

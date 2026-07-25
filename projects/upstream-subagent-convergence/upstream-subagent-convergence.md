@@ -1,6 +1,17 @@
 # Upstream subagent convergence
 
-**Status:** Charter, 2026-07-20. Nothing built. Blocked on the Phase 1 merge landing (upstream `v0.2.0`, currently untagged).
+**Status:** Charter, 2026-07-20. Nothing built. **No longer blocked** — upstream tagged `v0.2.0`,
+`v0.2.1` and `v0.2.2` on 2026-07-24/25, and the `upstream` remote exists in this checkout. Sequencing
+belongs to [`projects/README.md` → Build order](../README.md#build-order), not here.
+
+**Measured 2026-07-25 ([findings](../../findings/upstream/2026-07-25-paseo-merge-gap.md)): this
+charter's subject is the cheapest part of the merge, not the expensive one.** Upstream's daemon-side
+ingestion — 47 files across `agent/provider-subagents/`, `agent/providers/omp/` and the protocol test
+— lands with **zero conflicts**. The client-presentation half Otto keeps costs **14 conflict hunks in
+five files** (`track.tsx` 6, `agent.sub-agent-sidechain.test.ts` 3, `track-presentation.ts` 2,
+`select.test.ts` 2, `track-presentation.test.ts` 1). The split-by-layer below is not just the right
+design — it is also almost free. It should ride along with the Phase 1 merge rather than being
+sequenced as a wave behind it.
 
 Otto and Paseo independently built the same feature. Upstream shipped provider
 subagents in `v0.1.107` ([#2013](https://github.com/getpaseo/paseo/pull/2013));

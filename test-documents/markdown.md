@@ -96,6 +96,42 @@ Ordered:
 >
 > — Otto CLAUDE.md
 
+## Images
+
+The one place this file reaches for a sibling — `logo.svg` — because resolving a
+document's own images against its directory is the thing being tested. Each of
+the first three should draw the orbit logo; each of the last three should show
+its alt text and never fetch anything.
+
+Same directory, plain: ![Orbit, same directory](logo.svg)
+
+Same directory, explicitly relative:
+
+![Orbit, explicitly relative](./logo.svg)
+
+Root-relative, resolved against the workspace root (alt text instead if you
+opened `test-documents/` itself as the workspace):
+
+![Orbit, workspace-root-relative](/test-documents/logo.svg)
+
+Sized, via the HTML form:
+
+<p align="center">
+  <img src="logo.svg" width="64" height="64" alt="Orbit, HTML img at 64px" />
+</p>
+
+Escapes the workspace root — must be refused before any read:
+
+![Refused: escaping path](../../../../etc/passwd.png)
+
+Points at a file that isn't there:
+
+![Missing: no such file](no-such-diagram.png)
+
+Remote, which the viewer never fetches:
+
+![Remote badge, never fetched](https://img.shields.io/badge/otto-code-blue.svg)
+
 ---
 
 Everything above this rule should have rendered. Compare against the `.adoc`
