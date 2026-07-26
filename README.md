@@ -32,8 +32,8 @@
 </p>
 
 > [!NOTE]
-> This is a one-person project run in spare time, so Issues don't always get a same-day reply.
-> [Open an issue](https://github.com/Draek2077/otto-code/issues) anyway — it's the only place I track things.
+> This is a one-person project run in spare time, and I'm obsessed with it; so if you message me you will get a reply instantly.
+> [Open an issue](https://github.com/Draek2077/otto-code/issues), or provide feedback right in the app to my discord!
 
 ---
 
