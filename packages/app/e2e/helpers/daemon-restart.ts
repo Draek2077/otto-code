@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createRequire } from "node:module";
+import { closeSync, openSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
@@ -106,36 +107,28 @@ function spawnSupervisor(args: {
     NODE_ENV: "development",
   });
 
+  // The restarted daemon outlives the worker that spawned it, so its stdio must NOT be a pipe
+  // back into that worker. Playwright recycles a worker as soon as one of its tests fails; the
+  // pipe then has no reader, the daemon's (very chatty) logger fills the 64 KB kernel buffer,
+  // and every subsequent write blocks forever. The port stays open, so nothing looks dead —
+  // every later daemon-dependent test in the shard just hangs to its own timeout. That is
+  // exactly how one failing test used to poison the ~2 hours of shard 3 that followed it.
+  //
+  // A file has no such backpressure and keeps the diagnostics: `$OTTO_HOME/daemon-restart.log`.
+  const logPath = path.join(args.ottoHome, "daemon-restart.log");
+  const logFd = openSync(logPath, "a");
   const child = spawn(process.execPath, [tsxCli, "scripts/supervisor-entrypoint.ts", "--dev"], {
     cwd: serverDir,
     env,
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: false,
+    stdio: ["ignore", logFd, logFd],
+    // Own process group, so tearing down the worker's group never takes the daemon with it.
+    // globalSetup still reaps it: it kills by the PID this supervisor writes to `otto.pid`.
+    detached: true,
   });
+  closeSync(logFd);
 
-  child.stdout?.on("data", (data: Buffer) => {
-    for (const line of data.toString().split("\n")) {
-      if (line.trim()) console.log(`[daemon:restart] ${line.trim()}`);
-    }
-  });
-  child.stderr?.on("data", (data: Buffer) => {
-    for (const line of data.toString().split("\n")) {
-      if (line.trim()) console.error(`[daemon:restart] ${line.trim()}`);
-    }
-  });
-
-  // Detach our handles so the spawned supervisor outlives this spec process and
-  // is reaped by globalSetup's cleanup (the original process tree), not us.
-  // `unref()` alone is not enough: the piped stdout/stderr sockets are separate
-  // libuv handles that keep the Playwright worker's event loop alive after the
-  // test ends, so the worker never exits and the run appears to hang in
-  // teardown. Unref the pipes too — the forwarders above still print while the
-  // worker is alive, they just stop holding it open.
-  // (Node types the pipes as plain `Readable`; at run time they are libuv
-  // sockets, which do carry `unref()`.)
+  // Nothing here may hold the worker's event loop open, or the run hangs in teardown instead.
   child.unref();
-  (child.stdout as unknown as { unref?: () => void } | null)?.unref?.();
-  (child.stderr as unknown as { unref?: () => void } | null)?.unref?.();
   return child;
 }
 

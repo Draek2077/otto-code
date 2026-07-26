@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { expectComposerVisible, submitMessage } from "./helpers/composer";
+import { clickNewChat } from "./helpers/launcher";
 import { delayBrowserAgentCreatedStatus } from "./helpers/new-workspace";
 import { seedWorkspace, type SeedDaemonClient } from "./helpers/seed-client";
 import { waitForWorkspaceTabsVisible } from "./helpers/workspace-tabs";
@@ -55,7 +56,7 @@ test.describe("Workspace agent title handoff", () => {
     try {
       await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.workspaceId));
       await waitForWorkspaceTabsVisible(page);
-      await page.getByTestId("workspace-new-agent-tab-inline").click();
+      await clickNewChat(page);
       await expectComposerVisible(page);
 
       const promptTitle = "Investigate optimistic tab title handoff";

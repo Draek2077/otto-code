@@ -33,15 +33,17 @@ test.describe("Settings host page", () => {
     await expectHostConnectionsCard(page, port);
   });
 
-  test("agents section shows the inject MCP toggle", async ({ page }) => {
+  // Otto tools and browser tools moved off the Agents page onto their own Tools
+  // section — see HostToolsPage in screens/settings/host-page.tsx.
+  test("tools section shows the inject MCP toggle", async ({ page }) => {
     const serverId = getServerId();
 
     await gotoAppShell(page);
     await openSettings(page);
     await openSettingsHost(page, serverId);
 
-    await openHostSection(page, serverId, "agents");
-    await expectSettingsHeader(page, "Agents");
+    await openHostSection(page, serverId, "tools");
+    await expectSettingsHeader(page, "Tools");
     await expectHostInjectMcpCard(page);
   });
 
