@@ -107,16 +107,21 @@ describe("WorkspacePaneContent", () => {
     expect(unmountCount).not.toHaveBeenCalled();
     expect(snapshots).toHaveLength(2);
     expect(snapshots[1]?.paneContextValue).toBe(snapshots[0]?.paneContextValue);
+    // `isVisible` is "on screen" — workspace focused and this tab frontmost in its pane — and is
+    // distinct from `isPaneFocused`, which is about input. It tracks the focused value here
+    // because this case passes no explicit prop.
     expect(snapshots[0]?.focus).toEqual({
       isWorkspaceFocused: true,
       isPaneFocused: false,
       isInteractive: false,
+      isVisible: false,
       focusPane: expect.any(Function),
     });
     expect(snapshots[1]?.focus).toEqual({
       isWorkspaceFocused: true,
       isPaneFocused: true,
       isInteractive: true,
+      isVisible: true,
       focusPane: expect.any(Function),
     });
   });

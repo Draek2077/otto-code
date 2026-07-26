@@ -57,6 +57,11 @@ vi.mock("react-native-unistyles", () => ({
       const themed = uniProps ? uniProps(theme) : {};
       return React.createElement(Component, { ...rest, ...themed });
     },
+  // This file's mock replaces the shared one in vitest.setup.ts wholesale rather than extending
+  // it, so anything the component tree reads has to be declared here too — a module the tree
+  // picked up later left `useUnistyles` missing and failed four tests at import time.
+  useUnistyles: () => ({ theme, rt: {}, breakpoint: undefined }),
+  UnistylesRuntime: { setTheme: () => {}, themeName: "light" },
 }));
 
 vi.mock("@/constants/platform", () => ({

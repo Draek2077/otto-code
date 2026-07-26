@@ -108,10 +108,39 @@ describe("software-rendering detection", () => {
 });
 
 describe("applyPersistedHardwareAccelerationFallback", () => {
+  /**
+   * The recovery differs by platform: Linux relaunches with
+   * `--ozone-platform=x11 --use-gl=disabled`, and only everything else calls Electron's
+   * `disableHardwareAcceleration()`. Tests that assert one branch have to pin the platform, or
+   * they assert whatever the machine happens to be — which is how this suite passed on Windows
+   * developer machines and failed on the Linux CI runner.
+   */
+  function withPlatform(platform: NodeJS.Platform, run: () => void): void {
+    const original = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: platform, configurable: true });
+    try {
+      run();
+    } finally {
+      if (original) {
+        Object.defineProperty(process, "platform", original);
+      }
+    }
+  }
+
   it("disables hardware acceleration when the marker is present", () => {
-    writeSoftwareRenderingMarker(tempDir, "crashed");
-    applyPersistedHardwareAccelerationFallback();
-    expect(mocks.app.disableHardwareAcceleration).toHaveBeenCalledTimes(1);
+    withPlatform("win32", () => {
+      writeSoftwareRenderingMarker(tempDir, "crashed");
+      applyPersistedHardwareAccelerationFallback();
+      expect(mocks.app.disableHardwareAcceleration).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("relaunches into software rendering instead of disabling acceleration on linux", () => {
+    withPlatform("linux", () => {
+      writeSoftwareRenderingMarker(tempDir, "crashed");
+      applyPersistedHardwareAccelerationFallback();
+      expect(mocks.app.disableHardwareAcceleration).not.toHaveBeenCalled();
+    });
   });
 
   it("leaves acceleration on when the marker is absent", () => {

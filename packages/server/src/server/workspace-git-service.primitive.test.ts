@@ -175,6 +175,11 @@ function createSnapshot(
 
   return {
     cwd,
+    // A measurement timestamp rather than state — the service itself strips it before
+    // fingerprinting a snapshot, precisely so a refresh that changed nothing does not look like
+    // a change. Matched on type here for the same reason: pinning the value would tie every
+    // assertion in this file to the harness clock without testing anything.
+    gitLoadedAtMs: expect.any(Number) as unknown as number,
     git: {
       ...base.git,
       ...overrides?.git,
@@ -394,7 +399,9 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     await service.getSnapshot(REPO_CWD, { force: true, reason: "test" });
 
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(listener).toHaveBeenCalledWith(createSnapshot(REPO_CWD));
+    // Subscribers receive the emit reason alongside the snapshot; a forced refresh is a full
+    // emit, not a PR-status-only one.
+    expect(listener).toHaveBeenCalledWith(createSnapshot(REPO_CWD), { prStatusOnly: false });
 
     subscription.unsubscribe();
     service.dispose();
@@ -869,6 +876,8 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
       tickMs: 20_000,
     });
     expect(getCheckoutStatus).toHaveBeenCalledTimes(gitReadsAfterInitialSnapshot);
+    // The self-heal read emits as PR-status-only — it refreshed the pull request, not the git
+    // state — which is the second argument subscribers now receive alongside the snapshot.
     expect(listener).toHaveBeenCalledWith(
       expect.objectContaining({
         github: expect.objectContaining({
@@ -877,6 +886,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
           }),
         }),
       }),
+      { prStatusOnly: true },
     );
 
     subscription.unsubscribe();

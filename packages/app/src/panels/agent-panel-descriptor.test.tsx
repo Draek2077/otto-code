@@ -55,13 +55,15 @@ describe("buildDraftPanelDescriptor", () => {
       icon: TestIcon,
     });
 
+    // "对话" (chat), not "Agent": the panel names the conversation surface, and the glossary
+    // reserves "agent" for the AI session behind it. See docs/glossary.md.
     expect(idleDescriptor).toMatchObject({
-      label: "新建 Agent",
-      subtitle: "新建 Agent",
+      label: "新建对话",
+      subtitle: "新建对话",
     });
     expect(creatingDescriptor).toMatchObject({
-      label: "新建 Agent",
-      subtitle: "正在创建 Agent",
+      label: "新建对话",
+      subtitle: "正在创建对话",
     });
     await i18n.changeLanguage("en");
   });
