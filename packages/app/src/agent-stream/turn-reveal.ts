@@ -78,6 +78,25 @@ export const EMPTY_TURN_REVEAL: LiveTurnReveal = {
 };
 
 /**
+ * Where the running turn starts: the last user message the daemon has echoed
+ * back. Optimistic rows are skipped — one appended mid-run (a steer) does not
+ * start a turn, and its id is replaced when the canonical row lands, which
+ * would read as a turn change.
+ */
+export function findTurnBoundary(all: readonly StreamItem[]): {
+  index: number;
+  turnKey: string;
+} {
+  for (let index = all.length - 1; index >= 0; index -= 1) {
+    const item = all[index];
+    if (item?.kind === "user_message" && !item.optimistic) {
+      return { index, turnKey: item.id };
+    }
+  }
+  return { index: -1, turnKey: "session-start" };
+}
+
+/**
  * Map the live turn's assistant text onto one contiguous reveal axis.
  *
  * The reveal must pace ABOVE block promotion: promotion moves completed
@@ -92,20 +111,27 @@ export function computeLiveTurnReveal(params: {
   running: boolean;
   tail: readonly StreamItem[];
   head: readonly StreamItem[];
+  /**
+   * The boundary of the turn that already finished — the caller latches it
+   * whenever the agent is idle (see the stream view).
+   *
+   * Sending a message flips the agent to running while the only row for it is
+   * still optimistic, so for a beat the boundary search below lands on the
+   * PREVIOUS turn and hands the finished reply's items live spans. That is not
+   * cosmetic: consumers read a span as "this is being written right now", so
+   * the previous reply re-typed itself on screen and auto-speech read it back
+   * the moment you hit send. A turn that has already been settled cannot be
+   * the running one — it spans nothing until its own user row arrives.
+   */
+  settledTurnKey?: string | null;
 }): LiveTurnReveal {
   if (!params.running) {
     return EMPTY_TURN_REVEAL;
   }
   const all = [...params.tail, ...params.head];
-  let boundaryIndex = -1;
-  let turnKey = "session-start";
-  for (let index = all.length - 1; index >= 0; index -= 1) {
-    const item = all[index];
-    if (item?.kind === "user_message" && !item.optimistic) {
-      boundaryIndex = index;
-      turnKey = item.id;
-      break;
-    }
+  const { index: boundaryIndex, turnKey } = findTurnBoundary(all);
+  if (params.settledTurnKey !== undefined && params.settledTurnKey === turnKey) {
+    return EMPTY_TURN_REVEAL;
   }
   const spans = new Map<string, TurnRevealSpan>();
   let totalChars = 0;

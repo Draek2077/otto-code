@@ -129,6 +129,46 @@ describe("computeLiveTurnReveal", () => {
     assert.equal(reveal.spans.has("a1"), true);
   });
 
+  it("spans nothing while a just-sent turn's user row is still optimistic", () => {
+    // Sending flips the agent to running before the daemon echoes the user row,
+    // so the boundary search still lands on the finished turn. Handing that
+    // turn's items live spans re-typed the previous reply and made auto-speech
+    // read it back the moment you hit send.
+    const reveal = computeLiveTurnReveal({
+      running: true,
+      tail: [user("u1", "ask"), assistant("a1", "previous answer")],
+      head: [user("u2", "just sent", true)],
+      settledTurnKey: "u1",
+    });
+    assert.equal(reveal.totalChars, 0);
+    assert.equal(reveal.spans.size, 0);
+  });
+
+  it("spans the new turn once its own user row lands", () => {
+    const reveal = computeLiveTurnReveal({
+      running: true,
+      tail: [user("u1", "ask"), assistant("a1", "previous answer"), user("u2", "just sent")],
+      head: [assistant("a2", "new answer")],
+      settledTurnKey: "u1",
+    });
+    assert.equal(reveal.turnKey, "u2");
+    assert.equal(reveal.spans.has("a1"), false);
+    assert.deepEqual(reveal.spans.get("a2"), { start: 0, length: 10 });
+  });
+
+  it("keeps steering the running turn when a message is sent mid-run", () => {
+    // The steer's optimistic row looks exactly like a just-sent one; what
+    // separates them is that this turn was never settled.
+    const reveal = computeLiveTurnReveal({
+      running: true,
+      tail: [user("u1", "ask"), assistant("a1", "answering")],
+      head: [user("u2", "steer", true)],
+      settledTurnKey: "u0",
+    });
+    assert.equal(reveal.turnKey, "u1");
+    assert.equal(reveal.spans.has("a1"), true);
+  });
+
   it("keeps spans invariant across a block promotion reshape", () => {
     // Promotion splits one live item into settled blocks + a live tail; the
     // concatenated text (and so the reveal axis) is unchanged.

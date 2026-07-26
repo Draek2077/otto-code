@@ -77,6 +77,7 @@ import { layoutStream, type StreamLayoutItem } from "./layout";
 import {
   clampRevealBudget,
   computeLiveTurnReveal,
+  findTurnBoundary,
   type TurnRevealSpan,
   type TurnRevealTicker,
   useTurnRevealTicker,
@@ -285,10 +286,19 @@ const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
 const EMPTY_STREAM_HEAD: StreamItem[] = [];
 
 /**
- * Subscribes one live-turn assistant item to the shared reveal ticker. The
- * snapshot is the item's own clamped budget, so a 32ms tick re-renders ONLY
- * the item the reveal boundary is currently crossing — fully revealed and
- * not-yet-reached items bail on an unchanged snapshot.
+ * Subscribes one assistant item to the shared reveal ticker. The snapshot is
+ * the item's own clamped budget, so a 32ms tick re-renders ONLY the item the
+ * reveal boundary is currently crossing — fully revealed and not-yet-reached
+ * items bail on an unchanged snapshot.
+ *
+ * Items outside the live turn (`span` undefined) subscribe too, and that is
+ * deliberate: their snapshot is a constant `undefined`, so they never re-render
+ * on a tick, and keeping ONE component type for every assistant row means a
+ * turn ending does not swap the element type out from under the row. It used
+ * to, and the remount that followed wiped the row's state at exactly the wrong
+ * moment — the bubble the model had just finished lost the "I watched this
+ * being written" latch auto-speech reads, so a reply's last paragraph went
+ * unspoken.
  */
 function RevealedAssistantMessage({
   ticker,
@@ -296,12 +306,12 @@ function RevealedAssistantMessage({
   ...messageProps
 }: ComponentProps<typeof AssistantMessage> & {
   ticker: TurnRevealTicker;
-  span: TurnRevealSpan;
+  span: TurnRevealSpan | undefined;
 }) {
   const revealBudget = useSyncExternalStore(
     ticker.subscribe,
-    () => clampRevealBudget(ticker.getRevealed(), span),
-    () => span.length,
+    () => (span ? clampRevealBudget(ticker.getRevealed(), span) : undefined),
+    () => span?.length,
   );
   return <AssistantMessage {...messageProps} revealBudget={revealBudget} />;
 }
@@ -680,15 +690,28 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     // turn's assistant text, spanning promoted blocks and the live head item
     // alike (see turn-reveal.ts for why per-item pacing can't work). Items the
     // reveal hasn't reached render nothing yet; the boundary item types.
-    const liveTurnReveal = useMemo(
-      () =>
-        computeLiveTurnReveal({
-          running: agent.status === "running",
-          tail: deferredStreamItems,
-          head: deferredStreamHead ?? EMPTY_STREAM_HEAD,
-        }),
-      [agent.status, deferredStreamItems, deferredStreamHead],
-    );
+    //
+    // The finished turn is latched while the agent is idle so the reveal can
+    // tell "the running turn's user row has not arrived yet" from "this IS the
+    // running turn": sending flips the status to running a beat before the
+    // daemon echoes the user row, and without the latch the previous reply
+    // would be handed live spans for that beat (see computeLiveTurnReveal).
+    const settledTurnKeyRef = useRef<string | null>(null);
+    const liveTurnReveal = useMemo(() => {
+      const running = agent.status === "running";
+      if (!running) {
+        settledTurnKeyRef.current = findTurnBoundary([
+          ...deferredStreamItems,
+          ...(deferredStreamHead ?? EMPTY_STREAM_HEAD),
+        ]).turnKey;
+      }
+      return computeLiveTurnReveal({
+        running,
+        tail: deferredStreamItems,
+        head: deferredStreamHead ?? EMPTY_STREAM_HEAD,
+        settledTurnKey: settledTurnKeyRef.current,
+      });
+    }, [agent.status, deferredStreamItems, deferredStreamHead]);
     const revealTicker = useTurnRevealTicker({
       turnKey: liveTurnReveal.turnKey,
       target: liveTurnReveal.totalChars,
@@ -725,10 +748,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           // Selects the personality voice for this bubble's playback button.
           agentId,
         };
-        return revealSpan ? (
+        return (
           <RevealedAssistantMessage {...messageProps} ticker={revealTicker} span={revealSpan} />
-        ) : (
-          <AssistantMessage {...messageProps} />
         );
       },
       [
