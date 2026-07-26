@@ -16,7 +16,7 @@ const worktreeHash = createHash("sha1").update(worktreePath).digest("hex").slice
 const simulatorName = process.env.OTTO_IOS_SIMULATOR_NAME || `Otto ${worktreeName} ${worktreeHash}`;
 const daemonEndpoint =
   process.env.OTTO_DEV_DAEMON_ENDPOINT ||
-  `localhost:${process.env.OTTO_SERVICE_DAEMON_PORT || "6868"}`;
+  `localhost:${process.env.OTTO_SERVICE_DAEMON_PORT || "6788"}`;
 
 const env = {
   ...process.env,

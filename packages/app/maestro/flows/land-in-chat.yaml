@@ -1,5 +1,9 @@
 # NOTE: Maestro requires a config section for every flow file, even when used
 # via `runFlow`. Keep this aligned with the dev build application id.
+#
+# The host below is the repo DEV daemon (6788), not the installed app's daemon
+# (6868) — see docs/development.md. Point it at 6868 only when you deliberately
+# want the simulator driving your real `~/.otto` agents.
 appId: ai.ottocode
 ---
 - launchApp:
@@ -22,11 +26,11 @@ appId: ai.ottocode
 - tapOn:
     id: "direct-host-input"
 - eraseText
-- inputText: "127.0.0.1:6868"
+- inputText: "127.0.0.1:6788"
 
 - assertVisible:
     id: "direct-host-input"
-    text: "127.0.0.1:6868"
+    text: "127.0.0.1:6788"
 
 - tapOn:
     id: "direct-host-submit"

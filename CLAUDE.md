@@ -94,7 +94,7 @@ delete it rather than archiving it.
 
 ```bash
 npm run dev                          # Start the dev daemon
-npm run dev:win                      # Windows: daemon (localhost:6868) + Expo together via scripts/dev.ps1
+npm run dev:win                      # Windows: dev daemon (localhost:6788) + Expo together via scripts/dev.ps1
 npm run dev:app                      # Start Expo against the dev daemon
 npm run dev:desktop                  # Start Electron desktop dev
 npm run cli -- ls -a -g              # List all agents
@@ -105,13 +105,13 @@ npm run format                       # Auto-format with oxfmt
 npm run format:check                 # Check formatting without writing
 ```
 
-Repo dev commands use checkout-local state by default. In this checkout, `OTTO_HOME` resolves to `.dev/otto-home`, and `npm run cli -- ...` targets that same dev home automatically. The packaged desktop app and production-style daemon keep using `~/.otto` on port `6868`.
+**Dev and the installed app are fully isolated, and are meant to run at the same time.** Every repo dev command resolves through `scripts/dev-home.{sh,ps1}` to the dev daemon on port `6788` and the checkout-local `OTTO_HOME` at `packages/desktop/.dev/otto-home` — including `npm run cli -- ...`. The installed desktop app and its daemon keep `~/.otto` on port `6868` and are never touched. Never hardcode `6868` into a dev script or a launch config; that is the installed app's port, and landing on it either crash-loops the dev daemon or silently points dev clients at production agents.
 
 See [docs/development.md](docs/development.md) for full setup, build sync requirements, and debugging.
 
 ## Critical rules
 
-- **NEVER restart the main Otto daemon on port 6868 without permission** — it manages all running agents. If you're an agent, restarting it kills your own process.
+- **NEVER restart the main Otto daemon on port 6868 without permission** — that is the installed app's daemon over `~/.otto`, it manages all running agents, and if you're an agent, restarting it kills your own process. The dev daemon on `6788` is the one you may restart freely.
 - **NEVER assume a timeout means the service needs restarting** — timeouts can be transient.
 - **NEVER add auth checks to tests** — agent providers handle their own auth.
 - **Before changing app routes, startup routing, remembered workspace restore, or active workspace selection, read [docs/expo-router.md](docs/expo-router.md).**

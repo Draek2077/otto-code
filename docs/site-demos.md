@@ -96,7 +96,7 @@ real projects and agents into the demo daemon, and they pollute the sidebar in s
 auth is machine-level (`~/.claude`), so real Claude turns work unforked — the real-run scripts set
 `DEMO_REAL=1` with no fork. Only providers whose auth lives in Otto's own config (openai-compat
 endpoints, LM Studio keys) need a fork, and that must come from a curated config-only source home,
-never `.dev/otto-home` directly.
+never the dev home (`packages/desktop/.dev/otto-home`) directly.
 
 ## The two capture lanes
 

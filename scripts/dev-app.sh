@@ -7,7 +7,7 @@ export PATH="$ROOT_DIR/node_modules/.bin:$PATH"
 
 source "$SCRIPT_DIR/dev-home.sh"
 
-export OTTO_LISTEN="${OTTO_LISTEN:-127.0.0.1:6868}"
+export OTTO_LISTEN="${OTTO_LISTEN:-127.0.0.1:$(dev_daemon_port)}"
 configure_dev_otto_home
 
 EXPO_PORT="${EXPO_PORT:-8081}"

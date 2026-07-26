@@ -24,7 +24,7 @@
     "test:browser": "vitest run --project browser",
     "test:e2e": "playwright test --project=\"Desktop Chrome\"",
     "test:e2e:desktop": "cross-env E2E_DESKTOP_RUNTIME=1 playwright test --project=\"Desktop Chrome\" e2e/project-picker-desktop.spec.ts",
-    "test:e2e:real": "cross-env E2E_FORK_OTTO_HOME_FROM=../../.dev/otto-home E2E_HTML_REPORT_DIR=playwright-report-real E2E_REPORT_DIR=e2e-report-real playwright test --project=real-provider",
+    "test:e2e:real": "cross-env E2E_FORK_OTTO_HOME_FROM=../desktop/.dev/otto-home E2E_HTML_REPORT_DIR=playwright-report-real E2E_REPORT_DIR=e2e-report-real playwright test --project=real-provider",
     "test:e2e:local-ai": "cross-env E2E_LOCAL_AI=1 E2E_HTML_REPORT_DIR=playwright-report-local-ai E2E_REPORT_DIR=e2e-report-local-ai playwright test --project=local-ai",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",

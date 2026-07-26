@@ -19,7 +19,7 @@
       "runtimeArgs": [
         "cross-env",
         "APP_VARIANT=development",
-        "EXPO_PUBLIC_LOCAL_DAEMON=127.0.0.1:6868",
+        "EXPO_PUBLIC_LOCAL_DAEMON=127.0.0.1:6788",
         "npm",
         "run",
         "start:expo",
