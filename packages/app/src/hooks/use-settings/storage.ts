@@ -97,13 +97,27 @@ const VALID_SUGGESTED_TASKS_DEFAULT_MODES = new Set<SuggestedTasksDefaultMode>([
 export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
 export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
 export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
-export const DEFAULT_UI_FONT_SIZE = 16; // == FONT_SIZE.base
-export const MIN_UI_FONT_SIZE = 12;
-export const MAX_UI_FONT_SIZE = 22;
-export const DEFAULT_CODE_FONT_SIZE = 12; // == FONT_SIZE.code
-export const MIN_CODE_FONT_SIZE = 12;
-export const MAX_CODE_FONT_SIZE = 22; // line-height 1.5×22=33 stays safe
-export const MAX_FONT_FAMILY_LENGTH = 200;
+// Re-exported from a dependency-free module so a caller that only wants a bound is not forced to
+// load this file's whole import graph — see limits.ts for why that matters outside Metro.
+import {
+  DEFAULT_CODE_FONT_SIZE,
+  DEFAULT_UI_FONT_SIZE,
+  MAX_CODE_FONT_SIZE,
+  MAX_FONT_FAMILY_LENGTH,
+  MAX_UI_FONT_SIZE,
+  MIN_CODE_FONT_SIZE,
+  MIN_UI_FONT_SIZE,
+} from "./limits";
+
+export {
+  DEFAULT_CODE_FONT_SIZE,
+  DEFAULT_UI_FONT_SIZE,
+  MAX_CODE_FONT_SIZE,
+  MAX_FONT_FAMILY_LENGTH,
+  MAX_UI_FONT_SIZE,
+  MIN_CODE_FONT_SIZE,
+  MIN_UI_FONT_SIZE,
+} from "./limits";
 export const DEFAULT_RULER_COLUMN = 120; // modern editor default width
 export const MIN_RULER_COLUMN = 80;
 export const MAX_RULER_COLUMN = 240;
