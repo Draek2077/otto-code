@@ -237,6 +237,47 @@ The submitted-value store is in-memory by design — an entry is meaningful only
 submission and harvest moments later. The durable copy is the phase candidate's `outputFields`
 on the Run record.
 
+== The node is a mini-orchestrator
+
+A node is not a model call. It is a bounded orchestration of its own: the engine runs a nested
+envelope of counters around one or more real agents, and only the outermost result crosses the
+node boundary.
+
+[mermaid]
+----
+flowchart TB
+    subgraph RETRY["Retry envelope — maxAttempts · backoff · every attempt charged to run caps"]
+        subgraph LOOP["Loop envelope — times N, or until + max"]
+            W["Worker agent<br/>seat · authority · task"] --> H["Harvest:<br/>tool → prose → fail"]
+            H --> J{"until?<br/>Judge agent grades"}
+            J -->|"fail — feedback forward"| W
+        end
+        F["Attempt threw"] -->|"backoff, re-enter from the top"| W
+    end
+    H -->|"failed"| F
+    J -->|"pass, or times exhausted"| OUT["Node result:<br/>declared fields + prose"]
+----
+
+Reading the envelope from the inside out:
+
+* **One iteration** spawns a worker with the node's seat, authority and assembled task, awaits
+  it (bounded by `timeoutMs`, which really cancels), and harvests its output. Under `until`, a
+  separate judge agent grades the output against the declared criteria; the judge is spawned
+  with no workspace reach of its own — it grades output, it does not need the node's authority.
+* **The loop** is quality: `times` re-runs work that succeeded, feeding each iteration the
+  previous output; `until` re-runs until the judge passes, feeding the failure reasoning
+  forward. Self-grading is not an exit test.
+* **Retry** is resilience: it wraps the whole loop and re-enters only from the top — never from
+  the failure path — with every attempt charged to the run's caps.
+
+What crosses the boundary is deliberately small: in, the material carried by satisfied edges
+(fields first, prose second); out, the declared fields and the final prose. Iterations, judge
+feedback, retries and timeouts stay inside — downstream nodes never see a node's drafts.
+
+This is also the right mental model for designing new node kinds: a kind is a different
+*envelope* (a gate waits for a human instead of a worker; a check runs a command instead of a
+model; a map multiplies the envelope per item), not a different scheduler.
+
 == Iteration and resilience
 
 Three separate mechanisms, deliberately not one:
@@ -289,9 +330,19 @@ carry their full output into it.
 [IMPORTANT]
 ====
 *Not built here.* Graph runs have no human gate node (gates exist only on phase runs), no
-`maxTurns` or token/cost ceiling per node, no cross-node shared state, and no resume: a run
-in flight when the daemon stops is marked failed on restart, including one paused at a gate.
-`GraphEdge.fromPort` / `toPort` are reserved in the schema and unused.
+per-node candidate fan-out (parallelism is drawn nodes), no per-node turn limit or token/cost ceiling
+per node, no per-node worktree isolation (parallel writing nodes share one tree), no cross-node
+shared state, and no resume: a graph run in flight when the daemon stops is marked failed on
+restart. `GraphEdge.fromPort` / `toPort` are reserved in the schema and unused.
+
+Three review-found holes were **fixed 2026-07-25**: cancel now cascades — aborting a run
+really cancels its in-flight children on both engines, not just the awaits; and the cast and
+the prompt templates are **snapshotted at run start**, so a mid-run team or template edit
+cannot re-cast or reword a running orchestration (see
+link:16-orchestration-agents.html[Agent Binding]).
+
+Shipped per-node behaviour and its gotchas: `docs/orchestration-node-capabilities.md` — that
+page owns the subsystem detail; this one owns the flow.
 ====
 
 == Invariants

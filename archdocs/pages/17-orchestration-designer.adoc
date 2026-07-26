@@ -6,6 +6,16 @@ only surface where a user expresses structure, so its job is to make the *conseq
 of structure visible — what runs in parallel, what waits, what a human approves, what
 proves the work.
 
+[NOTE]
+====
+*Mixed built/design.* The canvas, node cards with the Advanced disclosure, the one-per-line
+authoring forms, round-trip carry of unedited properties, drafts and repair-on-load are built
+and documented in `docs/orchestration-node-capabilities.md` §"Authoring these in the designer"
+— that page is authoritative for shipped authoring behaviour. Multi-port rendering, the
+control-node palette entries and live run painting are design, pending the matching engine
+work. The whole surface is dev-only until the designer matures.
+====
+
 == Architecture
 
 A vendored, frozen Drawflow bundle (MIT) plus an Otto-owned TypeScript wrapper. None of

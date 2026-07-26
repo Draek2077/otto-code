@@ -1,310 +1,379 @@
 = Orchestration — Data Model & Protocol
-:description: Every schema the orchestration system needs, the target shape for each, and the wire-compatibility answer per field.
+:description: The schemas both engines share, the wire rules that govern them, where validation happens, the RPC and label surfaces — and the parts still only designed.
 
-Schemas live in code (`packages/protocol/src/orchestration.ts`); this page documents the
-*shape and the reasoning*, not a copy of the source. Where a field does not exist yet it
-is marked *(target)* — this set is a design record as much as a description.
+Every orchestration schema lives in one module, `packages/protocol/src/orchestration.ts`, with
+the judge verdict beside it in `judge-verdict.ts`. There is one observable type — `Run` — and
+both engines project into it.
 
-== The compatibility rules that constrain everything here
+Everything down to *Designed, not built* describes what exists in code.
 
-Otto's protocol contract is absolute: an old client must still parse a new daemon's
-messages, and vice versa. For this system that means:
+== The shape
 
-* Every new field is `.optional()`, and absence has a defined meaning that reproduces
-  today's behaviour.
-* Vocabularies (`kind`, `status`, port ids, data types) are *plain strings on the wire*
-  with a `const` array of known values in code. Adding a value can never break an old
-  parser.
-* Wire schemas stay structurally pure — no `.transform()`, `.catch()` or `.preprocess()`.
-  Normalisation happens in an explicit pass after validation.
-* Anything that is a shim carries a `COMPAT(name)` marker with the version it arrived in.
-
-== Graph document
-
-The host-level template. One JSON file per graph in the graph store.
-
-[cols="1,3"]
-|===
-|Field |Notes
-
-|`id`, `name`, `description`
-|`description` doubles as the seed for a new orchestration's description.
-
-|`inputs: GraphInput[]`
-|Declared fill-in parameters: `key`, `label`, `description?`, `multiline?`, `required?`,
-`defaultValue?`. Rendered as the Answers form in the New Orchestration dialog, and
-reused verbatim as the *gate resume form* (see below) — one schema, two surfaces.
-
-|`nodes: GraphNode[]`, `edges: GraphEdge[]`
-|The graph itself.
-
-|`builtIn?`
-|Bundled starter graphs. Copy-on-edit: saving over a built-in mints a user copy rather
-than mutating the shipped one.
-
-|`createdAt`, `updatedAt`
-|
-
-|`schemaVersion?` *(target)*
-|Absent = v1. Not a migration mechanism — the no-migrations rule stands — but a marker
-so a future reader can recognise a shape it predates.
-|===
-
-== Node
-
-A node is `{ id, kind, title, position }` plus a kind-specific payload. The critical
-design decision is that `kind` is an *open string vocabulary* grouped into three
-families, so new node types are additive on the wire.
-
-=== The taxonomy
-
-[cols="1,1,3"]
-|===
-|Family |Kinds |Executed by
-
-|*Lifecycle*
-|`orchestrator`, `brief`
-|The daemon. Structural; no agent spawned.
-
-|*Control*
-|`gate`, `router`, `map`, `merge`, `subgraph`
-|The daemon. Decides what runs next; never does work itself.
-
-|*Capability*
-|`agent`, `check`
-|`agent` spawns a real Otto agent. `check` runs a command — no model involved.
-|===
-
-Only `orchestrator` and `agent` exist today. The families are the palette's grouping in
-the designer, and the taxonomy is deliberately borrowed in shape (not code) from Dify's
-block enum, which separates control flow from capability from lifecycle.
-
-=== Capability node fields
-
-[cols="1,3"]
-|===
-|Field |Notes
-
-|`role?`
-|The team role this node dispatches to — the primary way a node names its seat.
-
-|`prompt?`
-|Fixed instruction. May reference `{{inputs.key}}`.
-
-|`promptFromInput?`
-|A declared input whose value joins the prompt.
-
-|`model?`
-|Explicit provider/model override when no role should decide.
-
-|`autonomous?`
-|Leaf-only. Grants the full Otto toolset minus `start_run`.
-
-|`tools?: OttoToolGroup[]` *(target)*
-|Per-node allowlist over the eight existing groups (`preview`, `browser`, `web`,
-`agents`, `terminals`, `schedules`, `artifacts`, `workspace`). Absent = today's binary
-behaviour, which keeps every existing graph identical.
-
-|`readOnly?: boolean` *(target)*
-|Declares the node a gatherer. Drives both the safe-to-parallelise signal in the designer
-and a narrower authority at spawn.
-
-|`isolation?: "shared" \| "worktree"` *(target)*
-|Absent = `shared`, today's behaviour. `worktree` gives the node its own checkout.
-
-|`loop?`
-|`{ times: N }` or `{ until: { criteria[], judgeRole?, max } }`. Retained as a per-node
-annotation rather than a container node — see
-link:14-orchestration-graphs.html[Engine] for why.
-
-|`output?: { fields: … }` *(target)*
-|Declares a structured output contract, which is what makes conditional edges able to
-test something other than prose.
-|===
-
-`check` nodes carry a command and an expectation instead of a prompt; they are the
-cheapest node in the system and the only one that produces ground truth.
-
-== Ports and edges
-
-Today an edge is `{ from, to }` and a node has exactly one input and one output. That is
-the single biggest structural limitation in the current model, because *every control
-node needs more than one port*: a gate has `approved`/`rejected`, a check has
-`pass`/`fail`, a router has one per branch, a map has `each`/`done`.
-
-.Target edge shape
-[cols="1,3"]
-|===
-|Field |Notes
-
-|`from`, `to`
-|Node ids. Unchanged.
-
-|`fromPort?`, `toPort?` *(target)*
-|Absent ⇒ `"output"` / `"input"`. This is what makes the change additive: every existing
-graph parses and executes identically.
-
-|`when?` *(target)*
-|`{ type: "if" \| "else if" \| "else", expression }`, evaluated against the upstream
-node's declared output fields. Conditions live on the *edge* rather than inside a node so
-the branch is visible as a labelled wire.
-
-|`label?` *(target)*
-|Display only.
-|===
-
-[IMPORTANT]
-====
-*Ports must land before any control node is built.* Adding a second outcome to a node
-after the fact means changing the canvas interaction model, the edge schema and the
-engine's value routing simultaneously. Adding two optional fields now costs nothing.
-====
-
-Port identity is a plain string. A node kind declares its ports statically (`gate` always
-has the same three); only `map` and `subgraph` derive ports dynamically — `subgraph` from
-the child graph's declared inputs and outputs, the way Rivet derives a subgraph node's
-slots from the child's graph-input and graph-output nodes.
-
-== The value plane
-
-This is the most consequential change in the whole design. Today a node's output is *the
-agent's last chat message* — untyped, unbounded prose that every downstream hop
-re-summarises.
-
-.Target node output
-[cols="1,3"]
-|===
-|Field |Notes
-
-|`summary: string`
-|Bounded prose for the chat and the Visualizer. What the node says it did.
-
-|`artifacts: ArtifactRef[]`
-|What the node actually produced: workspace-relative file paths, or Otto artifact ids.
-Downstream nodes receive *references* and read them directly — no lossy re-summarisation
-through the chat.
-
-|`fields?: Record<string, …>`
-|Present when the node declared an output contract. What edge conditions test.
-
-|`evidence?: { command, exitCode, output }`
-|Produced by `check` nodes: the proof, not the claim.
-|===
-
-`ArtifactRef` is deliberately a reference rather than an embedded blob — an orchestration
-that inlined every file into the run record would make the run store unusable, and the
-files already live in the workspace.
-
-== Run projection
-
-An orchestration is persisted as an existing `Run`, which is what lets the Orchestrations
-page, the accounting roll-up and old clients work with no new list schema.
-
-* `kind?: "phases" | "graph"` — absent means phases.
-* `graphId?`, `graphInputs?` — what was executed, with which answers.
-* Each worker node projects into one `RunPhase` with `type: "graph-node"`, carrying
-  `dependsOn` from the drawn edges. An old client renders a recognisable list of stages.
-* `"draft"` is a run status: the dialog mints the record before the graph is finished.
-* `pause?` *(target)* — see below.
-
-== Pause metadata
-
-The gate mechanism already exists for the AI flavour (`awaitGate`/`resolveGate`,
-`runs.gate_respond.request`) and the status vocabulary already contains `paused` (run) and
-`blocked` (phase). What is missing is the *persisted* half, without which a gate cannot
-survive a daemon restart.
-
-[source]
+[mermaid]
 ----
-Run.pause? = {
-  nodeId,
-  kind: "gate",
-  prompt,
-  form?: GraphInput[],     // reuses the declared-input schema
-  requestedAt,
-}
+erDiagram
+    RUN ||--o{ RUN_PHASE : "phases[]"
+    RUN_PHASE ||--o{ RUN_PHASE_CANDIDATE : "candidates[]"
+    RUN_PHASE_CANDIDATE |o--o| JUDGE_VERDICT : "verdict?"
+    RUN }o--o| ORCHESTRATION_GRAPH : "graphId (kind=graph)"
+    ORCHESTRATION_GRAPH ||--o{ GRAPH_NODE : "nodes[]"
+    ORCHESTRATION_GRAPH ||--o{ GRAPH_EDGE : "edges[]"
+    ORCHESTRATION_GRAPH ||--o{ GRAPH_INPUT : "inputs[]"
+    GRAPH_NODE ||--o{ GRAPH_OUTPUT_FIELD : "output.fields[]"
+    GRAPH_NODE ||--o{ GRAPH_QUERY_TOOL : "queryTools[]"
+    GRAPH_NODE }o--o| PROMPT_TEMPLATE : "promptTemplate"
 ----
 
-Two properties are deliberate. It is a *discriminated* shape keyed by `kind`, so timeouts
-or event-waits can be added later without a second field. And it lives on the run record
-rather than in memory, so the boot path can restore paused runs instead of failing them —
-the single change that turns gates from a UI modal into a real approval step.
+`Run` is the durable, pushed projection. `OrchestrationGraph` is the reusable authored
+template. They meet only at start time: a graph run records `graphId` and the `graphInputs` the
+user filled in, and the executing run then carries its own copy of what each node was asked to
+do.
 
-Activepieces reaches the same end by a heavier route worth knowing about: pause state has
-moved out of a `pauseMetadata` column (now deprecated in their schema) into a dedicated
-*waitpoint* table with a unique index on `(flowRunId, stepName)`, and the durable trigger
-is a job scheduled at pause time rather than a boot-time sweep. We need the uniqueness
-constraint — ours is `(runId, nodeId, iteration)` — but not the table or the scheduler,
-because a paused Otto run is simply a record nothing is currently driving. See
-link:15-orchestration-durability.html[Durability].
+== Two declaration surfaces
 
-The resume payload is keyed by `nodeId`, never by position. LangGraph matches resume
-values to interrupt calls *by index within a node's execution*, which means editing the
-graph between suspend and resume can silently bind the answer to the wrong question. That
-is a landmine we can simply not lay.
+The engines differ in *who declares the work*, and that difference is a schema boundary.
 
-== Node execution records
-
-Per-node observability needs a home. The existing `RunPhaseCandidate` already carries
-`agentId`, `personalityId` and `summary`; the target adds what makes a run tunable rather
-than opaque:
-
-* `startedAt`, `completedAt`
-* `tokens` / `cost` — rolled up from the child agent's own accounting
-* `filesTouched?` — for the write-isolation story
-* `output?: NodeOutput` — the structured result, which is also what resume reads
-
-== RPC surface
-
-Namespaced per `docs/rpc-namespacing.md`, request/response pairs:
-
-[cols="1,2"]
+[cols="1,2,2"]
 |===
-|RPC |Purpose
+| |Phase runs |Graph runs
 
-|`runs.graphs.list` / `.save` / `.delete`
-|Graph store CRUD. `save` on a built-in performs copy-on-edit; `delete` refuses built-ins.
+|Declared by
+|A conducting agent, at runtime
+|A user, in the designer, ahead of time
 
-|`runs.graphs.changed.notification`
-|Full-list push; clients replace their replica.
+|Input schema
+|`RunPlan` → `RunPhaseDeclaration[]`
+|`OrchestrationGraph` → `GraphNode[]` + `GraphEdge[]`
 
-|`runs.start`
-|Start or draft an orchestration (both flavours).
+|Entry point
+|The `start_run` tool
+|`runs.start` against a stored graph
 
-|`runs.gate_respond`
-|Resolve a pause. Extended with the typed form payload *(target)*.
+|Ordering
+|Declared order; `dependsOn` guards
+|Drawn edges; a real DAG
 
-|`runs.cancel`, `runs.clear`
-|Existing.
-
-|`runs.delete`
-|Delete one run by id — terminal/draft only, refused while it is in flight so cleanup
- cannot orphan live agents. Broadcasts the same `runs.cleared.notification` as
- `runs.clear`. Gated by `server_info.features.runsDelete`.
+|Per-unit authority
+|None — the phase type picks a role
+|`access`, `tools`, `queryTools`, `autonomous`
 |===
+
+Both land in the same `RunPhase[]`. A graph's worker nodes project as phases of type
+`graph-node` carrying edge-derived `dependsOn`, which is why a client written before graphs
+existed still renders a graph run as an ordinary phase list. `draft` is a real run status: the
+New Orchestration dialog mints the record before the graph is started.
+
+== Node and edge, as they exist
+
+`GraphNode.kind` is an open string vocabulary, but only two values are implemented:
+`orchestrator` (exactly one per graph, the root that hosts the chat) and `agent`. A node
+carries its instruction (`prompt`, `promptFromInput`, or a `promptTemplate` binding), its seat
+(`role` or an explicit `model`), and its declarations: `output.fields`, `access`, `tools`,
+`queryTools`, `loop`, `retry`, `timeoutMs`, `autonomous`.
+
+`GraphEdge` is `{ from, to }` plus `when` (a JSONata condition), `fields` (which output fields
+this edge carries — selection only, never renaming), and `label`. `fromPort` / `toPort` are
+**reserved in the schema and unused by the engine**; see *Designed, not built*.
+
+== Wire rules
+
+These are not stylistic. The protocol contract is absolute: an old client must parse a new
+daemon's messages, and the reverse.
+
+* **Every added field is `.optional()`.** Absence must reproduce the previous behaviour exactly.
+* **Objects are `.passthrough()`.** An unknown field survives a round trip instead of being
+  stripped.
+* **Vocabularies are plain strings on the wire**, with known values exported as `as const`
+  arrays for code (`RUN_PHASE_TYPES`, `RUN_STATUSES`, `RUN_PHASE_STATUSES`,
+  `GRAPH_SKIP_REASONS`, `GRAPH_OUTPUT_FIELD_TYPES`, `GRAPH_QUERY_TOOL_KINDS`,
+  `GRAPH_NODE_KINDS`). A new value from a newer peer is data, never a parse error.
+* **No `.transform()`, `.catch()` or `.preprocess()`.** Wire schemas are pure structural
+  declarations; normalization is an explicit post-validation pass (`normalizeJudgeOutcome`).
+* **Reading an absent value is a documented decision, not a shrug.** A skipped phase with no
+  `skipReason` was written by an older daemon and reads as `upstream-failed` — the only skip
+  that existed then.
+
+The same posture governs the value plane: an **unknown output-field `type` validates as
+"anything" rather than failing**, so an old daemon meeting a new type degrades to accepting the
+value instead of refusing a graph it could otherwise run.
+
+[WARNING]
+====
+*Declaration order is load-bearing in this file.* `zod-aot` loads
+`packages/protocol/src/orchestration.ts` at codegen time, so a schema referenced before its
+`const` is initialised fails the **build** with `ReferenceError: Cannot access 'X' before
+initialization` even though typecheck passes. Declare a schema above its first use.
+====
+
+== Where validation happens
+
+Three passes, deliberately not merged:
+
+[cols="1,1,2"]
+|===
+|Pass |Runs where |Effect
+
+|`validateOrchestrationGraph`
+|Shared — daemon and designer
+|**Hard gate.** Duplicate ids, exactly one Orchestrator root, edges to unknown nodes,
+self-edges, cycles (Kahn), missing prompts, undeclared input references, malformed loops,
+duplicate output-field keys. Anything it returns stops a run.
+
+|`validateEdgeConditions`
+|Daemon only
+|**Hard gate** on JSONata syntax. Daemon-only because the parser must not enter the client
+bundle — which is why the shared validator stays dependency-free.
+
+|`reviewOrchestrationGraph`
+|Shared
+|**Advisory.** Almost-certainly-mistakes that still leave the graph executable — e.g. a
+condition on an edge whose source node declares no output fields.
+|===
+
+Edges *into* the Orchestrator root are excluded from the cycle check: they are passive
+answer-delivery, not execution dependencies, so "root kicks off A, A delivers back to root"
+must not read as a cycle.
+
+Phase plans get their own build-time rules: unique ids, and `dependsOn` referencing only an
+*earlier* phase, which keeps declared order a valid topological order.
 
 == Capability gating
 
-One flag, one check: `server_info.features.orchestrationGraphs`, detected in exactly one
-place client-side (`useOrchestrationGraphsFeature`) with a `COMPAT(orchestrationGraphs)`
-marker. There are no fallback paths — a client either has a host that supports graphs or
-tells the user to update the host. While the designer is under construction the same
-function additionally requires a dev build, so release builds never surface any of it.
+Three independent flags on `server_info.features`, because these shipped separately:
+`agentOrchestration` (phase runs, core `runs.*`, the conductor tools), `orchestrationGraphs`
+(graphs, templates, the designer, `runs.start`), and `runsDelete`.
+
+A client without a flag shows "update the host", never a degraded reimplementation. There are
+no fallback paths.
+
+== RPC and tool surfaces
+
+All client RPCs are namespaced `runs.*` with direction suffixes.
+
+[cols="1,2"]
+|===
+|Family |Members
+
+|Runs |`get_snapshot`, `start`, `cancel`, `gate_respond`, `clear`, `delete`, plus the
+`updated` and `cleared` notifications
+|Graphs |`graphs.list`, `graphs.save`, `graphs.delete`, `graphs.changed`
+|Templates |`templates.list`, `templates.save`, `templates.delete`, `templates.changed`
+|===
+
+`graphs.save` on a built-in performs copy-on-edit rather than mutating the shipped graph;
+`delete` refuses built-ins. `runs.delete` accepts terminal and draft runs only — deleting one
+in flight is refused so a cleanup click cannot orphan live agents.
+
+Clients hold a replica seeded by `get_snapshot` and kept fresh by the `updated` push. Agents
+reach the system through MCP tools instead — `start_run`, `get_run_status`, `wait_for_agents`
+— and orchestrations never nest: `start_run` is withheld from a node's own agent.
+
+== Labels: the spawn-side carrier
+
+A node's declarations reach its agent as **labels**, not as a second protocol. The per-agent
+Otto tool catalog reads them back.
+
+[cols="1,2"]
+|===
+|Label |Carries
+
+|`otto.orchestration-run-id` |Which run this agent belongs to.
+|`otto.orchestration-policy` |`deterministic` or `autonomous`.
+|`otto.orchestration-output-fields` |The declared fields — the trigger to mint `submit_output`.
+|`otto.orchestration-tool-groups` |The node's Otto tool allowlist.
+|`otto.orchestration-query-tools` |The node's read-only lookups.
+|===
+
+This indirection is why structured output and per-node authority are provider-neutral: no
+provider adapter parses a graph, and no engine code branches on a provider. See
+link:16-orchestration-agents.html[Agent Binding] for the other side.
+
+== Storage
+
+Host-level, file-backed, atomic (temp + rename), serialized per id, **no migrations** —
+forward compatibility is the optional-field rule doing its job.
+
+[cols="1,2"]
+|===
+|Path |Holds
+
+|`$OTTO_HOME/runs/{runId}.json` |One run projection each; write-heavy — saved on every change.
+|`$OTTO_HOME/orchestration-graphs/{graphId}.json` |Authored templates. Host-level because a
+graph is generic; it binds to a workspace only at start.
+|`$OTTO_HOME/prompt-templates/` |Prompt templates and snippets.
+|===
+
+== Decided, not built
+
+Agreed 2026-07-25. These are settled decisions awaiting implementation, not open questions.
+
+=== Runs are a preset graph
+
+The graph engine out-capabilities the phase engine on every axis except **two**: human gates,
+and per-phase *candidate fan-out with keep-best* — a phase can spawn N candidates from one task
+and top up until enough pass, while a graph node runs one worker per attempt. Parallelism in a
+graph is drawn nodes, not candidate width.
+
+Once the graph engine has **both** — a gate node and candidate fan-out — the phase vocabulary
+(`research → plan → … → deliver`) survives as a **starter graph template**, not a second
+execution model. One scheduler, one capability set. Two prerequisites, not one; until both
+land, both engines run and both are documented.
+
+The convergence has a second half: **the conductor eventually emits graphs, not phase plans.**
+MCP graph-authoring tools (author a graph, save it as a template, start it) let an agent
+generate its own orchestration shapes — and this is safe by construction, because an
+AI-authored graph passes through the same shared hard gate (`validateOrchestrationGraph` +
+`validateEdgeConditions`) as a human-drawn one. The tool boundary validates the declaration;
+nothing executes un-checked.
+
+=== Ports and conditions are not competitors
+
+Both exist; they answer different questions, and the failure mode is using one for the other's
+job.
+
+[cols="1,2,2"]
+|===
+| |Port |Condition
+
+|Asks
+|_Which outcome did this node produce?_
+|_Should this edge carry data, given the values?_
+
+|Declared by
+|The node kind, at design time
+|The graph author, per edge
+
+|Exclusivity
+|Mutually exclusive — the node fires exactly one
+|Independent — several may fire, or none
+
+|Checkable
+|Yes: the validator can require every outcome be wired
+|No: an expression is opaque
+|===
+
+> **If the node kind knows its outcomes at design time, that is a port. If the author is
+> filtering on values the node produced, that is a condition.**
+
+Ports serve control nodes — gate `approved`/`rejected`, check `pass`/`fail`, router one per
+branch, map `each`/`done`. Conditions stay for data-driven edges between agent nodes. They
+compose: an edge off the `pass` port may also carry a condition.
+
+*The failure to avoid* is expressing a gate's approve/reject as two conditions over a faked
+`{approved: true}` field. Nothing then enforces that exactly one branch runs, nothing can ask
+"what happens on reject?", and the canvas shows two identical wires instead of two labelled
+sockets. **Ports land with the gate node, or the gate is built wrong.**
+
+=== Run values: three scopes, opt-in both ways
+
+Otto's nodes are separate agent sessions, not handlers sharing a heap, so shared state is *text
+injected into a prompt*. Every scope decision is therefore a token-cost decision, which rules
+out global-by-default.
+
+[cols="1,1,1,2"]
+|===
+|Scope |Lifetime |Visible to |Status
+
+|*Edge*
+|One hop
+|The immediate downstream node
+|✅ built — stays the default
+
+|*Attempt*
+|One node's retries and loop iterations
+|That node only
+|✅ built — previous output, judge feedback. Stays **private**: failed attempts must not leak
+into unrelated nodes' prompts.
+
+|*Run*
+|The whole orchestration
+|Nodes that opt in to reading
+|◻ not built
+|===
+
+Run values are declared on the graph like `inputs` are. Two rules make them affordable:
+
+* **Reading is opt-in, not automatic.** A node declares that it reads a key. Automatic injection
+  would grow every prompt with the run — the token-economy failure this repo refuses everywhere
+  else.
+* **Write mode is per key: `once` or `append`.** `once` makes a second write an error, which
+  catches two nodes disagreeing about a fact. `append` serves accumulation; its order is
+  **settle order**, stated rather than implied, and each entry carries its source node id so a
+  synthesis node can attribute.
+
+*Subtree scope is deliberately not a thing.* An autonomous node's children already inherit its
+prompt context; a third lifetime needs a concrete demand first.
+
+*Open:* whether an edge condition may read run values. Today a condition sees only the upstream
+node's fields and prose; widening that scope is a decision to take deliberately, not a default
+to inherit.
+
+=== Per-node accounting is a precondition, not observability
+
+Two graph templates cannot be compared without cost, latency and token counts per node — so
+this blocks any answer to "does orchestrating actually work". `RunPhaseCandidate` gains
+`startedAt`/`completedAt`, `tokens`/`cost` rolled up from the child's own accounting, and a tool
+call record (`name`, `latency`, and enough to count actions). Shape informed by AgentX-Python's
+trace unit (`docs/references.md` §2.1).
+
+=== Grading has more than one mechanism
+
+Today Otto grades with exactly one: an agent judger returning a prose verdict — the most
+expensive, slowest and driftiest option available. The decision is that a node's acceptance test
+may be **deterministic** where the answer is checkable, and a model judge only where it is not.
+The `check` node (command + expectation, no model, ground truth rather than opinion) is the
+first mechanism to add.
+
+== Designed, not built
+
+Remaining design intent with no decision taken yet. Items that graduated to decisions above are
+no longer repeated here.
+
+*Node taxonomy — the undecided remainder.* The full palette groups `kind` into three families —
+*lifecycle* (`orchestrator`, `brief`), *control* (`gate`, `router`, `map`, `merge`,
+`subgraph`), *capability* (`agent`, `check`). Gate and check graduated to decisions above;
+`router`, `map`, `merge`, `subgraph` and `brief` remain design. Of these, **`map` — fan-out
+over a list discovered at run time — is the one the use-case catalog demands hardest**
+(`projects/graph-templates/use-cases.md`): one node per chapter, per call site, per job posting
+cannot be drawn by hand. The grouping is borrowed in shape, not code, from Dify's block enum.
+
+*Per-node worktree isolation.* Every node runs in the run's cwd. Read-only fan-out is safe;
+**parallel writing nodes share one tree and will conflict.** Bake-offs and migration sweeps
+need `isolation: "worktree"` per node — the existing Isolation vocabulary reused verbatim.
+
+*A richer node output.* Beyond prose and declared fields: `artifacts: ArtifactRef[]`
+(workspace paths or Otto artifact ids, passed as *references* so nothing large is inlined into
+the run record); `evidence: { command, exitCode, output }` arrives with the `check` node — the
+proof, not the claim.
+
+*Persisted pause — the data-model half.* `Run.pause = { nodeId, kind, prompt, form?,
+requestedAt }` — a *discriminated* object keyed by `kind` so timeouts or event-waits can be
+added without a second field, with `form` reusing the `GraphInput[]` schema so one schema
+serves both the New Orchestration dialog and the gate resume form. The mechanics — uniqueness
+keys, the decision-arrives-first race, the boot path — live on
+link:15-orchestration-durability.html[Durability].
 
 == Invariants
 
-. Every field added to any schema here is optional, and its absence reproduces the
-  previous behaviour exactly.
-. Every vocabulary is a plain string on the wire with a known-values array in code.
-. An edge with no ports means `output` → `input`; existing graphs never need rewriting.
-. Node outputs are references plus a bounded summary — never inlined file contents.
-. Pause state is persisted on the run record, and resume payloads are keyed by node id.
+. One observable type. Both engines project into `Run` + `RunPhase[]`; there is no second run
+  model.
+. Every added field is optional, and absence reproduces prior behaviour.
+. Vocabularies are open strings on the wire; known values live in code, never as a wire enum.
+. No transforms in wire schemas. Normalization is an explicit later pass.
+. An unknown output-field type accepts; it never fails a run.
+. The shared validator stays parser-free; expression syntax is checked daemon-side only.
+. A graph is validated before a run starts, never during it.
+. A node's declarations travel to its agent as labels — no provider parses a graph.
 . A graph run is always also a valid `Run` for a client that has never heard of graphs.
+. Run records stay bounded — references, never inlined blobs.
+. Schemas are declared above first use, or the build breaks.
 
 == Change checklist
 
-* [ ] New field optional, with the absent-means-today semantics written down?
-* [ ] New vocabulary value additive, and unknown values tolerated by both sides?
-* [ ] Does an old client still render this run as a sensible phase list?
-* [ ] Is the capability check still in exactly one place, with its COMPAT marker?
-* [ ] Does the run record stay bounded — no blobs, no unbounded arrays?
+* Adding a field? `.optional()`, and state what absence means.
+* Adding a vocabulary value? Extend the `as const` array; never narrow the wire type to an enum.
+* Adding a node or edge property? Add a designer control **or** confirm it survives the
+  round-trip carry (`graph-doc.test.ts`) — a canvas-owned key with no control is deleted on save.
+* Adding an RPC? `runs.<area>.<operation>.<request|response>`, and pick the gating flag.
+* Does an old client still render this run as a sensible phase list?
+* Referencing a schema? Check it is declared above the reference, or `zod-aot` fails the build.

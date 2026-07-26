@@ -174,7 +174,7 @@ no passer at all) are easy to conflate in prose and mean different things.
 |✅ link:13-orchestration-runs.html[Phase Runs]
 
 |D18 · Node execution lifecycle
-|flowchart · ≤18
+|flowchart · ≤20
 |*The order of the gates.* Await upstream → cancel check → failure check → edge conditions →
 dispatch → timeout → harvest → loop. Nearly every graph-engine question is "at which of these
 did it stop, and why is that a skip and not an error".
@@ -192,6 +192,27 @@ fields then prose, the output instruction, iteration context. Drawn because toke
 |*Why structured output is provider-neutral, and where validation happens.* The tool is
 registered per agent by the daemon catalog, validated in the handler, corrected in-session,
 and harvested after settle with a prose fallback. The seam is invisible in prose.
+|✅ link:14-orchestration-graphs.html[Graph Execution]
+
+|D21 · Orchestration ERD
+|erDiagram · ≤10 entities
+|*What owns what.* The run projection and the authored template are separate trees that meet
+only at start time; the diagram makes that boundary visible and stops the two being conflated
+when either schema grows.
+|✅ link:12-orchestration-data-model.html[Data Model]
+
+|D22 · Gate pause & resume
+|flowchart · ≤10
+|*The durability gap, drawn.* Where pause state must be persisted, where the
+decision-arrives-first race sits, and the boot path that must rehydrate rather than fail. Drawn
+because the restart edge is invisible in prose and is the system's largest open risk.
+|✅ link:15-orchestration-durability.html[Durability]
+
+|D23 · Node anatomy — the mini-orchestrator
+|flowchart (nested) · ≤10
+|*What a node actually is.* The nested envelope — retry ⊃ loop ⊃ worker + judge — with only
+the outermost result crossing the node boundary. The design template for every future node
+kind: a kind is a different envelope, not a different scheduler.
 |✅ link:14-orchestration-graphs.html[Graph Execution]
 |===
 

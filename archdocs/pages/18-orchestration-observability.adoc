@@ -5,6 +5,19 @@ A graph you cannot inspect is a slot machine. Every visual builder surveyed ship
 per-node execution log with inputs and outputs, and it is the feature that turns "this
 graph is bad" into "this node's prompt is bad".
 
+[NOTE]
+====
+*Status.* The transport half is built: the engine persists and pushes the full `Run` on every
+change (`runs.updated.notification`), phases carry statuses, skip reasons, candidates with
+summaries and output fields, retry counts and `timedOut` — so a client can already paint
+per-node state from its replica without any new event types. What is *not* built is the
+per-node measurement record (timings, tokens, cost, tool calls) — now **decided and promoted
+to a precondition** of the template initiative
+(link:12-orchestration-data-model.html[Data Model] §"Decided, not built") — and the run
+estimate/budget events. The event names below are design vocabulary for what the snapshot
+push must come to carry, not a proposed side channel.
+====
+
 == The event stream
 
 The daemon already emits a run snapshot on every state change and persists it — the
