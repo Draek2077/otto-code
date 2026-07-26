@@ -110,6 +110,13 @@ nothing else.
 24–4000px. On compact form factors a widget taller than 420px is collapsed behind a "Show full
 widget" control, so one tall widget cannot swallow a phone screen.
 
+Height is the load-bearing message: it is the **only** thing standing between a correct widget and
+one clipped at the host's initial 120px, and on desktop it can only travel over the preload. Electron
+drops a missing preload **silently** — the guest still loads, still runs its own scripts, still
+renders — so a broken preload path presents as a rendering bug, not a packaging one. `dist/features/`
+is one level below the bundle root, which is why `getWidgetPreloadPath()` joins `..`; a test pins
+that, and a missing file is logged loudly rather than shrugged off.
+
 ## The two host globals
 
 - **`sendPrompt(text)`** — sends a message to the chat as if the user typed it.
