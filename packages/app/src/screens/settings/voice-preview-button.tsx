@@ -49,6 +49,13 @@ interface VoicePreviewButtonProps {
   voiceName?: string;
   voiceModel?: string;
   voiceProvider?: string;
+  /**
+   * Linear 0..1 level for the sample, defaulting to full. A preview should be
+   * as loud as the thing it previews, and that differs by caller: the Voice
+   * settings picker previews spoken replies, the personality editor previews
+   * voice cues, and those are separate channels with separate sliders.
+   */
+  gain?: number;
   disabled?: boolean;
   testID?: string;
 }
@@ -75,6 +82,7 @@ export function VoicePreviewButton({
   voiceName,
   voiceModel,
   voiceProvider,
+  gain = 1,
   disabled = false,
   testID,
 }: VoicePreviewButtonProps) {
@@ -130,13 +138,16 @@ export function VoicePreviewButton({
       if (token !== requestRef.current) return;
       setStatus("playing");
       try {
-        await audioEngine.play({
-          type: formatToMimeType(result.format ?? "pcm"),
-          size: bytes.byteLength,
-          async arrayBuffer() {
-            return Uint8Array.from(bytes).buffer;
+        await audioEngine.play(
+          {
+            type: formatToMimeType(result.format ?? "pcm"),
+            size: bytes.byteLength,
+            async arrayBuffer() {
+              return Uint8Array.from(bytes).buffer;
+            },
           },
-        });
+          { gain },
+        );
       } catch (error) {
         // A superseding press rejects the in-flight playback (normal). Anything
         // else is a real failure worth surfacing rather than swallowing silently.
@@ -151,7 +162,7 @@ export function VoicePreviewButton({
         setStatus("idle");
       }
     }
-  }, [audioEngine, client, status, text, voiceName, voiceModel, voiceProvider]);
+  }, [audioEngine, client, gain, status, text, voiceName, voiceModel, voiceProvider]);
 
   const handleHoverIn = useCallback(() => setHovered(true), []);
   const handleHoverOut = useCallback(() => setHovered(false), []);

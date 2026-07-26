@@ -1,12 +1,15 @@
 import type {
   AudioEngine,
   AudioEngineCallbacks,
+  AudioPlaybackOptions,
   AudioPlaybackSource,
 } from "@/voice/audio-engine-types";
+import { applyPcm16Gain, clampGain } from "@/voice/audio-gain";
 import { resamplePcm16 } from "@/voice/resample-pcm16";
 
 interface QueuedAudio {
   audio: AudioPlaybackSource;
+  gain: number;
   resolve: (duration: number) => void;
   reject: (error: Error) => void;
 }
@@ -120,7 +123,7 @@ export function createAudioEngine(
     }
   }
 
-  async function playAudio(audio: AudioPlaybackSource): Promise<number> {
+  async function playAudio(audio: AudioPlaybackSource, gain: number): Promise<number> {
     await ensureInitialized();
 
     return await new Promise<number>((resolve, reject) => {
@@ -135,9 +138,13 @@ export function createAudioEngine(
           // Native AudioEngine expects 16kHz PCM16
           const pcm16k = resamplePcm16(pcm, inputRate, 16000);
           const durationSec = pcm16k.length / 2 / 16000;
+          // No native volume control, so the level is baked into the samples.
+          // Still played (as silence) at gain 0 — the duration is what callers
+          // time their acks and queue advances against.
+          const leveled = applyPcm16Gain(pcm16k, gain);
 
           native.resumePlayback();
-          native.playPCMData(pcm16k);
+          native.playPCMData(leveled);
 
           clearPlaybackTimeout();
           refs.playbackTimeout = setTimeout(() => {
@@ -173,7 +180,7 @@ export function createAudioEngine(
     while (refs.queue.length > 0) {
       const item = refs.queue.shift()!;
       try {
-        const duration = await playAudio(item.audio);
+        const duration = await playAudio(item.audio, item.gain);
         item.resolve(duration);
       } catch (error) {
         item.reject(error instanceof Error ? error : new Error(String(error)));
@@ -253,9 +260,10 @@ export function createAudioEngine(
       return refs.muted;
     },
 
-    async play(audio: AudioPlaybackSource) {
+    async play(audio: AudioPlaybackSource, options?: AudioPlaybackOptions) {
+      const gain = clampGain(options?.gain);
       return await new Promise<number>((resolve, reject) => {
-        refs.queue.push({ audio, resolve, reject });
+        refs.queue.push({ audio, gain, resolve, reject });
         if (!refs.processingQueue) {
           void processQueue();
         }

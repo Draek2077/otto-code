@@ -2,11 +2,14 @@ import { isElectronRuntime } from "@/desktop/host";
 import type {
   AudioEngine,
   AudioEngineCallbacks,
+  AudioPlaybackOptions,
   AudioPlaybackSource,
 } from "@/voice/audio-engine-types";
+import { clampGain } from "@/voice/audio-gain";
 
 interface QueuedAudio {
   audio: AudioPlaybackSource;
+  gain: number;
   resolve: (duration: number) => void;
   reject: (error: Error) => void;
 }
@@ -183,7 +186,7 @@ export function createAudioEngine(
     return context;
   }
 
-  async function playAudio(audio: AudioPlaybackSource): Promise<number> {
+  async function playAudio(audio: AudioPlaybackSource, gain: number): Promise<number> {
     const context = await ensurePlaybackContext();
     const arrayBuffer = await audio.arrayBuffer();
     const type = (audio.type || "").toLowerCase();
@@ -198,7 +201,19 @@ export function createAudioEngine(
     const durationSec = audioBuffer.duration;
     const source = context.createBufferSource();
     source.buffer = audioBuffer;
-    source.connect(context.destination);
+    // Full volume stays a direct connection — a GainNode is only inserted when
+    // the channel actually asks to be quieter, so the common path is unchanged.
+    // Gain 0 still plays (silently) for its full duration: callers ack chunks
+    // and advance queues on completion, so skipping would desync those.
+    let gainNode: GainNode | null = null;
+    if (gain < 1) {
+      gainNode = context.createGain();
+      gainNode.gain.value = gain;
+      source.connect(gainNode);
+      gainNode.connect(context.destination);
+    } else {
+      source.connect(context.destination);
+    }
 
     return await new Promise<number>((resolve, reject) => {
       refs.activePlayback = { source, resolve, reject, settled: false };
@@ -210,6 +225,11 @@ export function createAudioEngine(
         }
         active.settled = true;
         refs.activePlayback = null;
+        try {
+          gainNode?.disconnect();
+        } catch {
+          // Ignore best-effort teardown errors.
+        }
         fn();
       };
 
@@ -234,7 +254,7 @@ export function createAudioEngine(
     while (refs.queue.length > 0) {
       const item = refs.queue.shift()!;
       try {
-        const duration = await playAudio(item.audio);
+        const duration = await playAudio(item.audio, item.gain);
         item.resolve(duration);
       } catch (error) {
         item.reject(error instanceof Error ? error : new Error(String(error)));
@@ -475,9 +495,10 @@ export function createAudioEngine(
       return refs.muted;
     },
 
-    async play(audio: AudioPlaybackSource) {
+    async play(audio: AudioPlaybackSource, options?: AudioPlaybackOptions) {
+      const gain = clampGain(options?.gain);
       return await new Promise<number>((resolve, reject) => {
-        refs.queue.push({ audio, resolve, reject });
+        refs.queue.push({ audio, gain, resolve, reject });
         if (!refs.processingQueue) {
           void processQueue();
         }

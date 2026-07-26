@@ -45,6 +45,7 @@ import { TextArea } from "@/components/ui/text-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
+import { useAppSettings } from "@/hooks/use-settings";
 import { useFetchQuery } from "@/data/query";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
@@ -1114,6 +1115,9 @@ function PersonalityEditModal({
 }: PersonalityEditModalProps): ReactElement {
   const memorySupported = usePersonalityMemoryEnabled(serverId);
   const canPreviewVoice = useTtsPreviewFeature(serverId);
+  // This voice speaks cues, so the preview is heard at the cue channel's level
+  // — not the spoken-reply volume, which is a different slider entirely.
+  const { settings: appSettings } = useAppSettings();
   const canGenerateCues = useVisualizerVoiceCuesFeature(serverId);
   const client = useHostRuntimeClient(serverId);
   const [activeTab, setActiveTab] = useState<EditorTab>("identity");
@@ -1213,6 +1217,7 @@ function PersonalityEditModal({
   const voiceOptions = useMemo(() => buildVoiceOptions(speechOptions), [speechOptions]);
   // Only offer a voice when the host actually exposes TTS voices beyond "None".
   const showVoice = voiceOptions.length > 1;
+  const cuePreviewGain = appSettings.agentVoiceCuesVolume / 100;
   const voicePreview = useMemo(
     () =>
       canPreviewVoice ? (
@@ -1222,10 +1227,11 @@ function PersonalityEditModal({
           voiceName={draft.voice?.name}
           voiceModel={draft.voice?.model}
           voiceProvider={draft.voice?.provider}
+          gain={cuePreviewGain}
           testID="agent-personality-voice-preview"
         />
       ) : undefined,
-    [canPreviewVoice, serverId, draft.name, draft.roles, draft.voice],
+    [canPreviewVoice, cuePreviewGain, serverId, draft.name, draft.roles, draft.voice],
   );
 
   const header = useMemo(() => ({ title }), [title]);

@@ -13,6 +13,7 @@ import {
   saveAppSettings,
   type SettingsDeps,
 } from "./storage";
+import { DEFAULT_FONT_CONTRAST } from "@/styles/theme";
 import { createFakeDesktopBridge, createInMemoryKeyValueStorage } from "./fakes";
 import { WORKSPACE_TABS_RAIL_MAX_WIDTH } from "@/constants/layout";
 
@@ -755,6 +756,38 @@ describe("appearance settings", () => {
     expect((await loadAppSettingsFromStorage(bogus)).codeFontSize).toBe(DEFAULT_CODE_FONT_SIZE);
   });
 
+  it("clamps font contrast into 0..1 and keeps it fractional", async () => {
+    const fractional = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ fontContrast: 0.35 }),
+      }),
+    });
+    // The point of the separate parse: the integer font-size clamp would have
+    // rounded this to 0.
+    expect((await loadAppSettingsFromStorage(fractional)).fontContrast).toBe(0.35);
+
+    const high = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ fontContrast: 4 }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(high)).fontContrast).toBe(1);
+
+    const low = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ fontContrast: -2 }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(low)).fontContrast).toBe(0);
+
+    const bogus = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ fontContrast: "abc" }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(bogus)).fontContrast).toBe(DEFAULT_FONT_CONTRAST);
+  });
+
   it("trims an accepted font family", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
@@ -1055,6 +1088,61 @@ describe("agent voice cues", () => {
     });
 
     expect((await loadAppSettingsFromStorage(deps)).agentVoiceCues).toBe(true);
+  });
+});
+
+describe("voice playback volume", () => {
+  // All three audio channels start at the same level. Spoken replies used to
+  // have none at all — they played at whatever the host synthesized — so this
+  // default deliberately makes speech quieter than it was.
+  it("defaults voicePlaybackVolume to 50, level with the other channels", async () => {
+    const settings = await loadAppSettingsFromStorage(makeDeps());
+
+    expect(settings.voicePlaybackVolume).toBe(50);
+    expect(settings.agentVoiceCuesVolume).toBe(50);
+    expect(settings.visualizerSoundVolume).toBe(50);
+  });
+
+  // Three channels, three sliders: spoken replies, voice cues, Visualizer
+  // effects. Setting one must not move the others.
+  it("keeps the three audio channels independent", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ voicePlaybackVolume: 20 }),
+      }),
+    });
+
+    const settings = await loadAppSettingsFromStorage(deps);
+
+    expect(settings.voicePlaybackVolume).toBe(20);
+    expect(settings.agentVoiceCuesVolume).toBe(50);
+    expect(settings.visualizerSoundVolume).toBe(50);
+  });
+
+  it("clamps and rounds a persisted voicePlaybackVolume into 0..100", async () => {
+    const high = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ voicePlaybackVolume: 140 }),
+      }),
+    });
+    const low = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ voicePlaybackVolume: -12.4 }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(high)).voicePlaybackVolume).toBe(100);
+    expect((await loadAppSettingsFromStorage(low)).voicePlaybackVolume).toBe(0);
+  });
+
+  it("drops a non-numeric voicePlaybackVolume back to the default", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ voicePlaybackVolume: "loud" }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).voicePlaybackVolume).toBe(50);
   });
 });
 

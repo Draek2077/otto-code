@@ -14,7 +14,7 @@ import {
   isTextEffectThemeId,
   type TextEffectThemeId,
 } from "@/styles/text-effects";
-import type { LightThemeName, DarkThemeName } from "@/styles/theme";
+import { DEFAULT_FONT_CONTRAST, type LightThemeName, type DarkThemeName } from "@/styles/theme";
 
 export const APP_SETTINGS_KEY = "@otto:app-settings";
 export const APP_SETTINGS_QUERY_KEY = ["app-settings"];
@@ -154,6 +154,11 @@ export interface AppSettings {
   monoFontFamily: string; // "" = platform default mono stack
   uiFontSize: number; // clamped px, default 16
   codeFontSize: number; // clamped px, default 12
+  // How hard the reading ink sits against the background, 0..1. 0.5 is the
+  // palette as authored; up brightens dark text toward white / darkens light
+  // text toward black, down softens both toward the background. Device-local
+  // presentation only. See `resolveInkOverrides` in styles/theme.ts.
+  fontContrast: number;
   syntaxTheme: SyntaxThemeId; // default "default"
   // Vertical line-length marker painted behind the code editor's text, the way
   // an IDE marks the 80/120-column limit. Device-local presentation only.
@@ -190,6 +195,15 @@ export interface AppSettings {
   // the feature configured and the header button present; disabling removes the
   // button entirely, because there is nothing left to mute. Device-local.
   agentVoiceCuesMuted: boolean;
+  // Loudness of SPOKEN REPLIES as a 0-100 percent — voice mode, auto-speech, and
+  // the per-message play button, plus voice mode's thinking tone. The third and
+  // last audio channel, alongside the cue volume above and the Visualizer's
+  // sound effects, and independent of both: this is the agent talking TO you,
+  // and it is the one people reach for when the reply is too loud to keep on in
+  // an open office. 50 like the other two — the three sliders start level, and
+  // the app is deliberately quieter out of the box than the raw synthesis was.
+  // 0 is silence. Device-local.
+  voicePlaybackVolume: number;
   // Auto-speech: read every incoming assistant message aloud, queued so playback
   // never talks over itself. Flipped from the composer's speaker toggle, which is
   // its only UI — this is the mode, not a preference about one chat. Device-local
@@ -477,6 +491,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   monoFontFamily: "",
   uiFontSize: DEFAULT_UI_FONT_SIZE,
   codeFontSize: DEFAULT_CODE_FONT_SIZE,
+  fontContrast: DEFAULT_FONT_CONTRAST,
   syntaxTheme: "default",
   rulerEnabled: true,
   rulerColumn: DEFAULT_RULER_COLUMN,
@@ -486,6 +501,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   agentVoiceCues: true,
   agentVoiceCuesVolume: 50,
   agentVoiceCuesMuted: false,
+  voicePlaybackVolume: 50,
   autoSpeech: false,
   previewServerCloseBehavior: "keep-running",
   previewAutoStartOnRestore: false,
@@ -777,6 +793,11 @@ function pickFontSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
   if (codeFontSize !== null) {
     result.codeFontSize = codeFontSize;
   }
+  // Fractional, so it can't share the integer font-size clamp: a stored 0.35
+  // must survive as 0.35, not round to 0.
+  if (typeof stored.fontContrast === "number" && Number.isFinite(stored.fontContrast)) {
+    result.fontContrast = Math.min(1, Math.max(0, stored.fontContrast));
+  }
   if (typeof stored.syntaxTheme === "string" && isSyntaxThemeId(stored.syntaxTheme)) {
     result.syntaxTheme = stored.syntaxTheme;
   }
@@ -851,6 +872,17 @@ function pickAgentVoiceCueSettings(stored: Partial<AppSettings>): Partial<AppSet
     result.agentVoiceCuesMuted = stored.agentVoiceCuesMuted;
   }
   return result;
+}
+
+// Spoken-reply volume. Its own picker rather than a line in the cue picker
+// above: they are separate channels, and the cue picker carries a dated COMPAT
+// fallback this has no part in.
+function pickVoicePlaybackSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const volume = stored.voicePlaybackVolume;
+  if (typeof volume !== "number" || !Number.isFinite(volume)) {
+    return {};
+  }
+  return { voicePlaybackVolume: Math.max(0, Math.min(100, Math.round(volume))) };
 }
 
 function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
@@ -1159,6 +1191,7 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
     ...pickPreviewSettings(stored),
     ...pickVisualizerSettings(stored),
     ...pickAgentVoiceCueSettings(stored),
+    ...pickVoicePlaybackSettings(stored),
     ...pickFeatureFlagSettings(stored),
   };
 }
