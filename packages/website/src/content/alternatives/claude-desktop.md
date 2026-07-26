@@ -102,7 +102,6 @@ Claude supports voice in Claude's own mobile and app surfaces. Claude Code itsel
 | Native mobile                | Android                                                         | Android Claude app                |
 | Coding agents                | Claude Code, Codex, OpenCode, Pi + 30+ via ACP catalog + custom | Claude Code                       |
 | General chat                 | No                                                              | Claude Chat                       |
-| Cloud agent                  | Cloud waitlist                                                  | Claude Cowork and remote sessions |
 | Local execution              | Yes                                                             | Yes                               |
 | SSH remote execution         | Via daemon on the remote host                                   | Yes                               |
 | Git worktrees                | Yes                                                             | Yes                               |
