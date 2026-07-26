@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { type Page } from "@playwright/test";
 import { buildHostWorkspaceRoute, buildSettingsSectionRoute } from "../src/utils/host-routes";
-import { MAX_CODE_FONT_SIZE, MIN_CODE_FONT_SIZE } from "../src/hooks/use-settings/storage";
+import { MAX_CODE_FONT_SIZE, MIN_CODE_FONT_SIZE } from "../src/hooks/use-settings/limits";
 import { test, expect } from "./fixtures";
 import { getServerId } from "./helpers/server-id";
 import { connectSeedClient } from "./helpers/seed-client";

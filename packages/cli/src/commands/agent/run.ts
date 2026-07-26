@@ -13,7 +13,11 @@ import { resolve } from "node:path";
 import { lookup } from "mime-types";
 import { parseDuration } from "../../utils/duration.js";
 import { collectMultiple } from "../../utils/command-options.js";
-import { resolveProviderAndModel, type ResolvedProviderModel } from "../../utils/provider-model.js";
+import {
+  assertNoConflictingModelInputs,
+  resolveProviderAndModel,
+  type ResolvedProviderModel,
+} from "../../utils/provider-model.js";
 
 export { resolveProviderAndModel } from "../../utils/provider-model.js";
 
@@ -333,6 +337,11 @@ function structuredRunSchema(output: Record<string, unknown>): OutputSchema<Agen
 }
 
 function validateRunOptions(prompt: string, options: AgentRunOptions, outputSchema: unknown): void {
+  // Before anything opens a socket: a contradictory command line should say so, not report that
+  // the daemon is unreachable. Full provider/model resolution still happens after connecting,
+  // because it needs the host.
+  assertNoConflictingModelInputs(options.provider, options.model);
+
   if (!prompt || prompt.trim().length === 0) {
     throw {
       code: "MISSING_PROMPT",
