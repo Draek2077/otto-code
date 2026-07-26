@@ -47,7 +47,7 @@ describe("splitTextForTts", () => {
     ]);
   });
 
-  it("cuts at an em dash and drops the dash from the spoken text", () => {
+  it("cuts at an em dash and speaks the pause instead of the dash", () => {
     const segments = splitTextForTts(
       "The server rebuilds everything quickly — the client just waits.",
     );
@@ -58,9 +58,133 @@ describe("splitTextForTts", () => {
     expect(segments[0].pauseAfterMs).toBe(TTS_PAUSE_MS.dash);
   });
 
-  it("restores a dropped dash when the left side is too short to cut", () => {
-    const segments = splitTextForTts("One thing — the tests must stay green here.");
-    expect(segments.map((s) => s.text)).toEqual(["One thing — the tests must stay green here."]);
+  it("cuts at a short em-dash break, which the stub guard does not block", () => {
+    const segments = splitTextForTts("Rendered above — a four-stop timeline.");
+    expect(segments.map((s) => s.text)).toEqual(["Rendered above", "a four-stop timeline."]);
+    expect(segments.map((s) => s.pauseAfterMs)).toEqual([TTS_PAUSE_MS.dash, 0]);
+  });
+
+  it("sets off a paired em-dash aside at both dashes", () => {
+    const segments = splitTextForTts("Are you sure — really sure — that it works?");
+    expect(segments.map((s) => s.text)).toEqual(["Are you sure", "really sure", "that it works?"]);
+    expect(segments.map((s) => s.pauseAfterMs)).toEqual([TTS_PAUSE_MS.dash, TTS_PAUSE_MS.dash, 0]);
+  });
+
+  it("treats a spaced hyphen between words as a break in thought", () => {
+    const segments = splitTextForTts("The daemon owns synthesis - the client just plays it.");
+    expect(segments.map((s) => s.text)).toEqual([
+      "The daemon owns synthesis",
+      "the client just plays it.",
+    ]);
+    expect(segments[0].pauseAfterMs).toBe(TTS_PAUSE_MS.dash);
+  });
+
+  it("pauses at both edges of a parenthetical and drops its brackets", () => {
+    const segments = splitTextForTts(
+      "The daemon owns synthesis (the client only plays it back) and nothing else.",
+    );
+    expect(segments.map((s) => s.text)).toEqual([
+      "The daemon owns synthesis",
+      "the client only plays it back",
+      "and nothing else.",
+    ]);
+    expect(segments.map((s) => s.pauseAfterMs)).toEqual([
+      TTS_PAUSE_MS.aside,
+      TTS_PAUSE_MS.aside,
+      0,
+    ]);
+  });
+
+  it("treats a square-bracketed aside the same as a parenthetical", () => {
+    const segments = splitTextForTts(
+      "The sword-smith [a well-lit forge] worked through the afternoon.",
+    );
+    expect(segments.map((s) => s.text)).toEqual([
+      "The sword-smith",
+      "a well-lit forge",
+      "worked through the afternoon.",
+    ]);
+    expect(segments[0].pauseAfterMs).toBe(TTS_PAUSE_MS.aside);
+  });
+
+  it("sets off a short aside at both edges, regardless of length", () => {
+    const segments = splitTextForTts("It shipped (finally) on a Friday afternoon.");
+    expect(segments.map((s) => s.text)).toEqual([
+      "It shipped",
+      "finally",
+      "on a Friday afternoon.",
+    ]);
+    expect(segments.map((s) => s.pauseAfterMs)).toEqual([
+      TTS_PAUSE_MS.aside,
+      TTS_PAUSE_MS.aside,
+      0,
+    ]);
+  });
+
+  it("drops a closing bracket that butts against terminal punctuation", () => {
+    const segments = splitTextForTts("The whole run stayed green (on the first try).");
+    expect(segments.map((s) => s.text)).toEqual([
+      "The whole run stayed green",
+      "on the first try.",
+    ]);
+  });
+
+  it("leaves brackets alone when they are not set off by whitespace", () => {
+    const segments = splitTextForTts("Call parseConfig(options) before the daemon starts.");
+    expect(segments).toHaveLength(1);
+    expect(segments[0].text).toContain("parseConfig(options)");
+  });
+
+  it("speaks a dash between numbers as a range, not a pause", () => {
+    const segments = splitTextForTts("The retry window is 2–4 seconds on a warm cache.");
+    expect(segments.map((s) => s.text)).toEqual([
+      "The retry window is 2 to 4 seconds on a warm cache.",
+    ]);
+  });
+
+  it("speaks a hyphenated number range as a range too", () => {
+    const segments = splitTextForTts("Expect 10-20 minutes for the whole verification run.");
+    expect(segments[0].text).toBe("Expect 10 to 20 minutes for the whole verification run.");
+  });
+
+  it("speaks a date as words rather than arithmetic", () => {
+    const segments = splitTextForTts("The release landed on 2026-07-25 without a hitch.");
+    // The comma the spoken date brings with it is a real pause — a date is
+    // read with a beat between the day and the year.
+    expect(segments.map((s) => s.text)).toEqual([
+      "The release landed on July twenty-fifth,",
+      "twenty twenty-six without a hitch.",
+    ]);
+    expect(segments[0].pauseAfterMs).toBe(TTS_PAUSE_MS.comma);
+  });
+
+  it("leaves phone numbers and version strings alone", () => {
+    for (const literal of ["555-1234", "1-2-3"]) {
+      const segments = splitTextForTts(`The value written down was ${literal} exactly.`);
+      expect(segments[0].text).toContain(literal);
+    }
+  });
+
+  it("leaves a hyphenated word completely untouched", () => {
+    const segments = splitTextForTts("The sword-smith worked through a well-lit afternoon.");
+    expect(segments.map((s) => s.text)).toEqual([
+      "The sword-smith worked through a well-lit afternoon.",
+    ]);
+  });
+
+  it("keeps a question's mark on the fragment that carries the rise", () => {
+    const segments = splitTextForTts(
+      "When the daemon splits a sentence, does the voice still raise its pitch at the end?",
+    );
+    expect(segments.map((s) => s.text)).toEqual([
+      "When the daemon splits a sentence,",
+      "does the voice still raise its pitch at the end?",
+    ]);
+  });
+
+  it("keeps terminal punctuation on every sentence it hands the provider", () => {
+    const segments = splitTextForTts("Is it ready? It is ready. Ship it!");
+    expect(segments.map((s) => s.text)).toEqual(["Is it ready?", "It is ready.", "Ship it!"]);
   });
 
   it("treats a blank line as a paragraph pause", () => {

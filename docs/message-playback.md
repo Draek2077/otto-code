@@ -40,6 +40,22 @@ The mode reads what it **watched being written**, never what was already on scre
 opening a chat does not start reciting its history. A message row only offers itself
 if it rendered at least once as part of a running turn.
 
+That makes the reveal's idea of "the running turn" load-bearing for speech, and two
+things protect it — both learned from the same bug, where hitting send read the
+previous reply's last paragraph back at you:
+
+- **A turn that has already been settled never spans anything.** Sending flips the
+  agent to running a beat before the daemon echoes the user row, and the boundary
+  search skips optimistic rows (a steer must not restart the turn it interrupts), so
+  for that beat the search lands on the finished turn. `agent-stream/view.tsx` latches
+  the boundary key while the agent is idle and hands it to `computeLiveTurnReveal`,
+  which spans nothing until the new turn's own user row arrives.
+- **The row keeps one component identity across the turn's end.** Every assistant row
+  subscribes to the reveal ticker, spanned or not: swapping the element type when the
+  spans clear remounted the row and wiped the watched-live latch on the one bubble
+  that had just finished — the reply's last paragraph, the only segment that cannot
+  settle while its turn runs.
+
 ### The two halves
 
 `voice/auto-speech-queue.ts` is a module singleton holding pure control flow — the
@@ -81,12 +97,58 @@ frontend flattens most punctuation even inside a single request. The segmenter
 sentence _and_ clause boundaries, tags each segment with the pause its ending
 mark denotes, and appends that many zero samples of PCM to the segment's audio.
 
+Punctuation divides into two kinds, and they are handled oppositely:
+
+- **Marks the voice pronounces** — `,` `;` `:` and the terminal `.` `?` `!`.
+  These shape pitch, not just timing: a question mark is the difference between
+  asking and stating. They stay in the segment text exactly as written, and a
+  segment always keeps the terminal mark of the sentence it ends, so the closing
+  rise or fall survives the cut. A question **is** clause-cut like anything
+  else — its rise lands on the closing fragment, the one holding the `?`.
+- **Marks that are pure notation** — em dashes, spaced dashes, brackets. A voice
+  does not say them; it rests where they sit. They are consumed at the boundary
+  and re-expressed as silence, which is more reliable than hoping the model
+  infers a rest from a glyph it may not even have a phoneme for.
+
 Rules that matter when touching it:
 
 - **`TTS_PAUSE_MS` is the single tuning point.** One entry per punctuation
-  meaning (comma, dash, semicolon, colon, bullet, sentence, paragraph), each
-  justified by what the mark means in English. Tweak durations there, nowhere
-  else.
+  meaning (comma, aside, dash, semicolon, colon, bullet, sentence, paragraph),
+  each justified by what the mark means in English. Tweak durations there,
+  nowhere else.
+- **An explicitly authored break bypasses the stub guard.** Dashes and brackets
+  pause at any length — "Rendered above" earns its beat before an em dash the
+  way a two-word comma stub does not. Only inferred comma-grade splits have to
+  clear `MIN_CLAUSE_CHARS`.
+- **Spacing decides whether a dash is a break.** " - " and " — " are breaks;
+  "sword-smith" and "well-lit" are words and are left exactly alone. A dash
+  between numbers is a range, not a pause.
+- **Brackets only split when they are set off by whitespace and well formed.**
+  Both edges test for the whole construct, so `parseConfig(options)` is never
+  torn apart at either end.
+- **Notation is trimmed off fragment edges** by `trimNotationMarks`, which
+  preserves terminal punctuation — "(finally)." becomes "finally."
+
+### Spoken forms
+
+`spoken-forms.ts` rewrites written notation into words before any splitting:
+dates, clock times, currency, percentages, measurements, ranges and written
+ordinals. "2026-07-25" becomes "July twenty-fifth, twenty twenty-six" and
+"$1,200.50" becomes "one thousand two hundred dollars and fifty cents".
+
+This exists because **we configure no text normalization at all**: sherpa-onnx
+supports rule-based normalization through `ruleFsts` on the `OfflineTts` config
+and we set none, so without this pass the only thing between an ISO date and
+the speaker is espeak-ng's fallback guessing, which reads it as arithmetic.
+
+The scope rule: a number is spelled out only when it is part of a construct
+being rewritten anyway, because the words around it have to agree with it. A
+**bare integer is left alone** — every engine reads "42" correctly, and
+spelling out every loose number would wreck ports, versions and identifiers.
+The rewrites are ordered so constructs that own their separators (dates own
+their hyphens, times own their colon) are consumed before the looser rules see
+them, and phone numbers and version strings are guarded out explicitly.
+
 - **Bullets read like semicolons.** A line without terminal punctuation is a
   list fragment and gets the semicolon-grade pause; a bullet that is a full
   sentence keeps its full stop.
