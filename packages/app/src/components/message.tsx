@@ -155,6 +155,10 @@ import {
   useAssistantBubbleHasText,
 } from "@/agent-stream/assistant-bubble-text";
 import { useIsMessagePlaybackActive } from "@/agent-stream/message-playback-activity";
+import {
+  markLiveTurnSegmentWitnessed,
+  wasLiveTurnSegmentWitnessed,
+} from "@/agent-stream/live-turn-witness";
 import { autoSpeechQueue } from "@/voice/auto-speech-queue";
 export type { InlinePathTarget } from "@/assistant-file-links";
 export type { AssistantForkTarget };
@@ -2158,19 +2162,32 @@ function useAssistantBubblePlaybackState(input: {
   // screen: opening a chat must not start reciting its history. "Watched" is
   // exactly `isLiveTurnItem` — an item only carries a reveal span (or the tail
   // flag) while its turn is running, and a history row never renders with
-  // either. The ref latches because the flag goes false the instant the turn
-  // ends, which is the same commit the segment becomes speakable.
-  const watchedLiveRef = useRef(false);
-  watchedLiveRef.current = watchedLiveRef.current || isLiveTurnItem;
+  // either. It has to be latched, because the flag goes false the instant the
+  // turn ends, which is the same commit the segment becomes speakable.
+  //
+  // The latch is a module registry keyed by (groupId, blockIndex) rather than a
+  // ref, because a ref does not survive the turn ending: the segment that is
+  // live at that moment is remounted under a new id as the stream head flushes
+  // into the tail, so a ref-latched row lost its memory of being live and the
+  // reply's last paragraph was never spoken (see live-turn-witness.ts).
+  //
+  // Recorded during render, like the ref it replaces, so the mark lands even if
+  // this row is torn down before its effects flush — the remount above is
+  // precisely that case. Marking is idempotent and notifies nobody, so it is
+  // safe to do from render.
+  if (isLiveTurnItem && groupId !== undefined) {
+    markLiveTurnSegmentWitnessed({ groupId, blockIndex });
+  }
+
   const enqueuedRef = useRef(false);
   useEffect(() => {
     if (
       enqueuedRef.current ||
-      !watchedLiveRef.current ||
       !isSettled ||
       !canPlay ||
       serverId === undefined ||
-      groupId === undefined
+      groupId === undefined ||
+      !wasLiveTurnSegmentWitnessed({ groupId, blockIndex })
     ) {
       return;
     }
@@ -2187,7 +2204,7 @@ function useAssistantBubblePlaybackState(input: {
       ...(agentId ? { agentId } : {}),
       text: message,
     });
-  }, [agentId, canPlay, groupId, isSettled, message, serverId]);
+  }, [agentId, blockIndex, canPlay, groupId, isSettled, message, serverId]);
 
   // One button per *visual* bubble, so it goes on the segment that ends the
   // group: "default" is a standalone reply and "compactTop" is the last segment

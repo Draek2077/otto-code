@@ -512,6 +512,50 @@ describe("stream reducer canonical tool calls", () => {
     expect(new Set(messages.map((message) => message.id)).size).toBe(messages.length);
   });
 
+  // The reply's last paragraph streams as the live head and is rewritten when the
+  // head flushes, so its id — the list key — changes and the row remounts. Per-row
+  // state cannot survive that; anything that has to (auto-speech's "I watched this
+  // being written" latch, agent-stream/live-turn-witness.ts) must key off the
+  // group/block pair instead, which this pins down.
+  it("rewrites the live head's id on flush but keeps its group and block index", () => {
+    const messageId = "msg-final-block-identity";
+    let tail: StreamItem[] = [];
+    let head: StreamItem[] = [];
+
+    const apply = (event: AgentStreamEventPayload, timestamp: Date) => {
+      const result = applyStreamEvent({ tail, head, event, timestamp });
+      tail = result.tail;
+      head = result.head;
+    };
+    const assistantRows = (items: StreamItem[]) =>
+      items.filter(
+        (item): item is Extract<StreamItem, { kind: "assistant_message" }> =>
+          item.kind === "assistant_message",
+      );
+
+    apply(
+      assistantTimeline("Paragraph one.\n\nParagraph two.", "claude", messageId),
+      new Date("2025-01-01T10:04:00Z"),
+    );
+
+    const live = assistantRows(head).at(-1);
+    invariant(live, "expected a live assistant head row");
+    expect(live.text).toBe("Paragraph two.");
+    expect(live.blockGroupId).toBeDefined();
+
+    apply(
+      { type: "turn_completed" as const, provider: "claude" as const },
+      new Date("2025-01-01T10:04:01Z"),
+    );
+
+    const flushed = assistantRows(tail).at(-1);
+    invariant(flushed, "expected the flushed assistant row");
+    expect(flushed.text).toBe("Paragraph two.");
+    expect(flushed.id).not.toBe(live.id);
+    expect(flushed.blockGroupId).toBe(live.blockGroupId);
+    expect(flushed.blockIndex).toBe(live.blockIndex);
+  });
+
   it("preserves old assistant merge behavior when message ids are absent", () => {
     const state = hydrateStreamState([
       {
