@@ -80,6 +80,7 @@ import {
   resolveVoiceTooltipText,
 } from "./labels";
 import { computeCanStartDictation, runAlternateSendAction, runDefaultSendAction } from "./state";
+import { ComposerToolbarWidthContext } from "./toolbar-width-context";
 
 const DEFAULT_SEND_KEYS: ShortcutKey[][] = [["Enter"]];
 
@@ -193,6 +194,17 @@ const MIN_TOOLBAR_SCALE = 0.7;
 // the narrowest size, rather than clipping right at the `MIN_TOOLBAR_SCALE` edge.
 const TOOLBAR_BUTTON_WIDTH = 28;
 const TOOLBAR_BUTTON_WIDTH_COMPACT = TOOLBAR_BUTTON_WIDTH * 2;
+// Minimum separation between the left and right toolbar groups. `space-between`
+// keeps them at opposite ends while the row fits, but the uniform shrink below
+// switches to `flex-start` — and there the two groups butt together, leaving the
+// first right-side button (the auto-speech toggle) flush against the last
+// left-side control with nothing between them. It is counted into the row's
+// needed width so the shrink makes room for it rather than pushing it under
+// `buttonRow`'s `overflow: hidden`.
+//
+// Flat, not `compactUp`: the gaps *inside* each group are a flat 2 at every form
+// factor, and a compact-doubled group gap read as twice the separation it needs.
+const TOOLBAR_GROUP_GAP = 8;
 const ATTACHMENT_SHEET_SNAP_POINTS = ["34%", "45%"];
 
 type WebTextInputKeyPressEvent = NativeSyntheticEvent<
@@ -1931,7 +1943,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const handleToolbarRightLayout = useCallback((event: LayoutChangeEvent) => {
       setToolbarRightWidth(event.nativeEvent.layout.width);
     }, []);
-    const toolbarNeededWidth = toolbarLeftWidth + toolbarRightWidth;
+    const toolbarNeededWidth = toolbarLeftWidth + toolbarRightWidth + TOOLBAR_GROUP_GAP;
     const toolbarScale = computeToolbarScale({
       toolbarRowWidth,
       toolbarNeededWidth,
@@ -1984,55 +1996,59 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
           {/* Button row */}
           <View style={styles.buttonRow} onLayout={handleToolbarRowLayout}>
-            <View style={toolbarContentStyle}>
-              {/* Toolbar left: attachment button + usage ring + agent controls */}
-              <View style={styles.leftButtonGroup} onLayout={handleToolbarLeftLayout}>
-                <AttachmentDropdown
-                  isConnected={isConnected}
-                  disabled={disabled}
-                  attachButtonStyle={attachButtonStyle}
-                  renderAttachButtonIcon={renderAttachButtonIcon}
-                  attachmentMenuItems={attachmentMenuItems}
-                  addAttachmentLabel={t("composer.input.addAttachment")}
-                  addAttachmentTooltipLabel={t("composer.input.add")}
-                />
-                {leadingContent}
-                {leftContent}
-              </View>
+            {/* The row's own width, for controls inside it that drop out rather
+                than shrink (see toolbar-width-context.ts). */}
+            <ComposerToolbarWidthContext.Provider value={toolbarRowWidth}>
+              <View style={toolbarContentStyle}>
+                {/* Toolbar left: attachment button + usage ring + agent controls */}
+                <View style={styles.leftButtonGroup} onLayout={handleToolbarLeftLayout}>
+                  <AttachmentDropdown
+                    isConnected={isConnected}
+                    disabled={disabled}
+                    attachButtonStyle={attachButtonStyle}
+                    renderAttachButtonIcon={renderAttachButtonIcon}
+                    attachmentMenuItems={attachmentMenuItems}
+                    addAttachmentLabel={t("composer.input.addAttachment")}
+                    addAttachmentTooltipLabel={t("composer.input.add")}
+                  />
+                  {leadingContent}
+                  {leftContent}
+                </View>
 
-              {/* Right: auto-speech toggle, voice button, contextual button
+                {/* Right: auto-speech toggle, voice button, contextual button
                   (realtime/send/cancel) */}
-              <View style={styles.rightButtonGroup} onLayout={handleToolbarRightLayout}>
-                <AutoSpeechButton serverId={voiceServerId} buttonIconSize={buttonIconSize} />
-                <VoiceButtonTooltip
-                  onVoicePress={handleVoicePress}
-                  isDictationStartEnabled={isDictationStartEnabled}
-                  voiceButtonAccessibilityLabel={voiceButtonAccessibilityLabel}
-                  voiceButtonStyle={voiceButtonStyle}
-                  renderVoiceButtonIcon={renderVoiceButtonIcon}
-                  voiceTooltipText={voiceTooltipText}
-                  isRealtimeVoiceForCurrentAgent={isRealtimeVoiceForCurrentAgent}
-                  voiceMuteToggleKeys={voiceMuteToggleKeys}
-                  dictationToggleKeys={dictationToggleKeys}
-                />
-                {rightContent}
-                <SendButtonTooltip
-                  shouldShow={shouldShowSendButton}
-                  canPressLoadingButton={canPressLoadingButton}
-                  onSubmitLoadingPress={onSubmitLoadingPress}
-                  onDefaultSendAction={handleDefaultSendAction}
-                  isSendButtonDisabled={isSendButtonDisabled}
-                  submitAccessibilityLabel={submitAccessibilityLabel}
-                  sendButtonCombinedStyle={sendButtonCombinedStyle}
-                  isSubmitLoading={isSubmitLoading}
-                  submitIcon={submitIcon}
-                  submitButtonTestID={submitButtonTestID}
-                  buttonIconSize={buttonIconSize}
-                  sendKeys={DEFAULT_SEND_KEYS}
-                  sendTooltipLabel={sendTooltipLabel}
-                />
+                <View style={styles.rightButtonGroup} onLayout={handleToolbarRightLayout}>
+                  <AutoSpeechButton serverId={voiceServerId} buttonIconSize={buttonIconSize} />
+                  <VoiceButtonTooltip
+                    onVoicePress={handleVoicePress}
+                    isDictationStartEnabled={isDictationStartEnabled}
+                    voiceButtonAccessibilityLabel={voiceButtonAccessibilityLabel}
+                    voiceButtonStyle={voiceButtonStyle}
+                    renderVoiceButtonIcon={renderVoiceButtonIcon}
+                    voiceTooltipText={voiceTooltipText}
+                    isRealtimeVoiceForCurrentAgent={isRealtimeVoiceForCurrentAgent}
+                    voiceMuteToggleKeys={voiceMuteToggleKeys}
+                    dictationToggleKeys={dictationToggleKeys}
+                  />
+                  {rightContent}
+                  <SendButtonTooltip
+                    shouldShow={shouldShowSendButton}
+                    canPressLoadingButton={canPressLoadingButton}
+                    onSubmitLoadingPress={onSubmitLoadingPress}
+                    onDefaultSendAction={handleDefaultSendAction}
+                    isSendButtonDisabled={isSendButtonDisabled}
+                    submitAccessibilityLabel={submitAccessibilityLabel}
+                    sendButtonCombinedStyle={sendButtonCombinedStyle}
+                    isSubmitLoading={isSubmitLoading}
+                    submitIcon={submitIcon}
+                    submitButtonTestID={submitButtonTestID}
+                    buttonIconSize={buttonIconSize}
+                    sendKeys={DEFAULT_SEND_KEYS}
+                    sendTooltipLabel={sendTooltipLabel}
+                  />
+                </View>
               </View>
-            </View>
+            </ComposerToolbarWidthContext.Provider>
           </View>
         </Animated.View>
 
@@ -2125,6 +2141,9 @@ const styles = StyleSheet.create((theme: Theme) => ({
   buttonRowContent: {
     flexDirection: "row",
     alignItems: "flex-end",
+    // Load-bearing only once the row is scaled and `space-between` gives way to
+    // `flex-start`; harmless while the groups sit at opposite ends.
+    gap: TOOLBAR_GROUP_GAP,
   },
   buttonRowContentFull: {
     width: "100%",

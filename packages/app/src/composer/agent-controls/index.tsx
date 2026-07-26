@@ -29,6 +29,10 @@ import {
   Summarize,
   Zap,
 } from "@/components/icons/material-icons";
+import {
+  canFitCompactFeatures,
+  useComposerToolbarWidth,
+} from "@/composer/input/toolbar-width-context";
 import { compactUp } from "@/styles/theme";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
@@ -1584,7 +1588,16 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
   const thinkingAnchorRef = useRef<View | null>(null);
 
   const hasThinking = comboboxThinkingOptions.length > 0;
-  const hasFeatures = Boolean(features && features.length > 0);
+  // Features is the first control to go when the compact toolbar runs out of
+  // room. It is the only one that shows no state — every other badge tells you
+  // something at a glance (which model, which mode, is it thinking), while this
+  // one is purely a door to a sheet. Dropped rather than shrunk: the whole row
+  // is already scaling down by then, and one more 28pt icon squeezed smaller
+  // buys nothing but a harder tap target. Everything it opens stays reachable
+  // from the chat's own settings.
+  const toolbarWidth = useComposerToolbarWidth();
+  const showFeatures =
+    Boolean(features && features.length > 0) && canFitCompactFeatures(toolbarWidth);
   const featuresSheetHeader = useMemo<SheetHeader>(
     () => ({ title: t("agentControls.features.title") }),
     [t],
@@ -1592,6 +1605,13 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
 
   const handleOpenThinking = useCallback(() => handleOpenSheet("thinking"), [handleOpenSheet]);
   const handleOpenFeatures = useCallback(() => handleOpenSheet("features"), [handleOpenSheet]);
+  // The pane can be narrowed while the sheet is open — dismiss it rather than
+  // leaving a sheet on screen whose trigger has just vanished behind it.
+  useEffect(() => {
+    if (!showFeatures && activeSheet === "features") {
+      handleCloseSheet();
+    }
+  }, [activeSheet, handleCloseSheet, showFeatures]);
   const handleThinkingSheetOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (nextOpen) {
@@ -1691,7 +1711,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
         </Pressable>
       ) : null}
 
-      {hasFeatures ? (
+      {showFeatures ? (
         <Pressable
           onPress={handleOpenFeatures}
           disabled={disabled}
@@ -1722,7 +1742,7 @@ function SheetAgentControlsContent(props: SheetAgentControlsContentProps) {
 
       <AdaptiveModalSheet
         header={featuresSheetHeader}
-        visible={activeSheet === "features"}
+        visible={showFeatures && activeSheet === "features"}
         onClose={handleCloseSheet}
         testID="agent-features-sheet"
       >

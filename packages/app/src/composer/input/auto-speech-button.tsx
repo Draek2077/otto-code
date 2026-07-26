@@ -37,6 +37,16 @@ interface AutoSpeechButtonProps {
   buttonIconSize: number;
 }
 
+// Optical size correction — the button box still matches its neighbours exactly,
+// only the glyph inside is trimmed. The speaker glyphs ink far more of their 960
+// viewBox than the mic sitting next to them: 720 units wide for `Volume2`, about
+// 810 for the slashed `VolumeX`, against the mic's 560. At the same nominal size
+// the toggle therefore reads as a visibly bigger control than the mic — barely
+// noticeable at desktop's 16px icons, obvious at compact's 32px, which is where
+// it shows. One factor for both states, keyed to the wider muted glyph, so the
+// toggle does not change size when you flip it.
+const SPEAKER_OPTICAL_SCALE = 0.85;
+
 export function AutoSpeechButton({ serverId, buttonIconSize }: AutoSpeechButtonProps) {
   const { t } = useTranslation();
   const canSpeak = useTtsSpeakFeature(serverId ?? "");
@@ -54,19 +64,20 @@ export function AutoSpeechButton({ serverId, buttonIconSize }: AutoSpeechButtonP
     void updateSettings({ autoSpeech: next }).catch(() => undefined);
   }, [audioEngine, enabled, updateSettings]);
 
+  const glyphSize = Math.round(buttonIconSize * SPEAKER_OPTICAL_SCALE);
   const renderIcon = useCallback(
     ({ hovered }: { hovered?: boolean }) => {
       if (enabled) {
-        return <ThemedVolume2 size={buttonIconSize} uniProps={iconAccentMapping} />;
+        return <ThemedVolume2 size={glyphSize} uniProps={iconAccentMapping} />;
       }
       return (
         <ThemedVolumeX
-          size={buttonIconSize}
+          size={glyphSize}
           uniProps={hovered ? iconForegroundMapping : iconForegroundMutedMapping}
         />
       );
     },
-    [buttonIconSize, enabled],
+    [enabled, glyphSize],
   );
 
   const accessibilityState = useMemo(() => ({ checked: enabled }), [enabled]);
