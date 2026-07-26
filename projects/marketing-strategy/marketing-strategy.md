@@ -117,6 +117,11 @@ destination actually exists — that's the mistake being corrected here.
 - **Provider parity.** "The same frontier tooling on a local LM Studio model as on Claude"
   is the fork's whole mission and is concretely demonstrable.
 
+The proof behind all three is inventoried in
+[feature-inventory.md](feature-inventory.md) — 238 verified additions beyond Paseo as of 0.7.0.
+It is source material, not copy: nothing in it is published yet, and the "lead with the thesis,
+not the list" rule above governs how it gets used.
+
 ## Non-goals
 
 - No paid acquisition, no launch-day theater, no "Product Hunt strategy".
