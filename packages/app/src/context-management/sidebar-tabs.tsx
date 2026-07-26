@@ -3,6 +3,7 @@ import { View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
+import { useIsCompactFormFactor } from "@/constants/layout";
 
 export type ContextSidebarTab = "context" | "findings" | "memory";
 
@@ -27,11 +28,16 @@ interface ContextSidebarTabsProps {
 }
 
 /**
- * Splits the lower half of the sidebar into the load graph, the fix list, and —
- * on a host that stores them — the selected personality's remembered lessons.
- * Plain SegmentedControl, same as the Metrics tabs.
+ * Splits the lower half of the sidebar into the load graph, the selected
+ * personality's remembered lessons (on a host that stores them), and the fix
+ * list. Plain SegmentedControl, same as the Metrics tabs, and deliberately
+ * NOT `stretch`: an equal three-way split shrinks every segment to the same
+ * width, and "Issues (40)" is the one whose count can outgrow that share —
+ * `stretch` would ellipsis it rather than let it keep its own width while
+ * Context and Memory stay at theirs. `wrap` on compact is the fallback for
+ * when even the natural total does not fit a phone's width.
  *
- * The findings segment takes the `warning` tone while it holds anything — the
+ * The issues segment takes the `warning` tone while it holds anything — the
  * mode chip's amber, not a treatment of its own. That is the whole signal:
  * findings moved out of the summary, so something has to mark that there is a
  * reason to look. With nothing to fix it is an ordinary segment.
@@ -48,6 +54,7 @@ export function ContextSidebarTabs({
   leading,
 }: ContextSidebarTabsProps): ReactElement {
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
 
   const options = useMemo<SegmentedControlOption<ContextSidebarTab>[]>(() => {
     const segments: SegmentedControlOption<ContextSidebarTab>[] = [
@@ -55,15 +62,6 @@ export function ContextSidebarTabs({
         value: "context",
         label: t("contextManagement.tabs.context"),
         testID: "context-sidebar-tab-context",
-      },
-      {
-        value: "findings",
-        label:
-          findingCount > 0
-            ? t("contextManagement.tabs.findingsCount", { count: findingCount })
-            : t("contextManagement.tabs.findings"),
-        tone: findingCount > 0 ? "warning" : undefined,
-        testID: "context-sidebar-tab-findings",
       },
     ];
     if (lessonCount !== null) {
@@ -76,6 +74,15 @@ export function ContextSidebarTabs({
         testID: "context-sidebar-tab-memory",
       });
     }
+    segments.push({
+      value: "findings",
+      label:
+        findingCount > 0
+          ? t("contextManagement.tabs.findingsCount", { count: findingCount })
+          : t("contextManagement.tabs.findings"),
+      tone: findingCount > 0 ? "warning" : undefined,
+      testID: "context-sidebar-tab-findings",
+    });
     return segments;
   }, [findingCount, lessonCount, t]);
 
@@ -88,7 +95,10 @@ export function ContextSidebarTabs({
           value={active}
           onValueChange={onChange}
           size="sm"
-          stretch
+          // Segments never shrink below their label (see below), so on a
+          // narrow phone they wrap onto a second line instead of clipping —
+          // same fallback the Metrics tabs use.
+          wrap={isCompact}
           testID="context-sidebar-tabs"
         />
       </View>

@@ -94,6 +94,7 @@ import {
   resolveProjectRootForCwd,
 } from "./agent/context-management/context-management-service.js";
 import { convertEdge } from "./agent/context-management/edge-convert.js";
+import { fixFindings } from "./agent/context-management/finding-fix.js";
 import type { PersonalityMemoryService } from "./agent/personality-memory/personality-memory-service.js";
 import { composeSystemPromptParts } from "./agent/system-prompt.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
@@ -3051,6 +3052,8 @@ export class Session {
         return this.handleContextReportGetRequest(msg);
       case "context.edge.convert.request":
         return this.handleContextEdgeConvertRequest(msg);
+      case "context.findings.fix.request":
+        return this.handleContextFindingsFixRequest(msg);
       case "personality.memory.list.request":
         return this.handlePersonalityMemoryListRequest(msg);
       case "personality.memory.update.request":
@@ -3089,12 +3092,10 @@ export class Session {
       // The daemon owns root resolution: a client computing it would disagree
       // the moment the workspace is a worktree, and then the brief shown here
       // would not be the brief that gets injected.
-      const projectRoot =
-        (msg.workspaceId ? (await this.workspaceRegistry.get(msg.workspaceId))?.cwd : undefined) ??
-        msg.projectRoot;
+      const resolvedRoot = await this.resolveMemoryRequestRoot(msg);
       const view = await this.personalityMemory.view({
         personalityId: msg.personalityId,
-        ...(projectRoot ? { projectRoot: await this.resolveMemoryProjectRoot(projectRoot) } : {}),
+        ...(resolvedRoot ? { projectRoot: resolvedRoot } : {}),
       });
       this.emit({
         type: "personality.memory.list.response",
@@ -3125,6 +3126,9 @@ export class Session {
           brief: view.brief.text,
           briefTokens: view.brief.estTokens,
           briefOmittedCount: view.brief.omittedCount,
+          // The root the entries above were filtered against, so the UI can say
+          // which project-scoped rows actually apply here.
+          ...(resolvedRoot ? { projectRoot: resolvedRoot } : {}),
         },
       });
     } catch (error) {
@@ -3140,6 +3144,23 @@ export class Session {
         },
       });
     }
+  }
+
+  /**
+   * The project a memory request is about. Shared by the read and the write
+   * paths on purpose: the brief filters project entries by comparing roots, so
+   * if a write bound a different root than the read resolves, the entry would be
+   * listed and never injected. One resolver means they cannot disagree.
+   */
+  private async resolveMemoryRequestRoot(request: {
+    workspaceId?: string;
+    projectRoot?: string;
+  }): Promise<string | undefined> {
+    const cwd =
+      (request.workspaceId
+        ? (await this.workspaceRegistry.get(request.workspaceId))?.cwd
+        : undefined) ?? request.projectRoot;
+    return cwd ? await this.resolveMemoryProjectRoot(cwd) : undefined;
   }
 
   /**
@@ -3172,6 +3193,14 @@ export class Session {
     // unrecognized value is dropped here rather than trusted downstream.
     const scope = readPersonalityMemoryScope(msg.scope);
     try {
+      const resolvedRoot = await this.resolveMemoryRequestRoot(msg);
+      // A project-scoped lesson with no root belongs to no project, so it can
+      // never appear in any brief. Storing it would be the worst outcome: the
+      // Memory tab would list it while the injection quietly ignored it.
+      if (scope === "project" && !resolvedRoot && !msg.drop) {
+        respond(false, "Otto could not tell which project this lesson belongs to.");
+        return;
+      }
       if (!msg.entryId) {
         const text = msg.text?.trim();
         if (!text) {
@@ -3182,7 +3211,7 @@ export class Session {
           personalityId: msg.personalityId,
           text,
           scope: scope ?? "global",
-          ...(msg.projectRoot ? { projectRoot: msg.projectRoot } : {}),
+          ...(resolvedRoot ? { projectRoot: resolvedRoot } : {}),
         });
         respond(true);
         return;
@@ -3192,7 +3221,7 @@ export class Session {
         entryId: msg.entryId,
         ...(msg.text !== undefined ? { text: msg.text } : {}),
         ...(scope ? { scope } : {}),
-        ...(msg.projectRoot ? { projectRoot: msg.projectRoot } : {}),
+        ...(resolvedRoot ? { projectRoot: resolvedRoot } : {}),
         ...(msg.drop ? { drop: true } : {}),
       });
       respond(applied, applied ? undefined : "That lesson no longer exists.");
@@ -3318,6 +3347,40 @@ export class Session {
       const err = error instanceof Error ? error : new Error(String(error));
       this.sessionLogger.error({ err }, "Failed to convert context edge");
       respond(false, err.message);
+    }
+  }
+
+  private async handleContextFindingsFixRequest(
+    msg: Extract<SessionInboundMessage, { type: "context.findings.fix.request" }>,
+  ): Promise<void> {
+    try {
+      const result = await fixFindings(msg.findings);
+      if (result.fixedCount > 0) {
+        // Every fixed finding rewrote a file the graph was built from.
+        this.contextManagement.invalidate(msg.workspaceId);
+        await this.pushContextReport(msg.workspaceId);
+      }
+      this.emit({
+        type: "context.findings.fix.response",
+        payload: {
+          requestId: msg.requestId,
+          fixedCount: result.fixedCount,
+          failedCount: result.failedCount,
+          errors: result.errors,
+        },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.sessionLogger.error({ err }, "Failed to fix context findings");
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: `Failed to fix context findings: ${err.message}`,
+          code: "context_findings_fix_failed",
+        },
+      });
     }
   }
 

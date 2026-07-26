@@ -82,6 +82,10 @@ export interface ContextFinding {
   line?: number;
   /** 1-based line of the range's last character; equals `line` for one-liners. */
   lineEnd?: number;
+  /** True when a mechanical delete of `range` resolves this kind outright. */
+  fixable?: boolean;
+  /** Exact text at `range` when scanned — the staleness guard a fix verifies against. */
+  snippet?: string;
 }
 
 export interface ContextRange {

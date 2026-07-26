@@ -205,7 +205,9 @@ export const en = {
     personalitySelector: {
       label: "Viewing context for",
       everyone: "Everyone",
-      withLessons: "{{name}}, {{count}} remembered lessons",
+      searchPlaceholder: "Search personalities",
+      lessons_one: "{{count}} lesson",
+      lessons_other: "{{count}} lessons",
     },
     // What one personality has learned, and the exact text injected because of
     // it. See docs/agent-personalities.md § Memory.
@@ -225,12 +227,22 @@ export const en = {
         disabled:
           "Memory is switched off for this personality, so none of this is sent. The lessons are kept.",
         empty: "Nothing is added to this personality's context in this project.",
+        emptyButStored_one:
+          "The lesson below does not apply to this project, so nothing is added here — the label on the row says why.",
+        emptyButStored_other:
+          "None of the {{count}} lessons below apply to this project, so nothing is added here — the label on each row says why.",
         omitted:
           "{{count}} of the lessons below did not fit the injection budget and are not being sent.",
       },
       scope: {
         global: "Everywhere",
         project: "This project",
+        // A project-scoped lesson recorded somewhere else, and one bound to no
+        // project at all. Both are stored and listed but reach nothing here, so
+        // the row has to say so — otherwise an empty brief above a list of
+        // lessons looks broken.
+        elsewhere: "Another project",
+        unattached: "No project — never sent",
         change: "Scope: {{scope}}. Tap to change.",
       },
       row: {
@@ -265,6 +277,11 @@ export const en = {
       loading: "Scanning your context…",
       reveal: "Open {{location}}",
       dismiss: "Dismiss",
+      fixAll: "Fix all",
+      fixAllCount: "Fix {{count}} automatically",
+      fixing: "Fixing…",
+      fixedCount: "Fixed {{count}}",
+      fixFailedCount: "Could not fix {{count}}",
     },
     summary: {
       title: "Context sent per turn:",

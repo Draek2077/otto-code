@@ -175,7 +175,11 @@ export class PersonalityMemoryStore {
       if (scope === "global") {
         delete next.projectRoot;
       } else {
-        const projectRoot = input.projectRoot ?? existing.projectRoot;
+        // The EXISTING binding wins. The Memory tab lists every project's
+        // lessons, so editing another project's entry from this workspace must
+        // not silently re-home it — the caller's root only fills a gap, which is
+        // what a global entry moving to project scope needs.
+        const projectRoot = existing.projectRoot ?? input.projectRoot;
         if (projectRoot) next.projectRoot = projectRoot;
       }
       return {

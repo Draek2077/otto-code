@@ -109,6 +109,7 @@ import type {
   ProjectIconResponse,
   ContextReportGetResponseMessage,
   ContextEdgeConvertResponseMessage,
+  ContextFindingsFixResponseMessage,
   PersonalityMemoryListResponseMessage,
   PersonalityMemoryUpdateResponseMessage,
   PersonalityMemoryTransferResponseMessage,
@@ -5599,13 +5600,21 @@ export class DaemonClient {
     });
   }
 
-  /** Add (no `entryId`), edit, or forget (`drop`) one lesson. */
+  /**
+   * Add (no `entryId`), edit, or forget (`drop`) one lesson.
+   *
+   * Pass `workspaceId` whenever the write may be project-scoped: the daemon
+   * binds the entry to the repo root that workspace resolves to, and an entry
+   * scoped to "project" with no root is filtered out of every brief — stored,
+   * listed, and never sent.
+   */
   async updatePersonalityMemory(
     input: {
       personalityId: string;
       entryId?: string;
       text?: string;
       scope?: string;
+      workspaceId?: string;
       projectRoot?: string;
       drop?: boolean;
     },
@@ -5619,6 +5628,7 @@ export class DaemonClient {
         ...(input.entryId ? { entryId: input.entryId } : {}),
         ...(input.text !== undefined ? { text: input.text } : {}),
         ...(input.scope ? { scope: input.scope } : {}),
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
         ...(input.projectRoot ? { projectRoot: input.projectRoot } : {}),
         ...(input.drop ? { drop: true } : {}),
       },
@@ -5677,6 +5687,28 @@ export class DaemonClient {
         target: input.target,
       },
       responseType: "context.edge.convert.response",
+    });
+  }
+
+  /** Deletes every mechanically-fixable finding's range in one pass. */
+  async requestContextFindingsFix(
+    input: {
+      workspaceId: string;
+      findings: Array<{
+        filePath: string;
+        range: { start: number; end: number };
+        snippet: string;
+      }>;
+    },
+    requestId?: string,
+  ): Promise<ContextFindingsFixResponseMessage["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"context.findings.fix.response">({
+      requestId,
+      message: {
+        type: "context.findings.fix.request",
+        workspaceId: input.workspaceId,
+        findings: input.findings,
+      },
     });
   }
 

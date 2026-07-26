@@ -183,6 +183,48 @@ describe("revising", () => {
     expect(await store.list(PID)).toHaveLength(0);
   });
 
+  it("binds a lesson to the caller's project when it moves from global to project", async () => {
+    // Without this, "This project" produces an entry with no root, which the
+    // brief's scope filter then skips in EVERY project — listed, never sent.
+    await store.record({
+      personalityId: PID,
+      lesson: "a fact that turned out to be repo-specific",
+      scope: "global",
+      source: "agent",
+    });
+    const [target] = await store.list(PID);
+    await store.revise({
+      personalityId: PID,
+      entryId: target!.id,
+      scope: "project",
+      projectRoot: "/repos/otto",
+    });
+    const [updated] = await store.list(PID);
+    expect(updated?.scope).toBe("project");
+    expect(updated?.projectRoot).toBe("/repos/otto");
+  });
+
+  it("keeps an existing project binding when edited from a different project", async () => {
+    // The Memory tab lists every project's lessons, so an edit made while
+    // standing in another repo must not silently re-home the lesson.
+    await store.record({
+      personalityId: PID,
+      lesson: "a fact about the other repo",
+      scope: "project",
+      projectRoot: "/repos/other",
+      source: "agent",
+    });
+    const [target] = await store.list(PID);
+    await store.revise({
+      personalityId: PID,
+      entryId: target!.id,
+      text: "a clearer fact about the other repo",
+      projectRoot: "/repos/otto",
+    });
+    const [updated] = await store.list(PID);
+    expect(updated?.projectRoot).toBe("/repos/other");
+  });
+
   it("reports a miss rather than inventing an entry", async () => {
     expect(await store.revise({ personalityId: PID, entryId: "nope", text: "x" })).toBe(false);
   });

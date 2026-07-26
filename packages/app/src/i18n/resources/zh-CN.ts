@@ -202,7 +202,9 @@ export const zhCN: TranslationResources = {
     personalitySelector: {
       label: "正在查看谁的上下文",
       everyone: "所有人",
-      withLessons: "{{name}}，已记住 {{count}} 条经验",
+      searchPlaceholder: "搜索人格",
+      lessons_one: "已记住 {{count}} 条经验",
+      lessons_other: "已记住 {{count}} 条经验",
     },
     memory: {
       noPersonality:
@@ -219,11 +221,17 @@ export const zhCN: TranslationResources = {
         everyRequest: "每次请求 {{tokens}}",
         disabled: "该人格的记忆已关闭，因此这些内容都不会发送。经验仍然保留。",
         empty: "在此项目中，没有任何内容被加入该人格的上下文。",
+        emptyButStored_one:
+          "下面这条经验不适用于此项目，因此这里没有加入任何内容——行上的标签说明了原因。",
+        emptyButStored_other:
+          "下面 {{count}} 条经验都不适用于此项目，因此这里没有加入任何内容——每行的标签说明了原因。",
         omitted: "下面有 {{count}} 条经验超出注入预算，未被发送。",
       },
       scope: {
         global: "所有地方",
         project: "此项目",
+        elsewhere: "其他项目",
+        unattached: "未绑定项目——永不发送",
         change: "范围：{{scope}}。点按可更改。",
       },
       row: {
@@ -257,6 +265,11 @@ export const zhCN: TranslationResources = {
       loading: "正在扫描你的上下文…",
       reveal: "打开 {{location}}",
       dismiss: "关闭",
+      fixAll: "Fix all",
+      fixAllCount: "Fix {{count}} automatically",
+      fixing: "Fixing…",
+      fixedCount: "Fixed {{count}}",
+      fixFailedCount: "Could not fix {{count}}",
     },
     summary: {
       title: "每轮发送的上下文：",

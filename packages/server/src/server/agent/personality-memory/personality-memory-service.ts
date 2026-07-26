@@ -147,15 +147,25 @@ export class PersonalityMemoryService {
     return this.store.list(personalityId);
   }
 
+  /**
+   * `cwd` is the same convenience `record` offers: callers that have a working
+   * directory but no root hand it over and let this layer resolve it. It matters
+   * on a scope change to "project" — an entry moved to project scope with no
+   * root matches no project's brief, so it would be listed and never injected.
+   */
   async revise(params: {
     personalityId: string;
     entryId: string;
     text?: string;
     scope?: PersonalityMemoryScope;
     projectRoot?: string;
+    cwd?: string;
     drop?: boolean;
   }): Promise<boolean> {
-    return this.store.revise(params);
+    const { cwd, ...rest } = params;
+    const projectRoot =
+      params.projectRoot ?? (cwd && !params.drop ? await this.safeProjectRoot(cwd) : undefined);
+    return this.store.revise({ ...rest, ...(projectRoot ? { projectRoot } : {}) });
   }
 
   async addUserEntry(params: {

@@ -205,7 +205,9 @@ export const ptBR: TranslationResources = {
     personalitySelector: {
       label: "Vendo o contexto de",
       everyone: "Todos",
-      withLessons: "{{name}}, {{count}} lições lembradas",
+      searchPlaceholder: "Buscar personalidades",
+      lessons_one: "{{count}} lição",
+      lessons_other: "{{count}} lições",
     },
     memory: {
       noPersonality:
@@ -223,12 +225,18 @@ export const ptBR: TranslationResources = {
         disabled:
           "A memória está desligada para esta personalidade, então nada disso é enviado. As lições ficam guardadas.",
         empty: "Nada é acrescentado ao contexto desta personalidade neste projeto.",
+        emptyButStored_one:
+          "A lição abaixo não se aplica a este projeto, então nada é acrescentado aqui — o rótulo na linha diz por quê.",
+        emptyButStored_other:
+          "Nenhuma das {{count}} lições abaixo se aplica a este projeto, então nada é acrescentado aqui — o rótulo em cada linha diz por quê.",
         omitted:
           "{{count}} das lições abaixo não couberam no orçamento de injeção e não estão sendo enviadas.",
       },
       scope: {
         global: "Em todo lugar",
         project: "Este projeto",
+        elsewhere: "Outro projeto",
+        unattached: "Sem projeto — nunca enviada",
         change: "Escopo: {{scope}}. Toque para mudar.",
       },
       row: {
@@ -263,6 +271,11 @@ export const ptBR: TranslationResources = {
       loading: "Analisando seu contexto…",
       reveal: "Abrir {{location}}",
       dismiss: "Dispensar",
+      fixAll: "Fix all",
+      fixAllCount: "Fix {{count}} automatically",
+      fixing: "Fixing…",
+      fixedCount: "Fixed {{count}}",
+      fixFailedCount: "Could not fix {{count}}",
     },
     summary: {
       title: "Contexto enviado por turno:",

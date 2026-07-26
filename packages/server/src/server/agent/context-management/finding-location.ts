@@ -8,7 +8,7 @@
  * stamped there rather than reconstructed by the client.
  */
 
-import type { ContextFinding } from "./types.js";
+import type { ContextFinding, ContextFindingKind } from "./types.js";
 
 /** 1-based line containing `offset`, counted the way an editor counts. */
 export function lineAtOffset(text: string, offset: number): number {
@@ -21,8 +21,23 @@ export function lineAtOffset(text: string, offset: number): number {
 }
 
 /**
- * Stamps the owning node and line onto a finding. Returns a new object: the
- * callers push literals, and mutating a literal in place reads as an accident.
+ * Kinds a mechanical delete of `range` resolves outright: a dead link is just
+ * removed, a duplicate block is only a copy of content that survives
+ * elsewhere. `import_cycle` (which edge to cut), `oversized_memory_entry`
+ * (where to split it), and `depth_capped` (nothing to delete at all) all need
+ * judgment a plain deletion cannot supply, so they stay off this list.
+ */
+const FIXABLE_KINDS: ReadonlySet<ContextFindingKind> = new Set([
+  "dead_import",
+  "dead_reference",
+  "duplicate_across_scope",
+  "duplicate_within_file",
+]);
+
+/**
+ * Stamps the owning node, line, and fixability onto a finding. Returns a new
+ * object: the callers push literals, and mutating a literal in place reads as
+ * an accident.
  */
 export function locateFinding(params: {
   finding: ContextFinding;
@@ -36,5 +51,12 @@ export function locateFinding(params: {
   // The end line matters as much as the start: a duplicated block is a span,
   // and selecting the whole span is what makes "delete this" a single keypress.
   const lineEnd = Math.max(line, lineAtOffset(text, Math.max(range.start, range.end - 1)));
-  return { ...finding, nodeId, line, lineEnd };
+  return {
+    ...finding,
+    nodeId,
+    line,
+    lineEnd,
+    fixable: FIXABLE_KINDS.has(finding.kind),
+    snippet: text.slice(range.start, range.end),
+  };
 }

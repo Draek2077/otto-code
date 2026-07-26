@@ -2592,8 +2592,8 @@ export const ContextFindingSchema = z.object({
   relatedNodeIds: z.array(z.string()).optional(),
   // The node this finding is about. Redundant while the finding sits on its
   // node, load-bearing once the report flattens them all into one list — that
-  // list is the "Worth fixing" tab, and without this a row cannot say where it
-  // came from or take you there.
+  // list is the "Issues" tab, and without this a row cannot say where it came
+  // from or take you there.
   nodeId: z.string().optional(),
   // 1-based line of `range.start` in that node's file, so the fix list can jump
   // the editor without the client re-reading bytes to count newlines.
@@ -2601,6 +2601,16 @@ export const ContextFindingSchema = z.object({
   // Last line of the range, so the client can select the whole offending span
   // rather than dropping a cursor at the top of it.
   lineEnd: z.number().optional(),
+  // True for kinds a mechanical delete can resolve on its own (dead links, a
+  // duplicate block) — false/absent for kinds that need judgment (which side
+  // of an import cycle to cut, how to split an oversized entry). Computed
+  // server-side, once, in `locateFinding` — the only place that knows the kind
+  // vocabulary, so the fix-all button never has to guess.
+  fixable: z.boolean().optional(),
+  // The exact text at `range` when the file was scanned. `context.findings.fix`
+  // verifies this still matches before deleting, the same staleness guard
+  // `context.edge.convert` uses for `rawTarget`.
+  snippet: z.string().optional(),
 });
 
 export const ContextNodeSchema = z.object({
@@ -2722,6 +2732,33 @@ export const ContextEdgeConvertResponseMessageSchema = z.object({
   }),
 });
 
+// Deletes every mechanically-fixable finding's range in one pass — the
+// "Fix all" button in the Issues tab. Each item names the file, the range the
+// scan flagged, and the snippet expected there; a file that changed since the
+// scan is skipped rather than corrupted (charter §7.5).
+export const ContextFindingsFixRequestMessageSchema = z.object({
+  type: z.literal("context.findings.fix.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  findings: z.array(
+    z.object({
+      filePath: z.string(),
+      range: ContextRangeSchema,
+      snippet: z.string(),
+    }),
+  ),
+});
+
+export const ContextFindingsFixResponseMessageSchema = z.object({
+  type: z.literal("context.findings.fix.response"),
+  payload: z.object({
+    requestId: z.string(),
+    fixedCount: z.number(),
+    failedCount: z.number(),
+    errors: z.array(z.string()),
+  }),
+});
+
 // ---------------------------------------------------------------------------
 // Personality memory — the lessons a named personality accrues across sessions.
 // See docs/agent-personalities.md § Memory.
@@ -2779,6 +2816,11 @@ export const PersonalityMemoryListResponseMessageSchema = z.object({
     briefTokens: z.number(),
     /** Entries the injection budget cut, so the UI can say so. */
     briefOmittedCount: z.number().optional(),
+    // The root the brief was composed for, so the UI can tell a project-scoped
+    // entry that applies here from one belonging to another project. Without it
+    // every project entry looks the same and an empty brief next to a list of
+    // lessons reads as a bug. Absent when the request named no workspace.
+    projectRoot: z.string().optional(),
   }),
 });
 
@@ -2792,6 +2834,13 @@ export const PersonalityMemoryUpdateRequestMessageSchema = z.object({
   entryId: z.string().optional(),
   text: z.string().optional(),
   scope: z.string().optional(),
+  // Which project a `scope: "project"` write binds to. Same rule as the list
+  // request: prefer `workspaceId` and let the daemon resolve the root, because a
+  // project-scoped entry whose root does not match the daemon's resolution is
+  // filtered out of every brief and is therefore stored but never sent.
+  workspaceId: z.string().optional(),
+  // Explicit root, for callers with no workspace. Ignored when `workspaceId`
+  // resolves.
   projectRoot: z.string().optional(),
   drop: z.boolean().optional(),
 });
@@ -4714,6 +4763,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   StatsActivityGetRequestMessageSchema,
   ContextReportGetRequestMessageSchema,
   ContextEdgeConvertRequestMessageSchema,
+  ContextFindingsFixRequestMessageSchema,
   PersonalityMemoryListRequestMessageSchema,
   PersonalityMemoryUpdateRequestMessageSchema,
   PersonalityMemoryTransferRequestMessageSchema,
@@ -8853,6 +8903,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   StatsActivityGetResponseMessageSchema,
   ContextReportGetResponseMessageSchema,
   ContextEdgeConvertResponseMessageSchema,
+  ContextFindingsFixResponseMessageSchema,
   PersonalityMemoryListResponseMessageSchema,
   PersonalityMemoryUpdateResponseMessageSchema,
   PersonalityMemoryTransferResponseMessageSchema,
@@ -9024,6 +9075,7 @@ export type AgentBackgroundTaskClearResponseMessage = z.infer<
 export type SuggestedTaskInfo = z.infer<typeof SuggestedTaskInfoSchema>;
 export type SuggestedTaskState = z.infer<typeof SuggestedTaskStateSchema>;
 export type SuggestedTasksChanged = z.infer<typeof SuggestedTasksChangedSchema>;
+export type ContextRange = z.infer<typeof ContextRangeSchema>;
 export type ContextScope = z.infer<typeof ContextScopeSchema>;
 export type ContextCategory = z.infer<typeof ContextCategorySchema>;
 export type ContextCostClass = z.infer<typeof ContextCostClassSchema>;
@@ -9112,6 +9164,9 @@ export type StatsActivityGetResponseMessage = z.infer<typeof StatsActivityGetRes
 export type ContextReportGetResponseMessage = z.infer<typeof ContextReportGetResponseMessageSchema>;
 export type ContextEdgeConvertResponseMessage = z.infer<
   typeof ContextEdgeConvertResponseMessageSchema
+>;
+export type ContextFindingsFixResponseMessage = z.infer<
+  typeof ContextFindingsFixResponseMessageSchema
 >;
 export type PersonalityMemoryEntryPayload = z.infer<typeof PersonalityMemoryEntrySchema>;
 export type PersonalityMemoryListResponseMessage = z.infer<

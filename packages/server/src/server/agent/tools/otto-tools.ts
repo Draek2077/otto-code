@@ -2945,6 +2945,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           entryId: handle,
           ...(lesson !== undefined ? { text: lesson } : {}),
           ...(scope ? { scope: scope === "everywhere" ? "global" : "project" } : {}),
+          // Needed when the scope moves to "project": without a root the lesson
+          // binds to no project and drops out of every brief.
+          ...(target.cwd ? { cwd: target.cwd } : {}),
           ...(forget ? { drop: true } : {}),
         });
         let status: string;
