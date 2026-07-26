@@ -1,6 +1,12 @@
 # Charter: In-app bug reporting
 
-**Status:** Not started — charter drafted 2026-07-15.
+**Scope note:** the reporter-facing half of this charter shipped as a different design — the app
+posts straight to Otto's hosted intake, no daemon and no GitHub account involved. See
+[docs/feedback.md](../../docs/feedback.md) for what exists. What remains here is the **host-owner
+sink**: a daemon filing issues into an owner-configured repo with its own credentials, so a team
+collects its coworkers' reports in its own tracker. Status lives in
+[projects/README.md](../README.md).
+
 **Lineage:** Builds on the provider-neutral git-hosting layer
 ([docs/git-providers.md](../../docs/git-providers.md),
 `packages/server/src/services/git-hosting/`) shipped in 0.5.0. Sibling in spirit to Activity
