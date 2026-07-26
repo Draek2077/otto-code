@@ -209,10 +209,12 @@ test.describe("Gated multi-root editing", () => {
     await chatFileLink(page, OUTSIDE_FILE).click();
     await expect(fileTabPane(page)).toBeVisible({ timeout: 30_000 });
 
-    // The banner has no project to name.
+    // The banner has no project to name, so it says why editing here is different without
+    // naming one (editor.outOfProject.badgeNoProject).
     const banner = page.getByTestId("file-out-of-project-banner");
     await expect(banner).toBeVisible({ timeout: 30_000 });
-    await expect(banner).toHaveText("Outside any project");
+    await expect(banner).toHaveText(/Editing outside the project/);
+    await expect(banner).not.toContainText("(");
 
     // Preview works; the editor is clamped until the warning is accepted.
     await expect(filePreviewSurface(page)).toContainText("Outside note body", {

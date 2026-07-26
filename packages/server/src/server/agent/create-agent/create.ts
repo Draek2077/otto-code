@@ -279,6 +279,7 @@ async function resolveSessionCreateAgent(
             cwd: sessionConfig.cwd,
             firstAgentContext: input.firstAgentContext,
             provisionalTitle: input.provisionalTitle,
+            currentSelection: autoTitleCurrentSelection(sessionConfig),
           }
         : undefined,
   };
@@ -333,17 +334,18 @@ async function resolveMcpCreateAgent(
     initialPrompt: trimmedPrompt,
   });
   const isInternal = input.internal ?? input.config?.internal ?? false;
+  const mcpSessionConfig = buildMcpSessionConfig({
+    input,
+    resolvedProviderModel,
+    provider,
+    resolvedCwd,
+    trimmedPrompt,
+    resolvedMode: resolvedCreateConfig.modeId,
+    resolvedFeatures: resolvedCreateConfig.featureValues,
+    resolvedUnattended: resolvedCreateConfig.unattended,
+  });
   return {
-    config: buildMcpSessionConfig({
-      input,
-      resolvedProviderModel,
-      provider,
-      resolvedCwd,
-      trimmedPrompt,
-      resolvedMode: resolvedCreateConfig.modeId,
-      resolvedFeatures: resolvedCreateConfig.featureValues,
-      resolvedUnattended: resolvedCreateConfig.unattended,
-    }),
+    config: mcpSessionConfig,
     createOptions: {
       ...(labels ? { labels } : {}),
       workspaceId: requireResolvedWorkspaceId(workspaceId),
@@ -358,8 +360,31 @@ async function resolveMcpCreateAgent(
             cwd: resolvedCwd,
             firstAgentContext: { prompt: trimmedPrompt },
             provisionalTitle,
+            currentSelection: autoTitleCurrentSelection(mcpSessionConfig),
           }
         : undefined,
+  };
+}
+
+/**
+ * Last-resort entry in the auto-title provider chain: the chat's OWN provider and model.
+ *
+ * The chain is the cheap ladder (haiku, gpt-5.4-mini, minimax-m3, …) plus any role-matched Writer
+ * personality, and `resolveStructuredGenerationProviders` appends this selection at the end — so
+ * preference order is unchanged and this only decides what happens when none of the preferred
+ * models are reachable. Without it a host that has only one provider configured (LM Studio, Codex,
+ * the deterministic e2e mock) silently gets no titles at all: every laddered candidate is either
+ * absent or, as on CI, present-but-unauthenticated.
+ */
+function autoTitleCurrentSelection(config: {
+  provider?: string | null;
+  model?: string | null;
+  thinkingOptionId?: string | null;
+}): { provider?: string | null; model?: string | null; thinkingOptionId?: string | null } {
+  return {
+    provider: config.provider ?? null,
+    model: config.model ?? null,
+    thinkingOptionId: config.thinkingOptionId ?? null,
   };
 }
 
