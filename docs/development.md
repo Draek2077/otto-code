@@ -84,6 +84,20 @@ The separate Electron userData (`packages/desktop/.dev/user-data`) is what lets
 the dev app launch at all while the installed one is open: on a shared userData
 the dev instance loses the single-instance lock and immediately quits.
 
+**Dev builds wear a navy icon.** With both apps running, identical black icons
+make the two taskbar buttons and tray entries indistinguishable, so an
+unpackaged build loads its window, dock and tray art from
+`packages/desktop/assets/dev/` — the same tile in blue-900 `#1e3a8a`. Generated
+by `scripts/generate-brand-assets.mjs`, resolved by
+`packages/desktop/src/features/dev-icon.ts`, and impossible to ship: the lookup
+is gated on `!app.isPackaged` and nothing in `electron-builder.yml` copies that
+folder. See [branding/README.md](../branding/README.md).
+
+Two things do **not** separate, both cosmetic. You get two tray icons — expected,
+they are two apps. And on Windows both processes call
+`setAppUserModelId("ai.ottocode.desktop")`, so toast notifications are attributed
+identically and a toast click may activate whichever window Windows picks.
+
 Deliberately **shared**: `OTTO_LOCAL_MODELS_DIR` points both at
 `~/.otto/models/local-speech` so local speech models are downloaded once, and
 skills sync writes to the machine-level `~/.claude/skills`, `~/.codex/skills`,

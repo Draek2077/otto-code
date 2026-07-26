@@ -19,6 +19,12 @@ const BADGE_COLORS = { running: "#3b82f6", attention: "#22c55e" };
 // Tray "needs your attention" accent — amber-500, matching theme.colors.palette.amber[500]
 // (packages/app/src/styles/theme.ts) so the tray accent reuses the app's existing warning color.
 const TRAY_ATTENTION_COLOR = "#f59e0b";
+// Dev-build tile — blue-900, matching theme.colors.palette.blue[900]. The whole point of
+// running the installed Otto and a dev Otto side by side is being able to tell the two
+// taskbar/tray entries apart at a glance, and a navy tile reads as clearly not-black even
+// at 16px. Dev icons live in assets/dev/ and are loaded only when !app.isPackaged; nothing
+// in electron-builder.yml copies that folder, so they cannot reach a release build.
+const DEV_TILE_COLOR = "#1e3a8a";
 
 function extractInner(svgText) {
   return svgText.replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
@@ -36,16 +42,17 @@ function wrap(content) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">${content}</svg>`;
 }
 
-// Black rounded tile + white face; used for favicons, PWA, splash, and desktop icons.
+// Rounded tile + white face; used for favicons, PWA, splash, and desktop icons.
 // `badge` is either a known status key (looked up in BADGE_COLORS), a raw CSS color
-// string, or null/undefined for no badge.
-function tileSvg(faceInner, badge) {
+// string, or null/undefined for no badge. `tileFill` is black for every shipped
+// asset and navy only for the dev-build icons (see DEV_TILE_COLOR).
+function tileSvg(faceInner, badge, tileFill = "black") {
   const badgeColor = badge ? (BADGE_COLORS[badge] ?? badge) : null;
   const badgeCircle = badgeColor
     ? `<circle cx="${BADGE.cx}" cy="${BADGE.cy}" r="${BADGE.r}" fill="${badgeColor}"/>`
     : "";
   return wrap(
-    `<rect width="512" height="512" rx="${TILE_RADIUS}" fill="black"/>` +
+    `<rect width="512" height="512" rx="${TILE_RADIUS}" fill="${tileFill}"/>` +
       faceAt(faceInner, "white", 24, 24, 464) +
       badgeCircle,
   );
@@ -249,6 +256,42 @@ await png(
   tileSvg(faceWinkSmall, TRAY_ATTENTION_COLOR),
   44,
   path.join(desktopAssets, "tray-icon-mac-attention@2x.png"),
+);
+
+// ---------------------------------------------------------------------------
+// Dev-build icons (navy tile) — packages/desktop/assets/dev/
+// ---------------------------------------------------------------------------
+// Same art as above with DEV_TILE_COLOR instead of black, so a dev window,
+// taskbar button, dock tile and tray entry are instantly distinguishable from
+// the installed app's. Loaded only when !app.isPackaged; see
+// packages/desktop/src/features/dev-icon.ts.
+//
+// No macOS idle-tray variant: that one is a template image, and macOS re-tints
+// template images for the menu-bar theme, so a navy fill would be thrown away.
+const desktopDevAssets = path.join(desktopAssets, "dev");
+await mkdir(desktopDevAssets, { recursive: true });
+
+await png(tileSvg(face, null, DEV_TILE_COLOR), 512, path.join(desktopDevAssets, "icon.png"));
+
+const devIcoPngs = [];
+for (const size of icoSizes) {
+  // Same small-face swap as the shipped icon.ico: the lens rings fuse into mush
+  // below SMALL_FACE_MAX_PX, and 16px is exactly the size the taskbar shows.
+  const inner = size <= SMALL_FACE_MAX_PX ? faceSmall : face;
+  devIcoPngs.push({ size, data: await pngBuffer(tileSvg(inner, null, DEV_TILE_COLOR), size) });
+}
+await writeFile(path.join(desktopDevAssets, "icon.ico"), buildIco(devIcoPngs));
+console.log("wrote packages/desktop/assets/dev/icon.ico");
+
+await png(
+  tileSvg(faceSmall, null, DEV_TILE_COLOR),
+  32,
+  path.join(desktopDevAssets, "tray-icon.png"),
+);
+await png(
+  tileSvg(faceWinkSmall, TRAY_ATTENTION_COLOR, DEV_TILE_COLOR),
+  32,
+  path.join(desktopDevAssets, "tray-icon-attention.png"),
 );
 
 console.log("done");
