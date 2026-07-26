@@ -87,11 +87,19 @@ export async function pressNewTabShortcut(page: Page): Promise<void> {
 
 // ─── Tab bar assertions ───────────────────────────────────────────────────
 
-/** Assert the inline new-agent plus button is visible in the tab bar. */
+/**
+ * Assert the tab bar offers new-agent creation.
+ *
+ * There is no inline plus button any more — the tab bar's trailing strip only shows *pinned*
+ * tools, and the always-present control is the ▾ catalog. So "can this pane make a chat" is
+ * answered by opening the catalog and finding the agent row, not by a standalone button.
+ */
 export async function assertNewChatTileVisible(page: Page): Promise<void> {
+  await openNewTabMenu(page);
   await expect(
-    page.getByTestId("workspace-new-agent-tab-inline").filter({ visible: true }).first(),
+    page.getByTestId("workspace-new-tab-menu-agent").filter({ visible: true }).first(),
   ).toBeVisible();
+  await page.keyboard.press("Escape");
 }
 
 /** Assert the new-tab dropdown trigger is visible in the tab bar. */
@@ -103,24 +111,27 @@ export async function assertNewTabMenuTriggerVisible(page: Page): Promise<void> 
 
 // ─── Tab creation actions ─────────────────────────────────────────────────
 
-/** Click the inline plus button to create a draft/chat tab. */
-export async function clickNewChat(page: Page): Promise<void> {
-  const button = page
-    .getByTestId("workspace-new-agent-tab-inline")
-    .filter({ visible: true })
-    .first();
-  await expect(button).toBeVisible({ timeout: 10_000 });
-  await button.click();
-}
-
-/** Open the new-tab menu and click "New terminal". */
-export async function clickNewTerminal(page: Page): Promise<void> {
+/** Open the tab bar's ▾ tool-catalog menu — the entry point for every new-tab action. */
+async function openNewTabMenu(page: Page): Promise<void> {
   const trigger = page
     .getByTestId("workspace-new-tab-menu-trigger")
     .filter({ visible: true })
     .first();
   await expect(trigger).toBeVisible({ timeout: 10_000 });
   await trigger.click();
+}
+
+/** Open the new-tab menu and click the row that creates a draft/chat tab. */
+export async function clickNewChat(page: Page): Promise<void> {
+  await openNewTabMenu(page);
+  const item = page.getByTestId("workspace-new-tab-menu-agent").filter({ visible: true }).first();
+  await expect(item).toBeVisible({ timeout: 10_000 });
+  await item.click();
+}
+
+/** Open the new-tab menu and click "New terminal". */
+export async function clickNewTerminal(page: Page): Promise<void> {
+  await openNewTabMenu(page);
   const item = page
     .getByTestId("workspace-new-tab-menu-terminal")
     .filter({ visible: true })
@@ -147,11 +158,11 @@ export async function waitForTabWithTitle(
   ).toBeVisible({ timeout });
 }
 
-/** Assert the inline new-agent plus button is visible in the tab bar. */
+/** Assert the pane's tab bar carries exactly one new-tab control (the ▾ catalog trigger). */
 export async function assertSingleNewTabButton(page: Page): Promise<void> {
-  const buttons = page.getByTestId("workspace-new-agent-tab-inline").filter({ visible: true });
-  const count = await buttons.count();
-  expect(count).toBeGreaterThanOrEqual(1);
+  const triggers = page.getByTestId("workspace-new-tab-menu-trigger").filter({ visible: true });
+  await expect(triggers.first()).toBeVisible({ timeout: 10_000 });
+  expect(await triggers.count()).toBe(1);
 }
 
 // ─── No-flash measurement ──────────────────────────────────────────────────

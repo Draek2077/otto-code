@@ -6,17 +6,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
 import { test, expect, type Page } from "@playwright/test";
-import { buildHostWorkspaceRoute, decodeWorkspaceIdFromPathSegment } from "@/utils/host-routes";
+import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 import { buildSeededHost } from "./helpers/daemon-registry";
 import { loadDaemonClientConstructor } from "./helpers/daemon-client-loader";
 import { createNodeWebSocketFactory, type NodeWebSocketFactory } from "./helpers/node-ws-factory";
 import { withDisabledE2ESpeechEnv } from "./helpers/speech-env";
-import {
-  expectNewWorkspaceProjectSelected,
-  openGlobalNewWorkspaceComposer,
-  selectNewWorkspaceProject,
-  submitNewWorkspaceEmpty,
-} from "./helpers/new-workspace";
 import { waitForSidebarHydration } from "./helpers/workspace-ui";
 import { getVisibleWorkspaceAgentTabIds } from "./helpers/workspace-tabs";
 
@@ -349,15 +343,6 @@ async function seedBrowserForDaemon(page: Page, input: { serverId: string; port:
   );
 }
 
-function parseWorkspaceIdFromPageUrl(page: Page, serverId: string): string | null {
-  const pathname = new URL(page.url()).pathname;
-  const match = pathname.match(
-    new RegExp(`^/h/${serverId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/workspace/([^/?#]+)`),
-  );
-  if (!match?.[1]) return null;
-  return decodeWorkspaceIdFromPathSegment(match[1]);
-}
-
 async function expectWorkspaceRowHasOnlyIndicator(
   page: Page,
   input: { serverId: string; workspaceId: string; indicator: string },
@@ -423,7 +408,7 @@ async function fetchWorkspaceStatuses(
 }
 
 test.describe("Workspace model restart regressions", () => {
-  test("browser-created same-cwd workspace preserves restarted agent status and migrated tab ownership", async ({
+  test("seeded same-cwd workspaces preserve restarted agent status and tab ownership", async ({
     page,
     baseURL,
   }) => {
@@ -461,47 +446,21 @@ test.describe("Workspace model restart regressions", () => {
         .poll(() => getVisibleWorkspaceAgentTabIds(page), { timeout: 30_000 })
         .toContain(`workspace-tab-agent_${LEGACY_AGENT_ID}`);
 
-      await openGlobalNewWorkspaceComposer(page);
-      await selectNewWorkspaceProject(page, {
-        projectKey: seeded.projectId,
-        projectDisplayName: seeded.projectDisplayName,
-      });
-      await expectNewWorkspaceProjectSelected(page, seeded.projectDisplayName);
-      await submitNewWorkspaceEmpty(page);
-
+      // `seedRestartHome` writes workspaceA and workspaceB onto the same cwd directly in the
+      // registry — the shape a pre-guard install still has on disk, and the one this test is
+      // about. It used to mint a THIRD same-cwd workspace through the New Workspace form; that
+      // path is now refused outright (docs/workspace-lifecycle.md, occupied-directory guard), so
+      // the assertions below cover the two seeded siblings only.
       await expect
-        .poll(() => {
-          const workspaceId = parseWorkspaceIdFromPageUrl(page, serverId);
-          return workspaceId && workspaceId !== seeded.workspaceA ? workspaceId : null;
-        })
-        .not.toBeNull();
-      const createdWorkspaceId = parseWorkspaceIdFromPageUrl(page, serverId);
-      if (!createdWorkspaceId) {
-        throw new Error(`Expected browser to navigate to created workspace, got ${page.url()}`);
-      }
-
-      await expect
-        .poll(() =>
-          fetchWorkspaceStatuses(client, [
-            seeded.workspaceA,
-            seeded.workspaceB,
-            createdWorkspaceId,
-          ]),
-        )
+        .poll(() => fetchWorkspaceStatuses(client, [seeded.workspaceA, seeded.workspaceB]))
         .toEqual({
           [seeded.workspaceA]: "running",
           [seeded.workspaceB]: "done",
-          [createdWorkspaceId]: "done",
         });
 
       await expectWorkspaceRowDoesNotShowIndicator(page, {
         serverId,
         workspaceId: seeded.workspaceB,
-        indicator: "running",
-      });
-      await expectWorkspaceRowDoesNotShowIndicator(page, {
-        serverId,
-        workspaceId: createdWorkspaceId,
         indicator: "running",
       });
       await expectWorkspaceRowInStatusBucket(page, {
@@ -514,11 +473,8 @@ test.describe("Workspace model restart regressions", () => {
         workspaceId: seeded.workspaceB,
         bucket: "done",
       });
-      await expectWorkspaceRowInStatusBucket(page, {
-        serverId,
-        workspaceId: createdWorkspaceId,
-        bucket: "done",
-      });
+
+      await page.goto(buildHostWorkspaceRoute(serverId, seeded.workspaceB));
       await expect
         .poll(() => getVisibleWorkspaceAgentTabIds(page), { timeout: 30_000 })
         .toEqual([]);

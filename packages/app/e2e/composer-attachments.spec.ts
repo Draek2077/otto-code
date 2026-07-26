@@ -24,7 +24,11 @@ import {
   expectGithubAttachmentPill,
   openGithubWorkspace,
 } from "./helpers/composer";
-import { delayBrowserAgentCreatedStatus, openNewWorkspaceComposer } from "./helpers/new-workspace";
+import {
+  delayBrowserAgentCreatedStatus,
+  openNewWorkspaceComposer,
+  selectWorkspaceIsolation,
+} from "./helpers/new-workspace";
 import { gotoAppShell } from "./helpers/app";
 import { waitForSidebarHydration, switchWorkspaceViaSidebar } from "./helpers/workspace-ui";
 import { seedWorkspace } from "./helpers/seed-client";
@@ -256,9 +260,10 @@ test.describe("Composer attachments", () => {
     }
   });
 
-  test("Escape interrupt cancels the running agent and preserves composer draft", async ({
-    page,
-  }) => {
+  // Escape is two-stage: with text in the box it clears the draft and leaves the turn alone;
+  // only a second Escape on an empty box interrupts. (The full two-press contract is pinned by
+  // composer-suggestions-history.spec.ts — this test covers the attachment-composer path.)
+  test("Escape clears the draft first, then interrupts the running agent", async ({ page }) => {
     test.setTimeout(120_000);
     const agent = await startRunningMockAgent(page, {
       prefix: "attach-interrupt-",
@@ -266,11 +271,12 @@ test.describe("Composer attachments", () => {
       prompt: "Stay running for interrupt test.",
     });
     try {
-      await fillComposerDraft(page, "preserve me");
+      await fillComposerDraft(page, "clear me");
       await pressInterruptShortcut(page);
+      await expectComposerDraft(page, "");
 
+      await pressInterruptShortcut(page);
       await expectAgentIdle(page, 15_000);
-      await expectComposerDraft(page, "preserve me");
     } finally {
       await agent.cleanup();
     }
@@ -296,6 +302,11 @@ test.describe("Composer attachments", () => {
         projectKey: workspace.projectId,
         projectDisplayName: workspace.projectDisplayName,
       });
+      // The seeded workspace already occupies this project's checkout, and a second *visible*
+      // local workspace on an occupied directory is refused (see docs/workspace-lifecycle.md).
+      // Pick worktree isolation so creation reaches the daemon and the composer actually locks,
+      // which is what this test is about.
+      await selectWorkspaceIsolation(page, "worktree");
       await fillComposerDraft(page, "lock test prompt");
       const createButton = page
         .getByTestId("message-input-root")

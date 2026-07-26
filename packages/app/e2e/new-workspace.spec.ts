@@ -367,6 +367,10 @@ test.describe("New workspace flow", () => {
 
       await openGlobalNewWorkspaceComposer(page);
       await expectNewWorkspaceProjectSelected(page, openedProject.projectDisplayName);
+      // The project's checkout is already occupied by `openedProject`, and a second visible
+      // LOCAL workspace on it is refused (docs/workspace-lifecycle.md). Isolation is incidental
+      // to what this test asserts, so take the worktree the guard steers users to.
+      await selectWorkspaceIsolation(page, "worktree");
       await submitNewWorkspacePrompt(page);
 
       const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
@@ -444,6 +448,10 @@ test.describe("New workspace flow", () => {
         projectKey: openedProject.projectKey,
         projectDisplayName: openedProject.projectDisplayName,
       });
+
+      // Occupied-directory guard: `openedProject` already holds this checkout, so a second
+      // visible local workspace is refused. Isolation is incidental here — take the worktree.
+      await selectWorkspaceIsolation(page, "worktree");
 
       const composer = page.getByRole("textbox", { name: "Message agent..." });
       await expect(composer).toBeVisible({ timeout: 30_000 });
@@ -525,6 +533,10 @@ test.describe("New workspace flow", () => {
 
       await openGlobalNewWorkspaceComposer(page);
       await expectNewWorkspaceProjectSelected(page, openedProject.projectDisplayName);
+      // The project's checkout is already occupied by `openedProject`, and a second visible
+      // LOCAL workspace on it is refused (docs/workspace-lifecycle.md). Isolation is incidental
+      // to what this test asserts, so take the worktree the guard steers users to.
+      await selectWorkspaceIsolation(page, "worktree");
       await submitNewWorkspacePrompt(page);
 
       const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
@@ -579,6 +591,10 @@ test.describe("New workspace flow", () => {
 
       await openGlobalNewWorkspaceComposer(page);
       await expectNewWorkspaceProjectSelected(page, openedProject.projectDisplayName);
+      // The project's checkout is already occupied by `openedProject`, and a second visible
+      // LOCAL workspace on it is refused (docs/workspace-lifecycle.md). Isolation is incidental
+      // to what this test asserts, so take the worktree the guard steers users to.
+      await selectWorkspaceIsolation(page, "worktree");
       await submitNewWorkspaceWithoutPrompt(page);
 
       const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
