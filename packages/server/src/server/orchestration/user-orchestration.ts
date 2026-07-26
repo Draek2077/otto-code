@@ -11,6 +11,7 @@ import {
 } from "@otto-code/protocol/agent-labels";
 import {
   type OrchestrationGraph,
+  type PromptTemplate,
   validateOrchestrationGraph,
 } from "@otto-code/protocol/orchestration";
 
@@ -157,7 +158,12 @@ async function startGraphOrchestration(
   const title = input.title?.trim() || graph.name;
   const description = input.description?.trim();
   const descriptionField = description ? { description } : {};
-  const team = getActiveAgentTeam(deps.getAgentTeams());
+  // The cast is FROZEN here, once: every node seat, and the team prompt each
+  // child composes, resolves against this view for the whole run — a mid-run
+  // team edit must not re-cast later nodes or shear a running orchestration.
+  // (The phase-run path gets the same guarantee from its per-run role cache.)
+  const agentTeamsView = deps.getAgentTeams();
+  const team = getActiveAgentTeam(agentTeamsView);
   const teamFields = team ? { teamId: team.id, teamName: team.name } : {};
 
   if (input.draft) {
@@ -196,11 +202,18 @@ async function startGraphOrchestration(
   // until startGraphRun mints it, so the port reads it through this ref (all
   // spawns happen strictly after startGraphRun returns).
   const runIdRef = { current: "" };
+  // Templates are snapshotted with the cast: a node dispatched late renders the
+  // template text that was true at start, not a mid-run edit. Together with the
+  // frozen team view this is what makes a run reproducible — which the
+  // evaluation harness depends on.
   const spawnPort = buildGraphSpawnPort(deps, {
     cwd: input.cwd,
     ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
     orchestratorAgentId,
     runIdRef,
+    agentTeamsView,
+    roster: deps.getPersonalityRoster(),
+    templatesById: await snapshotPromptTemplates(deps.promptTemplateStore),
   });
 
   const { run } = deps.runService.startGraphRun({
@@ -276,6 +289,13 @@ interface SpawnOrchestrationAgentInput {
   access?: string;
   /** The node's title, for the refusal message if its seat can't enforce access. */
   nodeTitle?: string;
+  /**
+   * The team view frozen at run start. Node spawns pass it so the composed
+   * team prompt matches the cast the run resolved against; absent (the
+   * orchestrator's own start-time spawn) reads the live view, which at that
+   * moment is the same thing.
+   */
+  agentTeamsView?: AgentTeamsConfigView;
 }
 
 /**
@@ -320,6 +340,7 @@ async function spawnOrchestrationAgent(
       deps,
       input.seat.personality,
       input.cwd,
+      input.agentTeamsView,
     );
     provider = formatProviderModel(resolved.snapshot.provider, resolved.snapshot.model);
     config = resolved.config;
@@ -374,6 +395,7 @@ async function buildPersonalityCreateConfigForCwd(
   deps: UserOrchestrationDependencies,
   personality: AgentPersonality,
   cwd: string,
+  agentTeamsView?: AgentTeamsConfigView,
 ): Promise<{ snapshot: ResolvedPersonalitySnapshot; config: PersonalityCreateConfig }> {
   const entries = await deps.listProviderEntries(cwd);
   const resolution = resolvePersonality(personality, entries);
@@ -381,7 +403,10 @@ async function buildPersonalityCreateConfigForCwd(
     throw new Error(`Personality "${personality.name}" is unavailable: ${resolution.reason}`);
   }
   const snapshot = resolution.snapshot;
-  const teamSnapshot = resolveTeamSnapshotForPersonality(deps.getAgentTeams(), personality.id);
+  const teamSnapshot = resolveTeamSnapshotForPersonality(
+    agentTeamsView ?? deps.getAgentTeams(),
+    personality.id,
+  );
   const composedPrompt = composeTeamAndPersonalityPrompt(
     teamSnapshot,
     snapshot.systemPrompt,
@@ -397,6 +422,21 @@ async function buildPersonalityCreateConfigForCwd(
   };
 }
 
+/**
+ * The prompt-template snapshot taken at run start (null when the host has no
+ * store). One read serves the whole run — see the reproducibility comment at
+ * the call site.
+ */
+async function snapshotPromptTemplates(
+  store: PromptTemplateStore | undefined,
+): Promise<Map<string, PromptTemplate> | null> {
+  if (!store) {
+    return null;
+  }
+  const all = await store.list();
+  return new Map(all.map((entry) => [entry.id, entry]));
+}
+
 // ── The graph spawn port ─────────────────────────────────────────────────────
 
 function buildGraphSpawnPort(
@@ -406,6 +446,12 @@ function buildGraphSpawnPort(
     workspaceId?: string;
     orchestratorAgentId: string;
     runIdRef: { current: string };
+    /** The team view frozen at run start — the whole cast resolves against it. */
+    agentTeamsView: AgentTeamsConfigView | undefined;
+    /** The personality roster frozen at run start. */
+    roster: AgentPersonality[];
+    /** Prompt templates frozen at run start; null when the host has no store. */
+    templatesById: Map<string, PromptTemplate> | null;
   },
 ): GraphSpawnPort {
   const spawn = async (spawnInput: GraphEngineSpawnInput) => {
@@ -426,10 +472,12 @@ function buildGraphSpawnPort(
         ? { [ORCHESTRATION_QUERY_TOOLS_LABEL]: JSON.stringify(spawnInput.queryTools) }
         : {}),
     };
+    // Resolved against the run-start snapshot, never the live host config —
+    // a node dispatched an hour in gets the cast the run started with.
     const member = spawnInput.role
       ? resolveTeamRoleMember({
-          team: getActiveAgentTeam(deps.getAgentTeams()),
-          roster: deps.getPersonalityRoster(),
+          team: getActiveAgentTeam(context.agentTeamsView),
+          roster: context.roster,
           role: spawnInput.role,
         })
       : null;
@@ -443,6 +491,7 @@ function buildGraphSpawnPort(
       detached: false,
       ...(spawnInput.access ? { access: spawnInput.access } : {}),
       nodeTitle: spawnInput.title,
+      ...(context.agentTeamsView ? { agentTeamsView: context.agentTeamsView } : {}),
     } satisfies Omit<SpawnOrchestrationAgentInput, "seat">;
     if (member) {
       const agentId = await spawnOrchestrationAgent(deps, {
@@ -488,18 +537,17 @@ function buildGraphSpawnPort(
       }
     },
     renderPromptTemplate: async ({ ref, graphInputs, upstreamFields }) => {
-      const store = deps.promptTemplateStore;
-      if (!store) {
+      // Resolved against the run-start snapshot, never the live store: a node
+      // dispatched late renders the same text an early node did, and a mid-run
+      // template edit cannot reword a running orchestration.
+      const templates = context.templatesById;
+      if (!templates) {
         return null;
       }
-      const template = await store.get(ref.templateId);
+      const template = templates.get(ref.templateId);
       if (!template) {
         return null;
       }
-      // Snippets are resolved from a snapshot taken once per render, so a
-      // template that includes another can't turn into a storm of reads.
-      const all = await store.list();
-      const byId = new Map(all.map((entry) => [entry.id, entry]));
       return renderPromptTemplate({
         template,
         variables: resolveTemplateVariables({
@@ -507,7 +555,7 @@ function buildGraphSpawnPort(
           graphInputs,
           upstreamFields,
         }),
-        resolveSnippet: (id) => byId.get(id) ?? null,
+        resolveSnippet: (id) => templates.get(id) ?? null,
       });
     },
     cancelAgent: async ({ agentId }) => {

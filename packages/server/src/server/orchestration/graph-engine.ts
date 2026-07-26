@@ -905,7 +905,23 @@ async function spawnAndAwait(
       ctx.run.updatedAt = ctx.port.now();
       await ctx.port.emit(ctx.run);
     }
-    const awaited = await awaitWithTimeLimit(ctx, node, phase, spawned.agentId);
+    // Cancel must CASCADE: aborting the run stops the await, but the child is
+    // a live OS process that would keep running and keep spending. Best-effort
+    // — cancelAgent already tolerates an agent that settled first.
+    const cancelChild = () => {
+      void ctx.port.cancelAgent({ agentId: spawned.agentId });
+    };
+    let awaited: RunEngineAwaitResult;
+    if (ctx.signal.aborted) {
+      cancelChild();
+    } else {
+      ctx.signal.addEventListener("abort", cancelChild, { once: true });
+    }
+    try {
+      awaited = await awaitWithTimeLimit(ctx, node, phase, spawned.agentId);
+    } finally {
+      ctx.signal.removeEventListener("abort", cancelChild);
+    }
     if (awaited.failed) {
       throw new RunEngineError(
         input.purpose === "judge" ? "The judge agent failed." : "The node's agent failed.",

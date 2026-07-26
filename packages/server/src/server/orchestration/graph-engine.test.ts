@@ -69,9 +69,18 @@ function makePort(options?: FakePortOptions) {
       }
       return { agentId };
     },
-    awaitAgent: async ({ agentId }) => {
+    awaitAgent: async ({ agentId, signal }) => {
       if (options?.hangAgentIds?.has(agentId)) {
-        await new Promise<void>(() => {});
+        // Hang until the run aborts — mirroring the real port, whose
+        // waitForAgentFullySettled honors the signal.
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) {
+            resolve();
+            return;
+          }
+          signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return { finalMessage: null, failed: true, submittedOutput: null };
       }
       return {
         finalMessage: finalMessages.get(agentId) ?? null,
@@ -771,6 +780,36 @@ describe("executeGraphRun", () => {
     expect(phase?.timedOut).toBe(true);
     // An independent branch still finished.
     expect(terminal.phases.find((p) => p.id === "other")?.status).toBe("done");
+  });
+
+  test("a user cancel cascades to the in-flight agent, not just the await", async () => {
+    const graph = makeGraph({
+      nodes: [
+        { id: "root", kind: "orchestrator", title: "Orchestrator" },
+        { id: "a", kind: "agent", title: "A", role: "coder", prompt: "p" },
+      ],
+      edges: [],
+    });
+    const run = buildRun(graph);
+    const { port, canceled, spawns } = makePort({ hangAgentIds: new Set(["agent-1-a-worker"]) });
+    const controller = new AbortController();
+    const execution = executeGraphRun({
+      run,
+      graph,
+      graphInputs: {},
+      caps: DEFAULT_RUN_CAPS,
+      signal: controller.signal,
+      port,
+    });
+    // Let the engine spawn, then cancel the run mid-await.
+    while (spawns.length === 0) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    controller.abort();
+    const terminal = await execution;
+    expect(terminal.status).toBe("canceled");
+    // The child was really stopped — an abandoned agent keeps running and spending.
+    expect(canceled).toEqual(["agent-1-a-worker"]);
   });
 
   test("a node bound to a template uses it, and falls back when it cannot render", async () => {

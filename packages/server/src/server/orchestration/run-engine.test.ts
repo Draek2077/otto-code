@@ -20,17 +20,21 @@ interface FakeOptions {
     spawnIndex: number,
   ) => string | { message: string; failed: boolean };
   gate?: (phaseId: string) => { approved: boolean; note?: string };
+  /** Agents that hang until the run aborts — the cancel-cascade shape. */
+  hangAgentIds?: Set<string>;
 }
 
 interface FakeRun {
   port: RunEnginePort;
   spawns: RunEngineSpawnInput[];
   emits: Run[];
+  canceled: string[];
 }
 
 function makeFake(options: FakeOptions): FakeRun {
   const spawns: RunEngineSpawnInput[] = [];
   const emits: Run[] = [];
+  const canceled: string[] = [];
   let tick = 0;
   let spawnCount = 0;
   const port: RunEnginePort = {
@@ -44,7 +48,19 @@ function makeFake(options: FakeOptions): FakeRun {
       const id = `agent_${spawnCount++}`;
       return { agentId: id, personalityId: `p_${input.role}` };
     },
-    async awaitAgent({ agentId }) {
+    async awaitAgent({ agentId, signal }) {
+      if (options.hangAgentIds?.has(agentId)) {
+        // Hang until the run aborts — mirroring the real port, whose
+        // waitForAgentFullySettled honors the signal.
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) {
+            resolve();
+            return;
+          }
+          signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return { finalMessage: null, failed: true };
+      }
       const index = Number(agentId.split("_")[1]);
       const input = spawns[index]!;
       const r = options.respond(input, index);
@@ -52,6 +68,9 @@ function makeFake(options: FakeOptions): FakeRun {
         return { finalMessage: r, failed: false };
       }
       return { finalMessage: r.message, failed: r.failed };
+    },
+    async cancelAgent({ agentId }) {
+      canceled.push(agentId);
     },
     async awaitGate({ phaseId }) {
       return options.gate?.(phaseId) ?? { approved: true };
@@ -64,7 +83,7 @@ function makeFake(options: FakeOptions): FakeRun {
     },
     logger: { info() {}, warn() {}, error() {} },
   };
-  return { port, spawns, emits };
+  return { port, spawns, emits, canceled };
 }
 
 function run(plan: RunPlan, fake: FakeRun): Promise<Run> {
@@ -79,6 +98,37 @@ function run(plan: RunPlan, fake: FakeRun): Promise<Run> {
 }
 
 const verdict = (outcome: "pass" | "fail") => JSON.stringify({ verdict: outcome, score: 0.5 });
+
+describe("cancel cascade", () => {
+  test("a canceled run really cancels its in-flight child", async () => {
+    const fake = makeFake({
+      respond: () => "done",
+      hangAgentIds: new Set(["agent_0"]),
+    });
+    const plan: RunPlan = {
+      title: "t",
+      phases: [{ id: "i", type: "implement", title: "I", task: "build" }],
+    };
+    const built = buildRunFromPlan({ plan, id: "run_c", now: "2023-11-14T00:00:00.000Z" });
+    const controller = new AbortController();
+    const execution = executeRun({
+      run: built,
+      plan,
+      caps: DEFAULT_RUN_CAPS,
+      signal: controller.signal,
+      port: fake.port,
+    });
+    // Let the engine spawn, then cancel the run mid-await.
+    while (fake.spawns.length === 0) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    controller.abort();
+    const terminal = await execution;
+    expect(terminal.status).toBe("canceled");
+    // The child was really stopped — an abandoned agent keeps running and spending.
+    expect(fake.canceled).toEqual(["agent_0"]);
+  });
+});
 
 describe("buildRunFromPlan", () => {
   test("assigns default roles by phase type and initializes phases pending", () => {

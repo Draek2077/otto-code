@@ -98,6 +98,13 @@ export interface RunEnginePort {
   /** Wait for a spawned child to reach a terminal state and return its output. */
   awaitAgent(input: { agentId: string; signal: AbortSignal }): Promise<RunEngineAwaitResult>;
   /**
+   * Really stop one child agent — the cancel cascade. A canceled run must
+   * terminate its in-flight children, not merely stop awaiting them (an
+   * abandoned agent keeps running and keeps spending). Optional so in-memory
+   * test ports keep working; absent means cancel only stops the await.
+   */
+  cancelAgent?(input: { agentId: string }): Promise<void>;
+  /**
    * Await a human decision at an attended `gate` phase. Never called under
    * autopilot. Should reject/throw if the run is canceled while waiting.
    */
@@ -704,7 +711,7 @@ async function runCandidateRound(
       attempt: opts.attempt,
       index,
     });
-    const result = await port.awaitAgent({ agentId: spawn.agentId, signal: ctx.signal });
+    const result = await awaitWithCancelCascade(ctx, spawn.agentId);
     const candidate: RunPhaseCandidate = {
       agentId: spawn.agentId,
       ...(spawn.personalityId ? { personalityId: spawn.personalityId } : {}),
@@ -735,10 +742,7 @@ async function runCandidateRound(
           attempt: opts.attempt,
           index,
         });
-        const judgeResult = await port.awaitAgent({
-          agentId: judgeSpawn.agentId,
-          signal: ctx.signal,
-        });
+        const judgeResult = await awaitWithCancelCascade(ctx, judgeSpawn.agentId);
         candidate.verdict = judgeResult.failed
           ? { verdict: "fail", summary: "Judger agent errored." }
           : parseVerdict(judgeResult.finalMessage);
@@ -746,6 +750,30 @@ async function runCandidateRound(
     }
     return candidate;
   });
+}
+
+/**
+ * Await a child while a run cancel really cancels it. Stopping the await alone
+ * abandons a live agent that keeps spending; when the port can cancel, a run
+ * abort cascades to the in-flight child. Best-effort by contract.
+ */
+async function awaitWithCancelCascade(
+  ctx: ExecuteRunContext,
+  agentId: string,
+): Promise<RunEngineAwaitResult> {
+  const cancelChild = () => {
+    void ctx.port.cancelAgent?.({ agentId });
+  };
+  if (ctx.signal.aborted) {
+    cancelChild();
+  } else {
+    ctx.signal.addEventListener("abort", cancelChild, { once: true });
+  }
+  try {
+    return await ctx.port.awaitAgent({ agentId, signal: ctx.signal });
+  } finally {
+    ctx.signal.removeEventListener("abort", cancelChild);
+  }
 }
 
 function failRunForMissingRole(ctx: ExecuteRunContext, phase: RunPhase, role: string): void {
