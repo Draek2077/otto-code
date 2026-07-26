@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 
 import type { WorktreeArchiveBranchDetection } from "@otto-code/protocol/messages";
@@ -171,6 +172,30 @@ async function revListCount(cwd: string, range: string): Promise<number | null> 
 // checked out at a path other than the worktree we're archiving, deleting it
 // will fail — so surface that up front. Best-effort: failures read as "not
 // elsewhere" so a git hiccup never blocks the archive.
+/**
+ * Canonical form for comparing two paths that name the same directory.
+ *
+ * `resolve` alone is not enough. Windows hands out 8.3 short names for temp directories
+ * (`RUNNER~1\AppData\...`), and git may report the long form while the caller holds the short
+ * one — or the reverse. Comparing those two spellings says "different directory", which here
+ * means the worktree being archived looks like some *other* worktree holding its branch, and
+ * archiving is refused for a conflict that does not exist. Symlinked paths and case differences
+ * behave the same way.
+ *
+ * `realpathSync.native` resolves all three. It throws for a path that no longer exists, which is
+ * a legitimate state on this code path, so the fallback keeps the resolved-but-uncanonical form.
+ */
+function canonicalPath(candidate: string): string {
+  const resolved = resolve(candidate);
+  let real: string;
+  try {
+    real = realpathSync.native(resolved);
+  } catch {
+    real = resolved;
+  }
+  return process.platform === "win32" ? real.toLowerCase() : real;
+}
+
 async function isBranchCheckedOutElsewhere(
   cwd: string,
   branchName: string,
@@ -181,7 +206,7 @@ async function isBranchCheckedOutElsewhere(
       cwd,
       envOverlay: READ_ONLY_GIT_ENV,
     });
-    const archivedPath = resolve(archivedWorktreePath);
+    const archivedPath = canonicalPath(archivedWorktreePath);
     const targetRef = `refs/heads/${branchName}`;
     let currentPath: string | null = null;
     for (const line of stdout.split("\n")) {
@@ -192,7 +217,7 @@ async function isBranchCheckedOutElsewhere(
       }
       if (trimmed.startsWith("branch ") && currentPath) {
         const ref = trimmed.slice("branch ".length).trim();
-        if (ref === targetRef && resolve(currentPath) !== archivedPath) {
+        if (ref === targetRef && canonicalPath(currentPath) !== archivedPath) {
           return true;
         }
       }
