@@ -67,7 +67,6 @@ Tone rules:
 | `NOTICE`                                       | generic third-party clause                     | explicit Agent Flow Apache-2.0 + §4 state notice |
 | `blog/$.tsx` byline                            | Mo Boudra + his avatar, linking x.com/moboudra | Philippe → github.com/Draek2077                  |
 | `site-header.tsx`, `site-footer.tsx`           | Discord icon, Discord + Reddit links           | Removed; Issues link                             |
-| `cloud.tsx` contact fallbacks                  | "DM me on Discord"                             | GitHub Issues                                    |
 | `community-links.tsx` (app)                    | "Community" → Paseo Discord                    | "Feedback" → Otto Issues                         |
 | `packages/website/public/9viSwGkz_400x400.jpg` | Mo's avatar                                    | Deleted                                          |
 | `.github/ISSUE_TEMPLATE/*.yml` (all 3)         | "reach me on Discord" → Paseo's Discord invite | GitHub Issues / Discussions                      |
@@ -122,4 +121,5 @@ destination actually exists — that's the mistake being corrected here.
 
 - No paid acquisition, no launch-day theater, no "Product Hunt strategy".
 - No claiming Paseo's community, sponsors, testimonials, or metrics as Otto's.
-- No hosted/paid tier marketing until Otto Cloud is more than a signup form.
+- No hosted/paid tier marketing, and no "Otto Cloud". The model is fixed and worth stating
+  plainly: the app is hosted, the daemon is yours, there is no login and nothing to sign up for.

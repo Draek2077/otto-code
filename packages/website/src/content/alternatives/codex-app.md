@@ -96,7 +96,6 @@ Otto supports dictation and realtime voice mode. Speech-to-text and text-to-spee
 | Native mobile                | Android                                                         | No                           |
 | Providers                    | Codex, Claude Code, OpenCode, Pi + 30+ via ACP catalog + custom | Codex                        |
 | Local execution              | Yes                                                             | Yes                          |
-| Cloud execution              | Cloud waitlist                                                  | Yes                          |
 | Git worktrees                | Yes                                                             | Yes                          |
 | Per-worktree dev server URLs | Yes                                                             | No                           |
 | In-app terminal              | Yes                                                             | Yes                          |

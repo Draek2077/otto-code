@@ -47,7 +47,6 @@ import { Route as CortexCodeRouteImport } from "./routes/cortex-code";
 import { Route as CopilotRouteImport } from "./routes/copilot";
 import { Route as CodexRouteImport } from "./routes/codex";
 import { Route as CodebuddyRouteImport } from "./routes/codebuddy";
-import { Route as CloudRouteImport } from "./routes/cloud";
 import { Route as ClineRouteImport } from "./routes/cline";
 import { Route as ClaudeCodeRouteImport } from "./routes/claude-code";
 import { Route as ChangelogRouteImport } from "./routes/changelog";
@@ -260,11 +259,6 @@ const CodebuddyRoute = CodebuddyRouteImport.update({
   path: "/codebuddy",
   getParentRoute: () => rootRouteImport,
 } as any);
-const CloudRoute = CloudRouteImport.update({
-  id: "/cloud",
-  path: "/cloud",
-  getParentRoute: () => rootRouteImport,
-} as any);
 const ClineRoute = ClineRouteImport.update({
   id: "/cline",
   path: "/cline",
@@ -384,7 +378,6 @@ export interface FileRoutesByFullPath {
   "/changelog": typeof ChangelogRoute;
   "/claude-code": typeof ClaudeCodeRoute;
   "/cline": typeof ClineRoute;
-  "/cloud": typeof CloudRoute;
   "/codebuddy": typeof CodebuddyRoute;
   "/codex": typeof CodexRoute;
   "/copilot": typeof CopilotRoute;
@@ -445,7 +438,6 @@ export interface FileRoutesByTo {
   "/changelog": typeof ChangelogRoute;
   "/claude-code": typeof ClaudeCodeRoute;
   "/cline": typeof ClineRoute;
-  "/cloud": typeof CloudRoute;
   "/codebuddy": typeof CodebuddyRoute;
   "/codex": typeof CodexRoute;
   "/copilot": typeof CopilotRoute;
@@ -507,7 +499,6 @@ export interface FileRoutesById {
   "/changelog": typeof ChangelogRoute;
   "/claude-code": typeof ClaudeCodeRoute;
   "/cline": typeof ClineRoute;
-  "/cloud": typeof CloudRoute;
   "/codebuddy": typeof CodebuddyRoute;
   "/codex": typeof CodexRoute;
   "/copilot": typeof CopilotRoute;
@@ -571,7 +562,6 @@ export interface FileRouteTypes {
     | "/changelog"
     | "/claude-code"
     | "/cline"
-    | "/cloud"
     | "/codebuddy"
     | "/codex"
     | "/copilot"
@@ -632,7 +622,6 @@ export interface FileRouteTypes {
     | "/changelog"
     | "/claude-code"
     | "/cline"
-    | "/cloud"
     | "/codebuddy"
     | "/codex"
     | "/copilot"
@@ -693,7 +682,6 @@ export interface FileRouteTypes {
     | "/changelog"
     | "/claude-code"
     | "/cline"
-    | "/cloud"
     | "/codebuddy"
     | "/codex"
     | "/copilot"
@@ -756,7 +744,6 @@ export interface RootRouteChildren {
   ChangelogRoute: typeof ChangelogRoute;
   ClaudeCodeRoute: typeof ClaudeCodeRoute;
   ClineRoute: typeof ClineRoute;
-  CloudRoute: typeof CloudRoute;
   CodebuddyRoute: typeof CodebuddyRoute;
   CodexRoute: typeof CodexRoute;
   CopilotRoute: typeof CopilotRoute;
@@ -1072,13 +1059,6 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof CodebuddyRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/cloud": {
-      id: "/cloud";
-      path: "/cloud";
-      fullPath: "/cloud";
-      preLoaderRoute: typeof CloudRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
     "/cline": {
       id: "/cline";
       path: "/cline";
@@ -1264,7 +1244,6 @@ const rootRouteChildren: RootRouteChildren = {
   ChangelogRoute: ChangelogRoute,
   ClaudeCodeRoute: ClaudeCodeRoute,
   ClineRoute: ClineRoute,
-  CloudRoute: CloudRoute,
   CodebuddyRoute: CodebuddyRoute,
   CodexRoute: CodexRoute,
   CopilotRoute: CopilotRoute,

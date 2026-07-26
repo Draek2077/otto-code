@@ -60,7 +60,6 @@ ${agents}
 
 - [Changelog](${SITE_URL}/changelog): Release notes for the Otto daemon, CLI, desktop, and mobile apps.
 - [Download](${SITE_URL}/download): Install Otto on Mac, Windows, Linux, iOS, Android, or run the web app.
-- [Otto Cloud](${SITE_URL}/cloud): Waitlist for the hosted multi-user version of Otto.
 - [Blog](${SITE_URL}/blog): Updates and technical posts from the Otto team.
 - [Privacy](${SITE_URL}/privacy): Privacy policy.
 - [Security](${SITE_URL}/security): Security policy and responsibility disclaimer.
