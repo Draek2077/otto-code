@@ -43,7 +43,7 @@ import { WorkspaceShortcutTargetsSubscriber } from "@/components/workspace-short
 import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
 import { HostChooserModal, useHostChooser } from "@/hosts/host-chooser";
 import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
-import { isNative, isWeb } from "@/constants/platform";
+import { isDev, isNative, isWeb } from "@/constants/platform";
 import { HorizontalScrollProvider } from "@/contexts/horizontal-scroll-context";
 import { SessionProvider } from "@/contexts/session-context";
 import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
@@ -1024,6 +1024,25 @@ function RootProviders({ children }: { children: ReactNode }) {
   );
 }
 
+// A navy hairline around the entire viewport, shown only in dev builds. Running
+// the installed Otto and a dev Otto side by side is the expected setup (see
+// docs/development.md → "Four lanes"), and it has to be impossible to mistake
+// one for the other before typing into it.
+//
+// Deliberately a viewport-anchored overlay rather than native window chrome:
+// `borderWidth` on the BrowserWindow frame disappears the moment you maximize or
+// go fullscreen, which is exactly when the two windows are hardest to tell
+// apart. This is absolutely positioned against the root flex container, so it
+// survives every window state.
+//
+// It ships to nobody: `isDev` is false in the production Expo export the
+// packaged app loads, so this branch is dead code there. Gated on `isWeb` too —
+// the concern is two desktop windows, and on native the inset would collide with
+// notches and home indicators.
+function DevModeBorder() {
+  return <View pointerEvents="none" style={layoutStyles.devModeBorder} />;
+}
+
 function RootAppTree() {
   return (
     <GestureHandlerRootView style={flexStyle}>
@@ -1034,6 +1053,7 @@ function RootAppTree() {
           </RuntimeProviders>
         </RootProviders>
       </View>
+      {isDev && isWeb ? <DevModeBorder /> : null}
     </GestureHandlerRootView>
   );
 }
@@ -1066,5 +1086,16 @@ const layoutStyles = StyleSheet.create((theme) => ({
   surfaceFill: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
+  },
+  // Matches the navy tile on the dev app icon (blue-900), so the window border
+  // and the taskbar/tray icon read as the same "this is dev" signal.
+  devModeBorder: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderWidth: 2,
+    borderColor: theme.colors.palette.blue[900],
   },
 }));
