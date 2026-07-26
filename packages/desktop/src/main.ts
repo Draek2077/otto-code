@@ -41,6 +41,7 @@ import {
   buildStandardContextMenuItems,
 } from "./window/window-manager.js";
 import { setupDarwinCompositorWatchdog } from "./window/compositor-watchdog/index.js";
+import { resolveBrandedAssetPath } from "./features/dev-icon.js";
 import { registerDialogHandlers } from "./features/dialogs.js";
 import {
   registerNotificationHandlers,
@@ -613,13 +614,16 @@ function getWindowIconCandidates(): string[] {
     }
     return [path.join(process.resourcesPath, "icon.png")];
   }
+  // Unpackaged: prefer the navy dev tile so the dev window and taskbar button
+  // are distinguishable from the installed app's. See features/dev-icon.ts.
+  const assetsDir = path.resolve(__dirname, "../assets");
   if (process.platform === "win32") {
     return [
-      path.resolve(__dirname, "../assets/icon.ico"),
-      path.resolve(__dirname, "../assets/icon.png"),
+      resolveBrandedAssetPath(assetsDir, "icon.ico"),
+      resolveBrandedAssetPath(assetsDir, "icon.png"),
     ];
   }
-  return [path.resolve(__dirname, "../assets/icon.png")];
+  return [resolveBrandedAssetPath(assetsDir, "icon.png")];
 }
 
 function getWindowIconPath(): string | null {
@@ -652,7 +656,7 @@ function applyAppIcon(): void {
     return;
   }
 
-  const iconPath = path.resolve(__dirname, "../assets/icon.png");
+  const iconPath = resolveBrandedAssetPath(path.resolve(__dirname, "../assets"), "icon.png");
   if (!existsSync(iconPath)) {
     return;
   }

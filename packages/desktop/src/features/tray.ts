@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { app, BrowserWindow, Menu, Tray, nativeImage } from "electron";
+import { resolveBrandedAssetPath } from "./dev-icon.js";
 
 // The tray icon only exists while the app has zero visible windows (mac: after the
 // last window closes natively; Windows/Linux: after minimize-to-tray hides the last
@@ -26,8 +27,11 @@ export function resolveTrayAssetPath(fileName: string): string {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, fileName);
   }
-  // dist/features/tray.js -> packages/desktop/assets/<fileName>
-  return path.resolve(__dirname, "../../assets", fileName);
+  // dist/features/tray.js -> packages/desktop/assets/<fileName>, preferring the
+  // navy dev variant so a dev tray entry is distinguishable from the installed
+  // app's. See dev-icon.ts. No dev art exists for the macOS idle tray icon (a
+  // template image macOS re-tints), so that one falls back to the normal asset.
+  return resolveBrandedAssetPath(path.resolve(__dirname, "../../assets"), fileName);
 }
 
 function resolveTrayAssetName(isMac: boolean, attention: boolean): string {
