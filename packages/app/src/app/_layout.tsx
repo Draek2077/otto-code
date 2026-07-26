@@ -26,6 +26,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { CommandCenter } from "@/components/command-center";
+import { DevModeBorder } from "@/components/dev-mode-border";
 import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-source";
 import { DownloadToast } from "@/components/download-toast";
 import { QuittingOverlay } from "@/components/quitting-overlay";
@@ -1024,25 +1025,6 @@ function RootProviders({ children }: { children: ReactNode }) {
   );
 }
 
-// A navy hairline around the entire viewport, shown only in dev builds. Running
-// the installed Otto and a dev Otto side by side is the expected setup (see
-// docs/development.md → "Lanes"), and it has to be impossible to mistake
-// one for the other before typing into it.
-//
-// Deliberately a viewport-anchored overlay rather than native window chrome:
-// `borderWidth` on the BrowserWindow frame disappears the moment you maximize or
-// go fullscreen, which is exactly when the two windows are hardest to tell
-// apart. This is absolutely positioned against the root flex container, so it
-// survives every window state.
-//
-// It ships to nobody: `isDev` is false in the production Expo export the
-// packaged app loads, so this branch is dead code there. Gated on `isWeb` too —
-// the concern is two desktop windows, and on native the inset would collide with
-// notches and home indicators.
-function DevModeBorder() {
-  return <View pointerEvents="none" style={layoutStyles.devModeBorder} />;
-}
-
 function RootAppTree() {
   return (
     <GestureHandlerRootView style={flexStyle}>
@@ -1053,7 +1035,9 @@ function RootAppTree() {
           </RuntimeProviders>
         </RootProviders>
       </View>
-      {isDev && isWeb ? <DevModeBorder /> : null}
+      {/* Navy viewport hairline marking a dev build — see components/dev-mode-border.
+          Gated on isDev so production never mounts it; the native module is a no-op. */}
+      {isDev ? <DevModeBorder /> : null}
     </GestureHandlerRootView>
   );
 }
@@ -1086,16 +1070,5 @@ const layoutStyles = StyleSheet.create((theme) => ({
   surfaceFill: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
-  },
-  // Matches the navy tile on the dev app icon (blue-900), so the window border
-  // and the taskbar/tray icon read as the same "this is dev" signal.
-  devModeBorder: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderWidth: 2,
-    borderColor: theme.colors.palette.blue[900],
   },
 }));
