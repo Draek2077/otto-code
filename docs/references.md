@@ -247,6 +247,47 @@ use.**
 rather than a set of ideas. Keep it for the local-provider angle and the long-horizon trajectory
 data, not for design.
 
+#### [AgentX-Python](https://github.com/AgentX-ai/AgentX-Python) — AgentX-ai, MIT — **Read, adopted in part** (2026-07-25)
+
+**What it actually is:** the official Python **client SDK for a hosted platform**, not an engine.
+Execution lives in their cloud; the SDK exposes `Agent → Conversation → Message`, plus local
+instrumentation. Also ships framework integrations (LangChain, CrewAI, OpenAI, Anthropic,
+Google) and MCP connectivity.
+
+**Rejected as architecture, and the rejections are the useful part:**
+
+- **The hosted model.** Otto is daemon-owned and local-first; that is the product, not an
+  implementation detail.
+- **"Workforce with a manager agent"** — a designated manager coordinating specialists is _the
+  model picking the topology_. That is the AI flavour the orchestration competitive survey
+  (§2.3) explicitly rejected in favour of user-authored deterministic graphs. Adopting it would
+  undo the differentiator.
+- **`Agent → Conversation → Message`** is a chat model, not a DAG, and the framework wrappers
+  are the same in-process layer Otto never occupies.
+
+**Adopted as the vocabulary for the evaluation layer Otto does not have.** This is the first
+source surveyed that treats agent telemetry and scoring as first-class product surface rather
+than an afterthought, and it closes an area both Gulli Ch. 19–20 and §12 item 6 flag as open:
+
+1. **A trace is a unit with a defined shape** — per run: input, output, latency, tool calls,
+   token usage; per tool call: name, input, output, `latency_ms`. That is close to the per-node
+   record Otto lacks entirely (`Run` carries `agentCount` and nothing else).
+2. **Three scoring mechanisms, not one** — LLM-as-judge (0–10), cosine similarity (embeddings),
+   Jaccard (token-set overlap). **The single most useful idea here.** Otto grades with exactly
+   one mechanism: an agent judger returning a prose verdict — the most expensive, slowest and
+   driftiest of the three, and currently the only one. Deterministic scoring where the answer is
+   checkable is the argument for the unbuilt `check` node (a command plus an expectation, no
+   model, ground truth rather than opinion).
+3. **Patterns** — semantic detection rules evaluated over recorded traces, with severity, run
+   automatically when monitoring is on. Otto's analogue is regression detection on graph
+   templates: _did this template start behaving differently than it used to?_
+4. **Datasets + evaluations as a resource** — scored test cases with a run/finalize/analyze
+   shape. The direct input to a golden-graph harness on the T2 local-AI tier (§9).
+
+**The generalizable lesson:** you cannot settle "does orchestrating agents actually work" by
+argument, only by measurement — and measurement needs a defined unit, more than one scoring
+mechanism, and a corpus of real tasks.
+
 ### 2.2 Orchestration engines and graph semantics
 
 Surveyed 2026-07-21 for the orchestration graph engine. The governing decision (Philippe): **learn
@@ -443,6 +484,11 @@ built rather than confirming it.
 7. **The orchestration competitive survey's negative result** — no one occupies the combination, and
    the parallel-runner niche is commoditized and churning. That reframed the differentiator from
    "the canvas" to "deterministic daemon-side execution".
+8. **AgentX-Python's trace/score/pattern triad** — read for architecture, kept for evaluation. It
+   promoted per-node accounting from "nice observability, later" to **a precondition**: two graph
+   templates cannot be compared without cost, latency and token counts per node, so the question
+   "does orchestration actually work" is unanswerable until that record exists. It also exposed
+   that Otto grades with exactly one mechanism (an LLM judger) where three are warranted.
 
 ---
 
@@ -481,6 +527,9 @@ translation well.
    naming node types. Otto's palette should be legible to anyone who has seen either.
 8. **AGX and Activepieces** (§2.2, §2.3) — durable checkpointed execution across restarts. A template
    that cannot survive a daemon restart is a demo.
+9. **AgentX-Python's evaluation layer** (§2.1) — the trace unit, the three scoring mechanisms, and
+   patterns as trace-level regression detection. Read last, because it is the part that tells you
+   whether everything above actually worked. A template library with no harness is a gallery.
 
 **What to deliberately skip:** every RAG entry, every training-pipeline entry, every in-process
 framework (LangChain, CrewAI, AutoGen, Mastra, VoltAgent), and every benchmark number in this file.

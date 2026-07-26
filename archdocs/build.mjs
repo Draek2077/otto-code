@@ -28,7 +28,10 @@ registry.block(function () {
   });
 });
 
-rmSync(distDir, { recursive: true, force: true });
+// maxRetries/retryDelay are for Windows: a serve process, editor or indexer holding a
+// handle under dist/ makes rmSync throw EPERM, which failed the build intermittently
+// whenever `archdocs:serve` was running against the same tree.
+rmSync(distDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 mkdirSync(distDir, { recursive: true });
 copyFileSync(require.resolve("mermaid/dist/mermaid.min.js"), join(distDir, "mermaid.min.js"));
 copyFileSync(join(here, "theme.css"), join(distDir, "theme.css"));

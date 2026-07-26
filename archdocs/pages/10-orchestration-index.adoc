@@ -16,10 +16,13 @@ link:14-orchestration-graphs.html[*graph runs*] (the daemon executes a user-auth
 exactly as drawn). Both project into the same `Run` + `RunPhase[]`, so one store, one page and
 one client render both.
 
-Pages 13 and 14 were rewritten from the source and describe what exists. *Pages 11–12 and
-15–19 still carry pre-build design material* — they were authored 2026-07-21 against
-uncommitted work and describe intent, not implementation. Treat them as design input until
-each is reconciled; where any page and the code disagree, the code wins.
+Pages 11–16 are reconciled to code — they describe what exists, with unbuilt intent fenced
+under explicit *Designed* markers. Pages 17–19 carry status banners separating their built
+claims from design material; treat their unbannered detail as design input. Where any page and
+the code disagree, the code wins. The correctness holes the 2026-07-25 review found are
+**fixed**: cancel cascades to running children on both engines, and seats and templates are
+snapshotted at run start (pages 14 and 16; remaining open holes are tracked in
+`projects/graph-templates/`).
 
 The vocabulary settled: the third node state is *skipped*, not *excluded*, with
 `RunPhase.skipReason` carrying the distinction.
@@ -27,11 +30,12 @@ The vocabulary settled: the third node state is *skipped*, not *excluded*, with
 
 [NOTE]
 ====
-*Read the design rationale first.* `projects/orchestration-graphs/orchestration-design.md`
-answers _why_ this system exists, what an orchestration is worth, and which ideas were
-taken from LangGraph, Rivet, Activepieces, Windmill, Kestra, Sim and Dify. This set
-answers _how it is built_. Where the two disagree, this set wins — but the design doc is
-where the arguments live.
+*Where the design arguments live.* The sources behind this system — what was taken from
+LangGraph, Rivet, Activepieces, Windmill, Kestra, Sim and Dify, and why — survive in
+`docs/references.md` §2. (The orchestration project folder has shipped and drained; its full
+working document exists only in the local `archive/`, outside the repo.) This set answers _how
+it is built_; the references file answers _where each idea came from_. The forward plan — do
+the graphs actually work, and which templates to build — is `projects/graph-templates/`.
 ====
 
 == What this system is
@@ -52,13 +56,13 @@ authority — everything else this system does is in service of those.
 |===
 |Page |What it answers
 
-|link:11-orchestration-concepts.html[11. Concepts & Domain Model] 📋 _design_
+|link:11-orchestration-concepts.html[11. Concepts & Domain Model] ✅ _code-true_
 |The vocabulary, the actors, the lifecycle of a graph and a run, and the honest test for
 when an orchestration is worth its cost.
 
-|link:12-orchestration-data-model.html[12. Data Model & Protocol] 📋 _design_
-|Every schema: graph, node, port, edge, declared inputs, run projection, node output,
-artifact reference, pause metadata — and the wire-compatibility story for each.
+|link:12-orchestration-data-model.html[12. Data Model & Protocol] ✅ _code-true_
+|The schemas both engines share, the wire rules that govern them, the three validation passes,
+capability flags, the RPC and label surfaces, storage — and what is still only designed.
 
 |link:13-orchestration-runs.html[13. Phase Runs] ✅ _code-true_
 |The conductor-declared engine: the phase-type vocabulary, role resolution and the
@@ -68,11 +72,12 @@ missing-role hard fail, fan-out with structured judging, the keep-best loop, hum
 |How a graph runs: DAG scheduling, edge gating and skip semantics, prompt assembly from
 templates and inputs, structured output with self-correction, validation, retry and iteration.
 
-|link:15-orchestration-durability.html[15. Durability & Human Gates] 📋 _design_
-|Checkpointing, idempotent resume, pause/resume for human gates, orphan reclamation,
-and the hard problem: a crash when the child agent is still alive.
+|link:15-orchestration-durability.html[15. Durability] ✅ _code-true_
+|What actually survives a restart today (writing is solved, reading is not), the resume gap that
+follows, and the designed model: checkpoint cadence, idempotent resume, persisted pause, and
+adopting a still-live child agent.
 
-|link:16-orchestration-agents.html[16. Agent Binding & Provider Coverage] 📋 _design_
+|link:16-orchestration-agents.html[16. Agent Binding & Provider Coverage] ✅ _code-true_
 |How a node becomes a running agent: seat resolution, tool authority, environment
 isolation, prompt assembly — and what each provider (including local models) supports.
 
@@ -89,10 +94,11 @@ integration.
 checklist for the whole system.
 |===
 
-== Master table of contents — every subsystem to build
+== Master table of contents — every subsystem in the full vision
 
-Bold entries have a dedicated section in this set. The rest are named so the shape of
-the work is visible even where the detail is still open.
+This is the design-era decomposition, kept as the roadmap frame — it names everything the full
+vision needs, **not** what exists. The ✅ pages in the reading order are the record of what is
+built; do not read rows here as shipped. Bold entries have a dedicated section in this set.
 
 === 1. Authoring (design time)
 * **1.1 Graph document** — nodes, ports, edges, declared inputs, metadata, versioning
@@ -180,6 +186,8 @@ the work is visible even where the detail is still open.
 == Provenance
 
 Authored 2026-07-21 against the working tree at v0.6.6 + uncommitted orchestration work.
+Reconciled to code 2026-07-25: pages 12–15 rewritten from source, with the agreed decisions
+recorded in link:12-orchestration-data-model.html[Data Model] §"Decided, not built".
 Grounded in direct source study of Rivet (`packages/core`), LangGraph.js
 (`libs/langgraph/src`) and Activepieces (`flow-run`), plus published guidance from
 Anthropic on agent workflow patterns and multi-agent failure modes. Sources and the

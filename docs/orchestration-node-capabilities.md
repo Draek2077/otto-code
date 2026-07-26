@@ -3,7 +3,9 @@
 What a **Graph** node can declare beyond a prompt, and how the daemon enforces it.
 Everything here is opt-in: a node that declares none of it behaves exactly as it did
 before these fields existed. See `archive/projects/orchestration-graphs/enhancement-plan.md` (archived)
-for the staged plan this implements, and `archdocs/pages/10-18` for the architecture.
+for the staged plan this implements, and `archdocs/pages/10-19` for the architecture
+(pages 12–15 are reconciled to code; where this page and those disagree, code wins, then this
+page).
 
 Engine: `packages/server/src/server/orchestration/graph-engine.ts`, with one module per
 concern beside it. Schemas: `packages/protocol/src/orchestration.ts`.
@@ -133,6 +135,13 @@ built-in. Three kinds, each read-only _by construction_ rather than by validatio
 | `http-get`  | GET only, no author-supplied headers, http(s) only. A graph template cannot carry a credential outbound.                                                                              |
 | `file-read` | Path resolved, then checked against the run's cwd. Escapes are refused, not clipped.                                                                                                  |
 
+> **SECURITY (same trust boundary as EJS templates below):** `http-get` has **no host
+> restrictions** — a tool URL can target `localhost` services or link-local/metadata
+> addresses. Acceptable today because graphs are authored locally by the machine's own user,
+> but this is SSRF-shaped: the day graphs become shareable or importable, `http-get` needs a
+> host policy behind the same trust gate as template rendering. Do not add an import path
+> without both.
+
 ## Workspace access
 
 `GraphNode.access` — `none`, `read` or `write` (absent means `write`, today's behaviour).
@@ -171,8 +180,8 @@ that never completed. Retry wraps the whole node including its loop.
 
 Two invariants:
 
-- **One loop, one counter.** Retry is never re-entered from the failure path. The prior
-  art this design studied re-enters `executeStep` from its own catch block with a fresh
+- **One loop, one counter.** Retry is never re-entered from the failure path. Prior art
+  this design studied re-enters its executor from its own failure handler with a fresh
   allowance at every level, so a persistently failing step retries forever.
 - **Every attempt is charged to the run.** Retries spawn through the same capped path as
   any other agent, so they count against `maxAgents` and the concurrency semaphore. A

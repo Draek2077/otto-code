@@ -28,7 +28,9 @@ executed by the daemon itself and never spawn anything.
 |*Port*
 |`fromPort`/`toPort`
 |A named connection point on a node. Multi-port is what makes branching legible: a gate
-has `approved`/`rejected`, a check has `pass`/`fail`.
+has `approved`/`rejected`, a check has `pass`/`fail`. _Reserved in the schema, unused by the
+engine — lands with the gate node
+(link:12-orchestration-data-model.html[Data Model] §"Decided, not built")._
 
 |*Answers*
 |`graphInputs`
@@ -41,11 +43,30 @@ declared inputs.
 
 |*Gate*
 |`pause`
-|A point where the orchestration stops and waits for a human.
+|A point where the orchestration stops and waits for a human. _Built for phase runs
+(link:13-orchestration-runs.html[Phase Runs]); the graph-node form is designed, not built._
+
+|*Prompt template*
+|`PromptTemplate` (`runs.templates.*`)
+|Reusable EJS prompt text, stored host-level, bound to a node via `promptTemplate`. Not a
+graph — a piece of text a node's prompt renders from.
+
+|*Snippet*
+|`PromptTemplate` with `snippet: true`
+|A prompt template meant to be `include()`d by others — shared behavioural rules written once
+instead of paid for in every node's prompt.
 |===
 
 Forbidden as UI labels: "workflow", "blueprint", "pipeline", "template" (as a noun for a
 graph), and "Run" as a heading.
+
+*"Template" means two different things, and only one is ever a UI word.* In engineering docs
+and the wire, *template* is a **prompt template** — reusable prompt text. The reusable thing
+you execute is just a **Graph**: it *is* the blueprint (saved host-level, parameterized by
+declared inputs, `builtIn` starters copied on edit), and the UI never calls it a template or a
+blueprint. When `projects/graph-templates/` says "template", it means a starter graph — a Graph
+shipped as a `builtIn`. If a sentence is ambiguous between the two, say "prompt template" or
+"starter graph"; never bare "template".
 
 == The two flavours
 
@@ -56,9 +77,14 @@ declares a phase plan through `start_run` and the daemon executes it. Non-determ
 in structure, good when the subtasks genuinely cannot be predicted.
 
 *User orchestration* — the user draws a graph; the daemon executes it exactly as drawn.
-Deterministic in structure, and the subject of this document set. The long-term
-convergence is the AI flavour emitting graphs, at which point phases deprecate; that is
-explicitly not v1 work.
+Deterministic in structure, and the subject of this document set.
+
+The long-term convergence is now a recorded decision, in two halves
+(link:12-orchestration-data-model.html[Data Model] §"Decided, not built"): phase runs become a
+*preset graph template* once the graph engine gains a gate node and candidate fan-out; and the
+conductor eventually **emits graphs rather than phase plans** — MCP graph-authoring tools let
+an agent generate, save and start its own templates, made safe by construction because an
+AI-authored graph passes the same shared validation gate as a human-drawn one.
 
 == What the user controls
 
@@ -153,7 +179,8 @@ Otto agent, which is why the expensive parts came free:
 |Seat resolution — a node names a _role_, the active team names the member
 
 |Workspaces & worktrees
-|The execution environment, and per-node write isolation
+|The execution environment. _(Per-node worktree isolation is designed, not built — parallel
+writing nodes share one tree today.)_
 
 |Otto tool catalog + permission modes
 |Per-node authority, enforced at spawn rather than by prompt

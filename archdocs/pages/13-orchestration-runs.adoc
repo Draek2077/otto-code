@@ -10,6 +10,15 @@ an injected port, no daemon dependencies. Its sibling is
 link:14-orchestration-graphs.html[Graph Execution]; both project into the same `Run`. Who fills
 a seat and what it may touch is link:16-orchestration-agents.html[Agent Binding].
 
+[NOTE]
+====
+*Direction:* once the graph engine gains a gate node and candidate fan-out, this engine's
+vocabulary survives as a preset graph template rather than a second scheduler
+(link:12-orchestration-data-model.html[Data Model] §"Decided, not built"). Until both land,
+this page describes the phase engine as built — and the fan-out/judge/keep-best shape below is
+the capability the collapse must preserve.
+====
+
 == The plan vocabulary
 
 The plan names *phase types*, never roles. The dispatcher maps type to role, so a plan stays

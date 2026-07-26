@@ -3,36 +3,39 @@
 
 == Build order
 
-Ordered by dependency and by what is cheap now versus expensive later, not by appeal.
+The design-era staging below is retained for its rationale, with what has since shipped marked.
+**The live, agreed order is the dependency list in
+`projects/graph-templates/graph-templates.md`:** durability boot path → per-node accounting →
+gate + ports → check → run values → turn limit → map → isolation — then the golden-graph
+harness. Of the correctness holes the 2026-07-25 full-set review found, the cancel cascade and
+the seat/template snapshots are **fixed** (same day, engine-tested); the
+deterministic-node-needs-preview widening is settled with the gate step.
 
 [cols="1,2,3"]
 |===
-|Stage |Work |Why this order
+|Stage |Work |Status
 
 |*0 — Structural*
-|Named ports on edges (`fromPort`/`toPort`, absent ⇒ today's defaults); the third node
-result state (`excluded`)
-|Every control node needs multiple ports, and every conditional graph needs a third
-terminal state. Both are two optional fields today, and a coordinated change to schema +
-canvas + engine later.
+|Named ports on edges; the third node result state
+|Third state ✅ shipped as `skipped` + `skipReason`. Ports reserved in the schema, unused —
+land with the gate.
 
 |*1 — Make it real*
-|Structured node output (summary + artifact refs + fields + evidence); Check node; Gate
-node with durable pause; Brief node; per-node tool groups; worktree isolation
-|After this, _researched implementation_ is fully expressible: brief → parallel read-only
-research → plan artifact → human gate → implement in isolation → check → review by a
-different seat → loop until the check passes. That is the first shape a single agent
-genuinely cannot match.
+|Structured node output; Check node; Gate node with durable pause; Brief node; per-node tool
+groups; worktree isolation
+|Structured output ✅ (fields + `submit_output` + prose recovery); tool groups, query tools,
+workspace access ✅. Check, gate, brief, isolation ◻.
 
 |*2 — Make it powerful*
 |Conditional edges + Router; Map fan-out; Merge with a policy; Subgraph
-|_Feature breakout_ becomes expressible: plan emits a list → one implementer per item,
-isolated → each self-checks → integration → verification.
+|Conditional edges ✅ (JSONata on the edge; router-as-node not needed for two-way branches).
+Map, merge policy, subgraph ◻.
 
 |*3 — Make it trustworthy*
-|Run budget with a hard stop; per-node failure policy; checkpoint restore + agent
-adoption; the per-node record
-|Everything here is about a user being willing to press go a second time.
+|Run budget with a hard stop; per-node failure policy; checkpoint restore + agent adoption;
+the per-node record
+|All ◻. Per-node record is promoted to a *precondition* of the template initiative, not a
+stage-3 nicety.
 |===
 
 Deliberately out of scope: reducers with declared merge semantics, time-travel/fork from a
@@ -212,15 +215,20 @@ Run this against the implementation, not the documentation:
 
 == Open questions
 
+Two of the original five are now decided
+(link:12-orchestration-data-model.html[Data Model] §"Decided, not built"): the AI flavour
+**does** eventually emit graphs — phase runs become a preset graph once the gate node and
+candidate fan-out land, and MCP graph-authoring tools are the convergence path — and
+structured output shipped as *enforced with in-session self-correction plus prose recovery*,
+which resolves the enforce-vs-best-effort tension in both directions at once.
+
+Still open:
+
 * Should a graph's drawn topology override the Visualizer's force layout for orchestration
   runs?
-* Does the AI flavour eventually emit graphs — collapsing two engines into one — and if so,
-  what happens to phase-based runs?
 * Where does a gate's timeout belong: per gate, per run, or a host default? And what is the
   correct behaviour when a gate is reached during an unattended scheduled run
   (`docs/safe-unattended.md`)?
 * Do subgraphs need a cycle check on graph references? Rivet has none, and a graph that
   includes itself is a trivially reachable footgun.
-* Should structured node output be *enforced* — retry the node until it emits valid fields
-  — or parsed best-effort? Enforcement costs tokens on every node that declares a contract,
-  and hits local models hardest.
+* May an edge condition read run values, once run values exist?
