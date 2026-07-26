@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { BLACK_LIGHT_VARIANT_COLORS, darkClaudeTheme, meadowTheme } from "@/styles/theme";
+import {
+  BLACK_LIGHT_VARIANT_COLORS,
+  DEFAULT_FONT_CONTRAST,
+  darkClaudeTheme,
+  darkTheme,
+  daylightTheme,
+  meadowTheme,
+} from "@/styles/theme";
 import { applyColorScheme, type ColorSchemeInput } from "./apply-color-scheme";
 
 // These assertions are about *which variant* got painted into a mirror, not
@@ -28,14 +35,32 @@ type ThemeUpdater = (theme: FakeTheme) => FakeTheme;
 // fake of this shape through `unknown` to ThemeUpdater's param is test-only.
 interface FakeTheme {
   colorScheme: "light" | "dark";
-  colors: { accent: string; syntax: Record<string, string> };
+  colors: {
+    accent: string;
+    foreground: string;
+    foregroundMuted: string;
+    mutedForeground: string;
+    primary: string;
+    surface0: string;
+    terminal: { foreground: string; black: string };
+    syntax: Record<string, string>;
+  };
   shadow: { sm: { shadowColor: string } };
 }
 
 function makeFakeTheme(colorScheme: "light" | "dark"): FakeTheme {
   return {
     colorScheme,
-    colors: { accent: "#seed", syntax: { base: "#seed-syntax" } },
+    colors: {
+      accent: "#seed",
+      foreground: "#seed-fg",
+      foregroundMuted: "#seed-fg-muted",
+      mutedForeground: "#seed-muted-fg",
+      primary: "#seed-primary",
+      surface0: "#seed-surface",
+      terminal: { foreground: "#seed-term-fg", black: "#seed-term-black" },
+      syntax: { base: "#seed-syntax" },
+    },
     shadow: { sm: { shadowColor: "#seed-shadow" } },
   };
 }
@@ -46,8 +71,16 @@ function makeInput(overrides: Partial<ColorSchemeInput> = {}): ColorSchemeInput 
     lightTheme: "daylight",
     darkTheme: "dark",
     systemColorScheme: "dark",
+    fontContrast: DEFAULT_FONT_CONTRAST,
     ...overrides,
   };
+}
+
+// Relative luminance, good enough to assert "moved toward/away from the
+// backdrop" without pinning a hex the palettes are free to retune.
+function luminance(hex: string): number {
+  const value = Number.parseInt(hex.slice(1, 7), 16);
+  return 0.299 * ((value >> 16) & 0xff) + 0.587 * ((value >> 8) & 0xff) + 0.114 * (value & 0xff);
 }
 
 function findUpdater(key: "light" | "dark" | "black"): ThemeUpdater {
@@ -177,6 +210,82 @@ describe("applyColorScheme", () => {
     const updater = findUpdater("light");
     const result = updater(makeFakeTheme("light"));
     expect(result.shadow.sm.shadowColor).not.toBe("#seed-shadow");
+  });
+
+  it("leaves the variant's authored inks alone at the default contrast", () => {
+    applyColorScheme(makeInput({ fontContrast: DEFAULT_FONT_CONTRAST }));
+
+    const result = findUpdater("dark")(makeFakeTheme("dark"));
+    expect(result.colors.foreground).toBe(darkTheme.colors.foreground);
+    expect(result.colors.foregroundMuted).toBe(darkTheme.colors.foregroundMuted);
+  });
+
+  it("brightens dark reading ink toward white as contrast rises", () => {
+    applyColorScheme(makeInput({ fontContrast: 1 }));
+
+    const result = findUpdater("dark")(makeFakeTheme("dark"));
+    expect(result.colors.foreground).toBe("#ffffff");
+    expect(luminance(result.colors.foregroundMuted)).toBeGreaterThan(
+      luminance(darkTheme.colors.foregroundMuted),
+    );
+  });
+
+  it("darkens light reading ink toward black as contrast rises", () => {
+    applyColorScheme(makeInput({ fontContrast: 1 }));
+
+    const result = findUpdater("light")(makeFakeTheme("light"));
+    expect(luminance(result.colors.foreground)).toBeLessThan(
+      luminance(daylightTheme.colors.foreground),
+    );
+  });
+
+  it("softens both inks toward the background as contrast falls", () => {
+    applyColorScheme(makeInput({ fontContrast: 0 }));
+
+    const result = findUpdater("dark")(makeFakeTheme("dark"));
+    expect(luminance(result.colors.foreground)).toBeLessThan(
+      luminance(darkTheme.colors.foreground),
+    );
+    expect(luminance(result.colors.foregroundMuted)).toBeLessThan(
+      luminance(darkTheme.colors.foregroundMuted),
+    );
+  });
+
+  it("keeps primary text ahead of muted text at both ends of the range", () => {
+    for (const fontContrast of [0, 1]) {
+      applyColorScheme(makeInput({ fontContrast }));
+      const result = findUpdater("dark")(makeFakeTheme("dark"));
+      expect(luminance(result.colors.foreground)).toBeGreaterThan(
+        luminance(result.colors.foregroundMuted),
+      );
+      updateTheme.mockClear();
+    }
+  });
+
+  it("carries the resolved inks into their aliases and the terminal's text", () => {
+    applyColorScheme(makeInput({ fontContrast: 1 }));
+
+    const result = findUpdater("dark")(makeFakeTheme("dark"));
+    expect(result.colors.primary).toBe(result.colors.foreground);
+    expect(result.colors.mutedForeground).toBe(result.colors.foregroundMuted);
+    expect(result.colors.terminal.foreground).toBe(result.colors.foreground);
+  });
+
+  it("leaves the terminal's ANSI slots out of the contrast patch", () => {
+    applyColorScheme(makeInput({ fontContrast: 1 }));
+
+    const result = findUpdater("dark")(makeFakeTheme("dark"));
+    expect(result.colors.terminal.black).toBe(darkTheme.colors.terminal.black);
+  });
+
+  it("pivots the black mirror on its own pure-black backdrop, not the dark variant's", () => {
+    applyColorScheme(makeInput({ colorSchemeMode: "dark", fontContrast: 0 }));
+
+    const black = findUpdater("black")(makeFakeTheme("dark"));
+    const dark = findUpdater("dark")(makeFakeTheme("dark"));
+    // Same slider position, deeper backdrop — the softened ink has further to
+    // fall, so it must land darker than the standard dark mirror's.
+    expect(luminance(black.colors.foreground)).toBeLessThan(luminance(dark.colors.foreground));
   });
 
   it("leaves a mirror untouched if its colorScheme narrows away (defensive branch)", () => {

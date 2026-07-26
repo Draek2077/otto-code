@@ -276,6 +276,126 @@ function lightenHex(hex: string, amount: number): string {
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
 
+// ---------------------------------------------------------------------------
+// Font contrast — the reading-ink strength control (Appearance → Fonts)
+// ---------------------------------------------------------------------------
+
+// The identity point of the slider: gain 1, every ink exactly as the theme
+// authored it. Deliberately the MIDDLE of the range rather than an end, because
+// the authored palettes are already tuned (dark primary is an off-white
+// #ededee, not #ffffff) — the control exists to move in both directions from
+// that tuning, not to walk down from a maximum nobody actually wants.
+export const DEFAULT_FONT_CONTRAST = 0.5;
+
+// Gain at the two ends. MAX sits just past the point where the brightest
+// authored ink saturates (dark #ededee over #1e1e22 needs ~1.09 to reach
+// #ffffff), so slider 1.0 really does mean pure-white / pure-black primary
+// text. MIN stops well short of 0: this softens text, it never erases it —
+// dark primary bottoms out near 6:1 against its surface, still readable.
+const MAX_FONT_CONTRAST_GAIN = 1.1;
+const MIN_FONT_CONTRAST_GAIN = 0.55;
+
+/** Piecewise-linear map from the 0..1 setting to a multiplier around 1. */
+function fontContrastGain(contrast: number): number {
+  const value = Math.min(1, Math.max(0, contrast));
+  if (value >= DEFAULT_FONT_CONTRAST) {
+    const t = (value - DEFAULT_FONT_CONTRAST) / (1 - DEFAULT_FONT_CONTRAST);
+    return 1 + t * (MAX_FONT_CONTRAST_GAIN - 1);
+  }
+  const t = (DEFAULT_FONT_CONTRAST - value) / DEFAULT_FONT_CONTRAST;
+  return 1 - t * (1 - MIN_FONT_CONTRAST_GAIN);
+}
+
+/**
+ * Pushes `hex` away from (gain > 1) or toward (gain < 1) `backdrop`, per
+ * channel, clamped to the byte range. Expects normalized "#rrggbb" strings.
+ */
+function scaleFromBackdrop(backdrop: string, hex: string, gain: number): string {
+  const bg = Number.parseInt(backdrop.slice(1, 7), 16);
+  const fg = Number.parseInt(hex.slice(1, 7), 16);
+  const channel = (shift: number) => {
+    const b = (bg >> shift) & 0xff;
+    const f = (fg >> shift) & 0xff;
+    return Math.min(255, Math.max(0, Math.round(b + (f - b) * gain)));
+  };
+  const r = channel(16);
+  const g = channel(8);
+  const b = channel(0);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+}
+
+/** The three tokens `resolveInkOverrides` reads off a built palette. */
+export interface InkSource {
+  surface0: string;
+  foreground: string;
+  foregroundMuted: string;
+}
+
+/**
+ * Ink overrides for a resolved contrast, split into the flat color keys and the
+ * nested `terminal` keys because they spread onto different objects.
+ */
+export interface InkOverrides {
+  colors: {
+    foreground: string;
+    foregroundMuted: string;
+    popoverForeground: string;
+    primary: string;
+    secondaryForeground: string;
+    mutedForeground: string;
+  };
+  terminal: {
+    foreground: string;
+    cursor: string;
+    selectionForeground: string;
+  };
+}
+
+/**
+ * Restate a palette's reading inks at the user's chosen contrast.
+ *
+ * Modelled as a GAIN on each ink's distance from the app background
+ * (`ink' = bg + (ink - bg) * gain`), not as a mix toward white/black. That
+ * choice is the whole design: a gain preserves the sign and the ORDER of every
+ * ink relative to the backdrop, so primary text can never cross muted text at
+ * either end of the slider — the type hierarchy survives the full range, which
+ * mixing toward a shared extreme does not (both inks converge on it, and on the
+ * soft end they actually invert).
+ *
+ * Applied to a fully-BUILT palette, after the semantic builders have flattened
+ * `foreground`/`foregroundMuted` into their aliases — hence the aliases are
+ * restated here rather than following automatically. Both builders define them
+ * as those two tokens verbatim; if that ever stops being true, this list is the
+ * place it has to be reconciled.
+ */
+export function resolveInkOverrides(source: InkSource, contrast: number): InkOverrides {
+  const gain = fontContrastGain(contrast);
+  const foreground =
+    gain === 1 ? source.foreground : scaleFromBackdrop(source.surface0, source.foreground, gain);
+  const foregroundMuted =
+    gain === 1
+      ? source.foregroundMuted
+      : scaleFromBackdrop(source.surface0, source.foregroundMuted, gain);
+  return {
+    colors: {
+      foreground,
+      foregroundMuted,
+      popoverForeground: foreground,
+      primary: foreground,
+      secondaryForeground: foreground,
+      mutedForeground: foregroundMuted,
+    },
+    // Terminal body text, caret, and selected text are reading ink too. The
+    // ANSI slots (including `terminal.black`) are NOT — those are color
+    // channels a program addresses by name, not the user's text brightness.
+    terminal: {
+      foreground,
+      cursor: foreground,
+      selectionForeground: foreground,
+    },
+  };
+}
+
 // Ink for text/glyphs sitting on a solid accent *fill* (e.g. the "Active" team
 // pill). Deliberately NOT accentForeground: that token maximizes contrast, so
 // on the light gold/blue accents it lands dark — legible, but the dark glyphs

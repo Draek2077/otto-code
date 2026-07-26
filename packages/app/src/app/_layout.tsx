@@ -632,12 +632,14 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
       lightTheme: settings.lightTheme,
       darkTheme: settings.darkTheme,
       systemColorScheme: osColorScheme,
+      fontContrast: settings.fontContrast,
     });
   }, [
     settingsLoading,
     settings.colorSchemeMode,
     settings.lightTheme,
     settings.darkTheme,
+    settings.fontContrast,
     osColorScheme,
   ]);
 
