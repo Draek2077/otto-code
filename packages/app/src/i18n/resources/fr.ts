@@ -205,7 +205,9 @@ export const fr: TranslationResources = {
     personalitySelector: {
       label: "Contexte affiché pour",
       everyone: "Tout le monde",
-      withLessons: "{{name}}, {{count}} leçons retenues",
+      searchPlaceholder: "Rechercher une personnalité",
+      lessons_one: "{{count}} leçon",
+      lessons_other: "{{count}} leçons",
     },
     memory: {
       noPersonality:
@@ -223,12 +225,18 @@ export const fr: TranslationResources = {
         disabled:
           "La mémoire est désactivée pour cette personnalité, donc rien de tout cela n'est envoyé. Les leçons sont conservées.",
         empty: "Rien n'est ajouté au contexte de cette personnalité dans ce projet.",
+        emptyButStored_one:
+          "La leçon ci-dessous ne s'applique pas à ce projet, donc rien n'est ajouté ici — l'étiquette sur la ligne indique pourquoi.",
+        emptyButStored_other:
+          "Aucune des {{count}} leçons ci-dessous ne s'applique à ce projet, donc rien n'est ajouté ici — l'étiquette sur chaque ligne indique pourquoi.",
         omitted:
           "{{count}} des leçons ci-dessous n'entrent pas dans le budget d'injection et ne sont pas envoyées.",
       },
       scope: {
         global: "Partout",
         project: "Ce projet",
+        elsewhere: "Un autre projet",
+        unattached: "Aucun projet — jamais envoyée",
         change: "Portée : {{scope}}. Touchez pour changer.",
       },
       row: {
@@ -263,6 +271,11 @@ export const fr: TranslationResources = {
       loading: "Analyse de votre contexte…",
       reveal: "Ouvrir {{location}}",
       dismiss: "Ignorer",
+      fixAll: "Fix all",
+      fixAllCount: "Fix {{count}} automatically",
+      fixing: "Fixing…",
+      fixedCount: "Fixed {{count}}",
+      fixFailedCount: "Could not fix {{count}}",
     },
     summary: {
       title: "Contexte envoyé par tour :",

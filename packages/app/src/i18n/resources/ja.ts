@@ -206,7 +206,9 @@ export const ja: TranslationResources = {
     personalitySelector: {
       label: "コンテキストの表示対象",
       everyone: "全員",
-      withLessons: "{{name}}、記憶している教訓 {{count}} 件",
+      searchPlaceholder: "パーソナリティを検索",
+      lessons_one: "教訓 {{count}} 件",
+      lessons_other: "教訓 {{count}} 件",
     },
     memory: {
       noPersonality:
@@ -224,11 +226,17 @@ export const ja: TranslationResources = {
         disabled:
           "このパーソナリティのメモリはオフになっているため、これらは送信されません。教訓は保持されます。",
         empty: "このプロジェクトでは、このパーソナリティのコンテキストに何も追加されていません。",
+        emptyButStored_one:
+          "下の教訓はこのプロジェクトには当てはまらないため、ここには何も追加されません。理由は行のラベルに表示されています。",
+        emptyButStored_other:
+          "下の {{count}} 件の教訓はいずれもこのプロジェクトには当てはまらないため、ここには何も追加されません。理由は各行のラベルに表示されています。",
         omitted: "下の教訓のうち {{count}} 件は注入予算に収まらず、送信されていません。",
       },
       scope: {
         global: "すべての場所",
         project: "このプロジェクト",
+        elsewhere: "別のプロジェクト",
+        unattached: "プロジェクト未設定 — 送信されません",
         change: "適用範囲: {{scope}}。タップで変更します。",
       },
       row: {
@@ -263,6 +271,11 @@ export const ja: TranslationResources = {
       loading: "コンテキストをスキャン中…",
       reveal: "{{location}} を開く",
       dismiss: "閉じる",
+      fixAll: "Fix all",
+      fixAllCount: "Fix {{count}} automatically",
+      fixing: "Fixing…",
+      fixedCount: "Fixed {{count}}",
+      fixFailedCount: "Could not fix {{count}}",
     },
     summary: {
       title: "1ターンごとに送られるコンテキスト:",

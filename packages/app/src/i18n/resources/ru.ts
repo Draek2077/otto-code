@@ -205,7 +205,9 @@ export const ru: TranslationResources = {
     personalitySelector: {
       label: "Контекст показан для",
       everyone: "Все",
-      withLessons: "{{name}}, запомнено уроков: {{count}}",
+      searchPlaceholder: "Поиск личностей",
+      lessons_one: "{{count}} урок",
+      lessons_other: "уроков: {{count}}",
     },
     memory: {
       noPersonality:
@@ -223,11 +225,17 @@ export const ru: TranslationResources = {
         disabled:
           "Память для этой личности отключена, поэтому ничего из этого не отправляется. Уроки при этом сохраняются.",
         empty: "В этом проекте к контексту этой личности ничего не добавляется.",
+        emptyButStored_one:
+          "Урок ниже не относится к этому проекту, поэтому здесь ничего не добавляется — причина указана в подписи к строке.",
+        emptyButStored_other:
+          "Ни один из уроков ниже ({{count}}) не относится к этому проекту, поэтому здесь ничего не добавляется — причина указана в подписи к каждой строке.",
         omitted: "Уроков ниже, не поместившихся в бюджет внедрения и не отправляемых: {{count}}.",
       },
       scope: {
         global: "Везде",
         project: "Этот проект",
+        elsewhere: "Другой проект",
+        unattached: "Без проекта — не отправляется",
         change: "Область: {{scope}}. Нажмите, чтобы изменить.",
       },
       row: {
@@ -262,6 +270,11 @@ export const ru: TranslationResources = {
       loading: "Сканирование контекста…",
       reveal: "Открыть {{location}}",
       dismiss: "Скрыть",
+      fixAll: "Fix all",
+      fixAllCount: "Fix {{count}} automatically",
+      fixing: "Fixing…",
+      fixedCount: "Fixed {{count}}",
+      fixFailedCount: "Could not fix {{count}}",
     },
     summary: {
       title: "Контекст, отправляемый за ход:",

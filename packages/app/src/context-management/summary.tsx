@@ -1,9 +1,11 @@
 import { useCallback, useMemo, useRef, type ReactElement, type ReactNode } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
+import type { SelectFieldOption } from "@/components/ui/select-field";
 import { isWeb } from "@/constants/platform";
+import { ScopeSelect } from "./scope-select";
 import type {
   ContextCategoryTotal,
   ContextReport,
@@ -31,10 +33,10 @@ interface ContextSummaryProps {
   windowTokens: number;
   onWindowTokensChange: (tokens: number) => void;
   /**
-   * The "viewing context for <personality>" selector, rendered directly under
-   * the window presets. Passed in rather than built here so this panel stays a
+   * The "viewing context for <personality>" selector, rendered beside the
+   * window picker. Passed in rather than built here so this panel stays a
    * readout with no knowledge of the roster; both controls answer the same
-   * question ("what am I evaluating against"), so they sit together.
+   * question ("what am I evaluating against"), so they share a row.
    */
   personalitySlot?: ReactNode;
 }
@@ -58,6 +60,26 @@ export function ContextSummary({
   const scrollRef = useRef<ScrollView>(null);
   const scrollbar = useWebScrollViewScrollbar(scrollRef, { enabled: isWeb });
 
+  const windowOptions = useMemo<SelectFieldOption<string>[]>(
+    () =>
+      WINDOW_PRESETS.map((preset) => ({
+        id: String(preset.tokens),
+        value: String(preset.tokens),
+        label: preset.label,
+        testID: `context-window-${preset.label}`,
+      })),
+    [],
+  );
+  // A window the presets do not cover is still a window worth naming — a saved
+  // setting outliving a preset must not read as "nothing selected".
+  const windowLabel =
+    WINDOW_PRESETS.find((preset) => preset.tokens === windowTokens)?.label ??
+    formatTokens(windowTokens);
+  const handleWindowSelect = useCallback(
+    (id: string) => onWindowTokensChange(Number(id)),
+    [onWindowTokensChange],
+  );
+
   return (
     <ScrollView
       ref={scrollRef}
@@ -69,24 +91,20 @@ export function ContextSummary({
       scrollEventThrottle={16}
       showsVerticalScrollIndicator={!isWeb}
     >
-      {/* The picker leads: every number below it is only meaningful relative to
-          the window you are evaluating against. */}
-      <View style={styles.sectionFirst}>
-        <Text style={styles.sectionLabel}>{t("contextManagement.summary.window")}</Text>
-        <View style={styles.presetRow}>
-          {WINDOW_PRESETS.map((preset) => (
-            <WindowPreset
-              key={preset.label}
-              label={preset.label}
-              tokens={preset.tokens}
-              selected={preset.tokens === windowTokens}
-              onSelect={onWindowTokensChange}
-            />
-          ))}
-        </View>
+      {/* The pickers lead: every number below them is only meaningful relative
+          to the window — and to the personality — you are evaluating against.
+          One row, because they are one question asked twice. */}
+      <View style={styles.scopeRow}>
+        <ScopeSelect
+          label={t("contextManagement.summary.window")}
+          value={String(windowTokens)}
+          displayLabel={windowLabel}
+          options={windowOptions}
+          onSelect={handleWindowSelect}
+          testID="context-window-select"
+        />
+        {personalitySlot}
       </View>
-
-      {personalitySlot}
 
       {report ? (
         <>
@@ -194,29 +212,6 @@ function SummaryPlaceholder({
   return <Text style={styles.muted}>{t("contextManagement.summary.empty")}</Text>;
 }
 
-interface WindowPresetProps {
-  label: string;
-  tokens: number;
-  selected: boolean;
-  onSelect: (tokens: number) => void;
-}
-
-function WindowPreset({ label, tokens, selected, onSelect }: WindowPresetProps): ReactElement {
-  const handlePress = useCallback(() => onSelect(tokens), [onSelect, tokens]);
-  const accessibilityState = useMemo(() => ({ selected }), [selected]);
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={accessibilityState}
-      testID={`context-window-${label}`}
-      onPress={handlePress}
-      style={selected ? styles.presetSelected : styles.preset}
-    >
-      <Text style={selected ? styles.presetTextSelected : styles.presetText}>{label}</Text>
-    </Pressable>
-  );
-}
-
 function CategoryBar({ total }: { total: ContextCategoryTotal }): ReactElement {
   const { t } = useTranslation();
   const fillStyle = useMemo(
@@ -269,12 +264,6 @@ const styles = StyleSheet.create((theme) => {
     height: "100%",
     borderRadius: theme.borderRadius.full,
   } as const;
-  const presetBase = {
-    borderWidth: theme.borderWidth[1],
-    borderRadius: theme.borderRadius.md,
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-  } as const;
   return {
     root: {
       flexGrow: 0,
@@ -320,30 +309,19 @@ const styles = StyleSheet.create((theme) => {
       gap: theme.spacing[1],
       marginTop: theme.spacing[2],
     },
-    sectionFirst: {
-      gap: theme.spacing[1],
+    // The two pickers sit side by side and wrap onto separate lines only when
+    // the panel is too narrow to hold both.
+    scopeRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: theme.spacing[2],
     },
     sectionLabel: {
       color: theme.colors.mutedForeground,
       fontSize: bump(theme.fontSize.xs),
       textTransform: "uppercase",
       letterSpacing: 0.5,
-    },
-    presetRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.spacing[1],
-    },
-    preset: { ...presetBase, borderColor: theme.colors.border },
-    presetSelected: { ...presetBase, borderColor: theme.colors.accent },
-    presetText: {
-      color: theme.colors.mutedForeground,
-      fontSize: bump(theme.fontSize.xs),
-    },
-    presetTextSelected: {
-      color: theme.colors.foreground,
-      fontSize: bump(theme.fontSize.xs),
-      fontWeight: "600",
     },
     barRow: {
       gap: theme.spacing[1],

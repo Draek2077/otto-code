@@ -204,7 +204,9 @@ export const ar: TranslationResources = {
     personalitySelector: {
       label: "عرض السياق الخاص بـ",
       everyone: "الجميع",
-      withLessons: "{{name}}، {{count}} درسًا محفوظًا",
+      searchPlaceholder: "ابحث في الشخصيات",
+      lessons_one: "{{count}} درس",
+      lessons_other: "{{count}} درسًا",
     },
     memory: {
       noPersonality: "اختر شخصية من الأعلى لترى ما تعلّمته، وما الذي يضيفه ذلك إلى كل طلب تقوم به.",
@@ -220,11 +222,17 @@ export const ar: TranslationResources = {
         everyRequest: "{{tokens}} في كل طلب",
         disabled: "الذاكرة معطّلة لهذه الشخصية، لذا لا يُرسل أي من هذا. الدروس محفوظة على أي حال.",
         empty: "لا يُضاف أي شيء إلى سياق هذه الشخصية في هذا المشروع.",
+        emptyButStored_one:
+          "الدرس أدناه لا ينطبق على هذا المشروع، لذا لا يُضاف شيء هنا — والوسم على السطر يوضّح السبب.",
+        emptyButStored_other:
+          "لا ينطبق أي من الدروس أدناه ({{count}}) على هذا المشروع، لذا لا يُضاف شيء هنا — والوسم على كل سطر يوضّح السبب.",
         omitted: "{{count}} من الدروس أدناه لم تتّسع لها ميزانية الحقن ولا يجري إرسالها.",
       },
       scope: {
         global: "في كل مكان",
         project: "هذا المشروع",
+        elsewhere: "مشروع آخر",
+        unattached: "بلا مشروع — لا تُرسل أبدًا",
         change: "النطاق: {{scope}}. اضغط للتغيير.",
       },
       row: {
@@ -259,6 +267,11 @@ export const ar: TranslationResources = {
       loading: "جارٍ فحص السياق…",
       reveal: "فتح {{location}}",
       dismiss: "تجاهل",
+      fixAll: "Fix all",
+      fixAllCount: "Fix {{count}} automatically",
+      fixing: "Fixing…",
+      fixedCount: "Fixed {{count}}",
+      fixFailedCount: "Could not fix {{count}}",
     },
     summary: {
       title: "السياق المُرسَل في كل دور:",

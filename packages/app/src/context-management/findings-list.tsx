@@ -3,7 +3,8 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { ContextFinding, ContextNode, ContextReport } from "@otto-code/protocol/messages";
-import { ChevronRight } from "@/components/icons/material-icons";
+import { ChevronRight, Wrench } from "@/components/icons/material-icons";
+import { Button } from "@/components/ui/button";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
@@ -26,6 +27,11 @@ interface ContextFindingsListProps {
   /** First scan, nothing to show yet — "nothing worth fixing" would be a lie. */
   isLoading: boolean;
   onReveal: (target: ContextFindingTarget) => void;
+  /** How many findings a mechanical delete can resolve outright. 0 hides the button. */
+  fixableCount: number;
+  /** A fix-all request is in flight — disables the button and swaps its label. */
+  isFixing: boolean;
+  onFixAll: () => void;
 }
 
 /**
@@ -42,6 +48,9 @@ export function ContextFindingsList({
   report,
   isLoading,
   onReveal,
+  fixableCount,
+  isFixing,
+  onFixAll,
 }: ContextFindingsListProps): ReactElement {
   const { t } = useTranslation();
   const findings = report?.findings ?? [];
@@ -66,6 +75,23 @@ export function ContextFindingsList({
 
   return (
     <View style={styles.listWrap}>
+      {fixableCount > 0 ? (
+        <View style={styles.fixAllRow}>
+          <Button
+            size="sm"
+            variant="outline"
+            leftIcon={Wrench}
+            loading={isFixing}
+            disabled={isFixing}
+            onPress={onFixAll}
+            testID="context-findings-fix-all"
+          >
+            {isFixing
+              ? t("contextManagement.findings.fixing")
+              : t("contextManagement.findings.fixAllCount", { count: fixableCount })}
+          </Button>
+        </View>
+      ) : null}
       <ScrollView
         ref={listRef}
         style={styles.list}
@@ -187,6 +213,13 @@ const styles = StyleSheet.create((theme) => ({
   listWrap: {
     flex: 1,
     minHeight: 0,
+  },
+  fixAllRow: {
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: theme.colors.border,
+    alignItems: "flex-start",
   },
   list: { flex: 1 },
   empty: {

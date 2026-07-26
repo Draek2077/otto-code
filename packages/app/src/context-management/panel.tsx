@@ -272,12 +272,67 @@ export function ContextManagementPanel(): ReactElement {
     [sidebarWidthStyle],
   );
 
+  // Converting rewrites the parent file, so the report must be re-read
+  // afterwards — the daemon also pushes a fresh one, this just closes the gap.
+  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
+
+  // "Fix all" targets every finding the scan already proved has a safe
+  // mechanical answer (`fixable`) — the daemon computed that per kind, this
+  // just resolves each one's node back to the file path the fix RPC needs.
+  const fixableFindings = useMemo(() => {
+    if (!report) return [];
+    return report.findings.flatMap((finding) => {
+      if (!finding.fixable || !finding.range || finding.snippet == null || !finding.nodeId) {
+        return [];
+      }
+      const node = report.nodes.find((candidate) => candidate.id === finding.nodeId);
+      if (!node) return [];
+      return [{ filePath: node.path, range: finding.range, snippet: finding.snippet }];
+    });
+  }, [report]);
+
+  const [fixingAll, setFixingAll] = useState(false);
+  const handleFixAll = useCallback(() => {
+    if (!client || !workspaceId || fixableFindings.length === 0) return;
+    setFixingAll(true);
+    void (async () => {
+      try {
+        const result = await client.requestContextFindingsFix({
+          workspaceId,
+          findings: fixableFindings,
+        });
+        if (result.fixedCount > 0) {
+          toast.show(t("contextManagement.findings.fixedCount", { count: result.fixedCount }), {
+            variant: "success",
+          });
+        }
+        if (result.failedCount > 0) {
+          toast.error(
+            t("contextManagement.findings.fixFailedCount", { count: result.failedCount }),
+          );
+        }
+        refresh();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : String(error));
+      } finally {
+        setFixingAll(false);
+      }
+    })();
+  }, [client, fixableFindings, refresh, t, toast, workspaceId]);
+
   // One tabbed body, rendered identically in both layouts — only its container
   // differs (a fixed sidebar column vs. a block in the phone's scroll).
   let sidebarBody: ReactElement;
   if (sidebarTab === "findings") {
     sidebarBody = (
-      <ContextFindingsList report={report} isLoading={isLoading} onReveal={handleRevealFinding} />
+      <ContextFindingsList
+        report={report}
+        isLoading={isLoading}
+        onReveal={handleRevealFinding}
+        fixableCount={fixableFindings.length}
+        isFixing={fixingAll}
+        onFixAll={handleFixAll}
+      />
     );
   } else if (sidebarTab === "memory") {
     sidebarBody = (
@@ -307,9 +362,6 @@ export function ContextManagementPanel(): ReactElement {
   }
   const findingCount = report?.findings.length ?? 0;
 
-  // Converting rewrites the parent file, so the report must be re-read
-  // afterwards — the daemon also pushes a fresh one, this just closes the gap.
-  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const [converting, setConverting] = useState(false);
   const inbound = useMemo(
     () => findInboundEdge(report, selectedNode?.id ?? null),

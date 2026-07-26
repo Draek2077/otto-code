@@ -1,7 +1,7 @@
 import { useCallback, useMemo, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
+import type { SelectFieldOption } from "@/components/ui/select-field";
+import { ScopeSelect } from "./scope-select";
 import type { AgentPersonality } from "@otto-code/protocol/messages";
 
 /**
@@ -17,16 +17,22 @@ import type { AgentPersonality } from "@otto-code/protocol/messages";
  * weight every agent here carries regardless of who runs, which is exactly what
  * you want when you are hunting bloat in the project's own files.
  *
- * Rendered as the same wrapping chip row as the window presets directly above
- * it, on purpose — both answer "what am I evaluating against", and giving the
- * second one a dropdown would make two sibling questions look unrelated.
+ * Rendered as the same dropdown as the window picker beside it, on purpose —
+ * both answer "what am I evaluating against", and a roster that grows every time
+ * someone names a personality is exactly the list that must not be a chip row.
  */
+
+/** Above this many, scanning the list stops being faster than typing a name. */
+const SEARCHABLE_ROSTER_SIZE = 8;
+
+/** Not a personality id — "Everyone" is a selection, so it needs one of its own. */
+const EVERYONE_ID = "everyone";
 
 interface ContextPersonalitySelectorProps {
   personalities: readonly AgentPersonality[];
   /** null = "Everyone": the personality-agnostic report. */
   selectedId: string | null;
-  /** Lesson counts by personality id, for the accrual dot. */
+  /** Lesson counts by personality id, for the accrual count. */
   memoryCounts: Record<string, number>;
   onSelect: (personalityId: string | null) => void;
 }
@@ -38,133 +44,59 @@ export function ContextPersonalitySelector({
   onSelect,
 }: ContextPersonalitySelectorProps): ReactElement | null {
   const { t } = useTranslation();
-  // A host with no personalities has nothing to choose between, and an empty
-  // selector would just be a label over a single dead chip.
+  const everyoneLabel = t("contextManagement.personalitySelector.everyone");
+
+  const options = useMemo<SelectFieldOption<string>[]>(
+    () => [
+      {
+        id: EVERYONE_ID,
+        value: EVERYONE_ID,
+        label: everyoneLabel,
+        testID: `context-personality-${EVERYONE_ID}`,
+      },
+      ...personalities.map((personality) => {
+        const lessonCount = memoryCounts[personality.id] ?? 0;
+        return {
+          id: personality.id,
+          value: personality.id,
+          label: personality.name,
+          // A count, not a dot: "12 lessons" is what makes the weight below
+          // believable, and it is also what makes deleting this personality
+          // feel like a decision.
+          description:
+            lessonCount > 0
+              ? t("contextManagement.personalitySelector.lessons", { count: lessonCount })
+              : undefined,
+          testID: `context-personality-${personality.id}`,
+        };
+      }),
+    ],
+    [everyoneLabel, memoryCounts, personalities, t],
+  );
+
+  const handleSelect = useCallback(
+    (id: string) => onSelect(id === EVERYONE_ID ? null : id),
+    [onSelect],
+  );
+
+  // A host with no personalities has nothing to choose between, and a selector
+  // whose only answer is "Everyone" is a dead control.
   if (personalities.length === 0) {
     return null;
   }
+
+  const selectedName = personalities.find((personality) => personality.id === selectedId)?.name;
+
   return (
-    <View style={styles.section} testID="context-personality-selector">
-      <Text style={styles.sectionLabel}>{t("contextManagement.personalitySelector.label")}</Text>
-      <View style={styles.chipRow}>
-        <PersonalityChip
-          label={t("contextManagement.personalitySelector.everyone")}
-          personalityId={null}
-          selected={selectedId === null}
-          lessonCount={0}
-          onSelect={onSelect}
-        />
-        {personalities.map((personality) => (
-          <PersonalityChip
-            key={personality.id}
-            label={personality.name}
-            personalityId={personality.id}
-            selected={selectedId === personality.id}
-            lessonCount={memoryCounts[personality.id] ?? 0}
-            onSelect={onSelect}
-          />
-        ))}
-      </View>
-    </View>
+    <ScopeSelect
+      label={t("contextManagement.personalitySelector.label")}
+      value={selectedId ?? EVERYONE_ID}
+      displayLabel={selectedName ?? everyoneLabel}
+      options={options}
+      onSelect={handleSelect}
+      searchable={personalities.length >= SEARCHABLE_ROSTER_SIZE}
+      searchPlaceholder={t("contextManagement.personalitySelector.searchPlaceholder")}
+      testID="context-personality-selector"
+    />
   );
 }
-
-interface PersonalityChipProps {
-  label: string;
-  personalityId: string | null;
-  selected: boolean;
-  lessonCount: number;
-  onSelect: (personalityId: string | null) => void;
-}
-
-function PersonalityChip({
-  label,
-  personalityId,
-  selected,
-  lessonCount,
-  onSelect,
-}: PersonalityChipProps): ReactElement {
-  const { t } = useTranslation();
-  const handlePress = useCallback(() => onSelect(personalityId), [onSelect, personalityId]);
-  const accessibilityState = useMemo(() => ({ selected }), [selected]);
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={accessibilityState}
-      accessibilityLabel={
-        lessonCount > 0
-          ? t("contextManagement.personalitySelector.withLessons", {
-              name: label,
-              count: lessonCount,
-            })
-          : label
-      }
-      testID={`context-personality-${personalityId ?? "everyone"}`}
-      onPress={handlePress}
-      style={selected ? styles.chipSelected : styles.chip}
-    >
-      <Text style={selected ? styles.chipTextSelected : styles.chipText} numberOfLines={1}>
-        {label}
-      </Text>
-      {/* A count, not a dot: "12 lessons" is what makes the weight below
-          believable, and it is also what makes deleting this personality feel
-          like a decision. */}
-      {lessonCount > 0 ? <Text style={styles.chipCount}>{lessonCount}</Text> : null}
-    </Pressable>
-  );
-}
-
-// Matches the summary's own +2 compact bump so the two chip rows read as one
-// control group rather than two sizes of the same thing.
-function bump(size: number) {
-  return { xs: size + 2, md: size };
-}
-
-const styles = StyleSheet.create((theme) => {
-  const chipBase = {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    borderWidth: theme.borderWidth[1],
-    borderRadius: theme.borderRadius.md,
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    maxWidth: 180,
-  } as const;
-  return {
-    section: {
-      gap: theme.spacing[1],
-      marginTop: theme.spacing[2],
-    },
-    sectionLabel: {
-      color: theme.colors.mutedForeground,
-      fontSize: bump(theme.fontSize.xs),
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
-    },
-    chipRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.spacing[1],
-    },
-    chip: { ...chipBase, borderColor: theme.colors.border },
-    chipSelected: { ...chipBase, borderColor: theme.colors.accent },
-    chipText: {
-      color: theme.colors.mutedForeground,
-      fontSize: bump(theme.fontSize.xs),
-      flexShrink: 1,
-    },
-    chipTextSelected: {
-      color: theme.colors.foreground,
-      fontSize: bump(theme.fontSize.xs),
-      fontWeight: "600",
-      flexShrink: 1,
-    },
-    chipCount: {
-      color: theme.colors.accent,
-      fontSize: bump(theme.fontSize.xs),
-      fontVariant: ["tabular-nums"],
-      flexShrink: 0,
-    },
-  };
-});

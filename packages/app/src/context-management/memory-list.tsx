@@ -129,7 +129,10 @@ export function ContextMemoryList({
         ) : null}
 
         {entries.length === 0 ? (
-          <Text style={styles.emptyText} testID="context-memory-empty">
+          // Inset to the same gutter as the brief card above and the rows below.
+          // Full-bleed here reads as a different surface rather than the same
+          // list continuing.
+          <Text style={styles.listEmptyText} testID="context-memory-empty">
             {t("contextManagement.memory.emptyNamed", {
               name: view?.personalityName ?? t("contextManagement.memory.emptyFallbackName"),
             })}
@@ -139,6 +142,7 @@ export function ContextMemoryList({
             <MemoryRow
               key={entry.id}
               entry={entry}
+              currentProjectRoot={view?.projectRoot ?? null}
               onSave={onSaveEntry}
               onDrop={onDropEntry}
               onWriteError={setWriteError}
@@ -204,7 +208,16 @@ function InjectedBrief({ view }: { view: PersonalityMemoryView }): ReactElement 
           {view.brief}
         </Text>
       ) : (
-        <Text style={styles.briefMuted}>{t("contextManagement.memory.brief.empty")}</Text>
+        // "Nothing is injected" and "nothing is stored" are different facts, and
+        // saying only the first while rows sit below it reads as a bug rather
+        // than as scoping. When there ARE lessons, say why none of them apply.
+        <Text style={styles.briefMuted}>
+          {view.entries.length > 0
+            ? t("contextManagement.memory.brief.emptyButStored", {
+                count: view.entries.length,
+              })
+            : t("contextManagement.memory.brief.empty")}
+        </Text>
       )}
       {view.briefOmittedCount > 0 ? (
         <Text style={styles.briefMuted}>
@@ -217,16 +230,29 @@ function InjectedBrief({ view }: { view: PersonalityMemoryView }): ReactElement 
 
 interface MemoryRowProps {
   entry: PersonalityMemoryEntryPayload;
+  /** The root the brief above was composed for; null when there is no project. */
+  currentProjectRoot: string | null;
   onSave: (input: { entryId: string; text?: string; scope?: string }) => Promise<string | null>;
   onDrop: (entryId: string) => Promise<string | null>;
   onWriteError: (error: string | null) => void;
 }
 
-function MemoryRow({ entry, onSave, onDrop, onWriteError }: MemoryRowProps): ReactElement {
+function MemoryRow({
+  entry,
+  currentProjectRoot,
+  onSave,
+  onDrop,
+  onWriteError,
+}: MemoryRowProps): ReactElement {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const isCompact = useIsCompactFormFactor();
+  // Which project this lesson reaches, from here. The brief above only carries
+  // "Everywhere" plus this project's, so a row that says nothing more than "This
+  // project" while the brief says nothing is indistinguishable from a bug.
+  const reach = resolveReach(entry, currentProjectRoot);
+  const reachesHere = reach === "global" || reach === "project";
   // Hover-to-show only works on web; on touch and on a phone the controls have
   // to be permanently visible or they are unreachable (see docs/hover.md).
   const showActions = isHovered || isNative || isCompact;
@@ -284,10 +310,8 @@ function MemoryRow({ entry, onSave, onDrop, onWriteError }: MemoryRowProps): Rea
     >
       <Text style={styles.rowText}>{entry.text}</Text>
       <View style={styles.rowMeta}>
-        <Text style={styles.rowScope}>
-          {entry.scope === "global"
-            ? t("contextManagement.memory.scope.global")
-            : t("contextManagement.memory.scope.project")}
+        <Text style={reachesHere ? styles.rowScope : styles.rowScopeInert}>
+          {t(`contextManagement.memory.scope.${reach}`)}
         </Text>
         {(entry.reinforcedCount ?? 1) > 1 ? (
           <Text style={styles.rowScope}>
@@ -418,6 +442,39 @@ function MemoryComposer({
   );
 }
 
+type MemoryReach = "global" | "project" | "elsewhere" | "unattached";
+
+/**
+ * How far a stored lesson actually reaches, seen from the project the brief was
+ * composed for. The daemon filters project entries by comparing roots, so the
+ * three "project" cases are not the same thing at all: this project's lesson is
+ * injected, another project's is not, and one with no root is injected nowhere.
+ *
+ * `currentProjectRoot === null` means the daemon resolved no project (or is old
+ * enough not to send the field). Nothing can be compared then, so every
+ * project-scoped entry stays plain "This project" rather than being accused of
+ * belonging elsewhere.
+ */
+function resolveReach(
+  entry: PersonalityMemoryEntryPayload,
+  currentProjectRoot: string | null,
+): MemoryReach {
+  if (entry.scope === "global") return "global";
+  if (!entry.projectRoot) return "unattached";
+  if (!currentProjectRoot) return "project";
+  return normalizeRoot(entry.projectRoot) === normalizeRoot(currentProjectRoot)
+    ? "project"
+    : "elsewhere";
+}
+
+/** Mirrors the daemon's root comparison — trailing separators, slashes, case. */
+function normalizeRoot(root: string): string {
+  return root
+    .replace(/[\\/]+$/, "")
+    .replace(/\\/g, "/")
+    .toLowerCase();
+}
+
 function truncate(text: string): string {
   const trimmed = text.trim();
   return trimmed.length > 80 ? `${trimmed.slice(0, 80)}…` : trimmed;
@@ -451,6 +508,16 @@ const styles = StyleSheet.create((theme) => {
     emptyText: {
       color: theme.colors.mutedForeground,
       fontSize: bump(theme.fontSize.sm),
+    },
+    // The in-list variant. `empty` above wraps the whole-pane states and carries
+    // its own padding; this one sits inside the scroller between the brief card
+    // and the add row, so it has to match their gutter itself.
+    listEmptyText: {
+      color: theme.colors.mutedForeground,
+      fontSize: bump(theme.fontSize.sm),
+      paddingHorizontal: theme.spacing[3],
+      paddingTop: theme.spacing[1],
+      paddingBottom: theme.spacing[3],
     },
     errorText: {
       color: theme.colors.statusDanger,
@@ -525,6 +592,15 @@ const styles = StyleSheet.create((theme) => {
     rowScope: {
       color: theme.colors.mutedForeground,
       fontSize: bump(theme.fontSize.xs),
+      flexShrink: 0,
+    },
+    // A lesson that is stored but not reaching this project. Dimmer than muted
+    // rather than a warning colour: it is a fact about scope, not a fault.
+    rowScopeInert: {
+      color: theme.colors.mutedForeground,
+      opacity: 0.6,
+      fontSize: bump(theme.fontSize.xs),
+      fontStyle: "italic",
       flexShrink: 0,
     },
     rowSpacer: {

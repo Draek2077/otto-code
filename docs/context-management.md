@@ -133,6 +133,16 @@ Three rules ride with the percentage:
 factor the three panes collapse to a drill-down stack (summary → tree → editor) with back
 navigation.
 
+**Both scope pickers are dropdowns, on one row.** _"Evaluate against"_ (window) and _"Viewing
+context for"_ (personality) share `scope-select.tsx`, which wraps `SelectField` and puts the label
+inside the trigger so each control reads as a sentence its value finishes. They started as two
+wrapping chip rows and cost four rows of the panel's first screen before a single number appeared —
+and the personality row grew without bound, one chip per name the host collects. A dropdown costs
+one row whatever the roster does, and it has somewhere to put the search field that a long roster
+needs (`SEARCHABLE_ROSTER_SIZE`, currently 8). Anything else that has to be chosen up here goes in
+the same row, in the same control — this is the panel's densest screen and it does not get a third
+shape.
+
 ### Never open on a blank tab
 
 A scan is a filesystem walk of every context file the provider loads plus every markdown file they
@@ -215,8 +225,8 @@ one-line convention).
 
 **Every finding says where it is.** A finding is stamped with its owning `nodeId` and 1-based
 `line`/`lineEnd` as it is created (`finding-location.ts`); the flat report list has no other way to
-know, and a row that cannot name its file is a complaint rather than a task. The "Worth fixing" row
-is therefore a jump — it forces the file out of rendered-markdown preview into the editor (a
+know, and a row that cannot name its file is a complaint rather than a task. The Issues row is
+therefore a jump — it forces the file out of rendered-markdown preview into the editor (a
 finding is a request to _edit_, so it overrides the per-file mode memory exactly as the explorer's
 "Edit" does), **selects** the offending span via `EditorController.selectLines`, scrolls it to
 centre and focuses so one keystroke replaces it, reveals and selects the file's row in the tree,
@@ -243,6 +253,27 @@ Three traps paid for once, worth not re-learning:
   silently never scrolls.
 - **Finding ranges are UTF-16 string indices, not byte offsets**, despite the field's name — which
   is why the client is handed line numbers rather than raw offsets to map itself.
+
+### Fix all: mechanical deletes only, no model in the loop
+
+Four of the seven finding kinds have a safe answer a plain delete can give: `dead_import` and
+`dead_reference` are just removed, `duplicate_within_file` and `duplicate_across_scope` are a copy
+of content that survives elsewhere. `finding-location.ts` stamps that verdict once, centrally, as
+`fixable` — every finding also carries a `snippet` (the exact text at `range` when scanned), which
+is the staleness guard `context.findings.fix` checks before deleting anything.
+
+`import_cycle` (which edge to cut), `oversized_memory_entry` (where to split it), and
+`depth_capped` (nothing to delete at all) stay off the fixable list on purpose — those need
+judgment a mechanical pass cannot supply, and shipping a wrong guess there would cost more trust
+than leaving the row for a human.
+
+The Issues tab's "Fix all" button (`findings-list.tsx`) sends every fixable finding's
+`{filePath, range, snippet}` in one `context.findings.fix.request`. `finding-fix.ts` groups them by
+file and deletes back-to-front by range within each file — an earlier deletion never shifts the
+offset a later one still needs — verifying each snippet against the file's _current_ contents
+first, so an edit made since the scan skips that one finding rather than corrupting the file. A
+non-empty `fixedCount` invalidates the report and pushes a fresh one, the same reconciliation
+`context.edge.convert` already does.
 
 ### Compaction is Refine, not a feature of its own
 

@@ -42,6 +42,13 @@ export interface PersonalityMemoryView {
   brief: string;
   briefTokens: number;
   briefOmittedCount: number;
+  /**
+   * The project root the brief was composed for. Lets the list mark a
+   * project-scoped lesson that belongs somewhere else — otherwise an empty brief
+   * sitting above a list of lessons has no explanation. null when the daemon
+   * resolved no project (or predates the field).
+   */
+  projectRoot: string | null;
 }
 
 export interface PersonalityMemoryResult {
@@ -106,6 +113,7 @@ export function usePersonalityMemory(
           brief: payload.brief,
           briefTokens: payload.briefTokens,
           briefOmittedCount: payload.briefOmittedCount ?? 0,
+          projectRoot: payload.projectRoot ?? null,
         });
       } catch (cause) {
         if (activeRef.current !== generation) return;
@@ -126,7 +134,14 @@ export function usePersonalityMemory(
     }): Promise<string | null> => {
       if (!client || !personalityId) return "Not connected.";
       try {
-        const result = await client.updatePersonalityMemory({ personalityId, ...input });
+        // The workspace rides along on every write, not just the reads: a
+        // project-scoped lesson has to be bound to the same root the brief
+        // filters on, and only the daemon can resolve a worktree back to it.
+        const result = await client.updatePersonalityMemory({
+          personalityId,
+          ...(workspaceId ? { workspaceId } : {}),
+          ...input,
+        });
         if (!result.ok) return result.error ?? "The change could not be saved.";
         reload();
         return null;
@@ -134,7 +149,7 @@ export function usePersonalityMemory(
         return cause instanceof Error ? cause.message : String(cause);
       }
     },
-    [client, personalityId, reload],
+    [client, personalityId, reload, workspaceId],
   );
 
   const saveEntry = useCallback(
