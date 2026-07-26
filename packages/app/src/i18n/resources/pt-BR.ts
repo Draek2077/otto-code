@@ -130,6 +130,8 @@ export const ptBR: TranslationResources = {
       unmuteVoice: "Ativar som da voz",
       muteVoice: "Silenciar voz",
       dictation: "Ditado",
+      enableAutoSpeech: "Ler as respostas em voz alta",
+      disableAutoSpeech: "Parar de ler as respostas em voz alta",
       interruptBeforeVoice: "Interrompa o agente antes de iniciar o modo de voz",
     },
     attachments: {

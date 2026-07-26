@@ -129,6 +129,8 @@ export const es: TranslationResources = {
       unmuteVoice: "Activar voz",
       muteVoice: "voz muda",
       dictation: "Dictado",
+      enableAutoSpeech: "Leer las respuestas en voz alta",
+      disableAutoSpeech: "Dejar de leer las respuestas en voz alta",
       interruptBeforeVoice: "Interrumpir al agente antes de iniciar el modo de voz.",
     },
     attachments: {

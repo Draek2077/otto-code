@@ -130,6 +130,8 @@ export const ru: TranslationResources = {
       unmuteVoice: "Включить звук",
       muteVoice: "Отключить голос",
       dictation: "Диктант",
+      enableAutoSpeech: "Читать ответы вслух",
+      disableAutoSpeech: "Прекратить чтение вслух",
       interruptBeforeVoice: "Прерывайте агента перед запуском голосового режима",
     },
     attachments: {

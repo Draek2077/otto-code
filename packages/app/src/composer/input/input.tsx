@@ -70,6 +70,7 @@ import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import { isImeComposingKeyboardEvent } from "@/utils/keyboard-ime";
 import { isWeb } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { AutoSpeechButton } from "./auto-speech-button";
 import { useComposerHeightMirror } from "./height-mirror";
 import { MIN_INPUT_HEIGHT, resolveMaxInputHeight } from "./max-height";
 import {
@@ -1999,8 +2000,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 {leftContent}
               </View>
 
-              {/* Right: voice button, contextual button (realtime/send/cancel) */}
+              {/* Right: auto-speech toggle, voice button, contextual button
+                  (realtime/send/cancel) */}
               <View style={styles.rightButtonGroup} onLayout={handleToolbarRightLayout}>
+                <AutoSpeechButton serverId={voiceServerId} buttonIconSize={buttonIconSize} />
                 <VoiceButtonTooltip
                   onVoicePress={handleVoicePress}
                   isDictationStartEnabled={isDictationStartEnabled}

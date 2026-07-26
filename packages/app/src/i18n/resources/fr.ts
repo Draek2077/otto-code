@@ -130,6 +130,8 @@ export const fr: TranslationResources = {
       unmuteVoice: "Réactiver la voix",
       muteVoice: "Voix muette",
       dictation: "Dictée",
+      enableAutoSpeech: "Lire les réponses à voix haute",
+      disableAutoSpeech: "Arrêter la lecture à voix haute",
       interruptBeforeVoice: "Interrompre l'agent avant de démarrer le mode vocal",
     },
     attachments: {

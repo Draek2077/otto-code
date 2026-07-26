@@ -113,6 +113,7 @@ import {
   type WebNotificationClickDetail,
 } from "@/utils/os-notifications";
 import { AgentVoiceCuesHost } from "@/voice/agent-voice-cues-host";
+import { AutoSpeechHost } from "@/voice/auto-speech-host";
 
 polyfillCrypto();
 
@@ -685,6 +686,10 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
           app-global, above the router — and is independent of the Visualizer
           entirely. Headless: it fires the cue audio and renders nothing. */}
       <AgentVoiceCuesHost />
+      {/* Auto-speech reads incoming replies aloud. Headless, and mounted here
+          for the same two reasons as the cues: the shared audio engine resolves
+          inside VoiceProvider, and a route change must not cut a queue short. */}
+      <AutoSpeechHost />
       {/* Headless: binds the resource monitor started above the router to the
           `resourceMonitorEnabled` setting, so the telemetry can be turned off. */}
       <ResourceMonitorHost />

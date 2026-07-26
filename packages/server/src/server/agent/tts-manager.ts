@@ -3,7 +3,7 @@ import type { Readable } from "node:stream";
 import { v4 as uuidv4 } from "uuid";
 import type { SpeechVoiceOverride, TextToSpeechProvider } from "../speech/speech-provider.js";
 import { toResolver, type Resolvable } from "../speech/provider-resolver.js";
-import { markdownToSpokenText } from "../speech/speech-text.js";
+import { appendPauseSilence, splitTextForTts, type TtsSegment } from "../speech/tts-segmenter.js";
 import type { SessionOutboundMessage } from "../messages.js";
 
 interface PendingPlayback {
@@ -23,11 +23,6 @@ interface GroupPlayback {
   dispose: () => void;
 }
 
-interface TtsSegment {
-  index: number;
-  text: string;
-}
-
 type PreparedTtsSegment = TtsSegment & {
   format: string;
   stream: Readable;
@@ -38,105 +33,8 @@ type PreparedSegmentResult =
   | { kind: "aborted" }
   | { kind: "error"; error: unknown };
 
-const MAX_TTS_SEGMENT_CHARS = 260;
 const TTS_PREFETCH_SEGMENTS = 2;
 const CLOSED_AUDIO_ID_TTL_MS = 10_000;
-
-function splitOversizedFragment(fragment: string, maxChars: number): string[] {
-  const trimmed = fragment.trim();
-  if (!trimmed) {
-    return [];
-  }
-
-  if (trimmed.length <= maxChars) {
-    return [trimmed];
-  }
-
-  const clauseChunks = trimmed.split(/(?<=[,;:])\s+/);
-  if (clauseChunks.length > 1) {
-    const parts: string[] = [];
-    let current = "";
-
-    const pushCurrent = () => {
-      const value = current.trim();
-      if (value) {
-        parts.push(value);
-      }
-      current = "";
-    };
-
-    for (const clause of clauseChunks) {
-      const clauseText = clause.trim();
-      if (!clauseText) {
-        continue;
-      }
-
-      if (clauseText.length > maxChars) {
-        pushCurrent();
-        parts.push(...splitOversizedFragment(clauseText, maxChars));
-        continue;
-      }
-
-      if (!current) {
-        current = clauseText;
-        continue;
-      }
-
-      const candidate = `${current} ${clauseText}`;
-      if (candidate.length <= maxChars) {
-        current = candidate;
-        continue;
-      }
-
-      pushCurrent();
-      current = clauseText;
-    }
-
-    pushCurrent();
-    if (parts.length > 1 || parts[0] !== trimmed) {
-      return parts;
-    }
-  }
-
-  const parts: string[] = [];
-  let remaining = trimmed;
-  while (remaining.length > maxChars) {
-    let idx = remaining.lastIndexOf(" ", maxChars);
-    if (idx < Math.floor(maxChars * 0.5)) {
-      idx = maxChars;
-    }
-    parts.push(remaining.slice(0, idx).trim());
-    remaining = remaining.slice(idx).trim();
-  }
-  if (remaining.length > 0) {
-    parts.push(remaining);
-  }
-  return parts;
-}
-
-function splitTextForTts(text: string): TtsSegment[] {
-  // Agent replies are markdown; speak what the chat renders, not the syntax
-  // that styles it. Applied here so every caller — voice mode and the
-  // per-message playback button — is covered by one pass. See speech-text.ts.
-  const normalized = markdownToSpokenText(text).replace(/\s+/g, " ").trim();
-  if (!normalized) {
-    throw new Error("Cannot synthesize empty text");
-  }
-
-  const sentences = normalized.split(/(?<=[.!?])\s+/);
-  const parts: TtsSegment[] = [];
-  let segmentIndex = 0;
-
-  for (const sentence of sentences) {
-    const fragments = splitOversizedFragment(sentence, MAX_TTS_SEGMENT_CHARS);
-    for (const fragment of fragments) {
-      parts.push({ index: segmentIndex, text: fragment });
-      segmentIndex += 1;
-    }
-  }
-
-  return parts;
-}
 
 /**
  * Per-session TTS manager
@@ -197,6 +95,7 @@ export class TTSManager {
         segments: segments.map((s) => ({
           index: s.index,
           chars: s.text.length,
+          pauseAfterMs: s.pauseAfterMs,
           text: s.text.slice(0, 80),
         })),
       },
@@ -279,7 +178,12 @@ export class TTSManager {
         if (buffer && buffer.length > 0) {
           // The previously held segment is now known not to be the last — ship it.
           flushHeld(false);
-          held = { buffer, format: result.prepared.format };
+          // The pause the segment's punctuation owes rides inside its own PCM;
+          // the client splices chunks gapless, so this is where cadence lives.
+          held = {
+            buffer: appendPauseSilence(buffer, result.prepared.format, segment.pauseAfterMs),
+            format: result.prepared.format,
+          };
         }
 
         scheduleNextSegments();
@@ -365,7 +269,9 @@ export class TTSManager {
             group,
             chunkIndex: 0,
             isLastChunk: true,
-            buffer,
+            // Each sentence is its own group played back-to-back by the client
+            // queue; the punctuation pause rides inside the segment's PCM.
+            buffer: appendPauseSilence(buffer, result.prepared.format, segment.pauseAfterMs),
             format: result.prepared.format,
             isVoiceMode: false,
             emitMessage,

@@ -190,6 +190,13 @@ export interface AppSettings {
   // the feature configured and the header button present; disabling removes the
   // button entirely, because there is nothing left to mute. Device-local.
   agentVoiceCuesMuted: boolean;
+  // Auto-speech: read every incoming assistant message aloud, queued so playback
+  // never talks over itself. Flipped from the composer's speaker toggle, which is
+  // its only UI — this is the mode, not a preference about one chat. Device-local
+  // for the same reason the cue settings are: it gates what THIS device's speaker
+  // does. Off by default; a device that started talking on its own after an
+  // update would be a bad surprise. See docs/message-playback.md.
+  autoSpeech: boolean;
   previewServerCloseBehavior: PreviewServerCloseBehavior;
   previewAutoStartOnRestore: boolean;
   compactSidebarTopSpacing: boolean;
@@ -479,6 +486,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   agentVoiceCues: true,
   agentVoiceCuesVolume: 50,
   agentVoiceCuesMuted: false,
+  autoSpeech: false,
   previewServerCloseBehavior: "keep-running",
   previewAutoStartOnRestore: false,
   compactSidebarTopSpacing: false,
@@ -792,6 +800,7 @@ function pickFontSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
 const WORKSPACE_LAYOUT_BOOLEAN_KEYS = [
   "autoExpandReasoning",
   "voiceThinkingTone",
+  "autoSpeech",
   "compactSidebarTopSpacing",
   "blackTabBackground",
   "groupConsecutiveActions",

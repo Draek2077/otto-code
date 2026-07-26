@@ -695,10 +695,24 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       enabled: agent.status === "running",
     });
 
+    // The growing end of the live turn: the last assistant item the reveal spans
+    // cover, which is the one the model is still appending to (block promotion
+    // always adds the new segment last). Undefined when nothing is running, so
+    // every item then counts as finished. Consumers that treat a message as a
+    // complete thing — the playback button, the auto-speech queue — key off it.
+    const liveTurnTailItemId = useMemo(() => {
+      let tailId: string | undefined;
+      for (const itemId of liveTurnReveal.spans.keys()) {
+        tailId = itemId;
+      }
+      return tailId;
+    }, [liveTurnReveal]);
+
     const renderAssistantMessageItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "assistant_message" }>) => {
         const revealSpan = liveTurnReveal.spans.get(item.id);
         const messageProps = {
+          isTurnTail: item.id === liveTurnTailItemId,
           message: item.text,
           timestamp: item.timestamp.getTime(),
           workspaceRoot,
@@ -717,7 +731,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           <AssistantMessage {...messageProps} />
         );
       },
-      [agentId, client, liveTurnReveal, resolvedServerId, revealTicker, workspaceRoot],
+      [
+        agentId,
+        client,
+        liveTurnReveal,
+        liveTurnTailItemId,
+        resolvedServerId,
+        revealTicker,
+        workspaceRoot,
+      ],
     );
 
     const renderThoughtItem = useCallback(
