@@ -9,7 +9,16 @@ import {
   stopDesktopManagedDaemonOnQuitIfNeeded,
 } from "./quit-lifecycle";
 
-const SETTINGS_KEEP_RUNNING = DEFAULT_DESKTOP_SETTINGS;
+// Both fixtures state the flag outright rather than leaning on whatever
+// DEFAULT_DESKTOP_SETTINGS currently holds — these assert the function's logic,
+// and must not silently invert if the shipped default is ever flipped again.
+const SETTINGS_KEEP_RUNNING = {
+  ...DEFAULT_DESKTOP_SETTINGS,
+  daemon: {
+    ...DEFAULT_DESKTOP_SETTINGS.daemon,
+    keepRunningAfterQuit: true,
+  },
+};
 const SETTINGS_STOP_ON_QUIT = {
   ...DEFAULT_DESKTOP_SETTINGS,
   daemon: {
@@ -19,9 +28,13 @@ const SETTINGS_STOP_ON_QUIT = {
 };
 
 describe("quit-lifecycle", () => {
-  it("only stops when keepRunningAfterQuit is explicitly disabled", () => {
+  it("stops the daemon unless the user opted into keeping it running", () => {
     expect(shouldStopDesktopManagedDaemonOnQuit(SETTINGS_STOP_ON_QUIT)).toBe(true);
     expect(shouldStopDesktopManagedDaemonOnQuit(SETTINGS_KEEP_RUNNING)).toBe(false);
+  });
+
+  it("ships with the daemon stopping on quit", () => {
+    expect(shouldStopDesktopManagedDaemonOnQuit(DEFAULT_DESKTOP_SETTINGS)).toBe(true);
   });
 
   it("short-circuits without inspecting the daemon when keep-running is on", async () => {

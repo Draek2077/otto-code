@@ -45,7 +45,16 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   releaseChannel: "stable",
   daemon: {
     manageBuiltInDaemon: true,
-    keepRunningAfterQuit: true,
+    // Off by default: quitting an app is expected to stop what it started, and
+    // leaving a background server running is the kind of thing a user should opt
+    // into rather than discover. Turning it on keeps agents running and the
+    // phone/relay connection alive after the window closes.
+    //
+    // NOTE: this default only reaches fresh installs. The store persists the
+    // whole settings object, so every existing install already has `true` on
+    // disk — including users who never touched the toggle — and keeps the old
+    // behavior until they flip it themselves.
+    keepRunningAfterQuit: false,
   },
   tray: {
     minimizeOnClose: true,
