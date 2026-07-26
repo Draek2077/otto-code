@@ -42,7 +42,7 @@ async function getAvailablePort(): Promise<number> {
 // that several runs can go at once — that is worth keeping, so isolation from
 // the other lanes is enforced by subtraction here rather than by pinning a band.
 // The installed app, the dev app, tests, and demos are all expected to be
-// running simultaneously; see docs/development.md → "Four lanes".
+// running simultaneously; see docs/development.md → "Lanes".
 const RESERVED_LOCAL_PORTS = new Set([
   // --- Installed-app lane ---
   // Its daemon over `~/.otto`.
@@ -50,6 +50,9 @@ const RESERVED_LOCAL_PORTS = new Set([
   // --- Dev lane (scripts/dev-home.{sh,ps1}) ---
   // Dev daemon.
   6788,
+  // --- Agent lane (scripts/dev-agent.{sh,ps1}) ---
+  // Daemon + Expo web an agent drives on its own.
+  6799, 8095,
   // Root-checkout Expo, and the desktop dev Expo fallback range that
   // packages/desktop/scripts/dev.{ps1,sh} probes in order.
   8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089,

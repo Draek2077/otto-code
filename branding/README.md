@@ -74,7 +74,7 @@ The same run also writes `packages/desktop/assets/dev/` — the desktop icon and
 Windows/Linux tray icons over a navy tile (`DEV_TILE_COLOR`, blue-900 `#1e3a8a`)
 instead of the shipped black one. Running the installed Otto and a dev Otto side by
 side is the expected setup (see [docs/development.md](../docs/development.md) →
-"Four lanes"), and identical black icons make the two taskbar buttons and tray
+"Lanes"), and identical black icons make the two taskbar buttons and tray
 entries indistinguishable.
 
 These never reach a release build. `packages/desktop/src/features/dev-icon.ts` only

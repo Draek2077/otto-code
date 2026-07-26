@@ -8,7 +8,7 @@ export const RELEASE_APP_USER_MODEL_ID = "ai.ottocode.desktop";
 
 // A dev build gets its own identity so its toasts are attributable — otherwise
 // dev and the installed app, which are expected to run side by side (see
-// docs/development.md → "Four lanes"), post notifications Windows cannot tell
+// docs/development.md → "Lanes"), post notifications Windows cannot tell
 // apart, and a toast click can activate the wrong window.
 export const DEV_APP_USER_MODEL_ID = "ai.ottocode.desktop.dev";
 
