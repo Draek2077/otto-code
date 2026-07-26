@@ -4703,6 +4703,16 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               return { finalMessage: null, failed: true };
             }
           },
+          cancelAgent: async ({ agentId }) => {
+            try {
+              // The cancel cascade: a canceled run must really stop its
+              // children, not abandon them running. Best-effort — an agent that
+              // settled first is the expected race.
+              await agentManager.cancelAgentRun(agentId);
+            } catch (error) {
+              childLogger.warn({ err: error, agentId }, "Could not cancel a run child on cancel");
+            }
+          },
         };
 
         // Record the active team on the run so the Runs display can filter by it.

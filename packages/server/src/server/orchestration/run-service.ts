@@ -37,6 +37,8 @@ export interface RunSpawnPort {
   resolveRole(role: string): Promise<{ personalityId: string } | null>;
   spawn(input: RunEngineSpawnInput): Promise<RunEngineSpawnResult>;
   awaitAgent(input: { agentId: string; signal: AbortSignal }): Promise<RunEngineAwaitResult>;
+  /** The cancel cascade: really stop one child when the run is canceled. */
+  cancelAgent?(input: { agentId: string }): Promise<void>;
 }
 
 export type RunServiceLogger = OrchestrationLogger;
@@ -272,6 +274,9 @@ export class RunService {
       resolveRole: input.spawnPort.resolveRole,
       spawn: input.spawnPort.spawn,
       awaitAgent: input.spawnPort.awaitAgent,
+      ...(input.spawnPort.cancelAgent
+        ? { cancelAgent: input.spawnPort.cancelAgent.bind(input.spawnPort) }
+        : {}),
       awaitGate: (gate) => this.awaitGate(gate),
       emit: (updated) => this.persistAndEmit(updated),
       now: this.clock,
