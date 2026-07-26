@@ -1,6 +1,7 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { app, BrowserWindow, Notification, ipcMain, nativeImage } from "electron";
+import { resolveBrandedAssetPath } from "./dev-icon.js";
 
 interface NotificationInput {
   title?: unknown;
@@ -29,10 +30,13 @@ function toRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 function getNotificationIcon(): Electron.NativeImage | null {
+  // Dev builds show the navy tile here too, so a dev toast is distinguishable
+  // by artwork and not only by sender name. See dev-icon.ts.
+  const assetsDir = path.resolve(__dirname, "../assets");
   const candidates = [
-    path.resolve(__dirname, "../assets/icon.png"),
-    path.resolve(__dirname, "../assets/64x64.png"),
-    path.resolve(__dirname, "../assets/128x128.png"),
+    resolveBrandedAssetPath(assetsDir, "icon.png"),
+    path.join(assetsDir, "64x64.png"),
+    path.join(assetsDir, "128x128.png"),
   ];
 
   for (const iconPath of candidates) {
