@@ -93,7 +93,7 @@ Four shapes reliably pass that test: directed research (disjoint angles, then sy
 researched implementation (research → plan → human gate → implement → verify), feature
 breakout (one unit of work per planned item), and adversarial evaluation (N attempts, one
 judge). Each is documented as a golden graph in
-link:18-orchestration-rollout.html[Rollout & Testing].
+link:19-orchestration-rollout.html[Rollout & Testing].
 
 == The safety rule that shapes the engine
 

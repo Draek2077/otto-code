@@ -9,16 +9,20 @@ master ToC, fold subsystem gotchas into `docs/`).
 
 [IMPORTANT]
 ====
-*Partly built — and one word changed.* Stages 0–5 of
-`projects/orchestration-graphs/enhancement-plan.md` are implemented in the daemon:
-three-valued node results, declared output fields with a `submit_output` tool, conditional
-edges, per-node tool authority and query tools, retry and time limits, prompt templates.
-`docs/orchestration-node-capabilities.md` describes the shipped behaviour and is
-authoritative where it and these pages differ.
+*Two engines, one projection — and this set is being reconciled to code.* Otto executes
+orchestrations two ways, discriminated by `Run.kind`:
+link:13-orchestration-runs.html[*phase runs*] (a conducting agent declares a typed plan) and
+link:14-orchestration-graphs.html[*graph runs*] (the daemon executes a user-authored DAG
+exactly as drawn). Both project into the same `Run` + `RunPhase[]`, so one store, one page and
+one client render both.
 
-The one deliberate divergence: this set says *excluded* for the third node state; the
-shipped name is *skipped*, with `RunPhase.skipReason` carrying the distinction. See
-link:13-orchestration-engine.html[Engine] for the mapping.
+Pages 13 and 14 were rewritten from the source and describe what exists. *Pages 11–12 and
+15–19 still carry pre-build design material* — they were authored 2026-07-21 against
+uncommitted work and describe intent, not implementation. Treat them as design input until
+each is reconciled; where any page and the code disagree, the code wins.
+
+The vocabulary settled: the third node state is *skipped*, not *excluded*, with
+`RunPhase.skipReason` carrying the distinction.
 ====
 
 [NOTE]
@@ -48,35 +52,39 @@ authority — everything else this system does is in service of those.
 |===
 |Page |What it answers
 
-|link:11-orchestration-concepts.html[11. Concepts & Domain Model]
+|link:11-orchestration-concepts.html[11. Concepts & Domain Model] 📋 _design_
 |The vocabulary, the actors, the lifecycle of a graph and a run, and the honest test for
 when an orchestration is worth its cost.
 
-|link:12-orchestration-data-model.html[12. Data Model & Protocol]
+|link:12-orchestration-data-model.html[12. Data Model & Protocol] 📋 _design_
 |Every schema: graph, node, port, edge, declared inputs, run projection, node output,
 artifact reference, pause metadata — and the wire-compatibility story for each.
 
-|link:13-orchestration-engine.html[13. Execution Engine]
-|How a graph runs: scheduling, barriers, the value plane, conditional control flow,
-excluded branches, loops, dynamic fan-out, budgets, failure policy, cancellation.
+|link:13-orchestration-runs.html[13. Phase Runs] ✅ _code-true_
+|The conductor-declared engine: the phase-type vocabulary, role resolution and the
+missing-role hard fail, fan-out with structured judging, the keep-best loop, human gates.
 
-|link:14-orchestration-durability.html[14. Durability & Human Gates]
+|link:14-orchestration-graphs.html[14. Graph Execution] ✅ _code-true_
+|How a graph runs: DAG scheduling, edge gating and skip semantics, prompt assembly from
+templates and inputs, structured output with self-correction, validation, retry and iteration.
+
+|link:15-orchestration-durability.html[15. Durability & Human Gates] 📋 _design_
 |Checkpointing, idempotent resume, pause/resume for human gates, orphan reclamation,
 and the hard problem: a crash when the child agent is still alive.
 
-|link:15-orchestration-agents.html[15. Agent Binding & Provider Coverage]
+|link:16-orchestration-agents.html[16. Agent Binding & Provider Coverage] 📋 _design_
 |How a node becomes a running agent: seat resolution, tool authority, environment
 isolation, prompt assembly — and what each provider (including local models) supports.
 
-|link:16-orchestration-designer.html[16. Designer & Authoring Surface]
+|link:17-orchestration-designer.html[17. Designer & Authoring Surface] 📋 _design_
 |The canvas: port model, node palette, validation feedback, live run painting, the
 compact/mobile story.
 
-|link:17-orchestration-observability.html[17. Observability & Accounting]
+|link:18-orchestration-observability.html[18. Observability & Accounting] 📋 _design_
 |Run events, the per-node record, cost roll-up into the existing ledger, Visualizer
 integration.
 
-|link:18-orchestration-rollout.html[18. Rollout, Testing & Invariants]
+|link:19-orchestration-rollout.html[19. Rollout, Testing & Invariants] 📋 _design_
 |Build order, feature gating, test tiers, the numbered invariants and the audit
 checklist for the whole system.
 |===

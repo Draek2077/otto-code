@@ -115,7 +115,7 @@ and a narrower authority at spawn.
 |`loop?`
 |`{ times: N }` or `{ until: { criteria[], judgeRole?, max } }`. Retained as a per-node
 annotation rather than a container node — see
-link:13-orchestration-engine.html[Engine] for why.
+link:14-orchestration-graphs.html[Engine] for why.
 
 |`output?: { fields: … }` *(target)*
 |Declares a structured output contract, which is what makes conditional edges able to
@@ -236,7 +236,7 @@ moved out of a `pauseMetadata` column (now deprecated in their schema) into a de
 is a job scheduled at pause time rather than a boot-time sweep. We need the uniqueness
 constraint — ours is `(runId, nodeId, iteration)` — but not the table or the scheduler,
 because a paused Otto run is simply a record nothing is currently driving. See
-link:14-orchestration-durability.html[Durability].
+link:15-orchestration-durability.html[Durability].
 
 The resume payload is keyed by `nodeId`, never by position. LangGraph matches resume
 values to interrupt calls *by index within a node's execution*, which means editing the
