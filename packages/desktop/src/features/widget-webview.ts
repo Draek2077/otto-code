@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
+import log from "electron-log/main";
 import { session, type WebContents, type WebPreferences } from "electron";
 
 // Must match WIDGET_WEBVIEW_PARTITION in
@@ -23,7 +25,15 @@ export function isWidgetWebviewAttach(input: { src?: string; partition?: string 
 }
 
 /**
- * Resolve the widget preload from the main bundle's own directory.
+ * Resolve the widget preload from the main bundle's root directory.
+ *
+ * The `..` is load-bearing. This module compiles to `dist/features/`, one level
+ * BELOW the bundle root where `src/widget-preload.ts` is emitted as
+ * `dist/widget-preload.js`. Joining against `__dirname` alone points at a file
+ * that does not exist — and Electron ignores a missing preload SILENTLY: the
+ * guest still loads, still runs its own scripts, still renders. The only
+ * symptom is a widget frozen at the host's initial height forever, because
+ * `__ottoWidgetHost` is undefined and its measured height has nowhere to go.
  *
  * The path is computed here and never taken from the renderer. A renderer-
  * supplied `preload`/`preloadURL` is deleted by the caller before this runs, so
@@ -31,8 +41,11 @@ export function isWidgetWebviewAttach(input: { src?: string; partition?: string 
  * process decides what, if anything, gets injected.
  */
 export function getWidgetPreloadPath(): string {
-  return path.join(__dirname, "widget-preload.js");
+  return path.join(__dirname, "..", "widget-preload.js");
 }
+
+/** Log the missing-preload case once rather than on every widget attach. */
+let hasWarnedAboutMissingPreload = false;
 
 export function hardenWidgetWebviewPreferences(webPreferences: WebPreferences): void {
   webPreferences.nodeIntegration = false;
@@ -44,7 +57,17 @@ export function hardenWidgetWebviewPreferences(webPreferences: WebPreferences): 
   webPreferences.webviewTag = false;
   webPreferences.allowRunningInsecureContent = false;
   delete (webPreferences as { preloadURL?: string }).preloadURL;
-  webPreferences.preload = getWidgetPreloadPath();
+  const preloadPath = getWidgetPreloadPath();
+  // Electron drops a missing preload without a word, and the widget that
+  // results looks like a rendering bug rather than a packaging one. Say it out
+  // loud in the log users can send.
+  if (!hasWarnedAboutMissingPreload && !existsSync(preloadPath)) {
+    hasWarnedAboutMissingPreload = true;
+    log.error(
+      `[widget] preload missing at ${preloadPath} — widgets cannot report their height and will stay at the host's initial size`,
+    );
+  }
+  webPreferences.preload = preloadPath;
 }
 
 /** Deny every permission request (camera, mic, geolocation, clipboard, USB, …)

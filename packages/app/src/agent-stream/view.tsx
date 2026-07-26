@@ -711,32 +711,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           // Selects the personality voice for this bubble's playback button.
           agentId,
         };
-        return (
-          <AssistantFileLinkResolverProvider
-            client={client}
-            serverId={resolvedServerId}
-            workspaceRoot={workspaceRoot}
-            onOpenWorkspaceFile={handleInlinePathPress}
-            toast={toast}
-          >
-            {revealSpan ? (
-              <RevealedAssistantMessage {...messageProps} ticker={revealTicker} span={revealSpan} />
-            ) : (
-              <AssistantMessage {...messageProps} />
-            )}
-          </AssistantFileLinkResolverProvider>
+        return revealSpan ? (
+          <RevealedAssistantMessage {...messageProps} ticker={revealTicker} span={revealSpan} />
+        ) : (
+          <AssistantMessage {...messageProps} />
         );
       },
-      [
-        agentId,
-        client,
-        handleInlinePathPress,
-        liveTurnReveal,
-        resolvedServerId,
-        revealTicker,
-        toast,
-        workspaceRoot,
-      ],
+      [agentId, client, liveTurnReveal, resolvedServerId, revealTicker, workspaceRoot],
     );
 
     const renderThoughtItem = useCallback(
@@ -1029,61 +1010,72 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     return (
       <ToolCallSheetProvider>
-        <WidgetChatProvider serverId={resolvedServerId} agentId={agentId}>
-          <View style={stylesheet.container}>
-            <MessageOuterSpacingProvider disableOuterSpacing>
-              {streamRenderStrategy.render({
-                agentId,
-                segments: renderModel.segments,
-                boundary,
-                renderers,
-                listEmptyComponent,
-                viewportRef,
-                routeBottomAnchorRequest,
-                isAuthoritativeHistoryReady,
-                onNearBottomChange: setIsNearBottom,
-                onNearHistoryStart: loadOlder,
-                isLoadingOlderHistory: isLoadingOlder,
-                hasOlderHistory: hasOlder,
-                scrollEnabled: streamScrollEnabled,
-                listStyle: stylesheet.list,
-                baseListContentContainerStyle: stylesheet.listContentContainer,
-                forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
-              })}
-            </MessageOuterSpacingProvider>
-            {/* Seam fades. Both live INSIDE the stream view (not at panel level)
+        {/* Wraps the whole stream, not just assistant bubbles: file links are
+          opened from tool-call content too (a widget's open_link takes the same
+          path a markdown link takes), and a missing provider throws. */}
+        <AssistantFileLinkResolverProvider
+          client={client}
+          serverId={resolvedServerId}
+          workspaceRoot={workspaceRoot}
+          onOpenWorkspaceFile={handleInlinePathPress}
+          toast={toast}
+        >
+          <WidgetChatProvider serverId={resolvedServerId} agentId={agentId}>
+            <View style={stylesheet.container}>
+              <MessageOuterSpacingProvider disableOuterSpacing>
+                {streamRenderStrategy.render({
+                  agentId,
+                  segments: renderModel.segments,
+                  boundary,
+                  renderers,
+                  listEmptyComponent,
+                  viewportRef,
+                  routeBottomAnchorRequest,
+                  isAuthoritativeHistoryReady,
+                  onNearBottomChange: setIsNearBottom,
+                  onNearHistoryStart: loadOlder,
+                  isLoadingOlderHistory: isLoadingOlder,
+                  hasOlderHistory: hasOlder,
+                  scrollEnabled: streamScrollEnabled,
+                  listStyle: stylesheet.list,
+                  baseListContentContainerStyle: stylesheet.listContentContainer,
+                  forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
+                })}
+              </MessageOuterSpacingProvider>
+              {/* Seam fades. Both live INSIDE the stream view (not at panel level)
               so they share a stacking context with the desktop web scrollbar
               overlay (zIndex 10, rendered by the web strategy) — the scrollbar
               stays visible over the fades. Must stay rendered BEFORE the
               scroll-to-bottom overlay: neither fade carries a zIndex, so
               later-sibling paint order is what keeps the button above them. */}
-            <ChatSeamFade edge="top" />
-            <ChatSeamFade edge="bottom" />
-            {!isNearBottom && (
-              <Animated.View
-                style={stylesheet.scrollToBottomContainer}
-                entering={scrollIndicatorFadeIn}
-                exiting={scrollIndicatorFadeOut}
-                // Prop, not style: unistyles emits style pointerEvents as literal
-                // (invalid) CSS on web, so only the prop actually stops this strip
-                // from eating clicks. RNW's box-none sets direct children back to
-                // auto, so the button must be the direct child — no full-width
-                // wrapper in between.
-                pointerEvents="box-none"
-              >
-                <Pressable
-                  style={stylesheet.scrollToBottomButton}
-                  onPress={scrollToBottom}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("agentStream.scrollToBottom")}
-                  testID="scroll-to-bottom-button"
+              <ChatSeamFade edge="top" />
+              <ChatSeamFade edge="bottom" />
+              {!isNearBottom && (
+                <Animated.View
+                  style={stylesheet.scrollToBottomContainer}
+                  entering={scrollIndicatorFadeIn}
+                  exiting={scrollIndicatorFadeOut}
+                  // Prop, not style: unistyles emits style pointerEvents as literal
+                  // (invalid) CSS on web, so only the prop actually stops this strip
+                  // from eating clicks. RNW's box-none sets direct children back to
+                  // auto, so the button must be the direct child — no full-width
+                  // wrapper in between.
+                  pointerEvents="box-none"
                 >
-                  <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
-                </Pressable>
-              </Animated.View>
-            )}
-          </View>
-        </WidgetChatProvider>
+                  <Pressable
+                    style={stylesheet.scrollToBottomButton}
+                    onPress={scrollToBottom}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("agentStream.scrollToBottom")}
+                    testID="scroll-to-bottom-button"
+                  >
+                    <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
+                  </Pressable>
+                </Animated.View>
+              )}
+            </View>
+          </WidgetChatProvider>
+        </AssistantFileLinkResolverProvider>
       </ToolCallSheetProvider>
     );
   },
