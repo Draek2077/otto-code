@@ -39,7 +39,6 @@ Learning on the job is fine, I do not care how many years of experience you have
 - Add a feature or design change that wasn't discussed first
 - Submit no evidence of testing
 - Skip the linked issue
-- Clearly fully AI-generated PR
 
 ## Requesting features
 
