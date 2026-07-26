@@ -16,6 +16,17 @@ export default defineConfig({
   test: {
     environment: "node",
     exclude: [...configDefaults.exclude, "e2e/**"],
+    /**
+     * Several suites do `await import(...)` inside `beforeAll` so they can install globals
+     * before a module graph is evaluated. Transforming those graphs measures 7-10s here, which
+     * sits right on the 10s default — so the same test passes alone and times out when the run
+     * is loaded, and a slower CI machine fails what a developer's machine does not. That
+     * asymmetry reads as flakiness, so the budget is raised well clear of the real cost rather
+     * than nudged past it. These are ceilings for pathological runs, not expected durations; a
+     * genuine hang still fails, just later.
+     */
+    hookTimeout: 60_000,
+    testTimeout: 20_000,
     projects: [
       {
         extends: true,
@@ -101,6 +112,15 @@ export default defineConfig({
       {
         find: "react-dom",
         replacement: resolvePackageEntry("react-dom"),
+      },
+      // The real package reaches `react-native/Libraries/Utilities/codegenNativeComponent`,
+      // a Flow-typed `.js` no test environment can parse. It surfaces as
+      // `SyntaxError: Unexpected token 'typeof'` against whichever test file is at the top of
+      // the import chain — never against this package — so it reads as an unrelated failure.
+      // See the stub for what it provides and why zero insets are correct here.
+      {
+        find: /^react-native-safe-area-context$/,
+        replacement: path.resolve(__dirname, "test-stubs/react-native-safe-area-context.ts"),
       },
       {
         find: /^@xterm\/addon-ligatures\/lib\/addon-ligatures\.mjs$/,

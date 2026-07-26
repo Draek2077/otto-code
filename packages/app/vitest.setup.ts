@@ -49,6 +49,26 @@ if (typeof globalThis.cancelAnimationFrame !== "function") {
   };
 }
 
+// jsdom does not implement matchMedia, and react-native-reanimated calls it at module load
+// (`ReducedMotion.ts`) — so any jsdom test whose graph reaches reanimated throws before its
+// first assertion. Reporting "no match" is right for a headless run: no reduced-motion
+// preference, no media query satisfied.
+if (
+  typeof globalThis.window !== "undefined" &&
+  typeof globalThis.window.matchMedia !== "function"
+) {
+  globalThis.window.matchMedia = (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  });
+}
+
 vi.mock("react-native-unistyles", () => ({
   StyleSheet: {
     create: <T>(styles: T) => styles,
@@ -62,6 +82,42 @@ vi.mock("react-native-unistyles", () => ({
     setTheme: vi.fn(),
     themeName: "light",
   },
+  // Wraps a leaf component so it can read theme values (see docs/unistyles.md — it wraps
+  // leaves, never composites). The real one returns an equivalent component; passing the
+  // component straight through is enough for tests, which assert behaviour rather than theming.
+  withUnistyles: <T>(Component: T) => Component,
+}));
+
+// `@gorhom/bottom-sheet` resolves to sources that reach React Native internals no node test
+// environment can parse, so importing it throws `SyntaxError: Unexpected token 'typeof'`. The
+// throw is reported against whichever test file heads the import chain, which is why it showed
+// up as an unexplained failure in composer and keyboard tests that never mention bottom sheets.
+// Two tests already carried their own copy of this mock for exactly that reason
+// (isolated-bottom-sheet-modal, tooltip); a local `vi.mock` still wins over this one.
+vi.mock("@gorhom/bottom-sheet", () => {
+  const Passthrough = ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("div", null, children);
+  return {
+    __esModule: true,
+    default: Passthrough,
+    BottomSheetModalProvider: Passthrough,
+    BottomSheetModal: React.forwardRef((props: { children?: React.ReactNode }, _ref) =>
+      React.createElement("div", null, props.children),
+    ),
+    BottomSheetBackdrop: () => null,
+    BottomSheetScrollView: Passthrough,
+    BottomSheetTextInput: () => null,
+    BottomSheetView: Passthrough,
+    useBottomSheetModalInternal: () => ({}),
+  };
+});
+
+vi.mock("@gorhom/portal", () => ({
+  Portal: ({ children, hostName }: { children?: React.ReactNode; hostName?: string }) =>
+    React.createElement("div", { "data-portal-host": hostName }, children),
+  PortalHost: ({ name }: { name?: string }) => React.createElement("div", { "data-host": name }),
+  PortalProvider: ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("div", null, children),
 }));
 
 vi.mock("@xterm/addon-ligatures", () => ({

@@ -108,6 +108,11 @@ describe("snapshot mutation ownership boundary", () => {
           subscribe: () => () => {},
           listAgents: () => [],
           getAgent: () => null,
+          // Archiving consults the observed-subagent registry before it decides what to write.
+          // Unstubbed, `createStub` throws from inside the archive path, which surfaces as this
+          // test failing on its storage-write assertion rather than on the missing method.
+          getObservedSubagentPayload: () => null,
+          listObservedSubagentPayloads: () => [],
           archiveSnapshot,
           updateAgentMetadata,
         }),

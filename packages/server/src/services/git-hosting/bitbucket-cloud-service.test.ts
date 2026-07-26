@@ -99,7 +99,10 @@ describe("bitbucket cloud service", () => {
         number: 7,
         title: "Add widget flux capacitor",
         url: "https://bitbucket.org/acme/widgets/pull-requests/7",
-        state: "OPEN",
+        // Lowercased on the way out to match GitHub's wire shape. The client compares
+        // `state === "open"` exactly, so passing Bitbucket's "OPEN" through unmapped put a red
+        // "Closed" badge on open pull requests. The fixture above keeps the API's real casing.
+        state: "open",
         body: "Body text",
         baseRefName: "main",
         headRefName: "feature/flux",
@@ -148,7 +151,7 @@ describe("bitbucket cloud service", () => {
     expect(status?.number).toBe(7);
     expect(status?.repoOwner).toBe("acme");
     expect(status?.repoName).toBe("widgets");
-    expect(status?.state).toBe("OPEN");
+    expect(status?.state).toBe("open");
     expect(status?.isMerged).toBe(false);
     expect(status?.mergeable).toBe("UNKNOWN");
     expect(status?.checksStatus).toBe("pending");
@@ -198,7 +201,7 @@ describe("bitbucket cloud service", () => {
       headRef: "feature/flux",
     });
     expect(status?.isMerged).toBe(true);
-    expect(status?.state).toBe("MERGED");
+    expect(status?.state).toBe("merged");
     expect(status?.checksStatus).toBe("none");
   });
 

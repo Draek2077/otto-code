@@ -113,6 +113,9 @@ describe("buildDraftAgentSetup", () => {
       modeId: "mode-current",
       model: "agent-model",
       thinkingOptionId: "think-hard",
+      // The snapshot in this fixture carries no personality, and a draft built from it says so
+      // explicitly rather than omitting the key — the draft form reads it as "none selected".
+      personality: null,
       featureValues: {
         "web-search": true,
         effort: "high",

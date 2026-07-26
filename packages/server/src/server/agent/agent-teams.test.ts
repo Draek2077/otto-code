@@ -176,14 +176,16 @@ describe("composeTeamAndPersonalityPrompt", () => {
     expect(composed).toContain("focused worker");
   });
 
-  test("a coordinator role appends the orchestration directive, stacked after team + personality", () => {
+  test("an orchestrator role appends the orchestration directive, stacked after team + personality", () => {
     const composed = composeTeamAndPersonalityPrompt(
       { teamPrompt: "Team frame." },
       "You are Atlas.",
       ["orchestrator"],
     );
     expect(composed?.startsWith("Team frame.\n\nYou are Atlas.\n\n")).toBe(true);
-    expect(composed).toContain("coordinator");
+    // The role is "orchestrator" — "coordinator" was its earlier name and appears nowhere in
+    // the directive, so asserting it passed only while the rename was pending.
+    expect(composed).toContain("orchestrator");
   });
 
   test("a directive with no personality prompt stands alone (nothing stacked before it)", () => {

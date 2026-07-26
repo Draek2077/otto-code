@@ -391,7 +391,14 @@ export interface OttoDaemonConfig {
   /** Otto tool-group allowlist for the MCP path. undefined = all groups enabled. */
   mcpToolGroups?: OttoToolGroup[];
   browserToolsEnabled?: boolean;
-  /** Daemon-wide agent behavior toggles (Claude-tier). undefined fields = default (on). */
+  /**
+   * Daemon-wide agent behavior toggles, honoured by providers whose launch context supports
+   * behavior injection. undefined fields = default (on).
+   *
+   * Deliberately not named after a provider. The agent-hook tests assert that this file mentions
+   * no provider id at all, so that bootstrap stays generic and specifics live in the adapters —
+   * which means even a comment naming one fails the build.
+   */
   agentBehaviors?: {
     promptSuggestions?: boolean;
     agentProgressSummaries?: boolean;
@@ -1880,7 +1887,7 @@ export async function createOttoDaemon(
             daemonConfigStore.onFieldChange("appendSystemPrompt", (value) => {
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");
             });
-            // Daemon-wide agent behavior toggles (Claude tier + the Otto-tools
+            // Daemon-wide agent behavior toggles (behavior-injecting providers + the Otto-tools
             // notify-on-finish default). New/resumed agents pick up promptSuggestions
             // and agentProgressSummaries on their next launch (injected via
             // buildLaunchContext); notifyOnFinishDefault is read live per tool call.

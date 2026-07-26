@@ -205,6 +205,13 @@ interface SessionForTestOptions {
     getWorkspaceGitMetadata?: ReturnType<typeof vi.fn>;
   };
   workspaceRegistry?: { get: ReturnType<typeof vi.fn> };
+  /**
+   * Directories the session should treat as known workspace roots. Every
+   * directory-scoped file RPC is gated on this (`assertCwdWithinKnownWorkspace`
+   * in `workspace-files-session.ts`), so a test that browses a temp directory
+   * has to declare it here or the daemon correctly refuses to serve it.
+   */
+  workspaceRoots?: string[];
   projectRegistry?: Partial<SessionOptions["projectRegistry"]>;
   terminalManager?: SessionOptions["terminalManager"];
   previewDevServers?: SessionOptions["previewDevServers"];
@@ -260,6 +267,11 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     agentManager: asAgentManager({
       listAgents: vi.fn(() => []),
       subscribe: vi.fn(() => () => {}),
+      // `listAgentPayloads` calls this on every fetch_agents_request. Left unstubbed it throws,
+      // and the throw is swallowed by handleFetchAgents' catch — which clears the subscription,
+      // so every later agent_update is dropped and the test fails somewhere far away with no
+      // mention of this method. Default it here rather than per-test for that reason.
+      listObservedSubagentPayloads: vi.fn(() => []),
       ...options.agentManager,
     }),
     agentStorage: asAgentStorage({
@@ -277,7 +289,21 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     },
     workspaceRegistry: options.workspaceRegistry ?? {
       get: vi.fn(),
-      list: vi.fn().mockResolvedValue([]),
+      list: vi.fn().mockResolvedValue(
+        (options.workspaceRoots ?? []).map((cwd, index) => ({
+          workspaceId: `workspace-root-${index}`,
+          projectId: `project-root-${index}`,
+          cwd,
+          kind: "checkout" as const,
+          displayName: `Workspace ${index}`,
+          title: null,
+          branch: null,
+          baseBranch: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+          archivedAt: null,
+        })),
+      ),
     },
     chatService: asChatService(),
     scheduleService: asScheduleService(),
@@ -737,7 +763,7 @@ describe("workspace file access (behavior preservation)", () => {
     const cwd = makeDir("file-access-list-");
     writeFileSync(join(cwd, "a.txt"), "alpha");
     const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForTest({ messages });
+    const session = createSessionForTest({ messages, workspaceRoots: [cwd] });
 
     await session.handleMessage({
       type: "file_explorer_request",
@@ -787,6 +813,7 @@ describe("workspace file access (behavior preservation)", () => {
     const messages: SessionOutboundMessage[] = [];
     const session = createSessionForTest({
       messages,
+      workspaceRoots: [cwd],
       downloadTokenStore: new DownloadTokenStore({ ttlMs: 60_000 }),
     });
 
@@ -834,7 +861,7 @@ describe("workspace file access (behavior preservation)", () => {
   test("project_icon responds for a workspace cwd", async () => {
     const cwd = makeDir("file-access-icon-");
     const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForTest({ messages });
+    const session = createSessionForTest({ messages, workspaceRoots: [cwd] });
 
     await session.handleMessage({
       type: "project_icon_request",
@@ -4042,7 +4069,7 @@ describe("session workspace script handling", () => {
     expect(workspaceGitService.getWorkspaceGitMetadata).toHaveBeenCalledWith("/tmp/repo");
     expect(spawnMocks.spawnWorkspaceScript).toHaveBeenCalledWith(
       expect.objectContaining({
-        repoRoot: "/tmp/repo",
+        workspaceDirectory: "/tmp/repo",
         workspaceId: "workspace-1",
         projectSlug: "otto",
         branchName: "feature/service-scripts",

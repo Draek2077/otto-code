@@ -137,8 +137,9 @@ describe("resolvePersonality", () => {
     const result = resolvePersonality(personality({ roles: ["writer", "worker"] }), [readyEntry()]);
     expect(result.status).toBe("available");
     if (result.status !== "available") return;
-    // "worker" normalizes to "coder"; both survive in canonical order, deduped.
-    expect(result.snapshot.roles).toEqual(["writer", "coder"]);
+    // "worker" normalizes to "coder"; both survive in canonical order, deduped — canonical
+    // meaning PERSONALITY_ROLES order, where "coder" precedes "writer", not the input order.
+    expect(result.snapshot.roles).toEqual(["coder", "writer"]);
   });
 
   test("is unavailable when the provider is absent from the snapshot", () => {

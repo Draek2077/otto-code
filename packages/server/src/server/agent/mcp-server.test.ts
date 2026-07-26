@@ -1082,7 +1082,7 @@ describe("create_agent MCP tool", () => {
   });
   const ensureWorkspaceForCreate = async () => "workspace-created";
 
-  it("requires a concise title no longer than 60 characters", async () => {
+  it("caps the title at 60 characters, and lets it be omitted", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const server = await createAgentMcpServer({
       agentManager,
@@ -1094,14 +1094,14 @@ describe("create_agent MCP tool", () => {
     const tool = registeredTool(server, "create_agent");
     expect(tool).toBeDefined();
 
+    // Title is optional by design: omitting it lets Otto derive one from the prompt.
     const missingTitle = await tool.inputSchema.safeParseAsync({
       ...detachedDirectoryWorkspace(existingCwd),
       settings: { modeId: "default" },
       provider: "codex/gpt-5.4",
       initialPrompt: "test",
     });
-    expect(missingTitle.success).toBe(false);
-    expect(missingTitle.error.issues[0].path).toEqual(["title"]);
+    expect(missingTitle.success).toBe(true);
 
     const tooLong = await tool.inputSchema.safeParseAsync({
       ...detachedDirectoryWorkspace(existingCwd),
@@ -1123,7 +1123,7 @@ describe("create_agent MCP tool", () => {
     expect(ok.success).toBe(true);
   });
 
-  it("requires initialPrompt", async () => {
+  it("accepts a bare create_agent with no initialPrompt", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const server = await createAgentMcpServer({
       agentManager,
@@ -1139,9 +1139,20 @@ describe("create_agent MCP tool", () => {
       provider: "codex/gpt-5.4",
       title: "Short title",
     });
-    expect(parsed.success).toBe(false);
+    // Omitting both title and initialPrompt is the "open a bare new chat" path — the agent gets
+    // DEFAULT_BARE_AGENT_INITIAL_PROMPT and greets the user. An empty string is still rejected.
+    expect(parsed.success).toBe(true);
+
+    const emptyPrompt = await tool.inputSchema.safeParseAsync({
+      ...detachedDirectoryWorkspace(existingCwd),
+      settings: { modeId: "default" },
+      provider: "codex/gpt-5.4",
+      title: "Short title",
+      initialPrompt: "",
+    });
+    expect(emptyPrompt.success).toBe(false);
     expect(
-      parsed.error.issues.some(
+      emptyPrompt.error.issues.some(
         (issue: { path: Array<string | number> }) => issue.path[0] === "initialPrompt",
       ),
     ).toBe(true);

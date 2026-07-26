@@ -148,7 +148,9 @@ second line'`,
 
     const result = curateAgentActivity(timeline);
 
-    expect(result).toBe('[otto__create_agent] {"cwd":"/tmp/repo","initialPrompt":"do the thing"}');
+    // Tool names are humanised before they reach an activity line, so the raw
+    // `otto__create_agent` identifier is never what a reader sees.
+    expect(result).toBe('[Otto Create Agent] {"cwd":"/tmp/repo","initialPrompt":"do the thing"}');
   });
 
   it("collapses repeated tool updates by callId", () => {
@@ -319,7 +321,7 @@ second line'`,
     expect(result.attachment.text).toContain("Source directory: /repo");
     expect(result.attachment.text).toContain("[User] Ship the thing");
     expect(result.attachment.text).toContain("[Read] src/index.ts");
-    expect(result.attachment.text).toContain("[otto__create_agent]");
+    expect(result.attachment.text).toContain("[Otto Create Agent]");
     expect(result.attachment.text).toContain("[Assistant] Done.");
     expect(result.attachment.text).not.toContain("private chain of thought");
     expect(result.attachment.text).not.toContain("do not include raw external tool input");

@@ -1,3 +1,13 @@
+/**
+ * @vitest-environment jsdom
+ *
+ * This file mounts real React roots with `react-dom/client`, so it needs actual DOM globals.
+ * It previously ran in the project's default `node` environment and hand-installed `window`,
+ * `document` and `navigator` one property at a time. That worked only for as long as nobody
+ * added an import — each new transitive module reached for one more global (`matchMedia`,
+ * `addEventListener`, `ShadowRoot`) and failed this file with an error naming code it does not
+ * use. Declaring the environment gets all of them at once, and keeps getting them.
+ */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { JSDOM } from "jsdom";
@@ -121,16 +131,17 @@ type DraftRecordForTest = ReturnType<typeof useDraftStore.getState>["drafts"][st
 beforeAll(async () => {
   const storage = new Map<string, string>();
 
-  Object.defineProperty(globalThis, "window", {
+  // The environment supplies the DOM (see the docblock). Only `localStorage` is replaced,
+  // because these tests assert against its contents, and it is installed before the dynamic
+  // import below so persisted-draft hydration reads the controlled map on first load.
+  Object.defineProperty(globalThis.window, "localStorage", {
     value: {
-      localStorage: {
-        getItem: (key: string) => storage.get(key) ?? null,
-        setItem: (key: string, value: string) => {
-          storage.set(key, value);
-        },
-        removeItem: (key: string) => {
-          storage.delete(key);
-        },
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        storage.set(key, value);
+      },
+      removeItem: (key: string) => {
+        storage.delete(key);
       },
     },
     configurable: true,
