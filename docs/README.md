@@ -119,6 +119,7 @@ An unlisted page is an invisible page.
 | [text-effects.md](text-effects.md)       | The "working" text effect — sweep vs glyph primitives, the theme registry, the shipped themes                                                                               |
 | [i18n.md](i18n.md)                       | Client UI translations in `packages/app/src/i18n`                                                                                                                           |
 | [feature-flags.md](feature-flags.md)     | Gated features — turning a subsystem off so its code never loads; the Metro no-tree-shake constraint, the lazy-split pattern, Visualizer as the reference                   |
+| [feedback.md](feedback.md)               | In-app **Send feedback** — client posts straight to the otto-code.me intake (not via the daemon), anonymous by default, the closed context list, the Worker's spam bounds   |
 
 ## Protocol, data and performance
 

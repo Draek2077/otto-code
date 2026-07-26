@@ -1,5 +1,6 @@
 import startEntry from "@tanstack/react-start/server-entry";
 import { getDoc } from "~/docs";
+import { FEEDBACK_INTAKE_PATH, handleFeedbackRequest } from "~/feedback-intake";
 import { buildLlmsTxt } from "~/llms";
 
 const CANONICAL_HOST = "otto-code.me";
@@ -37,6 +38,11 @@ export default {
     if (altRedirectMatch) {
       url.pathname = `/alternatives/${altRedirectMatch[1]}`;
       return Response.redirect(url.toString(), 301);
+    }
+
+    // Ahead of the router: this is a write-only API for the app, not a page.
+    if (url.pathname === FEEDBACK_INTAKE_PATH) {
+      return handleFeedbackRequest(request);
     }
 
     if (url.pathname === "/llms.txt") {
