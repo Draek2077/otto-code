@@ -37,9 +37,27 @@ async function getAvailablePort(): Promise<number> {
   });
 }
 
+// Every fixed port owned by a lane that is NOT this one. Tests and demos draw
+// their daemon/Metro/relay ports dynamically (see getAvailablePort) precisely so
+// that several runs can go at once — that is worth keeping, so isolation from
+// the other lanes is enforced by subtraction here rather than by pinning a band.
+// The installed app, the dev app, tests, and demos are all expected to be
+// running simultaneously; see docs/development.md → "Four lanes".
 const RESERVED_LOCAL_PORTS = new Set([
-  // Default developer daemon.
+  // --- Installed-app lane ---
+  // Its daemon over `~/.otto`.
   6868,
+  // --- Dev lane (scripts/dev-home.{sh,ps1}) ---
+  // Dev daemon.
+  6788,
+  // Root-checkout Expo, and the desktop dev Expo fallback range that
+  // packages/desktop/scripts/dev.{ps1,sh} probes in order.
+  8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089,
+  // `.claude/launch.json` otto-app-preview Expo, and the archdocs server.
+  8090, 4400,
+  // Electron remote-debugging (CDP) for the desktop dev shell.
+  9223,
+  // --- Third-party ---
   // OpenCode's default local server port. Some provider probes can spawn it
   // during daemon startup, so the E2E daemon must not choose the same port.
   61680,

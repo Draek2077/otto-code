@@ -8,11 +8,13 @@ ROOT_DIR="$(cd "$DESKTOP_DIR/../.." && pwd)"
 source "$ROOT_DIR/scripts/dev-home.sh"
 
 export PATH="$ROOT_DIR/node_modules/.bin:$PATH"
-export OTTO_LISTEN="${OTTO_LISTEN:-127.0.0.1:6868}"
+export OTTO_LISTEN="${OTTO_LISTEN:-127.0.0.1:$(dev_daemon_port)}"
 configure_dev_otto_home
 
-DEV_ROOT="${OTTO_DEV_ROOT:-$(default_dev_otto_root)}"
-export OTTO_ELECTRON_USER_DATA_DIR="${OTTO_ELECTRON_USER_DATA_DIR:-$DEV_ROOT/.dev/user-data}"
+# Sibling of the dev OTTO_HOME, matching scripts/dev.ps1. A separate userData is
+# what lets the dev Electron app start at all while the installed one is open:
+# same userData means the dev instance loses the single-instance lock and quits.
+export OTTO_ELECTRON_USER_DATA_DIR="${OTTO_ELECTRON_USER_DATA_DIR:-$(dirname "$(default_dev_otto_home)")/user-data}"
 mkdir -p "$OTTO_ELECTRON_USER_DATA_DIR"
 
 if [ -z "${EXPO_PORT:-}" ]; then

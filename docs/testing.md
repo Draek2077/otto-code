@@ -126,7 +126,8 @@ Codex MultiAgentV2 real tests use local Codex authentication rather than the Ope
 
 The app's browser E2E suite in `packages/app/e2e/` runs a fully isolated stack per run —
 `global-setup.ts` forks a throwaway `OTTO_HOME` with its own daemon, relay and Metro on dynamic
-ports, so a run never touches the real `~/.otto` or the port-6868 daemon. Specs are split into
+ports, so a run never touches the real `~/.otto` or the port-6868 daemon — `6788`, the repo dev
+daemon, is reserved against too, so e2e and dev can run side by side. Specs are split into
 three tiers by suffix, and the tier is selected by **Playwright project**, never by a conditional
 skip inside a spec:
 

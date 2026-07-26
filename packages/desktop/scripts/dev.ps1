@@ -45,62 +45,21 @@ $ExistingElectronFlags = if ($env:OTTO_ELECTRON_FLAGS) {
 }
 $env:OTTO_ELECTRON_FLAGS = "$($ExistingElectronFlags)--remote-debugging-port=$RemoteDebuggingPort"
 
-# Allow any origin in dev so Electron on random ports works.
-# SECURITY: wildcard CORS is unsafe in production — only acceptable here because
-# the daemon binds to localhost and this script is never used for production.
-$env:OTTO_CORS_ORIGINS = "*"
-
 # Fully isolate the dev instance from a production Otto install so `npm run dev`
 # works while the installed app is open. Without this the dev build loses the
 # Electron single-instance lock to the installed app and quits, and ends up
 # pointed at the production daemon, whose CORS allowlist rejects the Metro origin.
-# OTTO_HOME defaults to a script-managed dev home. If you override it (to point
-# dev at real data), we DON'T touch your config.json — only the managed home gets
-# its daemon config seeded below, so we never rewrite a production config.
-$DevStateDir = "$DesktopDir\.dev"
-if (-not $env:OTTO_HOME) {
-    $env:OTTO_HOME = "$DevStateDir\otto-home"
-    $OttoHomeManaged = $true
-} else {
-    $OttoHomeManaged = $false
+. "$RootDir\scripts\dev-home.ps1"
+$Dev = Initialize-OttoDevEnvironment
+
+# A userData dir of its own is what breaks the single-instance lock tie with the
+# installed app. Sibling of the dev OTTO_HOME, matching scripts/dev.sh.
+if (-not $env:OTTO_ELECTRON_USER_DATA_DIR) {
+    $env:OTTO_ELECTRON_USER_DATA_DIR = Join-Path (Get-OttoDevStateDir) "user-data"
 }
-if (-not $env:OTTO_ELECTRON_USER_DATA_DIR) { $env:OTTO_ELECTRON_USER_DATA_DIR = "$DevStateDir\user-data" }
-New-Item -ItemType Directory -Force -Path $env:OTTO_HOME, $env:OTTO_ELECTRON_USER_DATA_DIR | Out-Null
+New-Item -ItemType Directory -Force -Path $env:OTTO_ELECTRON_USER_DATA_DIR | Out-Null
 
-$DevDaemonPort = if ($env:OTTO_DEV_DAEMON_PORT) { $env:OTTO_DEV_DAEMON_PORT } else { "6788" }
-if (-not $env:OTTO_LISTEN) { $env:OTTO_LISTEN = "127.0.0.1:$DevDaemonPort" }
-
-# Seed the isolated daemon config. The desktop daemon-manager decides whether a
-# daemon is already running by reading `daemon.listen` from this config.json
-# (it does NOT honor the OTTO_LISTEN env var) and probing that address. Without
-# this it reads the default 6868, finds a production daemon there, and connects
-# the dev app to prod — whose CORS allowlist then rejects the Metro origin. Pin
-# the dev port + wildcard CORS in the file so the dev app starts its OWN daemon.
-# ONLY seed the script-managed home: never rewrite a user-supplied OTTO_HOME
-# (that could clobber a production config.json with the dev port + wildcard CORS).
-if ($OttoHomeManaged) {
-    $env:TMP_CFG_PATH = "$($env:OTTO_HOME)/config.json"
-    $env:TMP_CFG_PORT = $DevDaemonPort
-    $TmpScript = [System.IO.Path]::GetTempFileName() + ".js"
-    $ScriptContent = @"
-const fs = require('fs');
-const path = process.env.TMP_CFG_PATH;
-const port = process.env.TMP_CFG_PORT;
-let cfg = {};
-try { cfg = JSON.parse(fs.readFileSync(path, 'utf8')); } catch(e) {}
-cfg.version = cfg.version || 1;
-cfg.daemon = cfg.daemon || {};
-cfg.daemon.listen = '127.0.0.1:' + port;
-cfg.daemon.cors = cfg.daemon.cors || {};
-cfg.daemon.cors.allowedOrigins = ['*'];
-fs.writeFileSync(path, JSON.stringify(cfg, null, 2));
-"@
-    Set-Content -Path $TmpScript -Value $ScriptContent
-    node $TmpScript
-    Remove-Item $TmpScript -ErrorAction SilentlyContinue
-    Remove-Item Env:\TMP_CFG_PATH -ErrorAction SilentlyContinue
-    Remove-Item Env:\TMP_CFG_PORT -ErrorAction SilentlyContinue
-} else {
+if (-not $Dev.ManagedHome) {
     Write-Host "  (custom OTTO_HOME - leaving its config.json untouched)"
 }
 
@@ -110,8 +69,8 @@ Write-Host @"
 ======================================================
   Metro:      http://localhost:$($env:EXPO_PORT)
   CDP:        http://127.0.0.1:$RemoteDebuggingPort
-  Daemon:     $($env:OTTO_LISTEN) (isolated)
-  OTTO_HOME: $($env:OTTO_HOME)
+  Daemon:     $($Dev.Listen) (isolated)
+  OTTO_HOME:  $($Dev.Home)
   userData:   $($env:OTTO_ELECTRON_USER_DATA_DIR)
 ======================================================
 "@

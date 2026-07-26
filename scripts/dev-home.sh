@@ -4,6 +4,27 @@ default_dev_otto_root() {
   git rev-parse --show-toplevel 2>/dev/null || pwd
 }
 
+# The dev daemon port. Deliberately NOT 6868: that belongs to the installed
+# desktop app's daemon over `~/.otto`, and a dev daemon that lands on it either
+# crash-loops fighting for the port or — worse — silently hands dev clients and
+# `npm run cli` the production agent state. Keep the two on separate ports so
+# both can run at once. Override with OTTO_DEV_DAEMON_PORT.
+dev_daemon_port() {
+  echo "${OTTO_DEV_DAEMON_PORT:-6788}"
+}
+
+# The one dev home, shared by every dev entrypoint (root daemon, Expo, desktop
+# Electron, `npm run cli`). It sits under packages/desktop because that is where
+# the desktop dev script has always put it, and that is where the accumulated
+# dev state lives. Everything else was pointed here rather than the reverse so
+# no one has to move a populated home — and its git worktrees — to get one.
+# Derived from the checkout root, so an Otto worktree still gets its own.
+default_dev_otto_home() {
+  local dev_root
+  dev_root="${OTTO_DEV_ROOT:-$(default_dev_otto_root)}"
+  echo "$dev_root/packages/desktop/.dev/otto-home"
+}
+
 copy_json_tree() {
   local source_dir="$1"
   local target_dir="$2"
@@ -68,18 +89,8 @@ configure_dev_daemon_config() {
   fi
 
   mkdir -p "$OTTO_HOME"
-  node -e '
-const fs = require("fs");
-const [path, listen] = [process.argv[1], process.argv[2]];
-let cfg = {};
-try { cfg = JSON.parse(fs.readFileSync(path, "utf8")); } catch {}
-cfg.version = cfg.version || 1;
-cfg.daemon = cfg.daemon || {};
-cfg.daemon.listen = listen;
-cfg.daemon.cors = cfg.daemon.cors || {};
-cfg.daemon.cors.allowedOrigins = ["*"];
-fs.writeFileSync(path, JSON.stringify(cfg, null, 2));
-' "$OTTO_HOME/config.json" "$OTTO_LISTEN"
+  node "$(dirname "${BASH_SOURCE[0]}")/seed-dev-daemon-config.mjs" \
+    "$OTTO_HOME/config.json" "$OTTO_LISTEN"
 }
 
 resolve_dev_daemon_endpoint() {
@@ -88,10 +99,14 @@ resolve_dev_daemon_endpoint() {
     return
   fi
 
-  case "${OTTO_LISTEN:-127.0.0.1:6868}" in
-    0.0.0.0:*) echo "localhost:${OTTO_LISTEN#0.0.0.0:}" ;;
-    127.0.0.1:*) echo "localhost:${OTTO_LISTEN#127.0.0.1:}" ;;
-    *) echo "$OTTO_LISTEN" ;;
+  # Bind the default before matching. Expanding OTTO_LISTEN directly in the
+  # branch bodies emits a bare "localhost:" whenever it is unset — the case
+  # matches the default, then the body strips a prefix off an empty string.
+  local listen="${OTTO_LISTEN:-127.0.0.1:$(dev_daemon_port)}"
+  case "$listen" in
+    0.0.0.0:*) echo "localhost:${listen#0.0.0.0:}" ;;
+    127.0.0.1:*) echo "localhost:${listen#127.0.0.1:}" ;;
+    *) echo "$listen" ;;
   esac
 }
 
@@ -109,9 +124,7 @@ configure_dev_otto_home() {
   fi
 
   export OTTO_HOME
-  local dev_root
-  dev_root="${OTTO_DEV_ROOT:-$(default_dev_otto_root)}"
-  OTTO_HOME="$dev_root/.dev/otto-home"
+  OTTO_HOME="$(default_dev_otto_home)"
   export OTTO_DEV_MANAGED_HOME=1
 
   if [ -n "${OTTO_DEV_SEED_HOME:-}" ]; then
@@ -127,7 +140,7 @@ configure_dev_command_env() {
     if [ -n "${OTTO_SERVICE_DAEMON_PORT:-}" ]; then
       export OTTO_LISTEN="0.0.0.0:${OTTO_SERVICE_DAEMON_PORT}"
     else
-      export OTTO_LISTEN="127.0.0.1:6868"
+      export OTTO_LISTEN="127.0.0.1:$(dev_daemon_port)"
     fi
   fi
 

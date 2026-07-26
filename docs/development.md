@@ -26,43 +26,110 @@ npm run dev:app
 npm run dev:desktop
 ```
 
-Root checkout dev is intentionally split across terminals:
+**`npm run dev:win:desktop` (Windows) / `npm run dev:desktop` is the front-end dev command.**
+It brings up Metro and the Electron shell together with the daemon in the Electron main
+process — one command, the whole app. Reach for the split entrypoints below only for tests,
+demos, CI, and agent-driven services.
 
-- `npm run dev:server` runs the daemon on `127.0.0.1:6868`.
+Root checkout dev is otherwise split across terminals:
+
+- `npm run dev:server` runs the dev daemon on `127.0.0.1:6788`.
 - `npm run dev:app` runs Expo on `http://localhost:8081` and connects to the dev daemon.
 - `npm run dev:desktop` runs its own Electron-flavored Expo server on the first free port from `8082` through `8089`. It never claims port `8081`.
 
-`npm run dev` is only a shorthand for `npm run dev:server`. Keep `127.0.0.1:6868` for the packaged app and production-style `~/.otto` state.
+`npm run dev` is only a shorthand for `npm run dev:server`.
+
+Whichever you use, they all resolve through the same dev defaults, so they land on the same
+daemon port and the same `OTTO_HOME` — see below.
+
+### Four lanes
+
+**The installed Otto, the dev Otto, a test run, and a demo run are all expected to
+be up at the same time.** Each owns its own ports and its own running space, and
+nothing in one lane can reach into another:
+
+| Lane              | Daemon port | `OTTO_HOME`                       | Metro         | Other fixed ports |
+| ----------------- | ----------- | --------------------------------- | ------------- | ----------------- |
+| **Installed app** | `6868`      | `~/.otto`                         | —             | —                 |
+| **Dev**           | `6788`      | `packages/desktop/.dev/otto-home` | `8081`–`8089` | CDP `9223`        |
+| **Tests** (e2e)   | dynamic     | `$TMP/otto-e2e-home-*`            | dynamic       | relay dynamic     |
+| **Demos**         | dynamic     | `$TMP/otto-e2e-home-*`            | dynamic       | relay dynamic     |
+
+The two fixed lanes get fixed ports because you need to _find_ them — you type
+`localhost:6788` into a client, you attach a debugger to `9223`. Override the dev
+port with `OTTO_DEV_DAEMON_PORT` and the CDP port with
+`OTTO_ELECTRON_REMOTE_DEBUGGING_PORT`.
+
+**Tests and demos stay dynamic on purpose — do not pin them to a band.** Both run
+through `e2e/global-setup.ts`, which mints a throwaway `mkdtemp` `OTTO_HOME` per
+run and asks the OS for free daemon/Metro/relay ports. That is what lets several
+runs go at once — two e2e runs, or e2e and demos together, or one per worktree
+under `otto.json` services. A fixed band would trade all of that away to solve a
+collision the dynamic allocator does not have. Cross-lane safety instead comes
+from subtraction: `RESERVED_LOCAL_PORTS` in `global-setup.ts` lists every fixed
+port the other lanes own (`6868`, `6788`, `8081`–`8090`, `9223`, `4400`, plus
+OpenCode's `61680`) and the allocator refuses all of them. **Add a row there
+whenever a lane claims a new fixed port.**
+
+Per-run output also stays separate: the tier scripts set `E2E_HTML_REPORT_DIR`
+and `E2E_REPORT_DIR` so a demo or T2 run cannot wipe a T1 report mid-write.
+
+The `6868`/`6788` split is the load-bearing one for the two fixed lanes. Two
+daemons on `6868` do not coexist — the second either crash-loops fighting for the
+port or, worse, the first one answers and hands dev clients your production
+agents. `npm run cli` resolves through the same wrapper, so the in-repo CLI
+always talks to the dev daemon.
+
+The separate Electron userData (`packages/desktop/.dev/user-data`) is what lets
+the dev app launch at all while the installed one is open: on a shared userData
+the dev instance loses the single-instance lock and immediately quits.
+
+Deliberately **shared**: `OTTO_LOCAL_MODELS_DIR` points both at
+`~/.otto/models/local-speech` so local speech models are downloaded once, and
+skills sync writes to the machine-level `~/.claude/skills`, `~/.codex/skills`,
+and `~/.agents/skills` for both.
+
+**Do not click "Install CLI" from a dev build.** It writes `~/.local/bin/otto`
+from the _running_ app's bundled shim path, so a dev build overwrites the
+installed app's working shim with one that only resolves inside the checkout.
+
+`scripts/dev-home.sh` and `scripts/dev-home.ps1` hold these defaults, one per
+shell. They are mirrors of each other — change one, change both.
 
 ### OTTO_HOME
 
 `OTTO_HOME` is the directory that holds runtime state (agents, worktrees, workspace config, sockets, daemon log). Resolution rules:
 
 - The **server itself** (e.g. when launched by the desktop app or `npm run start`) defaults to `~/.otto` (see `packages/server/src/server/otto-home.ts`).
-- **Repo dev scripts** default to `$ROOT/.dev/otto-home`, where `$ROOT` is the current checkout or worktree root. This keeps all dev state scoped to the checkout instead of the packaged desktop app.
-- **`npm run cli -- ...`** runs through the same dev-home wrapper as the dev scripts, so the in-repo CLI automatically targets the current checkout's `.dev/otto-home` and configured dev daemon endpoint.
-- **Otto-created worktrees** seed `$OTTO_WORKTREE_PATH/.dev/otto-home` from `$OTTO_SOURCE_CHECKOUT_PATH/.dev/otto-home` by copying durable JSON metadata. Runtime files like pid files, sockets, and logs are not copied.
+- **Repo dev scripts** default to `$ROOT/packages/desktop/.dev/otto-home`, where `$ROOT` is the current checkout or worktree root. This keeps all dev state scoped to the checkout instead of the packaged desktop app. It lives under `packages/desktop` because that is where the desktop dev script originally put it and where the accumulated dev state sits; the other entrypoints were pointed at it rather than the reverse, so nobody has to relocate a populated home and its git worktrees.
+- **`npm run cli -- ...`** runs through the same dev-home wrapper as the dev scripts, so the in-repo CLI automatically targets the current checkout's dev home and dev daemon endpoint.
+- **Otto-created worktrees** seed `$OTTO_WORKTREE_PATH/packages/desktop/.dev/otto-home` from the source checkout's dev home by copying durable JSON metadata. Runtime files like pid files, sockets, and logs are not copied.
 - **This repo's worktree setup** also best-effort seeds `packages/app/ios` and the newest `.dev/ios-build` entry from the source checkout so iOS simulator services can reuse native project and Xcode cache state when it is safe enough to do so.
+
+An explicit `OTTO_HOME` is always honored and never rewritten — only the
+script-managed dev home gets its `config.json` seeded with the dev port and
+wildcard CORS, so pointing dev at a real home can never clobber it.
 
 Override knobs:
 
 ```bash
-OTTO_HOME=~/.otto-blue npm run dev          # explicit home
+OTTO_HOME=~/.otto-blue npm run dev           # explicit home
+OTTO_DEV_DAEMON_PORT=6799 npm run dev        # explicit dev daemon port
 OTTO_DEV_SEED_HOME=/path/to/home npm run dev # seed from a different source home
 OTTO_DEV_RESET_HOME=1 npm run dev            # clear and reseed the derived worktree home
 ```
 
 ### Daemon endpoints
 
-- Stable daemon launched by the desktop app: `localhost:6868`.
-- Root checkout dev daemon: `localhost:6868`.
+- Stable daemon launched by the installed desktop app: `localhost:6868`.
+- Root checkout dev daemon: `localhost:6788`.
 - Root checkout Expo: `http://localhost:8081`.
 - Root checkout desktop dev Expo: first free port from `8082` through `8089`.
-- `npm run dev` (Windows): `localhost:6868` for the daemon.
+- Desktop dev Electron CDP: `127.0.0.1:9223`.
 
 In Otto-managed worktree services, use the injected service environment rather than hardcoded root checkout ports.
 
-**Windows gotcha:** `npm run dev:win` always spawns its own daemon — it has no mode to attach to one that's already running. If your Windows dev session already has a daemon on `6868` (e.g. from an earlier `dev:win`) and something else invokes `dev:win` again (a preview tool, a second terminal), the new daemon instance crash-loops fighting over the port. Use `npm run dev:app` instead when you just need Expo pointed at an already-running daemon; it never launches its own daemon.
+**Windows gotcha:** `npm run dev:win` always spawns its own daemon — it has no mode to attach to one that's already running. If your Windows dev session already has a daemon on the dev port (e.g. from an earlier `dev:win`) and something else invokes `dev:win` again (a preview tool, a second terminal), the new daemon instance crash-loops fighting over the port. Use `npm run dev:app` instead when you just need Expo pointed at an already-running daemon; it never launches its own daemon.
 
 ### Expo Router
 
@@ -345,7 +412,7 @@ install.
 
 ## CLI reference
 
-Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.ts`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's `.dev/otto-home` and dev daemon endpoint unless you pass an explicit override. The globally installed `otto` binary on macOS is a symlink into the installed Otto desktop app, not this checkout — use it to drive the desktop's built-in daemon, but use `npm run cli` when you want to talk to the CLI you are editing.
+Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.ts`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's dev home (`packages/desktop/.dev/otto-home`) and the dev daemon on `6788` unless you pass an explicit override. The globally installed `otto` binary is a shim into the installed Otto desktop app, not this checkout — use it to drive the installed app's daemon on `6868`, and `npm run cli` when you want to talk to the CLI you are editing.
 
 ```bash
 npm run cli -- ls -a -g              # List all agents globally
