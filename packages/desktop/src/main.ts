@@ -21,6 +21,7 @@ import {
   protocol,
   screen,
   session,
+  shell,
 } from "electron";
 import { createDaemonCommandHandlers, registerDaemonManager } from "./daemon/daemon-manager.js";
 import { parsePassthroughCliArgsFromArgv, runPassthroughCli } from "./daemon/cli/passthrough.js";
@@ -41,6 +42,11 @@ import {
   buildStandardContextMenuItems,
 } from "./window/window-manager.js";
 import { setupDarwinCompositorWatchdog } from "./window/compositor-watchdog/index.js";
+import {
+  buildDevShortcutDetails,
+  decideAppUserModelId,
+  resolveDevShortcutPath,
+} from "./features/app-user-model-id.js";
 import { resolveBrandedAssetPath } from "./features/dev-icon.js";
 import { registerDialogHandlers } from "./features/dialogs.js";
 import {
@@ -162,15 +168,54 @@ const DESKTOP_SMOKE_STOP_REQUEST = "otto-smoke-stop";
 app.setName(APP_NAME);
 
 // Windows identifies notification senders and routes toast clicks by
-// AppUserModelID, not app.getName(). Without this, Windows falls back to
+// AppUserModelID, not app.getName(). Without one, Windows falls back to
 // Electron's own default identity, so toasts are labeled "Electron" and
 // clicking one launches a bare electron.exe instead of activating us.
-// Must match electron-builder's `appId` so the installed NSIS shortcut
-// (which electron-builder registers under this same AUMID) resolves back
-// to this app.
-if (process.platform === "win32") {
-  app.setAppUserModelId("ai.ottocode.desktop");
+//
+// The packaged app must use electron-builder's `appId` — the NSIS installer
+// stamps that same AUMID onto its Start Menu shortcut, and Windows resolves the
+// sender through it. A dev build has no such shortcut, so it writes its own and
+// claims a distinct AUMID; that is what keeps dev toasts attributable when both
+// apps are running. See features/app-user-model-id.ts for the fallback rule.
+function applyAppUserModelId(): void {
+  const decision = decideAppUserModelId({
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    skipDevShortcut: process.env.OTTO_SKIP_DEV_SHORTCUT === "1",
+    writeDevShortcut: () => {
+      try {
+        return shell.writeShortcutLink(
+          resolveDevShortcutPath(app.getPath("appData")),
+          "create",
+          buildDevShortcutDetails({
+            execPath: process.execPath,
+            appPath: app.getAppPath(),
+            iconPath: getWindowIconPath(),
+          }),
+        );
+      } catch (error) {
+        log.warn("[aumid] failed to write the dev Start Menu shortcut", error);
+        return false;
+      }
+    },
+  });
+
+  if (!decision.appUserModelId) {
+    return;
+  }
+
+  app.setAppUserModelId(decision.appUserModelId);
+  if (!app.isPackaged && process.platform === "win32") {
+    log.info(
+      `[aumid] using ${decision.appUserModelId}` +
+        (decision.wroteDevShortcut
+          ? " (dev Start Menu shortcut written)"
+          : " — no dev shortcut, dev toasts will look like the installed app's"),
+    );
+  }
 }
+
+applyAppUserModelId();
 
 // CSP for the app shell's own session only (registered on defaultSession, which
 // the main window uses). Browser-webview guests run on separate
