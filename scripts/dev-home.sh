@@ -19,7 +19,17 @@ dev_daemon_port() {
 # dev state lives. Everything else was pointed here rather than the reverse so
 # no one has to move a populated home — and its git worktrees — to get one.
 # Derived from the checkout root, so an Otto worktree still gets its own.
+# OTTO_DEV_HOME names a *managed* home other than the default one — the escape
+# hatch for standing up an additional isolated lane (see the agent lane in
+# docs/development.md). It differs from raw OTTO_HOME, which is honored but never
+# written to: a managed home gets its config.json seeded with the lane's port, so
+# the lane actually answers on its own port instead of inheriting 6868.
 default_dev_otto_home() {
+  if [ -n "${OTTO_DEV_HOME:-}" ]; then
+    echo "$OTTO_DEV_HOME"
+    return
+  fi
+
   local dev_root
   dev_root="${OTTO_DEV_ROOT:-$(default_dev_otto_root)}"
   echo "$dev_root/packages/desktop/.dev/otto-home"

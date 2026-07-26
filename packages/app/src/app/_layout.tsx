@@ -1026,7 +1026,7 @@ function RootProviders({ children }: { children: ReactNode }) {
 
 // A navy hairline around the entire viewport, shown only in dev builds. Running
 // the installed Otto and a dev Otto side by side is the expected setup (see
-// docs/development.md → "Four lanes"), and it has to be impossible to mistake
+// docs/development.md → "Lanes"), and it has to be impossible to mistake
 // one for the other before typing into it.
 //
 // Deliberately a viewport-anchored overlay rather than native window chrome:

@@ -42,23 +42,76 @@ Root checkout dev is otherwise split across terminals:
 Whichever you use, they all resolve through the same dev defaults, so they land on the same
 daemon port and the same `OTTO_HOME` — see below.
 
-### Four lanes
+### Lanes
 
-**The installed Otto, the dev Otto, a test run, and a demo run are all expected to
-be up at the same time.** Each owns its own ports and its own running space, and
-nothing in one lane can reach into another:
+**The installed Otto, the dev Otto, an agent's own instance, a test run, and a
+demo run are all expected to be up at the same time.** Each owns its own ports
+and its own running space, and nothing in one lane can reach into another:
 
-| Lane              | Daemon port | `OTTO_HOME`                       | Metro         | Other fixed ports |
-| ----------------- | ----------- | --------------------------------- | ------------- | ----------------- |
-| **Installed app** | `6868`      | `~/.otto`                         | —             | —                 |
-| **Dev**           | `6788`      | `packages/desktop/.dev/otto-home` | `8081`–`8089` | CDP `9223`        |
-| **Tests** (e2e)   | dynamic     | `$TMP/otto-e2e-home-*`            | dynamic       | relay dynamic     |
-| **Demos**         | dynamic     | `$TMP/otto-e2e-home-*`            | dynamic       | relay dynamic     |
+| Lane              | Daemon port | `OTTO_HOME`                        | Metro         | Other fixed ports |
+| ----------------- | ----------- | ---------------------------------- | ------------- | ----------------- |
+| **Installed app** | `6868`      | `~/.otto`                          | —             | —                 |
+| **Dev**           | `6788`      | `packages/desktop/.dev/otto-home`  | `8081`–`8089` | CDP `9223`        |
+| **Agent**         | `6799`      | `packages/desktop/.dev/agent-home` | `8095` (web)  | —                 |
+| **Tests** (e2e)   | dynamic     | `$TMP/otto-e2e-home-*`             | dynamic       | relay dynamic     |
+| **Demos**         | dynamic     | `$TMP/otto-e2e-home-*`             | dynamic       | relay dynamic     |
 
-The two fixed lanes get fixed ports because you need to _find_ them — you type
+(The heading deliberately does not count them — this table has grown twice.)
+
+The fixed lanes get fixed ports because you need to _find_ them — you type
 `localhost:6788` into a client, you attach a debugger to `9223`. Override the dev
 port with `OTTO_DEV_DAEMON_PORT` and the CDP port with
 `OTTO_ELECTRON_REMOTE_DEBUGGING_PORT`.
+
+#### The agent lane
+
+`npm run dev:win:agent` (Windows) / `npm run dev:agent` starts a daemon **and** an
+Expo **web** front end that an AI agent can drive and screenshot on its own,
+without touching anything you have running. Start it while the installed Otto and
+the dev Otto are both up — nothing collides. That is the whole reason it exists.
+
+It serves web rather than Electron on purpose: a web front end opens in Otto's
+browser pane and can be verified with the browser tools, whereas an Electron
+window would need its own userData for the single-instance lock and could only be
+inspected over CDP.
+
+The home is managed (its `config.json` is seeded with the lane's port) and
+persistent — a throwaway home mints a new daemon keypair and `serverId` every run,
+and a client that remembered the old identity refuses the new one.
+
+Override with `OTTO_DEV_DAEMON_PORT`, `OTTO_AGENT_METRO_PORT`, or `OTTO_DEV_HOME`.
+`OTTO_DEV_HOME` is the general escape hatch for standing up **another** managed
+lane: unlike raw `OTTO_HOME` — which is honored but never written to — a managed
+home gets its `config.json` seeded, so the lane actually answers on its own port
+instead of inheriting `6868`.
+
+##### Bootstrapping it
+
+A brand-new lane home has no providers configured and boots into the first-run
+wizard, which is friction on every single run. `npm run dev:agent:bootstrap`
+removes it. The bootstrap has two halves, because the state lives in two places:
+
+```bash
+npm run dev:agent:bootstrap
+```
+
+- **Daemon half** (what the script does): copies the durable, machine-local half
+  of another home's `config.json` — provider endpoints and keys, model tier
+  overrides, personalities, teams, feature flags — into the agent home. Defaults
+  to seeding from the dev home; `--from <home>` picks another, `--force`
+  overwrites values already set. It deliberately never copies `daemon.*`, because
+  inheriting someone else's `daemon.listen` is exactly how a lane ends up
+  answering on the wrong port.
+- **Client half** (what it prints): the first-run wizard and spotlight-tour flags
+  are device-local app settings in the _client's_ AsyncStorage — for Expo web
+  that is `localStorage` under key `@otto:app-settings` on the Metro origin, not
+  anywhere under `OTTO_HOME`. The script prints a one-liner to run once in the
+  browser pane, then reload.
+
+Note the flags must be set to `true` explicitly. `migrateSetupWizardFlag` only
+treats a device as an upgrader when the field is _absent_, and the app writes a
+full settings blob with `false` on first boot — so seeding an empty blob does not
+skip the wizard.
 
 **Tests and demos stay dynamic on purpose — do not pin them to a band.** Both run
 through `e2e/global-setup.ts`, which mints a throwaway `mkdtemp` `OTTO_HOME` per

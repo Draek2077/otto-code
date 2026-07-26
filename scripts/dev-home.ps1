@@ -27,7 +27,13 @@ function Get-OttoDevRoot {
 # dev state lives. Everything else was pointed here rather than the reverse so
 # no one has to move a populated home — and its git worktrees — to get one.
 # Derived from the checkout root, so an Otto worktree still gets its own.
+# OTTO_DEV_HOME names a *managed* home other than the default one — the escape
+# hatch for standing up an additional isolated lane (see the agent lane in
+# docs/development.md). It differs from raw OTTO_HOME, which is honored but never
+# written to: a managed home gets its config.json seeded with the lane's port, so
+# the lane actually answers on its own port instead of inheriting 6868.
 function Get-OttoDevHome {
+    if ($env:OTTO_DEV_HOME) { return $env:OTTO_DEV_HOME }
     return (Join-Path (Get-OttoDevRoot) "packages\desktop\.dev\otto-home")
 }
 
