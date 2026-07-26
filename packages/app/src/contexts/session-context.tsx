@@ -43,6 +43,7 @@ import { getHostRuntimeStore, useHostRuntimeIsConnected } from "@/runtime/host-r
 import { useVoiceAudioEngineOptional, useVoiceRuntimeOptional } from "@/contexts/voice-context";
 import type { AudioPlaybackSource } from "@/voice/audio-engine-types";
 import { formatToMimeType } from "@/voice/audio-format";
+import { readVoicePlaybackGain } from "@/voice/voice-playback-gain";
 import {
   useSessionStore,
   type Agent,
@@ -1529,7 +1530,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
             startedVoicePlayback = true;
             voiceRuntime?.onAssistantAudioStarted(serverId);
           }
-          await voiceAudioEngine.play(audioBlob);
+          await voiceAudioEngine.play(audioBlob, { gain: readVoicePlaybackGain() });
         }
         await confirmAudioPlayed();
       } catch (error) {

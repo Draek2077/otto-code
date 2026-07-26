@@ -62,6 +62,12 @@ export interface VoiceRuntimeDeps {
   deactivateKeepAwake(tag: string): Promise<void>;
   /** Device-local gate for the repeating thinking tone. Defaults to enabled. */
   isThinkingToneEnabled?(): boolean;
+  /**
+   * Device-local level for the spoken-reply channel, 0..1. Read per play call
+   * (not captured once at start) so a slider move lands on the next chunk
+   * instead of the next voice session. Defaults to full.
+   */
+  getPlaybackGain?(): number;
 }
 
 interface RuntimeSessionState {
@@ -368,7 +374,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
         try {
           if (group.shouldPlay) {
-            await deps.engine.play(nextChunk.source);
+            await deps.engine.play(nextChunk.source, { gain: deps.getPlaybackGain?.() ?? 1 });
           }
         } catch (error) {
           if (generation !== playback.generation) {
@@ -478,7 +484,10 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       }
       cue.playing = true;
       void deps.engine
-        .play(cueSource)
+        // The thinking tone rides the spoken-reply channel: it is voice mode
+        // talking, and turning the reply down without turning the tone down
+        // leaves the tone the loudest thing in the conversation.
+        .play(cueSource, { gain: deps.getPlaybackGain?.() ?? 1 })
         .catch((error) => {
           if (cue.token !== token) {
             return;

@@ -50,11 +50,16 @@ previous reply's last paragraph back at you:
   for that beat the search lands on the finished turn. `agent-stream/view.tsx` latches
   the boundary key while the agent is idle and hands it to `computeLiveTurnReveal`,
   which spans nothing until the new turn's own user row arrives.
-- **The row keeps one component identity across the turn's end.** Every assistant row
-  subscribes to the reveal ticker, spanned or not: swapping the element type when the
-  spans clear remounted the row and wiped the watched-live latch on the one bubble
-  that had just finished — the reply's last paragraph, the only segment that cannot
-  settle while its turn runs.
+- **The watched-live latch outlives the row.** One segment cannot settle while its
+  turn runs — the reply's last paragraph, the growing end — and it is remounted at
+  the exact instant it becomes speakable. Twice over: every assistant row subscribes
+  to the reveal ticker whether it is spanned or not, because swapping the element
+  type when the spans clear remounted it; and the id it is keyed by changes anyway,
+  from `<group>:head` while it streams to `<group>:block:<n>` when the head flushes
+  into the canonical tail. A latch held in a ref died there, and multi-paragraph
+  replies were read up to their final paragraph and then stopped. The latch therefore
+  lives in `agent-stream/live-turn-witness.ts`, a module registry keyed by
+  (group, block index) — the pair the flush leaves untouched.
 
 ### The two halves
 
@@ -158,6 +163,48 @@ them, and phone numbers and version strings are guarded out explicitly.
   bare `pcm` (OpenAI) is assumed 24 kHz, matching the app's audio engines.
 - **The final segment always carries pause 0** so an utterance never ends in
   dead air the client must play before confirming.
+
+## Volume: three channels, no mixing
+
+The app makes noise on three unrelated channels, and each owns a slider. Nothing
+multiplies across them.
+
+| Channel          | Setting                                          | Where it is set              | Default |
+| ---------------- | ------------------------------------------------ | ---------------------------- | ------- |
+| Spoken replies   | `voicePlaybackVolume`                            | Settings → \<host\> → Agents | 50      |
+| Agent voice cues | `agentVoiceCuesVolume` / `agentVoiceCuesMuted`   | Settings → \<host\> → Agents | 50      |
+| Visualizer sound | `visualizerSoundVolume` / `visualizerSoundMuted` | Settings → Visualizer        | 50      |
+
+They are separate because they answer different questions. Spoken replies are the
+agent talking _to you_ — voice mode, auto-speech, the per-bubble play button, and
+voice mode's thinking tone, which rides this channel because a tone louder than the
+reply it accompanies is the loudest thing in the conversation. Cues are a
+notification that fires while you are somewhere else. The Visualizer is ambience for
+a graph you are watching. A level that suits one rarely suits another.
+
+All three default to **50**, so the sliders start level. Note what that means for
+spoken replies specifically: they had no level at all before this setting existed and
+played at whatever the host synthesized, so the default deliberately makes speech
+quieter than it used to be rather than preserving the old loudness.
+
+**The engine takes gain per play call, not a master volume**
+(`voice/audio-engine-types.ts`). Both channels share one `AudioEngine`, so a master
+would collapse them; instead whoever calls `play()` knows which channel it is
+speaking on and passes that level. Web inserts a `GainNode` (only when the level is
+below full — the common path is an unchanged direct connection); native has no
+volume control in `expo-two-way-audio`, so `voice/audio-gain.ts` scales the PCM16
+samples themselves. Gain 0 still plays, silently, for the clip's full duration:
+callers ack chunks and advance queues on completion, and skipping would desync them.
+
+Read at **fire time**, never subscribed to (`voice/voice-playback-gain.ts`). Every
+caller sits inside a long-lived effect, a websocket handler, or a plain module, where
+re-subscribing on a slider drag would tear down the thing that is currently playing.
+
+Two deliberate exceptions. Settings → Diagnostics' **playback test stays at full
+volume** — it answers "do my speakers work", and a silent diagnostic at 0% reads as a
+broken one. **Voice previews follow the channel they preview**: the Voice settings
+picker at the spoken-reply level, the personality editor at the cue level, passed as
+`VoicePreviewButton`'s `gain` prop.
 
 ## Gotchas
 

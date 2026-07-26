@@ -17,6 +17,7 @@ import {
 import { useSessionStore } from "@/stores/session-store";
 import { createAudioEngine } from "@/voice/audio-engine";
 import type { AudioEngine } from "@/voice/audio-engine-types";
+import { readVoicePlaybackGain } from "@/voice/voice-playback-gain";
 import {
   createVoiceRuntime,
   type VoiceRuntime,
@@ -154,6 +155,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       isThinkingToneEnabled: () =>
         queryClient.getQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY)?.voiceThinkingTone ??
         DEFAULT_CLIENT_SETTINGS.voiceThinkingTone,
+      getPlaybackGain: readVoicePlaybackGain,
     });
 
     engineRef.current = engine;

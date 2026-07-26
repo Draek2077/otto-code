@@ -446,6 +446,9 @@ function VoiceModeCard({
     return toVoiceOptions(model?.voices ?? []);
   }, [options, tts.engine, tts.model]);
 
+  // Previewed at the spoken-reply level, because that is the channel this voice
+  // will speak on.
+  const previewGain = appSettings.voicePlaybackVolume / 100;
   const voicePreview = useMemo(
     () =>
       canPreviewVoice && tts.voice ? (
@@ -455,10 +458,11 @@ function VoiceModeCard({
           voiceName={tts.voice}
           voiceModel={tts.model}
           voiceProvider={tts.engine}
+          gain={previewGain}
           testID="host-speech-voice-tts-preview"
         />
       ) : undefined,
-    [canPreviewVoice, serverId, tts.engine, tts.model, tts.voice],
+    [canPreviewVoice, previewGain, serverId, tts.engine, tts.model, tts.voice],
   );
 
   const onEnabled = useCallback(

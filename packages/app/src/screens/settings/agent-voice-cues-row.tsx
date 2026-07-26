@@ -4,8 +4,9 @@
 // Cues are an agent notification channel, not a Visualizer feature, so this is
 // where they are switched off and where their level is set — see
 // voice/use-agent-voice-cues.ts. They are their OWN audio channel: the
-// Visualizer's Sound slider and speaker button drive the graph's ambience and
-// have no say here. Two unrelated things, two channels.
+// Visualizer's Sound slider and speaker button drive the graph's ambience, the
+// Voice volume row below drives spoken replies, and neither has any say here.
+// Three unrelated things, three channels.
 //
 // Both settings are DEVICE-LOCAL (they decide whether this device's speakers
 // make noise, like the voice-mode thinking tone a card below), even though the
@@ -15,52 +16,16 @@
 //
 // Hidden entirely when the host can't do cues, rather than shown-but-dead: it
 // needs a daemon that advertises both voice-cue support and TTS.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { Text, View } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useAppSettings } from "@/hooks/use-settings";
 import { useVisualizerVoiceCuesFeature } from "@/screens/settings/agent-personalities-section";
+import { SettingsVolumeRow } from "@/screens/settings/settings-volume-row";
 import { useTtsPreviewFeature } from "@/screens/settings/voice-preview-button";
 import { settingsStyles } from "@/styles/settings";
 
 const ROW_WITH_BORDER = [settingsStyles.row, settingsStyles.rowBorder];
-const VOLUME_ROW = [settingsStyles.rowResponsive, settingsStyles.rowBorder];
-
-// Drag updates a local draft (live feedback + percent readout) and only commits
-// on release — same shape as the Visualizer's VolumeRow and appearance-section's
-// FontSizeRow, so one write per gesture rather than one per tick.
-function VolumeRow({ value, onCommit }: { value: number; onCommit: (next: number) => void }) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => {
-    setDraft(value);
-  }, [value]);
-  return (
-    <View style={VOLUME_ROW}>
-      <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>Voice cue volume</Text>
-        <Text style={settingsStyles.rowHint}>
-          How loud cues are. Separate from the Visualizer&apos;s sound effects — muting the
-          Visualizer does not silence cues. 0% is silence.
-        </Text>
-      </View>
-      <View style={styles.volumeField}>
-        <Slider
-          min={0}
-          max={100}
-          step={5}
-          value={draft}
-          onValueChange={setDraft}
-          onSlidingComplete={onCommit}
-          accessibilityLabel="Agent voice cue volume"
-          testID="host-page-agent-voice-cues-volume"
-        />
-        <Text style={styles.volumeValue}>{draft}%</Text>
-      </View>
-    </View>
-  );
-}
 
 export function AgentVoiceCuesRow({ serverId }: { serverId: string }) {
   const canSpeakCues = useVisualizerVoiceCuesFeature(serverId);
@@ -105,28 +70,15 @@ export function AgentVoiceCuesRow({ serverId }: { serverId: string }) {
         />
       </View>
       {settings.agentVoiceCues ? (
-        <VolumeRow value={settings.agentVoiceCuesVolume} onCommit={onVolumeCommit} />
+        <SettingsVolumeRow
+          title="Voice cue volume"
+          hint="How loud cues are. Separate from the Visualizer's sound effects — muting the Visualizer does not silence cues. 0% is silence."
+          value={settings.agentVoiceCuesVolume}
+          onCommit={onVolumeCommit}
+          accessibilityLabel="Agent voice cue volume"
+          testID="host-page-agent-voice-cues-volume"
+        />
       ) : null}
     </>
   );
 }
-
-const styles = StyleSheet.create((theme) => ({
-  volumeField: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[3],
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: "auto",
-    width: { xs: "100%", sm: "auto" },
-    maxWidth: 220,
-    marginLeft: { xs: 0, sm: theme.spacing[4] },
-  },
-  volumeValue: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    minWidth: 40,
-    textAlign: "right",
-  },
-}));
