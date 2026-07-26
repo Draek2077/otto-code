@@ -155,6 +155,7 @@ import {
   useAssistantBubbleHasText,
 } from "@/agent-stream/assistant-bubble-text";
 import { useIsMessagePlaybackActive } from "@/agent-stream/message-playback-activity";
+import { autoSpeechQueue } from "@/voice/auto-speech-queue";
 export type { InlinePathTarget } from "@/assistant-file-links";
 export type { AssistantForkTarget };
 
@@ -733,6 +734,12 @@ interface AssistantMessageProps {
   blockIndex?: number;
   /** Agent whose personality voice reads this bubble aloud. */
   agentId?: string;
+  /**
+   * This item is the growing end of a running turn — the model may still append
+   * to it. Everything that reads a message as a finished thing (the playback
+   * button's visibility, the auto-speech queue) waits for this to go false.
+   */
+  isTurnTail?: boolean;
 }
 
 export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
@@ -1635,6 +1642,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   blockGroupId,
   blockIndex,
   agentId,
+  isTurnTail,
 }: AssistantMessageProps) {
   const showBubbleGradient = useAppSettingValue(selectChatBubbleGradient);
   const displayMessage =
@@ -2023,10 +2031,14 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   const playback = useAssistantBubblePlaybackState({
     serverId,
+    agentId,
     spacing,
     groupId: bubbleGroupId,
     blockIndex: bubbleBlockIndex,
     message,
+    displayedLength: displayMessage.length,
+    isTurnTail,
+    revealBudget,
   });
   const {
     showPlayback,
@@ -2102,17 +2114,30 @@ export const AssistantMessage = memo(function AssistantMessage({
  */
 function useAssistantBubblePlaybackState(input: {
   serverId?: string;
+  agentId?: string;
   spacing: AssistantMessageProps["spacing"];
   groupId: string | undefined;
   blockIndex: number;
   message: string;
+  /** How much of `message` the typewriter reveal has laid out so far. */
+  displayedLength: number;
+  isTurnTail: boolean | undefined;
+  revealBudget: number | undefined;
 }): {
   showPlayback: boolean;
   visible: boolean;
   handlePointerEnter: () => void;
   handlePointerLeave: () => void;
 } {
-  const { serverId, spacing, groupId, blockIndex, message } = input;
+  const { serverId, agentId, spacing, groupId, blockIndex, message } = input;
+  // "Received in full": the model has moved past this item AND the typewriter
+  // has finished laying it out. Both halves matter — a bubble still growing
+  // across the screen is not a message you can be offered to play, and text the
+  // reader has not been shown yet is not text to read aloud.
+  const isSettled = input.isTurnTail !== true && input.displayedLength >= message.length;
+  // Part of a turn that is being written right now: an item only carries a
+  // reveal span (or the tail flag) while its turn runs.
+  const isLiveTurnItem = input.revealBudget !== undefined || input.isTurnTail === true;
   const [hovered, setHovered] = useState(false);
   const handlePointerEnter = useCallback(() => setHovered(true), []);
   const handlePointerLeave = useCallback(() => setHovered(false), []);
@@ -2129,13 +2154,51 @@ function useAssistantBubblePlaybackState(input: {
     reportAssistantBubbleText({ groupId, blockIndex, text: message });
   }, [groupId, blockIndex, message]);
 
+  // Auto-speech reads what it WATCHED being written, never what was already on
+  // screen: opening a chat must not start reciting its history. "Watched" is
+  // exactly `isLiveTurnItem` — an item only carries a reveal span (or the tail
+  // flag) while its turn is running, and a history row never renders with
+  // either. The ref latches because the flag goes false the instant the turn
+  // ends, which is the same commit the segment becomes speakable.
+  const watchedLiveRef = useRef(false);
+  watchedLiveRef.current = watchedLiveRef.current || isLiveTurnItem;
+  const enqueuedRef = useRef(false);
+  useEffect(() => {
+    if (
+      enqueuedRef.current ||
+      !watchedLiveRef.current ||
+      !isSettled ||
+      !canPlay ||
+      serverId === undefined ||
+      groupId === undefined
+    ) {
+      return;
+    }
+    // Per SEGMENT, not per bubble: blocks are promoted out of the live item as
+    // they complete, so queueing each one keeps speech following the reply
+    // paragraph by paragraph instead of waiting for the whole turn. The queue
+    // ignores this outright when auto-speech is off, and dedupes on the text —
+    // this row's identity is not stable enough to dedupe on (see the queue's
+    // `fingerprint`).
+    enqueuedRef.current = true;
+    autoSpeechQueue.enqueue({
+      groupId,
+      serverId,
+      ...(agentId ? { agentId } : {}),
+      text: message,
+    });
+  }, [agentId, canPlay, groupId, isSettled, message, serverId]);
+
   // One button per *visual* bubble, so it goes on the segment that ends the
   // group: "default" is a standalone reply and "compactTop" is the last segment
   // of a split one, while "compactBottom"/"compactBoth" still have a segment
   // below them and would each add a redundant button mid-bubble.
   const isLastSegment = spacing === "default" || spacing === "compactTop";
   return {
-    showPlayback: canPlay && isLastSegment,
+    // Not while the bubble is still growing: a Play affordance on a message
+    // that is not finished being written offers something that does not exist
+    // yet, and the icon riding the bubble's expanding edge looks broken.
+    showPlayback: canPlay && isLastSegment && isSettled,
     // Hover is web-only (docs/hover.md), so native and compact keep it visible.
     visible: hovered || isNative || isCompact,
     handlePointerEnter,

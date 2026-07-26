@@ -129,6 +129,8 @@ export const ar: TranslationResources = {
       unmuteVoice: "إلغاء كتم الصوت",
       muteVoice: "كتم الصوت",
       dictation: "الإملاء",
+      enableAutoSpeech: "قراءة الردود بصوت عالٍ",
+      disableAutoSpeech: "إيقاف قراءة الردود بصوت عالٍ",
       interruptBeforeVoice: "قم بمقاطعة الوكيل قبل بدء الوضع الصوتي",
     },
     attachments: {

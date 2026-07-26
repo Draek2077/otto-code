@@ -131,6 +131,8 @@ export const ja: TranslationResources = {
       unmuteVoice: "音声のミュートを解除",
       muteVoice: "音声をミュート",
       dictation: "音声入力",
+      enableAutoSpeech: "返信を読み上げる",
+      disableAutoSpeech: "読み上げを停止",
       interruptBeforeVoice: "音声モードを開始する前にエージェントを中断してください",
     },
     attachments: {

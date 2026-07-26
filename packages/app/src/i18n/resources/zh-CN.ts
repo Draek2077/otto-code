@@ -128,6 +128,8 @@ export const zhCN: TranslationResources = {
       unmuteVoice: "取消静音",
       muteVoice: "静音",
       dictation: "听写",
+      enableAutoSpeech: "朗读回复",
+      disableAutoSpeech: "停止朗读回复",
       interruptBeforeVoice: "启动语音模式前请先中断 Agent",
     },
     attachments: {

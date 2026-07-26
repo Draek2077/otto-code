@@ -27,6 +27,7 @@ import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import type { Theme } from "@/styles/theme";
+import { autoSpeechQueue, useIsAutoSpeechSpeaking } from "@/voice/auto-speech-queue";
 
 interface PersonalityVoice {
   provider?: string;
@@ -122,6 +123,13 @@ export function MessagePlaybackButton({
   const isPlayingAudio = useSessionStore(
     (state) => state.sessions[serverId]?.isPlayingAudio ?? false,
   );
+  // Auto-speech is reading THIS bubble. The button then belongs to that playback
+  // rather than to a press of its own: it shows Stop, and pressing it silences
+  // the queue (see handlePress).
+  const isAutoSpeaking = useIsAutoSpeechSpeaking(turnKey);
+  // Held while a manual playback owns the speaker, so auto-speech stays out of
+  // the way until this one finishes. Null when we hold nothing.
+  const manualHoldRef = useRef<number | null>(null);
 
   const isInert = !client || !audioEngine;
 
@@ -130,6 +138,15 @@ export function MessagePlaybackButton({
       setStatus("playing");
     }
   }, [status, isPlayingAudio]);
+
+  const releaseManualHold = useCallback(() => {
+    const token = manualHoldRef.current;
+    if (token === null) {
+      return;
+    }
+    manualHoldRef.current = null;
+    autoSpeechQueue.endManualPlayback(token);
+  }, []);
 
   const stopPlayback = useCallback(() => {
     requestRef.current += 1;
@@ -141,7 +158,8 @@ export function MessagePlaybackButton({
     if (turnKey) {
       clearMessagePlaybackActive(turnKey);
     }
-  }, [audioEngine, client, turnKey]);
+    releaseManualHold();
+  }, [audioEngine, client, releaseManualHold, turnKey]);
 
   // Release the claim if this turn unmounts (or its key changes) mid-playback,
   // so a scrolled-away row can't pin someone else's footer open forever.
@@ -151,6 +169,10 @@ export function MessagePlaybackButton({
     }
     return () => clearMessagePlaybackActive(turnKey);
   }, [turnKey]);
+
+  // Same hazard for the auto-speech hold: a row that unmounts mid-playback must
+  // not leave the queue paused forever.
+  useEffect(() => releaseManualHold, [releaseManualHold]);
 
   const handlePress = useCallback(async () => {
     if (!client || !audioEngine) {
@@ -163,6 +185,14 @@ export function MessagePlaybackButton({
       return;
     }
 
+    // A press while auto-speech is reading this very bubble means "stop" too —
+    // the mode stays on, so the next message still speaks; only the backlog the
+    // user just interrupted is dropped.
+    if (isAutoSpeaking) {
+      autoSpeechQueue.stopPlayback();
+      return;
+    }
+
     const text = getContent().trim();
     if (!text) {
       return;
@@ -170,6 +200,10 @@ export function MessagePlaybackButton({
 
     const token = (requestRef.current += 1);
     setStatus("loading");
+    // Take the speaker from auto-speech for the duration: its queue is dropped
+    // and it stays held until this playback ends, then resumes with whatever
+    // arrives next.
+    manualHoldRef.current = autoSpeechQueue.beginManualPlayback();
     // Claim the footer from the first press, not from first audio: synthesis
     // can take a moment, and the Stop button has to be reachable during it.
     if (turnKey) {
@@ -196,6 +230,7 @@ export function MessagePlaybackButton({
       if (turnKey) {
         clearMessagePlaybackActive(turnKey);
       }
+      releaseManualHold();
     } catch (error) {
       if (token === requestRef.current) {
         console.error("[MessagePlayback] speak request failed:", error);
@@ -203,9 +238,20 @@ export function MessagePlaybackButton({
         if (turnKey) {
           clearMessagePlaybackActive(turnKey);
         }
+        releaseManualHold();
       }
     }
-  }, [audioEngine, client, getContent, status, stopPlayback, turnKey, voice]);
+  }, [
+    audioEngine,
+    client,
+    getContent,
+    isAutoSpeaking,
+    releaseManualHold,
+    status,
+    stopPlayback,
+    turnKey,
+    voice,
+  ]);
 
   const triggerStyle = useCallback(
     ({ pressed }: PressableStateCallbackType) => [
@@ -216,7 +262,8 @@ export function MessagePlaybackButton({
     [isInert],
   );
 
-  const label = status === "idle" ? "Play message" : "Stop playback";
+  const isSpeaking = status === "playing" || isAutoSpeaking;
+  const label = status === "idle" && !isAutoSpeaking ? "Play message" : "Stop playback";
 
   const renderIcon = useCallback(
     (hovered: boolean): ReactElement => {
@@ -225,7 +272,7 @@ export function MessagePlaybackButton({
         // ActivityIndicator's box is larger than a 16px glyph; the fixed slot +
         // scale keep it exactly the icon's footprint so the row can't jump.
         icon = <ThemedSpinner uniProps={spinnerMapping} size="small" style={styles.spinner} />;
-      } else if (status === "playing") {
+      } else if (isSpeaking) {
         icon = <ThemedStop uniProps={activeIconMapping} size={PLAYBACK_ICON_SIZE} />;
       } else {
         icon = (
@@ -237,7 +284,7 @@ export function MessagePlaybackButton({
       }
       return <View style={styles.iconSlot}>{icon}</View>;
     },
-    [status],
+    [isSpeaking, status],
   );
 
   return (

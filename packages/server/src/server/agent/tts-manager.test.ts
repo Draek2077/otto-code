@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 
 import { TTSManager } from "./tts-manager.js";
 import type { TextToSpeechProvider } from "../speech/speech-provider.js";
+import { TTS_PAUSE_MS } from "../speech/tts-segmenter.js";
 import type { SessionOutboundMessage } from "../messages.js";
 
 type AudioOutputMessage = Extract<SessionOutboundMessage, { type: "audio_output" }>;
@@ -113,6 +114,38 @@ describe("TTSManager", () => {
     );
 
     expect(emitted.length).toBeLessThan(4);
+  });
+
+  it("appends punctuation-pause silence to every segment but the last", async () => {
+    const tts: TextToSpeechProvider = {
+      async synthesizeSpeech(): Promise<{ stream: Readable; format: string }> {
+        return { stream: Readable.from([Buffer.alloc(2, 7)]), format: "pcm;rate=24000" };
+      },
+    };
+    const manager = new TTSManager("s1", pino({ level: "silent" }), tts);
+    const abort = new AbortController();
+    const emitted: AudioOutputMessage[] = [];
+
+    await manager.generateAndWaitForPlayback(
+      "First sentence here. Second sentence here.",
+      (msg) => {
+        if (isAudioOutputMessage(msg)) {
+          emitted.push(msg);
+          manager.confirmAudioPlayed(msg.payload.id);
+        }
+      },
+      abort.signal,
+      true,
+    );
+
+    expect(emitted).toHaveLength(2);
+    const sizes = emitted.map((m) => Buffer.from(m.payload.audio, "base64").length);
+    const sentencePauseBytes = Math.round((24000 * TTS_PAUSE_MS.sentence) / 1000) * 2;
+    // The first segment carries its full-stop pause as PCM silence; the final
+    // segment ends the utterance and gets none.
+    expect(sizes).toEqual([2 + sentencePauseBytes, 2]);
+    const firstAudio = Buffer.from(emitted[0].payload.audio, "base64");
+    expect(firstAudio.subarray(2).every((byte) => byte === 0)).toBe(true);
   });
 
   it("splits long text into safe synthesis segments", async () => {

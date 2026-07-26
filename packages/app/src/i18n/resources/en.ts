@@ -130,6 +130,8 @@ export const en = {
       unmuteVoice: "Unmute voice",
       muteVoice: "Mute voice",
       dictation: "Dictation",
+      enableAutoSpeech: "Read replies aloud",
+      disableAutoSpeech: "Stop reading replies aloud",
       interruptBeforeVoice: "Interrupt the agent before starting voice mode",
     },
     attachments: {
@@ -195,8 +197,8 @@ export const en = {
     back: "Back",
     tabs: {
       context: "Context",
-      findings: "Worth fixing",
-      findingsCount: "Worth fixing ({{count}})",
+      findings: "Issues",
+      findingsCount: "Issues ({{count}})",
       memory: "Memory",
       memoryCount: "Memory ({{count}})",
     },
