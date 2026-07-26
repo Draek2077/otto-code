@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.7.0 - 2026-07-25
+
+### Added
+
+- Jump to a symbol's definition, see its type on hover, find every reference, and rename it across a project
+- Problems from your language server and your linter show up in the editor gutter and in a diagnostics panel
+- Refine rewrites the prose in your documents as a proposal you read and accept before anything is written
+- Create, rename, delete and move files from the file explorer
+- The Solution lens shows a .NET solution the way the build system sees it, with each project's real file set
+- Agent personalities remember what they learn, and you can read, edit and transfer those lessons
+- A Context Management tab shows everything filling an agent's context window and what each part costs
+- Agents can put a small interactive widget straight into the conversation
+- Mermaid diagrams render on every surface and platform
+- AsciiDoc files render as formatted documents
+- Images referenced by a relative path now appear in rendered markdown and AsciiDoc
+- Delete a chat you have archived, or clear all of them at once
+- A metrics bar above the chat shows what the conversation has cost so far
+- Queue messages while an agent is working and they arrive together on its next turn
+- Start a project from scratch on a new-project page
+- A Metrics screen readout for how the app itself is using memory, timers and network
+- Choose how many workspaces stay loaded in the background
+- Send feedback from inside the app
+- A font-contrast control for how strong the reading ink is
+- Spoken replies queue up and play in order, with pauses where a voice would take them
+- A volume slider for spoken replies, on its own audio channel
+- Orchestration nodes declare what they can do and which workspace they may reach
+- Pick a per-worktree base branch for the Changes view
+
+### Changed
+
+- Moving between workspaces is faster — the app stops re-asking the host for state it already has
+- The Changes view resolves its base at the fork point, so a busy base branch no longer inflates the diff
+- Speech reads notation as words and rests at the marks a voice does not say
+- Cost is reported by the provider or shown as blank, never estimated from a rate table
+
+### Fixed
+
+- The composer no longer keeps a Features button it has no room for
+- Auto-speech no longer re-reads the previous reply when you send a new message
+- Voice mode keeps its live indicator when the message row it belongs to is redrawn
+- Checking pull-request status no longer overwrites git state right after a commit
+- The editor's diagnostic gutter stays right of the line numbers
+- Hover signatures no longer paint a slab inside the tooltip
+- Cancelling an orchestration run now stops the children it started
+- Widgets load correctly in the desktop app
+
 ## 0.6.7 - 2026-07-21
 
 ### Added
