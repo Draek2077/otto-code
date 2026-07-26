@@ -33,6 +33,7 @@ import {
 } from "@/hooks/use-settings";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import {
+  DEFAULT_FONT_CONTRAST,
   DEFAULT_MONO_FONT_STACK,
   DEFAULT_UI_FONT_STACK,
   THEME_SWATCHES,
@@ -334,6 +335,55 @@ function FontSizeRow({
           accessibilityLabel={accessibilityLabel}
         />
         <Text style={styles.sizeValue}>{draft}px</Text>
+      </View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Font contrast — how hard the reading ink sits against the background.
+// Stored as 0..1 but driven as whole percent: the Slider steps in absolute
+// units, and stepping a float by 0.05 accumulates the usual binary drift
+// (0.30000000000000004) straight into persisted settings.
+// ---------------------------------------------------------------------------
+
+const FONT_CONTRAST_STEP_PERCENT = 5;
+
+function toContrastPercent(contrast: number): number {
+  return Math.round(contrast * 100);
+}
+
+interface FontContrastRowProps {
+  draftPercent: number;
+  onChangeDraft: (percent: number) => void;
+  onCommit: (percent: number) => void;
+}
+
+function FontContrastRow({ draftPercent, onChangeDraft, onCommit }: FontContrastRowProps) {
+  const isDefault = draftPercent === toContrastPercent(DEFAULT_FONT_CONTRAST);
+  return (
+    <View style={ROW_RESPONSIVE_WITH_BORDER}>
+      <View style={settingsStyles.rowContent}>
+        {/* i18n: English-only pending a translation pass (font contrast). */}
+        <Text style={settingsStyles.rowTitle}>Contrast</Text>
+        <Text style={settingsStyles.rowHint}>
+          {`How hard text sits against the background. ${DEFAULT_FONT_CONTRAST.toFixed(2)} is the theme as designed.`}
+        </Text>
+      </View>
+      <View style={styles.contrastField}>
+        <Slider
+          min={0}
+          max={100}
+          step={FONT_CONTRAST_STEP_PERCENT}
+          value={draftPercent}
+          onValueChange={onChangeDraft}
+          onSlidingComplete={onCommit}
+          accessibilityLabel="Font contrast"
+          testID="settings-font-contrast-slider"
+        />
+        <Text style={isDefault ? styles.sizeValueDefault : styles.sizeValue}>
+          {(draftPercent / 100).toFixed(2)}
+        </Text>
       </View>
     </View>
   );
@@ -732,6 +782,9 @@ export function AppearanceSection() {
   const [monoFontDraft, setMonoFontDraft] = useState(settings.monoFontFamily);
   const [uiSizeDraft, setUiSizeDraft] = useState(settings.uiFontSize);
   const [codeSizeDraft, setCodeSizeDraft] = useState(settings.codeFontSize);
+  const [contrastDraft, setContrastDraft] = useState(() =>
+    toContrastPercent(settings.fontContrast),
+  );
 
   // Resync numeric drafts when the committed value changes elsewhere.
   useEffect(() => {
@@ -740,6 +793,9 @@ export function AppearanceSection() {
   useEffect(() => {
     setCodeSizeDraft(settings.codeFontSize);
   }, [settings.codeFontSize]);
+  useEffect(() => {
+    setContrastDraft(toContrastPercent(settings.fontContrast));
+  }, [settings.fontContrast]);
 
   // When mode is System, the variant list is scoped to whichever spectrum the
   // OS is CURRENTLY reporting (not a fixed neutral pair) — this re-renders
@@ -972,6 +1028,16 @@ export function AppearanceSection() {
       }
     },
     [settings.codeFontSize, updateSettings],
+  );
+
+  const commitContrast = useCallback(
+    (percent: number) => {
+      const next = Math.min(1, Math.max(0, percent / 100));
+      if (next !== settings.fontContrast) {
+        void updateSettings({ fontContrast: next });
+      }
+    },
+    [settings.fontContrast, updateSettings],
   );
 
   // Live-while-dragging: the in-progress draft drives the preview without
@@ -1209,6 +1275,11 @@ export function AppearanceSection() {
             onChangeDraft={setCodeSizeDraft}
             onCommit={commitCodeSize}
           />
+          <FontContrastRow
+            draftPercent={contrastDraft}
+            onChangeDraft={setContrastDraft}
+            onCommit={commitContrast}
+          />
         </View>
       </SettingsSection>
       <SettingsSection title={t("settings.appearance.syntax.title")}>
@@ -1307,8 +1378,33 @@ const styles = StyleSheet.create((theme) => ({
     // No left inset when the slider drops below its label when stacked.
     marginLeft: { xs: 0, sm: theme.spacing[4] },
   },
+  // Same shape as `sizeField`, but it does NOT grow or shrink. `sizeField` sits
+  // in a row whose label is a bare title, so letting it flex is harmless; this
+  // row carries a wrapping hint, and a growing/shrinking control loses that
+  // negotiation — the label's max-content width wins the free space and the
+  // slider gets squeezed past its 120px minimum, straight out of the row. A
+  // definite width at `sm`+ takes the control out of the competition entirely;
+  // when the row stacks it goes full-width and the row centers it.
+  contrastField: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: { xs: "center", sm: "flex-end" },
+    gap: theme.spacing[3],
+    flexGrow: 0,
+    flexShrink: 0,
+    width: { xs: "100%", sm: 220 },
+    marginLeft: { xs: 0, sm: theme.spacing[4] },
+  },
   sizeValue: {
     color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    minWidth: 36,
+    textAlign: "right",
+  },
+  // Same slot, accented while the value is parked on the theme's own tuning —
+  // the one position on this slider worth being able to find by eye.
+  sizeValueDefault: {
+    color: theme.colors.accent,
     fontSize: theme.fontSize.sm,
     minWidth: 36,
     textAlign: "right",

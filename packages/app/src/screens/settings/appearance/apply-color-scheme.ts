@@ -16,6 +16,7 @@ import {
   darkClaudeTheme,
   darkGhosttyTheme,
   darkCyberpunkTheme,
+  resolveInkOverrides,
   type LightThemeName,
   type DarkThemeName,
 } from "@/styles/theme";
@@ -54,6 +55,12 @@ export interface ColorSchemeInput {
   // so its repaint must re-run whenever this flips. Null/undefined (OS scheme
   // unknown) resolves to dark.
   systemColorScheme: "light" | "dark" | null | undefined;
+  // Reading-ink strength, 0..1, DEFAULT_FONT_CONTRAST (0.5) = the palette as
+  // authored. Lives here rather than in `applyAppearance` even though the UI
+  // presents it under Fonts: it rewrites palette tokens, and `applyColorScheme`
+  // REPLACES `colors` wholesale from the variant source — an ink patched from
+  // the other side would be overwritten on the next variant repaint.
+  fontContrast: number;
 }
 
 /**
@@ -70,6 +77,11 @@ export interface ColorSchemeInput {
 export function applyColorScheme(input: ColorSchemeInput): void {
   const lightSource = LIGHT_VARIANT_THEMES[input.lightTheme];
   const darkSource = DARK_VARIANT_THEMES[input.darkTheme];
+  // Resolved per spectrum, not once: the gain pivots on each palette's own
+  // `surface0`, so the same slider position means the same perceived strength
+  // on a white page and on a near-black one.
+  const lightInk = resolveInkOverrides(lightSource.colors, input.fontContrast);
+  const darkInk = resolveInkOverrides(darkSource.colors, input.fontContrast);
 
   // Narrow on the `colorScheme` discriminant before spreading — same reason
   // as `apply-appearance.ts`: the updater must return the theme union, and a
@@ -81,7 +93,12 @@ export function applyColorScheme(input: ColorSchemeInput): void {
     if (t.colorScheme !== "light") return t;
     return {
       ...t,
-      colors: { ...lightSource.colors, syntax: t.colors.syntax },
+      colors: {
+        ...lightSource.colors,
+        ...lightInk.colors,
+        terminal: { ...lightSource.colors.terminal, ...lightInk.terminal },
+        syntax: t.colors.syntax,
+      },
       shadow: lightSource.shadow,
     };
   });
@@ -89,7 +106,12 @@ export function applyColorScheme(input: ColorSchemeInput): void {
     if (t.colorScheme !== "dark") return t;
     return {
       ...t,
-      colors: { ...darkSource.colors, syntax: t.colors.syntax },
+      colors: {
+        ...darkSource.colors,
+        ...darkInk.colors,
+        terminal: { ...darkSource.colors.terminal, ...darkInk.terminal },
+        syntax: t.colors.syntax,
+      },
       shadow: darkSource.shadow,
     };
   });
@@ -114,11 +136,20 @@ export function applyColorScheme(input: ColorSchemeInput): void {
       ? { ...darkTheme.colors, ...BLACK_LIGHT_VARIANT_COLORS[input.lightTheme] }
       : { ...darkSource.colors, ...BLACK_VARIANT_OVERRIDES[input.darkTheme] };
   const blackShadow = resolvedScheme === "light" ? darkTheme.shadow : darkSource.shadow;
+  // Resolved from the composed black palette, not from either spectrum's ink:
+  // its `surface0` is the pure-black override, so the same slider position has
+  // to be re-derived against that backdrop to read the same.
+  const blackInk = resolveInkOverrides(blackColors, input.fontContrast);
   UnistylesRuntime.updateTheme("black", (t) => {
     if (t.colorScheme !== "dark") return t;
     return {
       ...t,
-      colors: { ...blackColors, syntax: t.colors.syntax },
+      colors: {
+        ...blackColors,
+        ...blackInk.colors,
+        terminal: { ...blackColors.terminal, ...blackInk.terminal },
+        syntax: t.colors.syntax,
+      },
       shadow: blackShadow,
     };
   });
