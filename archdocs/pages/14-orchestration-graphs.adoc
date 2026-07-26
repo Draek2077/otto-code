@@ -1,251 +1,323 @@
-= Orchestration — Execution Engine
-:description: How a graph runs — scheduling, the value plane, control flow, excluded branches, loops, fan-out, budgets, failure and cancellation.
+= Orchestration — Graph Execution
+:description: How a graph runs — DAG scheduling, edge gating, prompt assembly from templates and inputs, structured output, validation, retry and iteration.
 
 The engine is pure control flow over an injected port
-(`packages/server/src/server/orchestration/graph-engine.ts`), mirroring the phase engine:
-no daemon dependencies, unit-testable with fakes. Everything on this page is engine
-behaviour; who the agent is and what it may touch is
-link:15-orchestration-agents.html[Agent Binding].
+(`packages/server/src/server/orchestration/graph-engine.ts`): no daemon dependencies, unit
+testable with a fake port. It decides *what runs, in what order, with what input, and
+whether the answer counts*. Who the agent is and what it may touch is
+link:16-orchestration-agents.html[Agent Binding].
 
-== Scheduling model
+== Two engines, one projection
 
-One memoised promise per node. A node awaits its upstream nodes' promises, so the
-schedule is event-driven rather than wave-based: a node whose inputs are ready never
-waits on an unrelated branch. The DAG check at compile time guarantees termination.
+Otto runs orchestrations through two engines that share a single observable type. `Run.kind`
+discriminates them.
 
-Concurrency is bounded by a counting semaphore (default 6 concurrent child agents, hard
-cap 40 total). This is a deliberate divergence from Rivet, whose `GraphProcessor` uses
-`PQueue({ concurrency: Infinity })` with no backpressure knob at all. That is defensible
-when a node is an API call; it is not when a node is an OS process that opens a model
-session and edits a repository. *Unbounded concurrency is a cost and safety bug for us.*
-
-[cols="1,2,2"]
+[cols="1,1,2"]
 |===
-|Concern |Rivet |Otto
+|`Run.kind` |Engine |Shape
 
-|Scheduling
-|Demand-driven pull from sink nodes, recursive
-|Memoised promise per node, awaited by dependents
+|absent / `phases`
+|`run-engine.ts`
+|A conductor-declared plan. Phases in declared order, typed
+(`research · plan · refactor · implement · design · verify · gate · deliver`), with fan-out
+and judging *within* a phase. Human `gate` phases pause the run.
 
-|Concurrency
-|Unbounded
-|Semaphore, plus a run-level agent cap
-
-|Node cost
-|Milliseconds, in-process
-|Minutes to hours, an external supervised process
-
-|Failure of a node
-|Downstream silently refuses to run
-|Downstream marked `skipped` with a stated reason, run fails with the first error
+|`graph`
+|`graph-engine.ts`
+|A user-authored DAG executed exactly as drawn. Per-node authority, conditional edges,
+declared output fields, retry and time limits. No gate node.
 |===
 
-== Node result states
+Both project into `Run` + `RunPhase[]`, so one page, one store and one client render both. A
+graph's worker nodes project as phases of type `graph-node` with edge-derived `dependsOn`,
+which is why a client that predates graphs still renders a graph run as a phase list.
 
-[IMPORTANT]
-====
-*Shipped terminology: the third state is `skipped`, not `excluded`.* This page was
-written before implementation; the wire vocabulary already contained `skipped`, and the
-glossary rule is one term per concept, so that is the name in code and in the UI. The
-distinction this page draws with `excluded` is carried by `RunPhase.skipReason`
-(`condition` / `upstream-skipped` / `upstream-failed` / `canceled`) rather than by a
-second noun. Read "excluded" below as "skipped with reason `condition`". `excluded` in
-the Rivet comparisons stays — that is Rivet's own term.
+== Scheduling: one memoised promise per node
 
-See `docs/orchestration-node-capabilities.md` for the shipped behaviour.
-====
+There is no wave batching and no dispatcher rescan. Each node gets one promise, created on
+first demand and reused; a node awaits its upstream nodes' promises directly. A node whose
+inputs are ready never waits on an unrelated branch.
 
-The single most important type in the engine. A node result is *three*-valued, not two:
+Termination is guaranteed at build time, not run time: `buildRunFromGraph` rejects a graph
+that fails structural validation (Kahn's cycle check, exactly one Orchestrator root, edges
+resolving to known nodes) or whose edge conditions do not parse. Loops are node annotations,
+never cyclic edges.
 
-[cols="1,3"]
-|===
-|State |Meaning
-
-|`done`
-|Produced an output.
-
-|`failed`
-|Errored. Downstream nodes skip; the run fails with the first error.
-
-|`excluded`
-|Will not run, because control flow routed around it. *Not* an error, and not a
-failure — a legitimate terminal state that downstream nodes must be able to absorb.
-|===
-
-`excluded` does not exist yet and must be added *before* conditional edges, because
-retrofitting a third state through every join, every wrap-up and every projection is
-strictly harder than designing with it.
-
-=== The distinction that makes or breaks loops
-
-Rivet encodes exclusion as a data value carried on ports —
-`{ type: 'control-flow-excluded', value: undefined | 'loop-not-broken' }` — and that
-two-valued payload is doing essential double duty:
-
-* `undefined` — *will not run.* The branch was not taken; downstream is excluded.
-* `'loop-not-broken'` — *has not run yet.* A loop is still iterating; downstream must
-  **defer**, not exclude.
-
-In Rivet's `#excludedDueToControlFlow`, the second flavour is never consumable: when a
-node sees it, the function returns "not ready" *without* marking the node excluded. Get
-that distinction wrong and loops either hang forever or terminate on their first pass.
-
-Otto's equivalent is a status on the node result rather than a value on a port, because
-our ports carry structured outputs, not a tagged union of scalars. The two flavours
-become `excluded` (terminal) and simply *not yet resolved* (the promise is still pending)
-— which our promise-memoised scheduler expresses naturally, and is one place where our
-model is genuinely simpler than the one we are learning from.
-
-=== Which nodes may consume an excluded input
-
-Rivet hardcodes a six-element list — `if`, `ifElse`, `coalesce`, `graphOutput`,
-`raceInputs`, `loopController` — as a `BuiltInNodeType[]` in the processor, which means
-plugin nodes can never join it.
-
-*We take the mechanic and reject the shape.* Consuming exclusion is a **declared property
-of a node kind** (`consumesExcluded: true` in the kind definition), not a list inside the
-scheduler. Our consumers are `merge`, `router` (an else-branch is exclusion), `gate` (a
-rejected gate excludes its approved branch) and the root wrap-up.
-
-== The value plane
-
-An edge moves one node's output port to another node's input port. Today that payload is
-the agent's last chat message; the target is the structured node output — a bounded
-summary, artifact references, optional declared fields, optional evidence
-(link:12-orchestration-data-model.html[Data Model]).
-
-Two rules keep this honest:
-
-. *References, not contents.* A downstream node receives a path or artifact id and reads
-  it with its own tools. Inlining file contents into the prompt reproduces the lossy
-  re-summarisation the artifact plane exists to eliminate.
-. *One legality function.* If ports become typed, the editor's "can I draw this wire" and
-  the engine's "can I pass this value" must be the same function. Rivet is a cautionary
-  tale here: its editor-side `canBeCoerced` carries the comment _"hard to keep in sync
-  with coerceType"_, and connection legality turns out to be advisory CSS only — an
-  illegal wire is drawable and fails at runtime. Either one function decides, or the
-  editor is lying.
-
-== Control flow
+Because a node awaits *all* of its upstream promises before deciding anything, nothing it
+reads can still change by the time it decides. That is what lets conditional edges ride the
+memoised-promise model with no fixed-point pass.
 
 [mermaid]
 ----
 flowchart TD
-  A["Node completes"] --> B{"Outgoing edges"}
-  B -->|"unconditional"| C["Downstream ready-check"]
-  B -->|"when: matched"| C
-  B -->|"when: unmatched"| D["Branch excluded"]
-  D --> E{"Downstream kind<br/>consumesExcluded?"}
-  E -->|"no"| F["Node excluded<br/>(propagates)"]
-  E -->|"yes"| G["Merge / Router / Gate<br/>absorbs it"]
-  C --> H{"All inputs<br/>resolved?"}
-  H -->|"no"| I["Wait"]
-  H -->|"yes"| J["Dispatch"]
-  F --> C
-  G --> J
+    A[Node demanded] --> B[Await all upstream promises]
+    B --> C{Run canceled?}
+    C -->|yes| S1[skipped · canceled]
+    C -->|no| D{Any upstream failed?}
+    D -->|yes| S2[skipped · upstream-failed]
+    D -->|no| E[Resolve incoming edges]
+    E --> F{Edge verdict}
+    F -->|condition threw| X[failed]
+    F -->|no edge delivers| S3[skipped · condition<br/>or upstream-skipped]
+    F -->|delivers| G[Assemble task]
+    G --> H[Acquire semaphore · check agent cap]
+    H --> I[Spawn agent with node authority]
+    I --> J[Await, bounded by timeoutMs]
+    J --> K{Settled ok?}
+    K -->|no| R{Retry attempts left?}
+    R -->|yes| G
+    R -->|no| X
+    K -->|yes| L[Harvest output fields]
+    L --> M{Loop 'until' judge passes?}
+    M -->|no, attempts left| G
+    M -->|yes / no loop| N[done]
 ----
 
-*Conditional edges.* `when` on the edge, evaluated against the upstream node's declared
-output fields. Putting the condition on the wire rather than inside a node keeps the
-branch visible on the canvas.
+== Edge resolution — the gate before dispatch
 
-*Router node.* For the case where no predicate exists — classify in natural language,
-emit on one of N named ports. Unselected ports emit exclusion.
+A node result is three-valued: `done`, `failed`, or `skipped`. **A skip is control flow, never
+an error**, and always carries a machine-readable reason.
 
-*Merge node.* The explicit join, with a declared policy: `first` (first non-excluded
-wins — Rivet's `Coalesce`), `all` (wait for every non-excluded input), or `synthesize`
-(hand them to an agent). A join must account for pruned branches, and there are two
-_different_ wrong answers: deadlocking on a branch that will never arrive, and — the one
-LangGraph actually exhibits — never becoming runnable at all, so the run drains and
-reports success having quietly skipped part of the graph. Ours resolves `excluded` with a
-stated reason instead; see link:14-orchestration-durability.html[Durability].
+[cols="1,3"]
+|===
+|`RunPhase.skipReason` |Meaning
 
-== Iteration
+|`condition` |An incoming edge's condition chose another branch.
+|`upstream-skipped` |Everything feeding this node was itself skipped.
+|`upstream-failed` |An upstream node failed.
+|`canceled` |The run was canceled before this node dispatched.
+|===
 
-=== Per-node loops (built)
+The gating rule, and the reason diamonds work:
 
-`{ times: N }` or `{ until: { criteria[], judgeRole, max } }`, graded between iterations
-by a structured judge verdict, hard-capped. This stays a *node annotation*, not a
-container node or a cyclic edge, for three reasons: it covers the overwhelmingly common
-case (retry this node until it passes), it needs no cycle detection, and Rivet's own
-loop implementation is the most fragile part of its engine — it re-runs by deleting
-entries from `#visitedNodes`/`#nodeResults` and re-firing the pull, it cannot nest
-(`Nested loops are not supported` is a thrown error), and its break check contains
-provably dead code.
+[quote]
+____
+A drawn edge is a requirement. A node runs when **at least one edge delivers and none was
+ruled out by its own condition.** An upstream that was *skipped* contributes nothing and
+vetoes nothing.
+____
 
-Guard semantics we adopt from it: a max-iteration ceiling with an explicit
-*action* — break, or fail — rather than a silent stop.
+A join below two conditional branches still runs off whichever branch executed, because the
+pruned side arrives as `upstream-skipped` rather than as a veto.
 
-=== Map (dynamic fan-out) — target
+Conditions are JSONata (`edge-conditions.ts`), evaluated against the upstream node's output
+fields at the top level plus `output` carrying its prose. JSONata because it is parsed and
+evaluated, never `eval`'d — **a graph is user-authored data and must never become code the
+daemon executes.** Nothing else is in scope: a condition cannot reach the filesystem, the run,
+or another node.
 
-The one shape a static DAG cannot express: *one node instance per item of an upstream
-list*. Needed for feature breakout ("one implementer per planned unit"). Requirements:
+A condition that throws **fails the node**. It is never a quiet false — a typo would otherwise
+silently prune half the graph. Syntax is checked before the run starts; the shared client
+validator stays parser-free, so expression checking is daemon-side.
 
-* Items come from a declared output field or an artifact the upstream node produced.
-* A hard cap on instances, counted against the run's agent budget *before* spawning.
-* Per-instance isolation is the default when the instances write
-  (link:15-orchestration-agents.html[worktrees]).
-* Results collect on a `done` port in stable order; a failing instance follows the run's
-  failure policy rather than silently vanishing.
+`GraphEdge.fields` narrows what an edge carries. Selection only, never renaming: downstream is
+a prompt, not a typed function signature.
 
-Note Rivet has a weaker version of this (`isSplitRun`, capped at 10 by default) that
-fans a node over array inputs and re-aggregates per port. The cap-by-default instinct is
-right and we copy it.
+== Building the node's task
 
-== Failure policy
+A node's prompt is assembled per attempt, not stored. Three sources feed it.
 
-Today: a failed node fails the run, downstream nodes are marked `skipped` with a stated
-reason, and independent branches already in flight run to completion. That is a sound
-default and stays the default. The target adds per-node choice:
+[mermaid]
+----
+flowchart LR
+    subgraph Base["Base prompt (one of)"]
+        T1[promptTemplate<br/>EJS + snippets]
+        T2[inline prompt<br/>+ inputs substituted]
+        T3[promptFromInput<br/>declared input value]
+    end
+    T1 -->|render fails| T2
+    Base --> ASM[Assembled task]
+    UP[Upstream material<br/>fields JSON, then prose] --> ASM
+    OUT[Output instruction<br/>from declared fields] --> ASM
+    IT[Iteration context<br/>previous output · judge feedback] --> ASM
+    ASM --> SP[Spawn]
+----
 
-* `fail` (default) — the run fails.
-* `continue` — the node's output is excluded and the graph carries on. For optional
-  enrichment steps.
-* `retry: N` — bounded, and counted against the run budget, never as a private allowance.
+=== Parameters
+
+A graph declares `inputs[]`; the New Orchestration dialog renders them as a form. Values reach
+a node three ways: `{{inputs.key}}` substitution inside the inline prompt, `promptFromInput`
+binding a whole declared input as the prompt, and template variable bindings. Validation
+rejects a graph that references an input it never declared.
+
+=== Prompt templates (EJS)
+
+Templates are host records under `$OTTO_HOME/prompt-templates/`, not files. `include("id")`
+resolves **against the store, not the filesystem**, nesting is capped at 5 to catch snippet
+cycles, and EJS output escaping is disabled because prompts are text, not markup. A template
+marked `snippet: true` is meant to be included by others.
+
+A node binds one with `{ templateId, variables }`. A variable is a literal, `$inputs.<key>`, or
+`$output.<nodeId>.<field>`. **An unresolvable reference renders empty rather than leaking its
+own syntax** — `$output.classify.missing` sitting in a prompt would read to the model as an
+instruction.
+
+**Failure degrades, never blocks.** A deleted template, a syntax error, or a host with no
+template store falls back to the node's inline prompt and logs. This is the one place in the
+engine where a fallback is correct: otherwise removing a shared snippet breaks every graph
+that referenced it.
+
+The convention the starters demonstrate: the *driver instruction* stays on the node, reusable
+*behavioural rules* live in a snippet. Repeating those rules per node is duplication paid for
+on every dispatch.
 
 [WARNING]
 ====
-Nested retries compound. Three nodes at three attempts each is nine agents, and each
-agent is roughly four times the token cost of a chat turn. *A run-level budget is what
-makes per-node retry safe to offer* — never ship the second without the first.
+*EJS compiles templates to JavaScript that runs in the daemon process.* Acceptable today
+because templates are authored locally by the machine's own user — the same trust level as a
+workspace script. **The day templates become shareable or importable this is a code-execution
+vector and needs an explicit trust gate.**
 ====
 
-== Budgets
+=== Upstream material
 
-A run declares a ceiling in agents, tokens, cost and wall-clock. Reaching it is a hard
-stop with a stated reason, not a warning. The estimate is computed at compile time and
-shown before the user confirms — at an order-of-magnitude cost premium over a chat, a
-user who cannot see the bill before pressing go will eventually be surprised by it, once,
-and never use the feature again.
+Satisfied edges contribute a labelled JSON block of carried fields **first**, then the prose.
+Fields are what a downstream node can act on without re-reading anything; the prose still
+carries the reasoning the fields deliberately don't. A skipped branch contributes nothing —
+not an empty section.
 
-== Cancellation
+Rule: **references, not contents.** Fields carry values and paths; anything large is a file the
+next node reads with its own tools.
 
-A user cancel aborts the run signal; every in-flight node's agent is cancelled and its
-subtree cascades. Per-node abort handles is the mechanism Rivet uses to kill losing race
-branches, and it is the same machinery we need for map instances that are no longer
-wanted. Cancelled runs settle as `canceled`, never as `failed` — the distinction matters
-in the Orchestrations list and in accounting.
+== Structured output: declare, submit, validate, harvest
+
+A node declares `output.fields` — plain JSON descriptors (`key`, `type`, `description?`,
+`required?`), never a serialized Zod schema, because the same descriptor must be wire-safe,
+renderable as a designer form, and compilable to both Zod and JSON Schema. `type` is an open
+vocabulary: **an unknown type validates as "anything" rather than failing**, so an old daemon
+meeting a new type degrades to accepting the value. Absent `required` means required.
+
+`node-output.ts` is the only module that compiles descriptors, and it compiles them three ways:
+to Zod for validation, to a JSON Schema input shape for the tool, and to the short prose
+instruction appended to the task.
+
+[mermaid]
+----
+sequenceDiagram
+    participant E as Graph engine
+    participant D as Daemon tool catalog
+    participant A as Node agent
+    participant S as NodeOutputStore
+
+    E->>D: spawn with output-fields label
+    D->>A: register submit_output (this agent only)
+    A->>D: submit_output({...})
+    D->>D: validate against compiled Zod
+    alt invalid
+        D-->>A: isError + precise message
+        A->>D: submit_output({corrected})
+    end
+    D->>S: record(agentId, value)
+    A-->>E: agent settles
+    E->>S: take(agentId)
+    S-->>E: fields, or null → prose scan → fail
+----
+
+Two details are load-bearing and easy to undo by accident:
+
+* **The advertised tool input schema is permissive.** The catalog parses a tool's input before
+  the handler runs and *throws* on failure, so a strict shape would turn the most common
+  mistake — a missing field — into a thrown parse error instead of a correctable tool error.
+  Every field is advertised optional; requiredness is enforced in the handler.
+* **`submit_output` is registered past the group and policy gates.** Those gates decide which
+  Otto *capabilities* a node may use. This is not a capability — it is the node's own
+  deliverable channel, and a deterministic node (the kind most likely to declare fields) would
+  otherwise have it stripped along with the `agents` group.
+
+This is why structured output is provider-neutral: MCP-capable seats reach the tool through the
+daemon's MCP server, openai-compat seats through the daemon-owned tool loop, local models get
+the identical contract. **No provider branch exists anywhere in the engine.**
+
+**Harvest order on settle:** the tool call, then a JSON object recovered from the final message,
+then failure. The prose fallback exists because small local models often write correct JSON
+instead of calling the tool, and discarding that work would be the wrong kind of strict. A node
+that declares fields and delivers neither fails, naming the contract.
+
+The submitted-value store is in-memory by design — an entry is meaningful only between
+submission and harvest moments later. The durable copy is the phase candidate's `outputFields`
+on the Run record.
+
+== Iteration and resilience
+
+Three separate mechanisms, deliberately not one:
+
+[cols="1,1,2"]
+|===
+|Mechanism |Declared |What it re-runs
+
+|**Loop**
+|`loop.times`
+|Fixed repeat. Every iteration runs, last output wins. Each iteration receives the previous
+one's output.
+
+|**Loop**
+|`loop.until`
+|Quality iteration. A structured judge grades each iteration against declared criteria; a pass
+ends the loop, a fail feeds its reasoning into the next attempt. Never passing within `max`
+fails the node — self-grading is not an exit test.
+
+|**Retry**
+|`retry`
+|Resilience. Work that never completed. Wraps the whole node *including* its loop, with backoff
+`backoffMs × multiplier^(attempt-1)`, ending early if the run is canceled.
+|===
+
+Two invariants protect the counters:
+
+* **One loop, one counter.** Retry is never re-entered from the failure path. The prior art this
+  design studied re-enters its executor from its own catch block with a fresh allowance at every
+  level, so a persistently failing step retries forever.
+* **Every attempt is charged to the run.** Retries and judges spawn through the same capped path
+  as any other agent, counting against `maxAgents` and the concurrency semaphore. A retry is
+  never a private allowance.
+
+**Time limit** (`timeoutMs`) must *cancel*, not merely stop waiting — an abandoned agent keeps
+running and keeps spending. On expiry the engine calls the port's `cancelAgent`, marks
+`RunPhase.timedOut`, and fails the node; its retry policy may then catch it, and independent
+branches finish normally. Otto can do this because node agents are managed processes.
+
+== Caps and settlement
+
+`maxConcurrency` bounds simultaneous agents through a semaphore; `maxAgents` is a hard run-wide
+ceiling that stops the run rather than letting it sprawl; loop and retry bounds are per node.
+
+A run settles `canceled` if the signal aborted, `failed` on the first node failure, otherwise
+`done`. Failure does not stop independent branches already in flight. The wrap-up names every
+skipped node and its reason, and the graph's *deliverables* — nodes nothing else consumes —
+carry their full output into it.
+
+[IMPORTANT]
+====
+*Not built here.* Graph runs have no human gate node (gates exist only on phase runs), no
+`maxTurns` or token/cost ceiling per node, no cross-node shared state, and no resume: a run
+in flight when the daemon stops is marked failed on restart, including one paused at a gate.
+`GraphEdge.fromPort` / `toPort` are reserved in the schema and unused.
+====
 
 == Invariants
 
-. A node's agent is spawned only when every input edge has resolved. Barrier state lives
-  in the daemon; agents never know they are waiting.
-. Node results are three-valued. `excluded` is not an error and never fails a run.
-. Whether a node kind can consume an excluded input is declared on the kind, never
-  listed inside the scheduler.
-. Concurrency is always bounded, and total agents are always capped.
-. Every loop has a hard maximum and an explicit at-maximum action.
-. A join never waits on a branch that has been excluded, and never fires early on a
-  branch that is merely slow.
-. If ports are typed, exactly one function decides legality for both the editor and the
-  engine.
-. Cancel and failure are distinct terminal states, both with a stated reason.
+. A skip is never an error, and always carries a machine-readable reason.
+. A run never reports done while silently omitting part of the graph.
+. A node decides only after every upstream promise has settled.
+. A condition that cannot be evaluated fails its node; it is never a quiet false.
+. An unknown output-field type accepts; it never fails a run.
+. `submit_output` reaches every provider through the per-agent Otto tool catalog — no provider
+  branch in the engine.
+. Validation failure is a correctable tool error, not a thrown parse error.
+. A template that cannot render degrades to the inline prompt; nothing else in the engine
+  falls back.
+. Retry is one bounded loop, never re-entered from the failure path, always charged to the
+  run's caps.
+. A time limit cancels the agent; it never just stops awaiting it.
+. Graph structure and condition syntax are validated before the run starts, never during it.
 
 == Change checklist
 
-* [ ] Does the change introduce a new terminal node state? (It should not.)
-* [ ] Can a join downstream of this change deadlock on a pruned branch?
-* [ ] Is any new parallelism bounded by the semaphore *and* counted against the budget?
-* [ ] Does any new loop or fan-out have a hard cap with a declared at-cap action?
-* [ ] Are new engine behaviours covered by a fake-port unit test with a deterministic
-  schedule (link:18-orchestration-rollout.html[Testing])?
+* Added a node or edge property? Confirm it survives the designer round-trip
+  (`graph-doc.test.ts`) — a property in the canvas-owned set with no control is **deleted on
+  save**.
+* Changed harvest, validation, or the tool's advertised shape? Re-check that a missing field is
+  still a *correctable tool error* on every provider, not a thrown parse error.
+* Added a fallback? Justify it against invariant 8 — the template path is the only sanctioned
+  one.
+* Added a spawn path? It must go through the semaphore and the agent cap.

@@ -150,6 +150,51 @@ retract; the release skill follows this map.
 |📋
 |===
 
+== Orchestration
+
+Two engines share one `Run` projection, so each needs its own picture; conflating them is
+exactly the confusion these diagrams exist to prevent.
+
+[cols="1,1,2,1"]
+|===
+|Diagram |Type / budget |Why it exists |Status
+
+|D16 · Run lifecycle
+|stateDiagram · ≤8 states
+|*Where a run can legally be.* Every "why is it stuck" question about a phase run is a claim
+about this machine — above all that `paused` is a real resting state a gate puts it in, and
+that a rejected gate cancels rather than fails.
+|✅ link:13-orchestration-runs.html[Phase Runs]
+
+|D17 · Fan-out, judge, keep-best
+|flowchart · ≤16
+|*The signature shape, and its exit conditions.* Spawn N → judge each → top up until the bar
+is met or a cap trips. Drawn because the two ways it can end without passing (cap tripped vs
+no passer at all) are easy to conflate in prose and mean different things.
+|✅ link:13-orchestration-runs.html[Phase Runs]
+
+|D18 · Node execution lifecycle
+|flowchart · ≤18
+|*The order of the gates.* Await upstream → cancel check → failure check → edge conditions →
+dispatch → timeout → harvest → loop. Nearly every graph-engine question is "at which of these
+did it stop, and why is that a skip and not an error".
+|✅ link:14-orchestration-graphs.html[Graph Execution]
+
+|D19 · Prompt assembly
+|flowchart · ≤12
+|*What the model actually receives.* Template-or-inline base, declared inputs, upstream
+fields then prose, the output instruction, iteration context. Drawn because token cost and
+"why did the node not know X" both resolve against this one picture.
+|✅ link:14-orchestration-graphs.html[Graph Execution]
+
+|D20 · Structured output & self-correction
+|sequence · ≤4 participants
+|*Why structured output is provider-neutral, and where validation happens.* The tool is
+registered per agent by the daemon catalog, validated in the handler, corrected in-session,
+and harvested after settle with a prose fallback. The seam is invisible in prose.
+|✅ link:14-orchestration-graphs.html[Graph Execution]
+|===
+
 == Deliberately absent
 
 Equally important is what this catalog refuses to include:

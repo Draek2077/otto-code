@@ -1,0 +1,192 @@
+= Orchestration — Phase Runs
+:description: The conductor-declared engine — typed phases, role resolution, fan-out with structured judging, the keep-best loop, and human gates.
+
+A *phase run* is an orchestration a conducting agent declares at runtime rather than one a
+user draws in advance. The conductor decides the work is team-shaped, writes a plan, and hands
+it to the daemon through the `start_run` tool; the daemon executes it deterministically.
+
+The engine is `packages/server/src/server/orchestration/run-engine.ts` — pure control flow over
+an injected port, no daemon dependencies. Its sibling is
+link:14-orchestration-graphs.html[Graph Execution]; both project into the same `Run`. Who fills
+a seat and what it may touch is link:16-orchestration-agents.html[Agent Binding].
+
+== The plan vocabulary
+
+The plan names *phase types*, never roles. The dispatcher maps type to role, so a plan stays
+readable when a team is re-cast.
+
+[cols="1,1,3"]
+|===
+|Phase type |Default role |Purpose
+
+|`research` |`researcher` |Survey code or domain; report findings, not solutions.
+|`plan` |`planner` |Draft the approach.
+|`refactor` |`coder` |Change structure, preserve behaviour.
+|`implement` |`coder` |Build the feature.
+|`design` |`designer` |Styling, layout, and human-skill text.
+|`verify` |`judger` |Grade work against criteria; returns a structured verdict.
+|`gate` |— (human) |Stop and ask the user.
+|`deliver` |`coder` |Produce the final artifact.
+|===
+
+A phase declaration carries an id, type, title, the `task` handed to the agent, an optional
+`role` override, `dependsOn`, `fanOut`, `keepBest`, and an optional `judge` spec. It is
+schema-validated at the tool boundary, so a malformed plan is rejected before any agent spawns.
+
+`buildRunFromPlan` is pure and adds two structural rules: ids are unique, and `dependsOn` may
+only reference an *earlier* phase. That keeps the declared order a valid topological order,
+which is what lets execution be a simple forward pass.
+
+== Execution: a sequential pass with dependency guards
+
+Unlike the graph engine, this engine walks `phases[]` in declared order. `dependsOn` is a
+**guard, not a scheduler**: a phase whose dependency did not reach `done` is marked `skipped`
+and the pass continues. Parallelism lives *inside* a phase, as fan-out — never across phases.
+
+[mermaid]
+----
+stateDiagram-v2
+    [*] --> pending
+    pending --> running: execute
+    running --> paused: gate reached (attended)
+    paused --> running: approved
+    paused --> canceled: rejected
+    running --> done: all phases settled
+    running --> failed: no passing candidate, or a cap tripped
+    running --> canceled: user cancel
+    done --> [*]
+    failed --> [*]
+    canceled --> [*]
+----
+
+Roles are resolved *before* spawning: the engine asks the port for the personality filling each
+required role in the active team, including the judger. **A missing role hard-fails the run and
+names the gap** — no silent fallback to a bare provider. Fix the team; don't paper over it.
+
+=== Threading results forward
+
+A child agent starts a fresh session with no memory of its siblings, so a dependency's output
+must travel in the prompt. `composePhaseTask` prefixes the declared task with one labelled
+block per dependency, carrying that phase's representative output. That is what makes
+`dependsOn` mean *build on this* rather than merely *run after this*.
+
+The representative output of a phase is the joined summaries of its **passing** candidates, or
+of all candidates when the phase was not judged.
+
+Every worker task is also suffixed with a short framing that asks for a finished result rather
+than a progress update, and discourages needless sub-agent fan-out.
+
+== Fan-out, judging, and the keep-best loop
+
+This is the engine's signature shape: spawn several candidates, grade each with a structured
+judge, keep the passers, top up until the bar is met.
+
+[mermaid]
+----
+flowchart TD
+    A[Phase starts] --> B[Resolve role + judge role]
+    B --> C{Role filled?}
+    C -->|no| F1[Run fails · names the gap]
+    C -->|yes| D[Spawn round: fanOut candidates]
+    D --> E{Judge attached?}
+    E -->|no| G[Phase done if any candidate]
+    E -->|yes| H[Judge each candidate]
+    H --> I[Count passers]
+    I --> J{passers >= keepBest?}
+    J -->|yes| K[Phase done]
+    J -->|no| L{Cap tripped?<br/>loop rounds · agents · cancel}
+    L -->|no| M[Top up: keepBest - passers]
+    M --> H
+    L -->|yes| N{Any passer?}
+    N -->|yes| K
+    N -->|no| F2[Phase failed · run fails]
+----
+
+Mechanics worth stating exactly:
+
+* The first round spawns the full `fanOut`. Later rounds spawn only enough to top up to
+  `keepBest`, never the full width again.
+* **A candidate with no verdict counts as passing.** Judging is opt-in; an unjudged phase must
+  not be treated as unanimously failing.
+* A judged phase succeeds if at least one candidate passed; an unjudged phase succeeds if it
+  produced any candidate at all.
+* Verdicts are parsed from the judge's final message against `JudgeVerdictSchema`
+  (`{verdict, score?, criteria?, summary?}`), and an unparseable verdict reads as a fail. The
+  outcome is a forward-compatible plain string, normalized rather than enumerated.
+
+[NOTE]
+====
+Structured judging here is **prompt-and-parse**: the judge is a full agent and its verdict is
+recovered from prose. Graph nodes get a stronger contract — a `submit_output` tool with
+in-session self-correction (link:14-orchestration-graphs.html[Graph Execution]). Phase runs do
+not use it.
+====
+
+== Human gates
+
+A `gate` phase is the attended-by-default guarantee. Reaching one sets the phase `blocked` and
+the run `paused`, then waits for a decision.
+
+[cols="1,3"]
+|===
+|Decision |Effect
+
+|Approved |Phase `done` (with the approver's note), run returns to `running`.
+|Rejected |Phase `failed`, run `canceled`. The pass stops there.
+|Autopilot |The gate auto-approves and the run never pauses. Explicit, per run.
+|===
+
+Gate decisions arrive out of band and may land before the engine starts waiting, so the service
+buffers a decision registered against a phase that has not blocked yet.
+
+[WARNING]
+====
+*A paused run does not survive a daemon restart.* Orphan recovery marks every in-flight run —
+including one `paused` at a gate — as `failed`. See
+link:15-orchestration-durability.html[Durability].
+====
+
+== Caps and settlement
+
+[cols="1,1,3"]
+|===
+|Cap |Default |Meaning
+
+|`maxConcurrency` |6 |Child agents running at once across the run.
+|`maxAgents` |40 |Hard ceiling on total children; the run stops rather than sprawl.
+|`maxLoopAttempts` |3 |Top-up rounds for a keep-best phase.
+|===
+
+The run settles `done` when the pass completes, `failed` on the first phase that produces
+nothing usable or when a cap trips, `canceled` on user cancel or a rejected gate. The
+headline deliverable is the output of the last completed non-gate phase, which the conductor
+relays back to whoever asked. A separate AI-written run summary is generated after settling and
+carried on the run as `summary` with a `summaryStatus` lifecycle.
+
+[IMPORTANT]
+====
+*Not built here.* Phase runs have no per-phase retry, no time limit, no declared output fields,
+no conditional routing, and no per-node authority — those are graph-node capabilities. There is
+no token or cost ceiling on either engine, and no resume.
+====
+
+== Invariants
+
+. A plan is validated before any agent spawns: unique ids, and `dependsOn` referencing only
+  earlier phases.
+. A missing role fails the run and names the gap. There is no fallback seat.
+. `dependsOn` is a guard, not a scheduler — phases run in declared order.
+. A dependency's output reaches its dependants through the prompt, never through shared memory.
+. A candidate with no verdict counts as passing.
+. An unparseable judge verdict is a fail, never an accidental pass.
+. A rejected gate cancels the run; it never silently continues.
+. Every spawned child — worker or judge — counts against the run's caps.
+
+== Change checklist
+
+* Added a phase type? Give it a default role, or state why it has none (`gate` is the only one).
+* Changed judging? Re-check both directions of invariant 5 and 6 — unjudged must not fail, and
+  unparseable must not pass.
+* Added a spawn path? It must count against `maxAgents` and pass through the concurrency bound.
+* Touching gates? Confirm the pre-registration buffer still works — a decision can arrive before
+  the engine waits.

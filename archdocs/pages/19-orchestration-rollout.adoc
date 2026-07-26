@@ -38,7 +38,7 @@ adoption; the per-node record
 Deliberately out of scope: reducers with declared merge semantics, time-travel/fork from a
 checkpoint, deterministic replay with saga compensation. Real primitives in LangGraph and
 Temporal; problems we do not have at this scale
-(link:14-orchestration-durability.html[Durability]).
+(link:15-orchestration-durability.html[Durability]).
 
 == Feature gating
 
@@ -92,7 +92,7 @@ verify
 |Tier |What it covers
 
 |*Engine unit* (vitest, fake port)
-|The whole of link:13-orchestration-engine.html[Engine] with no daemon: barriers, excluded
+|The whole of link:14-orchestration-graphs.html[Engine] with no daemon: barriers, excluded
 propagation, loop bounds, failure cascade, cancellation, budget trips. Deterministic
 schedules — no timing, no randomness.
 

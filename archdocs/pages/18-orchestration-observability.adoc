@@ -73,7 +73,7 @@ decides whether a user trusts the feature twice.
 
 == Live canvas
 
-Covered in link:16-orchestration-designer.html[Designer]; the point here is that it needs
+Covered in link:17-orchestration-designer.html[Designer]; the point here is that it needs
 no new transport. The daemon emits, the client subscribes, the canvas paints. Rivet
 proves the shape works — its IDE attaches over WebSocket to a processor running elsewhere
 and paints node state from the same handlers it uses for local runs, so remote and local
