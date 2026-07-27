@@ -189,13 +189,19 @@ If N+1 is a hotfix for a bug in N, dispatch `desktop-rollout.yml -f tag=v0.1.<N+
 ## Mobile builds (EAS)
 
 > **Fork reality (Draek2077/otto-code, updated 2026-07-27):** this fork's mobile release paths
-> live in this repo's own workflows, not upstream's EAS-GitHub-app-triggered flow. All of them draw
-> on **one shared EAS free-plan budget of 15 Android builds a month** — see
+> live in this repo's own workflows, not upstream's EAS-GitHub-app-triggered flow. The paths that
+> still call EAS draw on **one shared EAS free-plan budget of 15 Android builds a month** — see
 > [fork-release-guide.md](fork-release-guide.md)'s infrastructure inventory for how that budget was
-> exhausted on 2026-07-12:
+> exhausted on 2026-07-12. **The APK no longer spends it:**
 >
 > - **Android APK (GitHub Release asset)** — `.github/workflows/android-apk-release.yml`. Live and
->   active on `v*`; needs only `EXPO_TOKEN`. One EAS Android build per release tag, betas included.
+>   active on `v*`, betas included. **Built on the GitHub runner** (`expo prebuild` + `gradle
+assembleRelease`), not on EAS, so it is unlimited and no longer rations releases against the
+>   monthly budget. Needs the four `ANDROID_KEYSTORE_*` secrets (the same keystore EAS uses, so the
+>   APK stays a drop-in update over an EAS-built Otto); it no longer needs `EXPO_TOKEN`.
+>   `versionCode` is derived from the version as `major*10000 + minor*100 + patch` (0.7.2 → 702)
+>   rather than from EAS's remote counter, which drifted past 50 because quota-refused builds still
+>   incremented it.
 > - **Android (Play Store internal track)** — `.github/workflows/android-play-release.yml`. Wired
 >   but **off `v*`** as of 2026-07-27: it has never completed a submit from CI, and leaving it on
 >   every tag spent half the monthly Android budget. Trigger it with an `android-play-v*` tag or
@@ -266,7 +272,8 @@ To confirm the submission landed, inspect the EAS workflow with `npx eas workflo
 ### Babysitting mobile after a release
 
 > **Fork scope:** babysit GitHub Actions (`Desktop Release`, `Android APK Release`, `Docker`,
-> `Deploy App`, `Release Notes Sync`) and the EAS **APK build** only. The `Release Mobile`
+> `Deploy App`, `Release Notes Sync`) only — the APK now builds inside `Android APK Release`
+> itself, so there is no separate EAS build to watch for it. The `Release Mobile`
 > workflow and the store submit/review jobs below don't exist on this fork — don't wait for
 > them. `Desktop Release` shows red on `publish-macos` until Apple signing is configured;
 > Windows/Linux artifacts and the `finalize-rollout` manifests are the signal that matters.

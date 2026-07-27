@@ -1,5 +1,28 @@
 name: Android APK Release
 
+# Builds the sideloadable release APK ON THIS RUNNER (expo prebuild + gradle),
+# not on EAS, and attaches it to the GitHub Release.
+#
+# It used to shell out to `eas build --profile production-apk`. EAS's free tier
+# allows 15 Android builds a month shared across every Android workflow, and the
+# budget was exhausted on 2026-07-12 — 0.5.2 through 0.7.1 shipped with no
+# Android artifact at all, and a quota-refused run still burns a versionCode.
+# Building here is unlimited and removes the need to ration releases.
+#
+# This does not affect Play: the AAB goes down android-play-release.yml, and
+# Play App Signing already means the store APK and this sideload APK carry
+# different signatures.
+#
+# Requires four repo secrets (the same keystore EAS uses, so this APK installs
+# as a drop-in update over an EAS-built Otto — a different key would force
+# users to uninstall first):
+#   - ANDROID_KEYSTORE_BASE64      base64 of the .jks from `eas credentials`
+#   - ANDROID_KEYSTORE_PASSWORD    keystore password
+#   - ANDROID_KEY_ALIAS            key alias
+#   - ANDROID_KEY_PASSWORD         key password
+# Without them the signing step fails loudly rather than shipping an unsigned or
+# debug-signed APK.
+
 on:
   push:
     tags:
@@ -68,55 +91,112 @@ jobs:
           node-version: "22"
           cache: "npm"
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Install JS dependencies
         run: npm ci
 
-      - name: Setup Expo and EAS
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      # What EAS ran as eas-build-post-install. The webview bundles are generated
+      # sources: the committed copies go stale, and prebuild does not rebuild them.
+      - name: Build workspace deps and webview bundles
+        run: npm run eas-build-post-install --workspace=@otto-code/app
 
-      - name: Build Android APK on EAS
-        id: eas_build
+      - name: Prebuild the Android project
+        env:
+          APP_VARIANT: production
+        run: npx expo prebuild --platform android --clean --non-interactive
+        working-directory: packages/app
+
+      # `-Pandroid.injected.version.code` is a NO-OP for assembleRelease under
+      # AGP 8 — it silently yields versionCode 1, which Android refuses to
+      # install over an existing Otto. Write it into the generated build.gradle
+      # instead. The file is gitignored (prebuild regenerates it), so nothing
+      # tracked changes here.
+      #
+      # versionCode is derived from the version rather than a remote counter:
+      # major*10000 + minor*100 + patch, so 0.7.2 -> 702. Monotonic across
+      # releases and reproducible from the tag alone, unlike EAS's counter which
+      # drifted to 50+ because refused builds still incremented it.
+      - name: Set versionCode from the release version
         shell: bash
         run: |
           set -euo pipefail
-          cd packages/app
+          version="${RELEASE_VERSION%%-*}"
+          IFS='.' read -r major minor patch <<< "$version"
+          version_code=$(( major * 10000 + minor * 100 + patch ))
+          echo "Using versionCode $version_code for $RELEASE_VERSION"
 
-          build_json="$(npx eas build --platform android --profile production-apk --non-interactive --wait --json)"
-          echo "$build_json" > "$RUNNER_TEMP/eas-build.json"
+          gradle_file=packages/app/android/app/build.gradle
+          perl -pi -e "s/versionCode\s+\d+/versionCode $version_code/" "$gradle_file"
+          grep -n "versionCode" "$gradle_file"
 
-          build_id="$(jq -r 'if type == "array" then .[0].id // empty else .id // empty end' "$RUNNER_TEMP/eas-build.json")"
-          if [ -z "$build_id" ]; then
-            echo "Failed to determine EAS build ID."
-            cat "$RUNNER_TEMP/eas-build.json"
+      - name: Decode signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "ANDROID_KEYSTORE_BASE64 is not set. Add the release keystore secrets" >&2
+            echo "before tagging; see the header of this workflow." >&2
             exit 1
           fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
 
-          echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+      # Mirrors the eas.json production-apk gradleCommand exactly, lint tasks and
+      # all. Signing properties are injected (unlike the version code, these do
+      # work) and read straight from secrets, so nothing is written to disk or
+      # echoed.
+      - name: Assemble the release APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        working-directory: packages/app/android
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleRelease \
+            --no-parallel --max-workers=1 \
+            -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease \
+            -x generateReleaseLintModel -x generateReleaseLintVitalModel \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/release.jks" \
+            -Pandroid.injected.signing.store.password="$ANDROID_KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
 
-      - name: Resolve APK artifact URL
+      - name: Collect and verify the APK
         id: artifact
         shell: bash
         run: |
           set -euo pipefail
-          cd packages/app
-
-          build_view_json="$(npx eas build:view '${{ steps.eas_build.outputs.build_id }}' --json)"
-          echo "$build_view_json" > "$RUNNER_TEMP/eas-build-view.json"
-
-          artifact_url="$(jq -r '.artifacts.buildUrl // .artifacts.applicationArchiveUrl // empty' "$RUNNER_TEMP/eas-build-view.json")"
-          if [ -z "$artifact_url" ]; then
-            echo "Failed to determine APK artifact URL."
-            cat "$RUNNER_TEMP/eas-build-view.json"
+          apk="$(find packages/app/android/app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          if [ -z "$apk" ]; then
+            echo "No APK produced." >&2
             exit 1
           fi
 
+          # Fail loudly on a debug-signed APK: it would install for nobody who
+          # already has Otto, and the failure is otherwise silent until a user
+          # tries to update.
+          build_tools="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
+          "$build_tools/apksigner" verify --print-certs "$apk" | tee "$RUNNER_TEMP/signer.txt"
+          if grep -qi "CN=Android Debug" "$RUNNER_TEMP/signer.txt"; then
+            echo "APK is debug-signed; refusing to publish." >&2
+            exit 1
+          fi
+          "$build_tools/aapt2" dump badging "$apk" | head -n 1
+
           asset_name="otto-${RELEASE_TAG}-android.apk"
           asset_path="$RUNNER_TEMP/$asset_name"
-
-          curl --fail --location --output "$asset_path" "$artifact_url"
+          cp "$apk" "$asset_path"
 
           echo "asset_name=$asset_name" >> "$GITHUB_OUTPUT"
           echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
