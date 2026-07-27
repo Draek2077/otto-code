@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.7.2 - 2026-07-27
+
+### Added
+
+- Background shell tasks that fail collect in their own Failed group, in red, with their own clear-all
+- Auto-clear for failed background tasks is its own setting, separate from completed ones
+- Opus 4.5, Sonnet 4.5 and Sonnet 4.5 1M are selectable in the model picker
+
+### Changed
+
+- Stopping a run keeps the messages you had queued behind it instead of discarding them
+- Opus 4.7, 4.8 and 5 report their real 1M context window, so the duplicate "1M" entries for them are gone
+- Fast mode is offered only on the Opus releases that still support it
+- The auto-clear settings for sub-agents and background tasks moved from Appearance to General
+- The token count on a running turn keeps a decimal so it visibly moves instead of jumping a thousand at a time
+
+### Fixed
+
+- A failed background task no longer sits in the active list looking finished, with nothing to say it failed
+- Cost estimates cover Fable 5, Opus 4.5 and Sonnet 4.5
+- A chat, personality or team saved against a "1M" model id keeps its model features instead of silently losing them
+
 ## 0.7.1 - 2026-07-27
 
 ### Added
