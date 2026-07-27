@@ -1,0 +1,18 @@
+{
+  "label": "Python CLI",
+  "description": "Stdlib-only inventory CLI with dataclasses, argparse and unit tests",
+  "tool": "python",
+  "toolVersionArgs": ["--version"],
+  "build": ["python", "-m", "compileall", "-q", "-f", "src", "tests"],
+  "test": ["python", "-m", "unittest", "discover", "-s", "tests", "-t", ".", "-q"],
+  "breaks": [
+    {
+      "slug": "failing-test",
+      "detail": "restock() adds one too many units, so test_restock_adds_quantity fails while the build still compiles"
+    },
+    {
+      "slug": "syntax-error",
+      "detail": "unclosed bracket in main.py — compileall fails before any test runs"
+    }
+  ]
+}

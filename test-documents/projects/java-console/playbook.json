@@ -1,0 +1,26 @@
+{
+  "label": "Java Console",
+  "description": "Priority task scheduler with records, enums and streams; dependency-free self-test runner",
+  "tool": "javac",
+  "toolVersionArgs": ["-version"],
+  "build": [
+    "javac",
+    "-d",
+    "out",
+    "-sourcepath",
+    "src/main/java",
+    "src/main/java/dev/otto/scheduler/Main.java",
+    "src/main/java/dev/otto/scheduler/SelfTest.java"
+  ],
+  "test": ["java", "-cp", "out", "dev.otto.scheduler.SelfTest"],
+  "breaks": [
+    {
+      "slug": "type-error",
+      "detail": "Scheduler.size() returns the List where int is declared - javac stops with incompatible types"
+    },
+    {
+      "slug": "failing-assertion",
+      "detail": "drain order comparator sorts priority ascending, so the LOW task heads the queue and the self-test fails"
+    }
+  ]
+}

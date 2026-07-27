@@ -1,0 +1,13 @@
+{
+  "label": "C# Solution",
+  "description": "Double-entry ledger across two projects, with both .sln and .slnx, AsciiDoc/Mermaid, SVG and HTML docs",
+  "tool": "dotnet",
+  "toolVersionArgs": ["--version"],
+  "build": ["dotnet", "build", "Otto.Ledger.sln", "--nologo", "-v", "q"],
+  "breaks": [
+    {
+      "slug": "type-error",
+      "detail": "Money.operator+ returns a decimal where Money is declared — CS0029, the compiler stops at the type"
+    }
+  ]
+}

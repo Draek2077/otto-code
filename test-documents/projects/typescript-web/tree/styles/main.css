@@ -1,0 +1,132 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --fg: #0f172a;
+  --muted: #64748b;
+  --rule: #e2e8f0;
+  --up: #b91c1c;
+  --down: #15803d;
+  --flat: #64748b;
+  --radius: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1120;
+    --surface: #111827;
+    --fg: #e2e8f0;
+    --muted: #94a3b8;
+    --rule: #1e293b;
+    --up: #f87171;
+    --down: #4ade80;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 2rem 1.25rem 3rem;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+.masthead {
+  max-width: 62rem;
+  margin: 0 auto 2rem;
+}
+
+.masthead h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+}
+
+.grid {
+  max-width: 62rem;
+  margin: 0 auto;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem 1.25rem;
+}
+
+.card__label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.card__value {
+  margin: 0.35rem 0 0;
+  font-size: 1.875rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.card__delta {
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.card__delta[data-trend="up"] {
+  color: var(--up);
+}
+
+.card__delta[data-trend="down"] {
+  color: var(--down);
+}
+
+.card__delta[data-trend="flat"] {
+  color: var(--flat);
+}
+
+.card__spark {
+  margin-top: 0.75rem;
+  color: var(--muted);
+}
+
+.card__spark svg {
+  display: block;
+  width: 100%;
+  height: 3rem;
+}
+
+.empty,
+.footnote {
+  color: var(--muted);
+}
+
+.footnote {
+  max-width: 62rem;
+  margin: 2rem auto 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.875rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .card {
+    transition: border-color 150ms ease;
+  }
+  .card:hover {
+    border-color: var(--muted);
+  }
+}
