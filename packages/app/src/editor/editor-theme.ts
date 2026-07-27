@@ -80,44 +80,17 @@ function withAlpha(color: string, alpha: number): string {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
 }
 
-function toHex2(value: number): string {
-  return Math.round(Math.max(0, Math.min(255, value)))
-    .toString(16)
-    .padStart(2, "0");
-}
-
-// The editor deliberately sits in a well one step deeper than the surrounding
-// chrome. There is no theme token below `surface0` (it is the base of the
-// elevation scale, and going deeper means opposite directions in light vs dark),
-// so the well is derived from `surface0` itself: scaled toward black, which
-// preserves hue so a tinted palette stays on-tint. The amount is luminance-aware
-// — near-black dark surfaces barely move under a small fraction, while a white
-// light surface would over-darken, so dark themes deepen far more than light
-// ones. The result is "the same surface, deeper" in every theme: a subtle grey
-// on the white theme, a near-black on the dark ones.
-function deepenEditorSurface(color: string): string {
-  const rgb = parseHexRgb(color);
-  if (!rgb) {
-    return color;
-  }
-  // Relative luminance (0 = black, 1 = white), rough but enough to steer the amount.
-  const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
-  // Light (luminance ≈ 1): ~0.035 → a whisper darker. Dark (luminance ≈ 0):
-  // ~0.25 → a clear step toward black, roughly the pre-lift surface values.
-  const fraction = 0.035 + (1 - luminance) * 0.215;
-  const scale = 1 - fraction;
-  return `#${toHex2(rgb.r * scale)}${toHex2(rgb.g * scale)}${toHex2(rgb.b * scale)}`;
-}
-
 // `rulerColumn` is left null here — it comes from device-local app settings,
 // not the theme, so the host merges it into the spec (see file-tab-pane).
 export function buildEditorThemeSpec(theme: Theme): EditorThemeSpec {
   return {
-    // A well one step deeper than the surrounding chrome (which is surface0),
-    // theme-derived so it stays on-tint in light and dark. Only the code area
-    // deepens — the gutter (gutterBackground below) and the toolbar/status bar
-    // keep surface0, and that contrast is what reads as a well.
-    background: deepenEditorSurface(theme.colors.surface0),
+    // A well one step deeper than the surrounding chrome (which is surface0).
+    // `surfaceCode` is the app-wide token for it (styles/theme.ts) — the same
+    // fill markdown fences and tool-call code blocks use, so a file in the
+    // editor and the same code quoted in chat are one material. Only the code
+    // area deepens — the gutter (gutterBackground below) and the toolbar/status
+    // bar keep surface0, and that contrast is what reads as a well.
+    background: theme.colors.surfaceCode,
     foreground: theme.colors.foreground,
     // The gutter deliberately stays at the surrounding chrome color (surface0),
     // not the deepened code background — the line numbers read as a margin.

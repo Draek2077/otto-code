@@ -44,6 +44,12 @@ interface ImportSessionSheetProps {
   client: RecentProviderSessionsClient | null;
   serverId: string | null;
   cwd?: string | null;
+  /**
+   * Workspace the sheet was opened from. The imported session is adopted by this
+   * workspace instead of the daemon resolving one for the directory — omit it
+   * only where there is no workspace context (the home screen).
+   */
+  workspaceId?: string | null;
   onClose: () => void;
   onImportedAgent?: (agentId: string) => void;
   onImported?: (agent: ImportedAgent) => void;
@@ -260,6 +266,7 @@ export function ImportSessionSheet({
   client,
   serverId,
   cwd,
+  workspaceId,
   onClose,
   onImportedAgent,
   onImported,
@@ -408,6 +415,7 @@ export function ImportSessionSheet({
         providerId: entry.providerId,
         providerHandleId: entry.providerHandleId,
         cwd: entry.cwd,
+        ...(workspaceId ? { workspaceId } : {}),
       });
       return agent;
     },

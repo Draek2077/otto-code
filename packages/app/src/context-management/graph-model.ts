@@ -1,5 +1,6 @@
 import type {
   ContextCategory,
+  ContextCategoryVisibility,
   ContextEdge,
   ContextNode,
   ContextReport,
@@ -29,6 +30,12 @@ export interface ContextTreeRow {
   category?: ContextCategory;
   /** Category rows roll up their subtree. */
   estTokens: number;
+  /**
+   * Present on `category` rows the daemon disclosed something about. Drives the
+   * "Otto cannot measure this here" note in place of a token figure — see
+   * `isUnmeasuredCategory`.
+   */
+  visibility?: ContextCategoryVisibility;
   /** How this row was reached: solid for always-loaded, dashed for link-only. */
   edgeKind?: "import" | "reference";
   hasChildren: boolean;
@@ -137,6 +144,7 @@ export function buildContextTree(input: BuildContextTreeInput): ContextTreeRow[]
       ancestorMask: TREE_RAILS_ALL_CONTINUE,
       category,
       estTokens: total?.estTokens ?? roots.reduce((sum, node) => sum + node.estTokens, 0),
+      ...(total?.visibility ? { visibility: total.visibility } : {}),
       hasChildren: roots.length > 0,
       expandable: roots.length > 0,
     });

@@ -18,8 +18,9 @@ import {
   type ContextThresholds,
 } from "./evaluator.js";
 import { isContextScanSupported } from "./provider-conventions.js";
+import { buildPromptPreview, type ContextPromptPreview } from "./prompt-preview.js";
 import { estimateTokens } from "../context-composition.js";
-import type { ContextCategory } from "./types.js";
+import type { ContextCategory, ContextCategoryVisibility } from "./types.js";
 
 /** Scans are cheap, but focus switches should feel instant. */
 const CACHE_TTL_MS = 15_000;
@@ -43,6 +44,13 @@ export interface WorkspaceContextRuntime {
    * in-process (openai-compat). Opaque for CLI-backed providers.
    */
   mcpToolsText?: string;
+  /**
+   * The provider preset Otto composes itself — the standing instructions it puts
+   * in front of the model before any user or personality text. Present only
+   * where Otto builds the request (openai-compat); a CLI composes its own preset
+   * in its own process and never hands it back.
+   */
+  systemPromptText?: string;
 }
 
 export interface ContextManagementServiceDeps {
@@ -152,6 +160,10 @@ export class ContextManagementService {
     if (runtime?.mcpToolsText) {
       runtimeTokensByCategory.mcp_tools = estimateTokens(runtime.mcpToolsText.length);
     }
+    if (runtime?.systemPromptText) {
+      runtimeTokensByCategory.system_prompt = estimateTokens(runtime.systemPromptText.length);
+    }
+    const visibilityByCategory = resolveCategoryVisibility({ provider, runtime });
 
     // A personality's memory brief is prompt text Otto composes and injects, so
     // it belongs in `otto_injected` rather than a category of its own —
@@ -187,6 +199,7 @@ export class ContextManagementService {
         scannedAt,
         thresholds: this.deps.thresholds,
         runtimeTokensByCategory,
+        visibilityByCategory,
       });
       return {
         ...empty,
@@ -225,6 +238,7 @@ export class ContextManagementService {
       scannedAt,
       thresholds: this.deps.thresholds,
       runtimeTokensByCategory,
+      visibilityByCategory,
     });
 
     return {
@@ -234,6 +248,29 @@ export class ContextManagementService {
       supportsImports: scan.supportsImports,
       ...personalityFields,
     };
+  }
+
+  /**
+   * The assembled prompt, for reading only.
+   *
+   * Deliberately built on top of `getReport` rather than beside it: the preview
+   * must show exactly the files the graph counted, or the two surfaces would
+   * disagree about the same request. Returns null on the same terms the report
+   * does — no workspace, or no provider to resolve conventions from.
+   */
+  async getPromptPreview(input: GetContextReportInput): Promise<ContextPromptPreview | null> {
+    const report = await this.getReport(input);
+    if (!report) return null;
+
+    const runtime = await this.deps.resolveRuntime(input.workspaceId);
+    const runtimeTextByCategory: Partial<Record<ContextCategory, string>> = {};
+    if (runtime?.injectedPromptText) {
+      runtimeTextByCategory.otto_injected = runtime.injectedPromptText;
+    }
+    if (runtime?.systemPromptText) runtimeTextByCategory.system_prompt = runtime.systemPromptText;
+    if (runtime?.mcpToolsText) runtimeTextByCategory.mcp_tools = runtime.mcpToolsText;
+
+    return buildPromptPreview({ report, runtimeTextByCategory });
   }
 
   /**
@@ -256,6 +293,33 @@ export class ContextManagementService {
       return 0;
     }
   }
+}
+
+/**
+ * What Otto can honestly claim to see, per category, for one provider.
+ *
+ * Otto owns the whole payload for `openai-compat`, which makes it the only
+ * provider whose preset and tool schemas are measurable — and the ground truth
+ * every convention-based estimate is validated against. Every CLI-backed
+ * provider assembles its own preset and hands its MCP servers to a subprocess,
+ * so those two categories are unmeasurable there. Saying so on the row is the
+ * point: a user comparing providers should be able to see *where* the numbers
+ * stop being complete, rather than inferring it from a missing line.
+ */
+function resolveCategoryVisibility(params: {
+  provider: string;
+  runtime: WorkspaceContextRuntime | null;
+}): Partial<Record<ContextCategory, ContextCategoryVisibility>> {
+  const { provider, runtime } = params;
+  const ownsPayload = provider === "openai-compat";
+
+  return {
+    // Otto composes personality, team and daemon-append text itself, on every
+    // provider — this row is exact everywhere.
+    otto_injected: "exact",
+    system_prompt: ownsPayload && runtime?.systemPromptText ? "exact" : "not_visible",
+    mcp_tools: ownsPayload && runtime?.mcpToolsText ? "exact" : "not_visible",
+  };
 }
 
 /** Best-effort project root: the git repo root, else the workspace cwd. */

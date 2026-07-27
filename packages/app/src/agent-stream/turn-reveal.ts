@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { StreamItem } from "@/types/stream";
+import { getIsAppInForeground } from "@/utils/app-visibility";
 
 const REVEAL_TICK_MS = 32;
 const MIN_CHARS_PER_TICK = 2;
@@ -162,13 +163,16 @@ export class TurnRevealTicker {
   private revealed: number;
   private target: number;
   private turnKey: string;
+  private readonly isOnScreen: () => boolean;
   private readonly listeners = new Set<() => void>();
 
-  constructor(params: { turnKey: string; target: number }) {
+  constructor(params: { turnKey: string; target: number; isOnScreen?: () => boolean }) {
     this.turnKey = params.turnKey;
     this.target = params.target;
     // Mount caught-up: opening a screen mid-turn never replays history.
     this.revealed = params.target;
+    // Injected rather than imported so the ticker stays a pure unit under test.
+    this.isOnScreen = params.isOnScreen ?? (() => true);
   }
 
   /**
@@ -188,7 +192,13 @@ export class TurnRevealTicker {
   }
 
   tick = (): void => {
-    const next = nextRevealLength(this.revealed, this.target);
+    // Off screen, snap. There is nothing to animate for a hidden tab or a
+    // pocketed phone, and pacing there is actively harmful: browsers clamp a
+    // background `setInterval` to about 1Hz, so the reveal — not the model —
+    // becomes the bottleneck. Everything downstream that waits for a segment to
+    // reach full length waits with it, and auto-speech, whose entire point is
+    // that you are NOT looking at the screen, goes silent behind a tab switch.
+    const next = this.isOnScreen() ? nextRevealLength(this.revealed, this.target) : this.target;
     if (next === this.revealed) {
       return;
     }
@@ -213,7 +223,9 @@ export function useTurnRevealTicker(params: {
   target: number;
   enabled: boolean;
 }): TurnRevealTicker {
-  const [ticker] = useState(() => new TurnRevealTicker(params));
+  const [ticker] = useState(
+    () => new TurnRevealTicker({ ...params, isOnScreen: getIsAppInForeground }),
+  );
   ticker.update(params);
   useEffect(() => {
     if (!params.enabled) {

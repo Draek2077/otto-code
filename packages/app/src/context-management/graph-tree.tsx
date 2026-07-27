@@ -228,7 +228,16 @@ function ContextTreeRowView({
       >
         {label}
       </Text>
-      <Text style={styles.tokens}>{formatTokens(row.estTokens)}</Text>
+      {/* A category Otto cannot size for this provider says so in the token
+          slot. Rendering "0" there would be a measurement we never made, and
+          leaving it blank reads as "nothing here" — the one wrong conclusion. */}
+      {row.visibility === "not_visible" ? (
+        <Text style={styles.tokensUnmeasured} numberOfLines={1}>
+          {t("contextManagement.visibility.notVisible")}
+        </Text>
+      ) : (
+        <Text style={styles.tokens}>{formatTokens(row.estTokens)}</Text>
+      )}
     </Pressable>
   );
 }
@@ -273,6 +282,15 @@ const styles = StyleSheet.create((theme) => {
       fontSize: bump(theme.fontSize.xs),
       fontVariant: ["tabular-nums"],
       flexShrink: 0,
+    },
+    // Italic and dimmer than a real figure: this slot is prose where every
+    // other row holds a number, and it must not read as one.
+    tokensUnmeasured: {
+      color: theme.colors.mutedForeground,
+      fontSize: bump(theme.fontSize.xs),
+      fontStyle: "italic",
+      opacity: 0.8,
+      flexShrink: 1,
     },
     empty: {
       padding: theme.spacing[3],

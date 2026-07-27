@@ -6,11 +6,13 @@ import {
 } from "@/voice/auto-speech-queue";
 
 const SERVER = "host-1";
+const AGENT = "agent-1";
 
 function item(id: string, overrides: Partial<AutoSpeechItem> = {}): AutoSpeechItem {
   return {
     groupId: `group-${id}`,
     serverId: SERVER,
+    agentId: AGENT,
     text: id,
     ...overrides,
   };
@@ -75,7 +77,7 @@ describe("auto-speech queue", () => {
   it("speaks queued messages one after another, in order", async () => {
     const harness = createSpeaker();
     autoSpeechQueue.registerSpeaker(SERVER, harness.speaker);
-    autoSpeechQueue.setEnabled(true);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
 
     autoSpeechQueue.enqueue(item("a"));
     autoSpeechQueue.enqueue(item("b"));
@@ -100,7 +102,7 @@ describe("auto-speech queue", () => {
   it("never reads the same segment twice", async () => {
     const harness = createSpeaker();
     autoSpeechQueue.registerSpeaker(SERVER, harness.speaker);
-    autoSpeechQueue.setEnabled(true);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
 
     autoSpeechQueue.enqueue(item("a"));
     // A row that remounts (scrolled back into view) offers itself again.
@@ -114,7 +116,7 @@ describe("auto-speech queue", () => {
   it("dedupes on the text, not the row identity", async () => {
     const harness = createSpeaker();
     autoSpeechQueue.registerSpeaker(SERVER, harness.speaker);
-    autoSpeechQueue.setEnabled(true);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
 
     autoSpeechQueue.enqueue(item("a"));
     // A canonical timeline replace rebuilds the same prose under a fresh
@@ -133,7 +135,8 @@ describe("auto-speech queue", () => {
     const other = createSpeaker();
     autoSpeechQueue.registerSpeaker(SERVER, harness.speaker);
     autoSpeechQueue.registerSpeaker("host-2", other.speaker);
-    autoSpeechQueue.setEnabled(true);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
+    autoSpeechQueue.setAgentEnabled("host-2", AGENT, true);
 
     autoSpeechQueue.enqueue(item("a"));
     autoSpeechQueue.enqueue(item("a", { serverId: "host-2" }));
@@ -151,7 +154,7 @@ describe("auto-speech queue", () => {
   it("skips segments with nothing to say", async () => {
     const harness = createSpeaker();
     autoSpeechQueue.registerSpeaker(SERVER, harness.speaker);
-    autoSpeechQueue.setEnabled(true);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
 
     autoSpeechQueue.enqueue(item("blank", { text: "   \n  " }));
     await harness.settle();
@@ -162,13 +165,13 @@ describe("auto-speech queue", () => {
   it("stops playback and drops the backlog when the mode is turned off", async () => {
     const harness = createSpeaker();
     autoSpeechQueue.registerSpeaker(SERVER, harness.speaker);
-    autoSpeechQueue.setEnabled(true);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
 
     autoSpeechQueue.enqueue(item("a"));
     autoSpeechQueue.enqueue(item("b"));
     await harness.settle();
 
-    autoSpeechQueue.setEnabled(false);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, false);
     expect(harness.stop).toHaveBeenCalledTimes(1);
     expect(autoSpeechQueue.getPendingCount()).toBe(0);
     expect(autoSpeechQueue.getSpeakingGroupId()).toBeNull();
@@ -180,7 +183,7 @@ describe("auto-speech queue", () => {
   it("holds for a manual playback, then resumes with what arrives next", async () => {
     const harness = createSpeaker();
     autoSpeechQueue.registerSpeaker(SERVER, harness.speaker);
-    autoSpeechQueue.setEnabled(true);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
 
     autoSpeechQueue.enqueue(item("a"));
     autoSpeechQueue.enqueue(item("b"));
@@ -205,7 +208,7 @@ describe("auto-speech queue", () => {
   it("ignores a stale manual release", async () => {
     const harness = createSpeaker();
     autoSpeechQueue.registerSpeaker(SERVER, harness.speaker);
-    autoSpeechQueue.setEnabled(true);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
 
     const first = autoSpeechQueue.beginManualPlayback();
     const second = autoSpeechQueue.beginManualPlayback();
@@ -224,7 +227,7 @@ describe("auto-speech queue", () => {
   it("goes quiet on stopPlayback but stays in the mode", async () => {
     const harness = createSpeaker();
     autoSpeechQueue.registerSpeaker(SERVER, harness.speaker);
-    autoSpeechQueue.setEnabled(true);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
 
     autoSpeechQueue.enqueue(item("a"));
     autoSpeechQueue.enqueue(item("b"));
@@ -242,7 +245,7 @@ describe("auto-speech queue", () => {
 
   it("waits for a host's speaker instead of dropping its messages", async () => {
     const harness = createSpeaker();
-    autoSpeechQueue.setEnabled(true);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
 
     autoSpeechQueue.enqueue(item("a"));
     await harness.settle();
@@ -258,7 +261,8 @@ describe("auto-speech queue", () => {
     const other = createSpeaker();
     const unregister = autoSpeechQueue.registerSpeaker(SERVER, harness.speaker);
     autoSpeechQueue.registerSpeaker("host-2", other.speaker);
-    autoSpeechQueue.setEnabled(true);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
+    autoSpeechQueue.setAgentEnabled("host-2", AGENT, true);
 
     autoSpeechQueue.enqueue(item("a"));
     autoSpeechQueue.enqueue(item("b"));
@@ -278,7 +282,7 @@ describe("auto-speech queue", () => {
     const first = createSpeaker();
     const second = createSpeaker();
     const unregister = autoSpeechQueue.registerSpeaker(SERVER, first.speaker);
-    autoSpeechQueue.setEnabled(true);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
 
     autoSpeechQueue.enqueue(item("a"));
     autoSpeechQueue.enqueue(item("b"));
@@ -310,7 +314,7 @@ describe("auto-speech queue", () => {
     };
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     autoSpeechQueue.registerSpeaker(SERVER, failures);
-    autoSpeechQueue.setEnabled(true);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
 
     autoSpeechQueue.enqueue(item("a"));
     autoSpeechQueue.enqueue(item("b"));
@@ -321,5 +325,89 @@ describe("auto-speech queue", () => {
 
     expect(failures.speak).toHaveBeenCalledTimes(2);
     warn.mockRestore();
+  });
+
+  it("toggles off for one agent without affecting another", async () => {
+    const harness1 = createSpeaker();
+    autoSpeechQueue.registerSpeaker(SERVER, harness1.speaker);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
+    autoSpeechQueue.setAgentEnabled(SERVER, "agent-2", true);
+
+    // Queue items from both agents.
+    autoSpeechQueue.enqueue(item("a"));
+    autoSpeechQueue.enqueue({
+      groupId: "group-x",
+      serverId: SERVER,
+      agentId: "agent-2",
+      text: "x",
+    });
+    await harness1.settle();
+
+    expect(harness1.spoken).toEqual(["a"]);
+
+    // Turn off agent-1 only — agent-2's items should still play.
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, false);
+    expect(harness1.stop).toHaveBeenCalledTimes(1);
+    await harness1.settle();
+
+    // Agent-2's message should now be spoken (queue drained of agent-1 items).
+    expect(harness1.spoken).toEqual(["a", "x"]);
+
+    // New messages from agent-1 are ignored.
+    autoSpeechQueue.enqueue(item("b"));
+    await harness1.settle();
+    expect(harness1.spoken).toEqual(["a", "x"]);
+  });
+
+  it("takes the enabled set from the settings record, absent key meaning off", async () => {
+    const harness = createSpeaker();
+    autoSpeechQueue.registerSpeaker(SERVER, harness.speaker);
+
+    autoSpeechQueue.syncEnabledAgents({ [`${SERVER}:${AGENT}`]: true });
+    autoSpeechQueue.enqueue(item("a"));
+    await harness.settle();
+    expect(harness.spoken).toEqual(["a"]);
+
+    // Turning the chat off DELETES its key rather than storing false, so the
+    // reconcile has to read an absent key as off — a per-key loop never would.
+    autoSpeechQueue.syncEnabledAgents({});
+    autoSpeechQueue.enqueue(item("b"));
+    await harness.settle();
+    expect(harness.spoken).toEqual(["a"]);
+  });
+
+  it("keeps reading while the app is backgrounded", async () => {
+    // Auto-speech is for when you are NOT looking at the screen: nothing in the
+    // playback path may gate on visibility. The reveal's own off-screen snap is
+    // what keeps segments arriving (see turn-reveal).
+    const harness = createSpeaker();
+    autoSpeechQueue.registerSpeaker(SERVER, harness.speaker);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
+
+    autoSpeechQueue.enqueue(item("a"));
+    await harness.settle();
+    expect(harness.spoken).toEqual(["a"]);
+    expect(autoSpeechQueue.getPendingCount()).toBe(0);
+  });
+
+  it("does not resurrect a backlog the user dismissed", async () => {
+    const harness = createSpeaker();
+    autoSpeechQueue.registerSpeaker(SERVER, harness.speaker);
+    autoSpeechQueue.setAgentEnabled(SERVER, AGENT, true);
+
+    autoSpeechQueue.enqueue(item("a"));
+    autoSpeechQueue.enqueue(item("b"));
+    await harness.settle();
+
+    // Play on another message empties the queue; "b" was never spoken.
+    const token = autoSpeechQueue.beginManualPlayback();
+    expect(autoSpeechQueue.getPendingCount()).toBe(0);
+    autoSpeechQueue.endManualPlayback(token);
+
+    // A canonical replace remounts the row and offers "b" again. It stays gone:
+    // by the time the manual playback ended, that backlog was stale.
+    autoSpeechQueue.enqueue(item("b", { groupId: "group-b-rebuilt" }));
+    await harness.settle();
+    expect(harness.spoken).toEqual(["a"]);
   });
 });

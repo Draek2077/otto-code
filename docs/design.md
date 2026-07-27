@@ -44,6 +44,8 @@ Accent is the one CTA per surface. A `<Button variant="default">` filled with `a
 
 Destructive is a color, not a click. Restart-daemon and remove-host are `<Button variant="outline">` in the row trailing slot; the destructive surface only appears inside the `confirmDialog` (`packages/app/src/screens/settings/host-page.tsx:541-547`). Workspace archive opens a confirm dialog before any red appears (`packages/app/src/components/sidebar-workspace-list.tsx`). Red appears after the user has indicated intent.
 
+Code does not sit on the elevation ramp. Anything showing code or terminal output — the editor's code well, markdown fences and indented code blocks in chat, and the code/diff/JSON/shell blocks inside tool cards — is filled with `surfaceCode` (`packages/app/src/styles/theme.ts`), never with `surface1`/`surface2`. `surfaceCode` is `surface0` scaled toward black by a luminance-aware amount, so it stays on-tint and reads as a well one step _below_ the surrounding chrome rather than as a card floating above it; the pure-black variants override it to their first lifted step, because there is nothing below `#000000` to scale to. The point is that a file open in the editor and the same code quoted in a chat message are visibly the same material. `code_inline` is the exception and stays `surface3` — it is a chip inside a line of prose, not a box.
+
 ---
 
 ## 4. Buttons

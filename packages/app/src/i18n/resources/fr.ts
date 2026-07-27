@@ -196,6 +196,7 @@ export const fr: TranslationResources = {
   contextManagement: {
     back: "Retour",
     tabs: {
+      prompt: "Prompt",
       context: "Contexte",
       findings: "À corriger",
       findingsCount: "À corriger ({{count}})",
@@ -316,10 +317,20 @@ export const fr: TranslationResources = {
     category: {
       contextFiles: "Fichiers de contexte",
       memoryIndex: "Index mémoire",
-      skillsRoster: "Compétences",
+      skillsRoster: "Compétences et agents",
       mcpTools: "Outils MCP",
       ottoInjected: "Prompt Otto",
       systemPrompt: "Prompt système",
+    },
+    visibility: {
+      notVisible: "non mesurable ici",
+      unverified: "estimation non vérifiée",
+    },
+    prompt: {
+      empty: "Rien d'assemblé pour l'instant.",
+      total: "Prompt assemblé — environ {{tokens}} tokens par requête",
+      notVisibleBody:
+        "Ce fournisseur compose cette partie dans son propre processus. Otto ne peut pas la lire : elle est signalée mais non affichée.",
     },
     filePlaceholder: {
       title: "Choisissez un fichier",
@@ -2672,8 +2683,16 @@ export const fr: TranslationResources = {
       noPreview: "Aucun aperçu disponible",
       binaryPreviewUnavailable: "Aperçu binaire indisponible",
       binaryPreviewHint: "C'est un fichier binaire, il n'y a donc rien à afficher en texte.",
+      binaryPreviewKind: "Binaire",
+      binaryPreviewModified: "Modifié {{when}}",
       failedToLoad: "Échec du chargement du fichier",
       failedToLoadPreview: "Échec du chargement de l'aperçu du fichier",
+      image: {
+        zoomIn: "Zoom avant",
+        zoomOut: "Zoom arrière",
+        actualSize: "Taille réelle",
+        fitToWindow: "Ajuster à la fenêtre",
+      },
     },
   },
   toolCallDetails: {
@@ -2757,6 +2776,7 @@ export const fr: TranslationResources = {
       gitProviders: "Fournisseurs Git",
       providers: "Fournisseurs",
       usage: "Utilisation",
+      storage: "Stockage",
       terminals: "Terminaux",
       host: "Aperçu",
     },
@@ -3330,6 +3350,33 @@ export const fr: TranslationResources = {
         columnWorkspace: "Workspace",
         columnUptime: "Durée d'activité",
         stop: "Arrêter",
+      },
+      storage: {
+        title: "Images des agents",
+        hostImages: "Images sur cet hôte",
+        hostImagesSummary: "{{size}} sur {{count}} images",
+        hostImagesEmpty: "Rien de stocké pour l’instant",
+        hostImagesHint:
+          "Captures d’écran et autres images produites par vos agents, conservées pour que les anciens messages puissent encore les afficher. L’effacement est irréversible : ces messages afficheront leur description à la place.",
+        previewCache: "Copies en cache sur cet appareil",
+        previewCacheSummary: "{{size}} sur {{count}} images",
+        previewCacheEmpty: "Rien en cache",
+        previewCacheHint:
+          "Copies locales pour un affichage instantané. Vous pouvez les effacer sans risque : elles seront retéléchargées au besoin. Les fichiers que vous avez joints à des messages ({{size}}) sont conservés à part et ne sont jamais effacés ici.",
+        clear: "Effacer",
+        clearConfirm: "Effacer les images",
+        clearImagesTitle: "Effacer les images de cet hôte ?",
+        clearImagesMessage:
+          "Cette action supprime {{count}} images et libère {{size}}. Les messages qui les affichaient afficheront leur description à la place. C’est irréversible.",
+        clearedImages: "{{count}} images effacées, {{size}} libérés",
+        clearedPreviews: "{{count}} images en cache effacées, {{size}} libérés",
+        nothingToClear: "Il n’y a rien à effacer",
+        maxAge: "Conserver les images pendant",
+        maxAgeHint:
+          "Nombre de jours pendant lesquels une image inutilisée est conservée avant sa suppression automatique. Une image encore affichée dans une discussion que vous ouvrez garde sa place. 0 désactive cette règle.",
+        maxTotal: "Taille maximale",
+        maxTotalHint:
+          "Mégaoctets d’images à conserver sur cet hôte. Au-delà, les plus anciennes partent en premier. 0 désactive cette règle.",
       },
       workspaces: {
         unavailable: "Connectez-vous à cet hôte pour gérer les Workspaces",

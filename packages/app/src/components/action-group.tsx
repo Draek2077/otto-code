@@ -12,7 +12,7 @@ import {
   type ActionGroupCategory,
 } from "@/agent-stream/action-grouping";
 import { Layers } from "@/components/icons/material-icons";
-import { ExpandableBadge, ToolCall } from "@/components/message";
+import { ExpandableBadge, ToolCall, type ExpandableBadgeErrorLevel } from "@/components/message";
 import type { ActionGroupMemberItem } from "@/types/stream";
 
 const SUMMARY_KEYS: Record<ActionGroupCategory, { one: string; many: string }> = {
@@ -93,6 +93,27 @@ function buildActionGroupSummary(t: TFunction, items: ActionGroupMemberItem[]): 
 
 function isFailedMember(member: ActionGroupMemberItem): boolean {
   return member.kind === "tool_call" && member.payload.data.status === "failed";
+}
+
+// Thoughts have no success or failure, so they never count toward — or dilute —
+// the group's failure ratio.
+function isFailableMember(member: ActionGroupMemberItem): boolean {
+  return member.kind === "tool_call";
+}
+
+// One failure out of twenty is an alert, not a failed run: the group still did
+// nineteen useful things, and painting it the same red as a wholly failed action
+// trains people to ignore the triangle. Amber says "look inside"; red is
+// reserved for a group where every action that could fail did.
+function resolveActionGroupErrorLevel(
+  items: ActionGroupMemberItem[],
+): ExpandableBadgeErrorLevel | undefined {
+  const failableCount = items.filter(isFailableMember).length;
+  const failedCount = items.filter(isFailedMember).length;
+  if (failedCount === 0) {
+    return undefined;
+  }
+  return failedCount === failableCount ? "error" : "warning";
 }
 
 interface ActionGroupMemberRowProps {
@@ -183,7 +204,7 @@ export const ActionGroup = memo(function ActionGroup({
   const summary = useMemo(() => buildActionGroupSummary(t, items), [t, items]);
   const activeMember = items.find(isActiveActionMember);
   const isLoading = activeMember !== undefined;
-  const isError = items.some(isFailedMember);
+  const errorLevel = resolveActionGroupErrorLevel(items);
   // Shimmer in the color of whatever the group is currently doing (Vivid).
   const effectActivity = activeMember
     ? textEffectActivityForCategory(categorizeActionGroupMember(activeMember))
@@ -214,7 +235,7 @@ export const ActionGroup = memo(function ActionGroup({
       onToggle={handleToggle}
       renderDetails={renderDetails}
       isLoading={isLoading}
-      isError={isError}
+      errorLevel={errorLevel}
       isLastInSequence={isLastInSequence}
       effectActivity={effectActivity}
     />

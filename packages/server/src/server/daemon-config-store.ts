@@ -481,6 +481,8 @@ function mergeMutableConfigIntoPersistedConfig(params: {
       },
       autoArchiveAfterMerge: mutable.autoArchiveAfterMerge,
       hideMergeIntoBaseAction: mutable.hideMergeIntoBaseAction,
+      attachmentImageMaxAgeDays: mutable.attachmentImageMaxAgeDays,
+      attachmentImageMaxTotalMb: mutable.attachmentImageMaxTotalMb,
       // Only `enabled` persists. The caps are daemon policy, not a user preference, and writing
       // them to disk would freeze today's defaults into every existing install.
       dotnetSolutionManagement: {

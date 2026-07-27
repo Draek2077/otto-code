@@ -590,6 +590,13 @@ export const MutableDaemonConfigSchema = z
     // Defaults false so a new client parsing an old daemon's config keeps the
     // action visible. Gated by server_info features.hideMergeIntoBaseSetting.
     hideMergeIntoBaseAction: z.boolean().default(false),
+    // Retention for the images agents produce (docs/attachment-lifecycle.md).
+    // Host-level, because the store they govern is the daemon's. Defaults match
+    // the constants the daemon shipped with, so a client parsing an old daemon's
+    // config sees the policy actually in force rather than zeros. 0 on either
+    // disables that lever. Gated by server_info features.attachmentStorage.
+    attachmentImageMaxAgeDays: z.number().int().min(0).default(30),
+    attachmentImageMaxTotalMb: z.number().int().min(0).default(512),
     enableTerminalAgentHooks: z.boolean().default(false),
     appendSystemPrompt: z.string().default(""),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
@@ -651,6 +658,9 @@ export const MutableDaemonConfigPatchSchema = z
     autoArchiveAfterMerge: z.boolean().optional(),
     // Gated by server_info features.hideMergeIntoBaseSetting.
     hideMergeIntoBaseAction: z.boolean().optional(),
+    // Gated by server_info features.attachmentStorage.
+    attachmentImageMaxAgeDays: z.number().int().min(0).optional(),
+    attachmentImageMaxTotalMb: z.number().int().min(0).optional(),
     enableTerminalAgentHooks: z.boolean().optional(),
     appendSystemPrompt: z.string().optional(),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
@@ -1506,6 +1516,62 @@ export const UpdateAgentRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+// ── Attachment storage ──────────────────────────────────────────────────────
+// Agents produce image bytes continuously (browser screenshots above all), and
+// the daemon materializes each one to $OTTO_HOME/attachments so the timeline has
+// a file to point at. These two RPCs are the user's window into that store: how
+// much is there, and give it back. See docs/attachment-lifecycle.md.
+//
+// Scope is deliberately global, not per-chat or per-workspace. Filenames are a
+// content hash, so the same bytes may be referenced from several transcripts and
+// "this workspace's images" is a fiction we would have to invent and maintain.
+// Gated by server_info.features.attachmentStorage.
+export const AttachmentsImagesStatsRequestSchema = z.object({
+  type: z.literal("attachments.images.get_stats.request"),
+  requestId: z.string(),
+});
+
+export const AttachmentsImagesStatsResponseSchema = z.object({
+  type: z.literal("attachments.images.get_stats.response"),
+  payload: z.object({
+    fileCount: z.number().int().nonnegative(),
+    totalBytes: z.number().nonnegative(),
+    // ISO timestamp of the oldest image, or null when the store is empty. The
+    // readout quotes it so "512 MB" comes with "since March".
+    oldestAt: z.string().nullable(),
+    // The policy currently in force, so the settings row shows real numbers
+    // rather than the client's idea of the defaults.
+    maxAgeDays: z.number().int().nonnegative(),
+    maxTotalMb: z.number().int().nonnegative(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const AttachmentsImagesClearRequestSchema = z.object({
+  type: z.literal("attachments.images.clear.request"),
+  // 0 = every stored image. N = only images untouched for at least N days.
+  olderThanDays: z.number().int().min(0).default(0),
+  // Safe by default: a request that omits the flag previews instead of deleting.
+  // The client always sends it explicitly. Same contract as
+  // history.agents.clear_archived, and for the same reason — the client cannot
+  // enumerate the set, and there is no undo.
+  dryRun: z.boolean().default(true),
+  requestId: z.string(),
+});
+
+export const AttachmentsImagesClearResponseSchema = z.object({
+  type: z.literal("attachments.images.clear.response"),
+  payload: z.object({
+    matched: z.number().int().nonnegative(),
+    deleted: z.number().int().nonnegative(),
+    freedBytes: z.number().nonnegative(),
+    dryRun: z.boolean(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
 export const ProjectRenameRequestSchema = z.object({
   type: z.literal("project.rename.request"),
   projectId: z.string(),
@@ -2308,6 +2374,13 @@ export const ImportAgentRequestMessageSchema = z.object({
   sessionId: z.string().optional(),
   providerHandleId: z.string().optional(),
   cwd: z.string().optional(),
+  // The workspace the import was requested from. Present when the client has a
+  // workspace context (a chat tab); absent from the home screen, where the
+  // daemon resolves a workspace for the cwd instead.
+  // COMPAT(importAgentWorkspaceId): added in v0.7.1, drop the optionality when
+  // the floor is >= v0.7.1. An older client omits it and keeps the
+  // resolve-by-directory behaviour.
+  workspaceId: z.string().optional(),
   labels: z.record(z.string(), z.string()).optional(),
   requestId: z.string(),
 });
@@ -2570,6 +2643,17 @@ export const ContextSeveritySchema = z.enum(["ok", "notice", "warn", "critical"]
 
 export const ContextConfidenceSchema = z.enum(["exact", "convention", "unverified"]);
 
+// Per-category disclosure of how well the daemon can see a provider's payload.
+// `not_visible` is the reason this exists: a CLI-backed provider composes its
+// own preset and hands MCP servers to a subprocess, so those categories are
+// unmeasurable rather than empty, and the row has to be able to say which.
+export const ContextCategoryVisibilitySchema = z.enum([
+  "exact",
+  "convention",
+  "unverified",
+  "not_visible",
+]);
+
 export const ContextFindingKindSchema = z.enum([
   "dead_import",
   "dead_reference",
@@ -2644,6 +2728,10 @@ export const ContextCategoryTotalSchema = z.object({
   estTokens: z.number(),
   sharePercent: z.number(),
   severity: ContextSeveritySchema,
+  // COMPAT(contextCategoryVisibility): added in v0.7.1, drop the optionality
+  // when the floor is >= v0.7.1. An older client ignores the field and still
+  // gets correct totals; a newer client seeing it absent renders no badge.
+  visibility: ContextCategoryVisibilitySchema.optional(),
 });
 
 export const ContextReportSchema = z.object({
@@ -2706,6 +2794,42 @@ export const ContextReportGetResponseMessageSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     report: ContextReportSchema.nullable(),
+  }),
+});
+
+// One readable block of the assembled prompt. `text` is absent exactly when
+// `visibility` is "not_visible" — the provider composes that part internally and
+// Otto has nothing to show, which the section states rather than hides.
+export const ContextPromptSectionSchema = z.object({
+  category: ContextCategorySchema,
+  label: z.string(),
+  visibility: ContextCategoryVisibilitySchema,
+  text: z.string().optional(),
+  estTokens: z.number(),
+});
+
+export const ContextPromptPreviewSchema = z.object({
+  sections: z.array(ContextPromptSectionSchema),
+  estTokens: z.number(),
+});
+
+// Read-only by design: there is no matching write RPC. Editing happens per file
+// through the existing file pane, against the real file rather than a
+// concatenation of several.
+export const ContextPromptPreviewGetRequestMessageSchema = z.object({
+  type: z.literal("context.prompt.preview.get.request"),
+  requestId: z.string(),
+  workspaceId: z.string(),
+  provider: z.string().optional(),
+  windowTokens: z.number().optional(),
+  personalityId: z.string().optional(),
+});
+
+export const ContextPromptPreviewGetResponseMessageSchema = z.object({
+  type: z.literal("context.prompt.preview.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    preview: ContextPromptPreviewSchema.nullable(),
   }),
 });
 
@@ -4724,6 +4848,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ArchiveAgentRequestMessageSchema,
   CloseItemsRequestMessageSchema,
   HistoryAgentsClearArchivedRequestSchema,
+  AttachmentsImagesStatsRequestSchema,
+  AttachmentsImagesClearRequestSchema,
   UpdateAgentRequestMessageSchema,
   ProjectRenameRequestSchema,
   ProjectRemoveRequestSchema,
@@ -4762,6 +4888,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProviderUsageListRequestMessageSchema,
   StatsActivityGetRequestMessageSchema,
   ContextReportGetRequestMessageSchema,
+  ContextPromptPreviewGetRequestMessageSchema,
   ContextEdgeConvertRequestMessageSchema,
   ContextFindingsFixRequestMessageSchema,
   PersonalityMemoryListRequestMessageSchema,
@@ -5358,6 +5485,14 @@ export const ServerInfoStatusPayloadSchema = z
         // There is no client-side substitute (the client never touches the
         // filesystem), so an old daemon simply does not get the menu items.
         fileMutations: z.boolean().optional(),
+        // COMPAT(attachmentStorage): added in v0.7.1, drop the gate when daemon floor >= v0.7.1.
+        // Set when the daemon serves `attachments.images.get_stats` and
+        // `attachments.images.clear` — the readout and reclaim for the images it
+        // materializes on the agent's behalf. The client has no way to size or
+        // clear a directory on the host, so an old daemon simply does not get
+        // the daemon half of the Storage section; the app-side preview cache row
+        // is local and always shown.
+        attachmentStorage: z.boolean().optional(),
       })
       .optional(),
   })
@@ -8797,6 +8932,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AgentPermissionResolvedMessageSchema,
   AgentDeletedMessageSchema,
   HistoryAgentsClearArchivedResponseSchema,
+  AttachmentsImagesStatsResponseSchema,
+  AttachmentsImagesClearResponseSchema,
   AgentArchivedMessageSchema,
   CloseItemsResponseSchema,
   CheckoutStatusResponseSchema,
@@ -8902,6 +9039,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProviderUsageListResponseMessageSchema,
   StatsActivityGetResponseMessageSchema,
   ContextReportGetResponseMessageSchema,
+  ContextPromptPreviewGetResponseMessageSchema,
   ContextEdgeConvertResponseMessageSchema,
   ContextFindingsFixResponseMessageSchema,
   PersonalityMemoryListResponseMessageSchema,
@@ -9078,6 +9216,7 @@ export type SuggestedTasksChanged = z.infer<typeof SuggestedTasksChangedSchema>;
 export type ContextRange = z.infer<typeof ContextRangeSchema>;
 export type ContextScope = z.infer<typeof ContextScopeSchema>;
 export type ContextCategory = z.infer<typeof ContextCategorySchema>;
+export type ContextCategoryVisibility = z.infer<typeof ContextCategoryVisibilitySchema>;
 export type ContextCostClass = z.infer<typeof ContextCostClassSchema>;
 export type ContextSeverity = z.infer<typeof ContextSeveritySchema>;
 export type ContextConfidence = z.infer<typeof ContextConfidenceSchema>;
@@ -9162,6 +9301,14 @@ export type ProviderUsageListResponseMessage = z.infer<
 export type ActivityCounters = z.infer<typeof ActivityCountersSchema>;
 export type StatsActivityGetResponseMessage = z.infer<typeof StatsActivityGetResponseMessageSchema>;
 export type ContextReportGetResponseMessage = z.infer<typeof ContextReportGetResponseMessageSchema>;
+export type ContextPromptSection = z.infer<typeof ContextPromptSectionSchema>;
+export type ContextPromptPreview = z.infer<typeof ContextPromptPreviewSchema>;
+export type ContextPromptPreviewGetRequestMessage = z.infer<
+  typeof ContextPromptPreviewGetRequestMessageSchema
+>;
+export type ContextPromptPreviewGetResponseMessage = z.infer<
+  typeof ContextPromptPreviewGetResponseMessageSchema
+>;
 export type ContextEdgeConvertResponseMessage = z.infer<
   typeof ContextEdgeConvertResponseMessageSchema
 >;
@@ -9588,6 +9735,10 @@ export type HistoryAgentsClearArchivedRequest = z.infer<
 export type HistoryAgentsClearArchivedResponse = z.infer<
   typeof HistoryAgentsClearArchivedResponseSchema
 >;
+export type AttachmentsImagesStatsRequest = z.infer<typeof AttachmentsImagesStatsRequestSchema>;
+export type AttachmentsImagesStatsResponse = z.infer<typeof AttachmentsImagesStatsResponseSchema>;
+export type AttachmentsImagesClearRequest = z.infer<typeof AttachmentsImagesClearRequestSchema>;
+export type AttachmentsImagesClearResponse = z.infer<typeof AttachmentsImagesClearResponseSchema>;
 export type KillTerminalRequest = z.infer<typeof KillTerminalRequestSchema>;
 export type KillTerminalResponse = z.infer<typeof KillTerminalResponseSchema>;
 export type CaptureTerminalRequest = z.infer<typeof CaptureTerminalRequestSchema>;

@@ -159,6 +159,31 @@ export interface GarbageCollectInput {
 }
 
 /**
+ * What the Storage settings section reports, split the way the lifecycle splits:
+ * `preview` is the regenerable cache of images that live elsewhere, `other` is
+ * everything the user attached to a message. See docs/attachment-lifecycle.md.
+ */
+export interface AttachmentStoreUsage {
+  previewCount: number;
+  previewBytes: number;
+  otherCount: number;
+  otherBytes: number;
+}
+
+/** The empty reading, shared so "nothing stored" has one spelling. */
+export const EMPTY_ATTACHMENT_STORE_USAGE: AttachmentStoreUsage = Object.freeze({
+  previewCount: 0,
+  previewBytes: 0,
+  otherCount: 0,
+  otherBytes: 0,
+});
+
+export interface ClearPreviewAttachmentsResult {
+  deleted: number;
+  freedBytes: number;
+}
+
+/**
  * Async storage contract for attachment bytes.
  * Metadata is persisted in drafts/messages; bytes live in platform stores.
  */
@@ -170,4 +195,11 @@ export interface AttachmentStore {
   releasePreviewUrl?(input: ReleasePreviewUrlInput): Promise<void>;
   delete(input: DeleteAttachmentInput): Promise<void>;
   garbageCollect(input: GarbageCollectInput): Promise<void>;
+  /** Sizes the store for the Storage settings section. */
+  usage(): Promise<AttachmentStoreUsage>;
+  /**
+   * Drops every preview attachment. Safe by construction — each one is a copy of
+   * an image the daemon or the workspace still holds, so the next render refetches.
+   */
+  clearPreviews(): Promise<ClearPreviewAttachmentsResult>;
 }

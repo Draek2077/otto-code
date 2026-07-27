@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { AttachmentMetadata, AttachmentStore, SaveAttachmentInput } from "@/attachments/types";
+import {
+  EMPTY_ATTACHMENT_STORE_USAGE,
+  type AttachmentMetadata,
+  type AttachmentStore,
+  type SaveAttachmentInput,
+} from "@/attachments/types";
 import { __setAttachmentStoreForTests } from "./store";
 import { encodeAttachmentsForSend, persistAttachmentFromBytes } from "./service";
 
@@ -46,6 +51,12 @@ function createRecordingStore(): AttachmentStore & {
     },
     async delete() {},
     async garbageCollect() {},
+    async usage() {
+      return EMPTY_ATTACHMENT_STORE_USAGE;
+    },
+    async clearPreviews() {
+      return { deleted: 0, freedBytes: 0 };
+    },
   };
 }
 

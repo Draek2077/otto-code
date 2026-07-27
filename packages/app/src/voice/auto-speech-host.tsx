@@ -12,6 +12,16 @@
 // VoiceProvider so the shared audio engine resolves, and above the router so a
 // route change never unmounts it mid-sentence. Renders nothing.
 //
+// Per-agent auto-speech: each chat toggles independently from its composer's
+// speaker icon. The host owns the one subscription to the sparse settings
+// record and does two things with it — hands it to the queue whole (see
+// `syncEnabledAgents` for why it has to be the whole record and not one key at
+// a time), and mounts one `ChatAutoSpeechSource` per enabled chat.
+//
+// Those sources are the other half of "switching chats does not stop playback":
+// they feed the queue from the store, so a chat keeps reading whether or not it
+// is the one on screen. See auto-speech-source.tsx.
+//
 // Reading is the personality's voice, resolved at speak time from the LIVE
 // personality the same way the per-bubble playback button and voice cues do, so
 // a message is read in the voice of whoever wrote it.
@@ -29,8 +39,10 @@ import type { AppSettings } from "@/hooks/use-settings/storage";
 import { useHostRuntimeClient, useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { autoSpeechQueue, type AutoSpeechSpeaker } from "@/voice/auto-speech-queue";
+import { AutoSpeechSources } from "@/voice/auto-speech-source";
 
-const selectAutoSpeech = (settings: AppSettings): boolean => settings.autoSpeech;
+const selectAgentAutoSpeechEnabled = (settings: AppSettings): Record<string, boolean> =>
+  settings.agentAutoSpeechEnabled;
 
 function resolveVoice(
   roster: readonly AgentPersonality[] | undefined,
@@ -111,20 +123,23 @@ function HostAutoSpeech({ serverId }: { serverId: string }) {
 
 /** Headless. Mounted once per app session. */
 export function AutoSpeechHost() {
-  const enabled = useAppSettingValue(selectAutoSpeech);
+  // The narrow subscription matters here: this sits at the app root, so a bare
+  // `useAppSettings()` would re-render it on every unrelated settings write.
+  const enabledAgents = useAppSettingValue(selectAgentAutoSpeechEnabled);
   const hosts = useHosts();
 
-  // The setting is the mode; the queue is the runtime. Turning it off here is
-  // what makes "stops immediately" true no matter which surface flipped it.
+  // The setting is the mode; the queue is the runtime. Reconciling here is what
+  // makes "stops immediately" true no matter which surface flipped it.
   useEffect(() => {
-    autoSpeechQueue.setEnabled(enabled);
-  }, [enabled]);
+    autoSpeechQueue.syncEnabledAgents(enabledAgents);
+  }, [enabledAgents]);
 
   return (
     <>
       {hosts.map((host) => (
         <HostAutoSpeech key={host.serverId} serverId={host.serverId} />
       ))}
+      <AutoSpeechSources enabledAgents={enabledAgents} />
     </>
   );
 }

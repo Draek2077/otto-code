@@ -243,6 +243,8 @@ function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDa
     modelTierOverrides: [],
     autoArchiveAfterMerge: false,
     hideMergeIntoBaseAction: false,
+    attachmentImageMaxAgeDays: 30,
+    attachmentImageMaxTotalMb: 512,
     enableTerminalAgentHooks: false,
     appendSystemPrompt: "",
   };

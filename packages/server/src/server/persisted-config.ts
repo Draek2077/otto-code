@@ -388,6 +388,10 @@ export const PersistedConfigSchema = z
           .optional(),
         autoArchiveAfterMerge: z.boolean().optional(),
         hideMergeIntoBaseAction: z.boolean().optional(),
+        // Retention for the materialized image store; see
+        // docs/attachment-lifecycle.md. Absent reads as the shipped defaults.
+        attachmentImageMaxAgeDays: z.number().int().min(0).optional(),
+        attachmentImageMaxTotalMb: z.number().int().min(0).optional(),
         // "Microsoft .NET Solution Management" — the Solution view's switch. Persisted so the
         // opt-in survives a daemon restart; absent reads as off, which is the default.
         dotnetSolutionManagement: z

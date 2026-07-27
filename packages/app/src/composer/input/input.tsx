@@ -2018,7 +2018,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 {/* Right: auto-speech toggle, voice button, contextual button
                   (realtime/send/cancel) */}
                 <View style={styles.rightButtonGroup} onLayout={handleToolbarRightLayout}>
-                  <AutoSpeechButton serverId={voiceServerId} buttonIconSize={buttonIconSize} />
+                  <AutoSpeechButton
+                    serverId={voiceServerId}
+                    agentId={voiceAgentId}
+                    buttonIconSize={buttonIconSize}
+                  />
                   <VoiceButtonTooltip
                     onVoicePress={handleVoicePress}
                     isDictationStartEnabled={isDictationStartEnabled}

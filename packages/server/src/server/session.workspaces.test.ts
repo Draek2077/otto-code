@@ -3688,6 +3688,83 @@ test("import_agent_request registers a workspace for a never-seen cwd", async ()
   ).toBe(true);
 });
 
+test("import_agent_request adopts the requested workspace instead of minting a same-cwd duplicate", async () => {
+  const session = createSessionForWorkspaceTests();
+  const projects = new Map<string, ReturnType<typeof createPersistedProjectRecord>>();
+  const workspaces = new Map<string, ReturnType<typeof createPersistedWorkspaceRecord>>();
+  const importedCwd = path.resolve("/tmp/imported-in-place");
+
+  projects.set(
+    "proj-in-place",
+    createPersistedProjectRecord({
+      projectId: "proj-in-place",
+      rootPath: importedCwd,
+      kind: "non_git",
+      displayName: "in-place",
+      createdAt: "2026-05-21T00:00:00.000Z",
+      updatedAt: "2026-05-21T00:00:00.000Z",
+    }),
+  );
+  workspaces.set(
+    "ws-in-place",
+    createPersistedWorkspaceRecord({
+      workspaceId: "ws-in-place",
+      projectId: "proj-in-place",
+      cwd: importedCwd,
+      kind: "directory",
+      displayName: "in-place",
+      createdAt: "2026-05-21T00:00:00.000Z",
+      updatedAt: "2026-05-21T00:00:00.000Z",
+    }),
+  );
+
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedProjectRecord>,
+  ) => {
+    projects.set(record.projectId, record);
+  };
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.get = async (lookupWorkspaceId: string) =>
+    workspaces.get(lookupWorkspaceId) ?? null;
+  session.workspaceRegistry.upsert = async (
+    record: ReturnType<typeof createPersistedWorkspaceRecord>,
+  ) => {
+    workspaces.set(record.workspaceId, record);
+  };
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+
+  const managed = makeManagedAgent({
+    id: "imported-in-place-agent",
+    cwd: importedCwd,
+    lifecycle: "idle",
+    updatedAt: "2026-05-21T00:00:00.000Z",
+  });
+  let importedWorkspaceId: string | null = null;
+  session.agentManager.listAgents = () => [managed];
+  session.agentManager.importProviderSession = async (input: { workspaceId: string }) => {
+    importedWorkspaceId = input.workspaceId;
+    return managed;
+  };
+  session.agentManager.getTimeline = () => [];
+  session.agentManager.setTitle = async () => undefined;
+  session.agentStorage.list = async () => [];
+  session.agentStorage.get = async () => null;
+  session.agentUpdates.forwardLiveAgent = async () => undefined;
+
+  await session.handleMessage({
+    type: "import_agent_request",
+    requestId: "req-import-in-place",
+    providerId: "codex",
+    providerHandleId: "session-in-place",
+    cwd: importedCwd,
+    workspaceId: "ws-in-place",
+  });
+
+  expect(importedWorkspaceId).toBe("ws-in-place");
+  expect(Array.from(workspaces.keys())).toEqual(["ws-in-place"]);
+});
+
 test("open_project_response returns immediately even when the GitHub fetch is slow", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const session = createSessionForWorkspaceTests();

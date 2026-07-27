@@ -75,6 +75,13 @@ browser pane and can be verified with the browser tools, whereas an Electron
 window would need its own userData for the single-instance lock and could only be
 inspected over CDP.
 
+To actually drive it that way, go through Preview rather than opening the Metro
+URL in a browser tab by hand — `.claude/launch.json` carries an `otto-agent`
+config that starts the whole lane. See
+[preview.md → Previewing Otto itself](preview.md#previewing-otto-itself), which
+also covers what an agent sees when the lane is already running and it did not
+start it.
+
 The home is managed (its `config.json` is seeded with the lane's port) and
 persistent — a throwaway home mints a new daemon keypair and `serverId` every run,
 and a client that remembered the old identity refuses the new one.
@@ -107,6 +114,13 @@ npm run dev:agent:bootstrap
   that is `localStorage` under key `@otto:app-settings` on the Metro origin, not
   anywhere under `OTTO_HOME`. The script prints a one-liner to run once in the
   browser pane, then reload.
+
+  **Per origin, so a different port is a different client.** The one-liner the
+  script prints names the lane's own origin. Serve the same app on another port —
+  a `preview_start` front end, say — and it boots into the wizard again with the
+  flags unset, because `localhost:8095` and `127.0.0.1:8096` are separate
+  `localStorage` scopes. Daemon-owned state (projects, workspaces, chats) is
+  untouched; only re-run the client half against the new origin.
 
 Note the flags must be set to `true` explicitly. `migrateSetupWizardFlag` only
 treats a device as an upgrader when the field is _absent_, and the app writes a
@@ -280,6 +294,17 @@ OTTO_DEV_RESET_HOME=1 npm run dev            # clear and reseed the derived work
 - Root checkout Expo: `http://localhost:8081`.
 - Root checkout desktop dev Expo: first free port from `8082` through `8089`.
 - Desktop dev Electron CDP: `127.0.0.1:9223`.
+- Marketing site (`dev:website`): `http://localhost:4300`. Archdocs
+  (`archdocs:serve`): `http://localhost:4400`.
+
+**`808x` belongs to Metro/Expo; nothing else may sit in it.** `8081` is the root
+checkout, `8082`–`8089` is the desktop dev band, `8095` is the agent lane. The
+sites live at `43xx`/`44xx` for exactly this reason — the website was on `8082`
+until it turned out that is the desktop dev shell's _first_ choice, so running
+`dev:desktop` and `dev:website` together gave one of them a port the other
+expected. Anything new that needs a fixed local port goes outside `808x` and gets
+added to `RESERVED_LOCAL_PORTS` in `packages/app/e2e/global-setup.ts`, so E2E's
+dynamic allocation keeps avoiding it.
 
 In Otto-managed worktree services, use the injected service environment rather than hardcoded root checkout ports.
 

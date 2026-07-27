@@ -1,4 +1,4 @@
-import type { AttachmentMetadata } from "@/attachments/types";
+import { EMPTY_ATTACHMENT_STORE_USAGE, type AttachmentMetadata } from "@/attachments/types";
 import type {
   DesktopAttachmentBridge,
   DesktopAttachmentFileResult,
@@ -77,6 +77,12 @@ export function createFakeDesktopAttachmentBridge(): FakeDesktopAttachmentBridge
     async garbageCollect({ referencedIds }) {
       garbageCollections.push({ referencedIds });
       return 0;
+    },
+    async usage() {
+      return EMPTY_ATTACHMENT_STORE_USAGE;
+    },
+    async clearPreviews() {
+      return { deleted: 0, freedBytes: 0 };
     },
     async readFileBase64(path) {
       readBase64Calls.push(path);

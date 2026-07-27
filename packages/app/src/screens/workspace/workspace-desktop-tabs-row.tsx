@@ -344,20 +344,23 @@ function useWorkspacePreviewController({
   const runningServersRef = useRef<Map<string, PreviewRunningServer>>(new Map());
   const hasRunningPreviewServer = useHasRunningPreviewServer(normalizedServerId);
 
-  const startAndOpenPreview = useCallback(
-    async (agentId: string, cwd: string, serverName: string) => {
-      const client = useSessionStore.getState().sessions[normalizedServerId]?.client ?? null;
-      if (!client) {
-        return;
-      }
-
-      // Open the tab immediately, before the (possibly slow) start RPC resolves,
-      // so the UI never blocks on a cold dev server. BrowserPane shows a centered
-      // spinner while previewStatus is "starting" and only navigates once ready.
+  // Opens a preview tab in a split pane beside this button's own pane and
+  // returns its browserId. Shared by the start path (which opens the tab before
+  // the spawn resolves, so the UI never blocks on a cold dev server) and the
+  // attach path below.
+  const openPreviewTab = useCallback(
+    (cwd: string, serverName: string, initial?: { url: string; serverId: string }) => {
       const { browserId } = createWorkspaceBrowser({
         isPreview: true,
         previewServerName: serverName,
         previewCwd: cwd,
+        ...(initial
+          ? {
+              initialUrl: initial.url,
+              previewServerId: initial.serverId,
+              previewStatus: "ready" as const,
+            }
+          : {}),
       });
       const workspaceKey = buildWorkspaceTabPersistenceKey({
         serverId: normalizedServerId,
@@ -377,6 +380,41 @@ function useWorkspacePreviewController({
           });
         }
       }
+      return browserId;
+    },
+    [normalizedServerId, normalizedWorkspaceId, paneId],
+  );
+
+  /**
+   * Attach a fresh tab to a server the picker already knows is running, using
+   * the url the list_config poll reported. Deliberately does not go through
+   * previewStart: for a server this daemon didn't spawn, that used to port-probe
+   * and fail with "port already in use" — an error about a server the user was
+   * looking at in the picker. The daemon adopts such servers now, but there is
+   * still no reason to round-trip a spawn attempt when we hold the url.
+   */
+  const attachToRunningPreview = useCallback(
+    async (cwd: string, running: PreviewRunningServer) => {
+      const browserId = openPreviewTab(cwd, running.name, {
+        url: running.url,
+        serverId: running.serverId,
+      });
+      const client = useSessionStore.getState().sessions[normalizedServerId]?.client ?? null;
+      await client?.previewBindTab(running.serverId, browserId).catch(() => undefined);
+    },
+    [normalizedServerId, openPreviewTab],
+  );
+
+  const startAndOpenPreview = useCallback(
+    async (agentId: string, cwd: string, serverName: string) => {
+      const client = useSessionStore.getState().sessions[normalizedServerId]?.client ?? null;
+      if (!client) {
+        return;
+      }
+
+      // BrowserPane shows a centered spinner while previewStatus is "starting"
+      // and only navigates once ready.
+      const browserId = openPreviewTab(cwd, serverName);
 
       const started = await client.previewStart(cwd, serverName);
       if (!started.success || !started.server) {
@@ -405,7 +443,7 @@ function useWorkspacePreviewController({
         .markRunning(normalizedServerId, cwd, started.server.serverId);
       await client.previewBindTab(started.server.serverId, browserId).catch(() => undefined);
     },
-    [normalizedServerId, normalizedWorkspaceId, paneId],
+    [normalizedServerId, openPreviewTab],
   );
 
   const stopServer = useCallback(
@@ -568,12 +606,9 @@ function useWorkspacePreviewController({
     (serverName: string) => {
       setPickerOpen(false);
 
-      // Already running: if its tab is still open, just jump back to it. If the
-      // tab was closed (keep-running left the server up), fall through to
-      // startAndOpenPreview — previewStart reuses the running process, so this
-      // just rebinds a fresh tab instead of restarting anything.
       const running = runningServersRef.current.get(serverName);
       if (running) {
+        // Already running and its tab is still open: jump back to it.
         const workspaceKey = buildWorkspaceTabPersistenceKey({
           serverId: normalizedServerId,
           workspaceId: normalizedWorkspaceId,
@@ -593,11 +628,26 @@ function useWorkspacePreviewController({
       const cwd = useSessionStore
         .getState()
         .sessions[normalizedServerId]?.agents.get(focusedAgentId)?.cwd;
-      if (cwd) {
-        void startAndOpenPreview(focusedAgentId, cwd, serverName);
+      if (!cwd) {
+        return;
       }
+      // Running, but no tab here to return to — the tab was closed, or it
+      // belongs to another chat or workspace. Point a new tab at the url the
+      // poll already reported rather than asking the daemon to start what is
+      // demonstrably up.
+      if (running) {
+        void attachToRunningPreview(cwd, running);
+        return;
+      }
+      void startAndOpenPreview(focusedAgentId, cwd, serverName);
     },
-    [focusedAgentId, normalizedServerId, normalizedWorkspaceId, startAndOpenPreview],
+    [
+      attachToRunningPreview,
+      focusedAgentId,
+      normalizedServerId,
+      normalizedWorkspaceId,
+      startAndOpenPreview,
+    ],
   );
 
   const handleStopServer = useCallback(

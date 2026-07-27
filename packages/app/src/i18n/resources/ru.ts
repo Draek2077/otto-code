@@ -196,6 +196,7 @@ export const ru: TranslationResources = {
   contextManagement: {
     back: "Назад",
     tabs: {
+      prompt: "Промпт",
       context: "Контекст",
       findings: "Стоит исправить",
       findingsCount: "Стоит исправить ({{count}})",
@@ -315,10 +316,20 @@ export const ru: TranslationResources = {
     category: {
       contextFiles: "Файлы контекста",
       memoryIndex: "Индекс памяти",
-      skillsRoster: "Навыки",
+      skillsRoster: "Навыки и агенты",
       mcpTools: "Инструменты MCP",
       ottoInjected: "Промпт Otto",
       systemPrompt: "Системный промпт",
+    },
+    visibility: {
+      notVisible: "здесь не измеряется",
+      unverified: "оценка не проверена",
+    },
+    prompt: {
+      empty: "Пока нечего собирать.",
+      total: "Собранный промпт — около {{tokens}} токенов в каждом запросе",
+      notVisibleBody:
+        "Этот провайдер формирует эту часть внутри своего процесса. Otto не может её прочитать, поэтому она указана, но не показана.",
     },
     filePlaceholder: {
       title: "Выберите файл",
@@ -2641,8 +2652,16 @@ export const ru: TranslationResources = {
       noPreview: "Предварительный просмотр недоступен",
       binaryPreviewUnavailable: "Предварительный просмотр двоичного файла недоступен.",
       binaryPreviewHint: "Это двоичный файл, поэтому показывать как текст нечего.",
+      binaryPreviewKind: "Двоичный",
+      binaryPreviewModified: "Изменён {{when}}",
       failedToLoad: "Не удалось загрузить файл",
       failedToLoadPreview: "Не удалось загрузить предварительный просмотр файла.",
+      image: {
+        zoomIn: "Увеличить",
+        zoomOut: "Уменьшить",
+        actualSize: "Реальный размер",
+        fitToWindow: "По размеру окна",
+      },
     },
   },
   toolCallDetails: {
@@ -2726,6 +2745,7 @@ export const ru: TranslationResources = {
       gitProviders: "Провайдеры Git",
       providers: "Провайдеры",
       usage: "Использование",
+      storage: "Хранилище",
       terminals: "Терминалы",
       host: "Обзор",
     },
@@ -3295,6 +3315,33 @@ export const ru: TranslationResources = {
         columnWorkspace: "Workspace",
         columnUptime: "Время работы",
         stop: "Остановить",
+      },
+      storage: {
+        title: "Изображения от агентов",
+        hostImages: "Изображения на этом хосте",
+        hostImagesSummary: "{{size}} в {{count}} изображениях",
+        hostImagesEmpty: "Пока ничего не сохранено",
+        hostImagesHint:
+          "Скриншоты и другие изображения, созданные вашими агентами. Они хранятся, чтобы прошлые сообщения по-прежнему могли их показывать. Очистку нельзя отменить — такие сообщения вернутся к текстовому описанию.",
+        previewCache: "Кэшированные копии на этом устройстве",
+        previewCacheSummary: "{{size}} в {{count}} изображениях",
+        previewCacheEmpty: "Кэш пуст",
+        previewCacheHint:
+          "Локальные копии, чтобы изображения открывались мгновенно. Очищать безопасно — они загрузятся снова при необходимости. Файлы, приложенные вами к сообщениям ({{size}}), хранятся отдельно и отсюда никогда не удаляются.",
+        clear: "Очистить",
+        clearConfirm: "Очистить изображения",
+        clearImagesTitle: "Очистить изображения на этом хосте?",
+        clearImagesMessage:
+          "Будет удалено {{count}} изображений и освобождено {{size}}. Сообщения, где они показывались, вернутся к текстовому описанию. Отменить это нельзя.",
+        clearedImages: "Очищено {{count}} изображений, освобождено {{size}}",
+        clearedPreviews: "Очищено {{count}} кэшированных изображений, освобождено {{size}}",
+        nothingToClear: "Очищать нечего",
+        maxAge: "Хранить изображения",
+        maxAgeHint:
+          "Сколько дней неиспользуемое изображение хранится до автоматического удаления. Изображение, которое всё ещё показывается в открываемом вами чате, сохраняет своё место. 0 отключает это.",
+        maxTotal: "Максимальный размер",
+        maxTotalHint:
+          "Сколько мегабайт изображений хранить на этом хосте. Сверх этого первыми удаляются самые старые. 0 отключает это.",
       },
       workspaces: {
         unavailable: "Подключитесь к этому хосту, чтобы управлять Workspaces",

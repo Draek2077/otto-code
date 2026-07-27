@@ -195,6 +195,7 @@ export const es: TranslationResources = {
   contextManagement: {
     back: "Atrás",
     tabs: {
+      prompt: "Prompt",
       context: "Contexto",
       findings: "Conviene arreglar",
       findingsCount: "Conviene arreglar ({{count}})",
@@ -315,10 +316,20 @@ export const es: TranslationResources = {
     category: {
       contextFiles: "Archivos de contexto",
       memoryIndex: "Índice de memoria",
-      skillsRoster: "Habilidades",
+      skillsRoster: "Habilidades y agentes",
       mcpTools: "Herramientas MCP",
       ottoInjected: "Prompt de Otto",
       systemPrompt: "Prompt del sistema",
+    },
+    visibility: {
+      notVisible: "no medible aquí",
+      unverified: "estimación sin verificar",
+    },
+    prompt: {
+      empty: "Aún no hay nada ensamblado.",
+      total: "Prompt ensamblado: unos {{tokens}} tokens en cada solicitud",
+      notVisibleBody:
+        "Este proveedor compone esta parte dentro de su propio proceso. Otto no puede leerla, así que se indica pero no se muestra.",
     },
     filePlaceholder: {
       title: "Elige un archivo",
@@ -2660,8 +2671,16 @@ export const es: TranslationResources = {
       noPreview: "No hay vista previa disponible",
       binaryPreviewUnavailable: "Vista previa binaria no disponible",
       binaryPreviewHint: "Es un archivo binario, así que no hay nada que mostrar como texto.",
+      binaryPreviewKind: "Binario",
+      binaryPreviewModified: "Modificado {{when}}",
       failedToLoad: "No se pudo cargar el archivo",
       failedToLoadPreview: "No se pudo cargar la vista previa del archivo",
+      image: {
+        zoomIn: "Acercar",
+        zoomOut: "Alejar",
+        actualSize: "Tamaño real",
+        fitToWindow: "Ajustar a la ventana",
+      },
     },
   },
   toolCallDetails: {
@@ -2745,6 +2764,7 @@ export const es: TranslationResources = {
       gitProviders: "Proveedores de Git",
       providers: "Proveedores",
       usage: "Uso",
+      storage: "Almacenamiento",
       terminals: "Terminales",
       host: "Resumen",
     },
@@ -3317,6 +3337,33 @@ export const es: TranslationResources = {
         columnWorkspace: "Workspace",
         columnUptime: "Tiempo activo",
         stop: "Detener",
+      },
+      storage: {
+        title: "Imágenes de los agentes",
+        hostImages: "Imágenes en este host",
+        hostImagesSummary: "{{size}} en {{count}} imágenes",
+        hostImagesEmpty: "Todavía no hay nada guardado",
+        hostImagesHint:
+          "Capturas y otras imágenes que produjeron tus agentes, conservadas para que los mensajes anteriores puedan seguir mostrándolas. Borrarlas no se puede deshacer: esos mensajes pasarán a mostrar su descripción.",
+        previewCache: "Copias en caché en este dispositivo",
+        previewCacheSummary: "{{size}} en {{count}} imágenes",
+        previewCacheEmpty: "Nada en caché",
+        previewCacheHint:
+          "Copias locales para que las imágenes carguen al instante. Se pueden borrar sin riesgo: se vuelven a descargar cuando hagan falta. Los archivos que adjuntaste a mensajes ({{size}}) se guardan aparte y nunca se borran desde aquí.",
+        clear: "Borrar",
+        clearConfirm: "Borrar imágenes",
+        clearImagesTitle: "¿Borrar las imágenes de este host?",
+        clearImagesMessage:
+          "Esto elimina {{count}} imágenes y libera {{size}}. Los mensajes que las mostraban pasarán a mostrar su descripción. No se puede deshacer.",
+        clearedImages: "Se borraron {{count}} imágenes y se liberaron {{size}}",
+        clearedPreviews: "Se borraron {{count}} imágenes en caché y se liberaron {{size}}",
+        nothingToClear: "No hay nada que borrar",
+        maxAge: "Conservar las imágenes durante",
+        maxAgeHint:
+          "Días que se conserva una imagen sin usar antes de eliminarla automáticamente. Una imagen que aún se muestra en un chat que abres mantiene su sitio. 0 lo desactiva.",
+        maxTotal: "Tamaño máximo",
+        maxTotalHint:
+          "Megabytes de imágenes que conservar en este host. A partir de ahí se eliminan primero las más antiguas. 0 lo desactiva.",
       },
       workspaces: {
         unavailable: "Conéctate a este host para gestionar los Workspaces",

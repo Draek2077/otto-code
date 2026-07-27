@@ -197,6 +197,7 @@ export const ja: TranslationResources = {
   contextManagement: {
     back: "戻る",
     tabs: {
+      prompt: "プロンプト",
       context: "コンテキスト",
       findings: "直す価値あり",
       findingsCount: "直す価値あり ({{count}})",
@@ -316,10 +317,20 @@ export const ja: TranslationResources = {
     category: {
       contextFiles: "コンテキストファイル",
       memoryIndex: "メモリ索引",
-      skillsRoster: "スキル",
+      skillsRoster: "スキルとエージェント",
       mcpTools: "MCP ツール",
       ottoInjected: "Otto プロンプト",
       systemPrompt: "システムプロンプト",
+    },
+    visibility: {
+      notVisible: "ここでは計測不可",
+      unverified: "推定値は未検証",
+    },
+    prompt: {
+      empty: "まだ何も組み立てられていません。",
+      total: "組み立て済みプロンプト — 毎リクエスト約 {{tokens}} トークン",
+      notVisibleBody:
+        "このプロバイダーはこの部分を自身のプロセス内で組み立てます。Otto からは読めないため、記載のみで内容は表示しません。",
     },
     filePlaceholder: {
       title: "ファイルを選択",
@@ -2636,8 +2647,16 @@ export const ja: TranslationResources = {
       noPreview: "プレビューが利用できません",
       binaryPreviewUnavailable: "バイナリプレビューが利用できません",
       binaryPreviewHint: "バイナリファイルのため、テキストとして表示できるものはありません。",
+      binaryPreviewKind: "バイナリ",
+      binaryPreviewModified: "更新 {{when}}",
       failedToLoad: "ファイルの読み込みに失敗しました",
       failedToLoadPreview: "ファイルプレビューの読み込みに失敗しました",
+      image: {
+        zoomIn: "拡大",
+        zoomOut: "縮小",
+        actualSize: "実際のサイズ",
+        fitToWindow: "ウィンドウに合わせる",
+      },
     },
   },
   toolCallDetails: {
@@ -2721,6 +2740,7 @@ export const ja: TranslationResources = {
       gitProviders: "Git プロバイダー",
       providers: "プロバイダー",
       usage: "使用状況",
+      storage: "ストレージ",
       terminals: "ターミナル",
       host: "概要",
     },
@@ -3289,6 +3309,33 @@ export const ja: TranslationResources = {
         columnWorkspace: "ワークスペース",
         columnUptime: "稼働時間",
         stop: "停止",
+      },
+      storage: {
+        title: "エージェントが生成した画像",
+        hostImages: "このホスト上の画像",
+        hostImagesSummary: "{{count}} 件の画像で {{size}}",
+        hostImagesEmpty: "まだ保存されていません",
+        hostImagesHint:
+          "エージェントが生成したスクリーンショットなどの画像です。過去のメッセージで引き続き表示できるよう保存されています。消去は取り消せません。該当するメッセージは説明テキストの表示に切り替わります。",
+        previewCache: "この端末上のキャッシュ",
+        previewCacheSummary: "{{count}} 件の画像で {{size}}",
+        previewCacheEmpty: "キャッシュはありません",
+        previewCacheHint:
+          "画像を即座に表示するためのローカルコピーです。消しても問題ありません。必要になれば再取得されます。メッセージに添付したファイル（{{size}}）は別に保管され、ここから消えることはありません。",
+        clear: "消去",
+        clearConfirm: "画像を消去",
+        clearImagesTitle: "このホストの画像を消去しますか？",
+        clearImagesMessage:
+          "{{count}} 件の画像を削除し、{{size}} を解放します。それらを表示していたメッセージは説明テキストの表示に切り替わります。この操作は取り消せません。",
+        clearedImages: "{{count}} 件の画像を消去し、{{size}} を解放しました",
+        clearedPreviews: "{{count}} 件のキャッシュ画像を消去し、{{size}} を解放しました",
+        nothingToClear: "消去するものはありません",
+        maxAge: "画像を保持する期間",
+        maxAgeHint:
+          "使われていない画像を自動削除するまでの日数です。開いたチャットで表示され続けている画像は保持されます。0 で無効になります。",
+        maxTotal: "最大サイズ",
+        maxTotalHint:
+          "このホストに保持する画像の容量（MB）です。これを超えると古いものから削除されます。0 で無効になります。",
       },
       workspaces: {
         unavailable: "ワークスペースを管理するにはこのホストに接続してください",

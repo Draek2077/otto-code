@@ -31,6 +31,49 @@ Agents get both as tool groups: `preview_start` / `preview_stop` /
 opens (or re-finds) the tab and hands back its `browserId`, which the agent
 then passes to the `browser_*` tools.
 
+## Scope: one workspace, many chats
+
+**Preview is a workspace-level facility, not a per-chat one.** Every chat in a
+workspace reaches the same dev servers and the same browser tabs, and no chat's
+context knows the others exist. Two boundaries, and they are not the same one:
+
+| Thing            | Scoped by                | Mechanism                                                                                            |
+| ---------------- | ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| **Dev servers**  | the caller agent's `cwd` | `manager.start({ cwd: caller.cwd, name })`, `list(cwd)`, `externalServers` (`dev-server-manager.ts`) |
+| **Browser tabs** | the caller's workspace   | `broker.execute({ agentId, cwd, workspaceId })` (`browser-tools/tools.ts`)                           |
+
+The mismatch is deliberate but worth knowing: a chat running in a **worktree**
+has a different `cwd`, so it gets its own preview-server namespace — while still
+sharing the workspace's browser tabs.
+
+This is good and bad, and the trade is on purpose:
+
+- **Good** — one dev server serves every chat in the workspace. Nobody pays to
+  boot a server per chat, and there is no tab-per-agent bookkeeping.
+- **Bad** — those chats will **trample each other**. Each one believes it is the
+  only driver, so two agents verifying at once will navigate, click, and resize
+  the same tab out from under one another. Nothing detects this; the tools have
+  no notion of a second caller.
+
+The mitigation is a tab per chat, one server for all of them. Servers are the
+expensive, shared thing; tabs are cheap. An agent that needs an unshared surface
+should open its own tab and drive that — not start a second dev server.
+
+### Prefer the running server
+
+**Always reuse a running preview server rather than starting another one, unless
+the user asks for a new one.** A workspace accumulates chats, and if each one
+starts its own server the list becomes unmanageable and ports collide for no
+benefit — the whole point of workspace scoping is that one server is enough.
+
+Before starting anything: call `preview_list` to see what this `cwd` already has
+running, and prefer a match by name or port. `preview_start` is spawn-**or-reuse**
+by design — it short-circuits on a tracked server and [adopts](#servers-otto-did-not-start-adopt-dont-refuse)
+an untracked one already holding the port, both with `reused: true` — so calling
+it for a server that is already up is safe and cheap. What is not safe is
+inventing a new launch.json entry on a new port because the existing one looked
+busy.
+
 ## Design principles
 
 These were the load-bearing decisions carried over from reverse-engineering
@@ -254,6 +297,12 @@ through two entry points that both call into the same `DevServerManager`:
    pane, and binds it as that server's designated tab — so a later agent
    `preview_start` call for the same server finds this exact tab.
 
+   Picking a server the picker already shows as **running** never starts
+   anything: if its tab is still open in this workspace the button focuses it,
+   and otherwise a new tab attaches straight to the URL the poll reported and
+   binds to it. The tab that started a server and the tab that views it need not
+   be the same one, and neither need the chat.
+
 2. **Agent tools** — `preview_start` (spawn-or-reuse by name),
    `preview_stop` (tree-kill by `serverId`), `preview_list` (enumerate
    running servers for the agent's `cwd`), `preview_logs` (bounded
@@ -309,6 +358,90 @@ manager rejects servers belonging to a different workspace
 (`DevServerManager.stop`'s `requireCwd` option). User-initiated stops via the
 `preview.stop.request` RPC stay unscoped — the user may stop any server the
 UI lists.
+
+### Servers Otto did not start: adopt, don't refuse
+
+A configured port that is already serving is the thing the caller asked for.
+`start()` **adopts** it — no spawn, no error — and hands back the same
+`ext:<port>` identity reconciliation uses, with `reused: true` and a `note`
+explaining what was adopted. This covers every way a server ends up running
+without this daemon's record of it: another chat started it (servers are
+cwd-scoped, so a worktree chat misses the main checkout's server), the user
+started it by hand, or a daemon restart wiped `this.servers` while the child kept
+serving its port.
+
+Refusing was the old behavior, and it was wrong in both directions. Agents had
+no tool-level route to a bound preview tab for a running server. Users got
+`Port N is already in use by a process Otto did not start` on a tab they opened
+by picking that very server out of a list that said **running** — the picker had
+the URL in hand the whole time.
+
+What adoption does and does not buy:
+
+| Call                      | Adopted (`ext:<port>`) server                                                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------------- |
+| `preview_start <name>`    | Returns it, `reused: true`, opens and binds its preview tab                                       |
+| `preview_list`            | Lists it — `list()` returns managed records **plus** adopted externals                            |
+| `preview.list_config` RPC | Lists it (calls `reconcileRunning`, which is also what prunes adoptions once the port goes quiet) |
+| `preview_logs`            | **Throws, on purpose** — Otto captured no output from a process it did not spawn, and says so     |
+| `preview_stop`            | Tree-kills whatever owns the port, under the restrictions below                                   |
+
+Adoption records are a probe's worth of truth, so they are only as fresh as the
+last probe: `reconcileRunning` re-probes each configured port on the UI's poll
+and forgets any that closed, which also withdraws that port's authorization to be
+stopped. Because adopted servers are in `list()`, `findPreviewServerForUrl` now
+guards their URLs too — the one-designated-tab rule covers servers Otto merely
+found, not just ones it spawned.
+
+Two things that have not changed. **Do not open a plain `browser_new_tab` at a
+dev server's URL** — call `preview_start`, which binds the tab; the guard only
+catches URLs of servers it knows about, so a server nobody declared in
+`launch.json` will slip through as a detached tab. And **never force-kill a
+process to clear a port**: Otto's daemon persistence is intentional, and the
+running server may be another lane, another agent's, or the user's. There is no
+longer any reason to — adopt it and look at it.
+
+The one case for a second server on a different port is a user asking for one.
+Weigh it against [Prefer the running server](#prefer-the-running-server): a
+duplicate config and a duplicate port live in the repo forever, and that is how a
+launch.json grows a tail of near-identical entries nobody can explain later.
+
+## Previewing Otto itself
+
+Previewing this repo means previewing Otto from inside Otto, which has two
+wrinkles nothing else in `launch.json` has.
+
+**Preview the agent lane, never the dev or installed lane.** The lanes and their
+ports are in [development.md](development.md#lanes); the agent lane (daemon
+`6799`, Metro `8095`) exists precisely so an agent can drive
+and screenshot a real Otto without disturbing the human's. `otto-dev` claims `8081`,
+and the `ext:` bulk-stop rule above documents what killing that costs you.
+
+**`otto-agent` is the agent's entry, and it is the only one it needs.** It starts
+the full lane — daemon `6799` plus Metro `8095` — so `preview_start otto-agent`
+gets you a complete, isolated Otto to drive. There is deliberately no second
+web-only variant beside it: one config per thing that can run is the rule, and a
+`-preview` twin per lane is exactly the duplication
+[Prefer the running server](#prefer-the-running-server) exists to stop.
+
+If the lane is already up and was not started by Otto, `preview_start otto-agent`
+adopts it — do not add a parallel config on a fresh port to route around it.
+
+**Declaring a port is what makes an already-running server visible.** `otto-dev`
+claims `8081`, which is also where the desktop dev shell's Expo lands
+(`dev:win:desktop` probes `8081`–`8089`). That overlap is useful rather than
+accidental: because the port is declared, a hand-started dev stack surfaces as
+`ext:8081` instead of being invisible. It also means `otto-dev` adopts that stack
+rather than spawning a second one over it — and the `ext:` bulk-stop rule above is
+what keeps anything from tree-killing it.
+
+**A preview on a new port is a new client origin.** The first-run wizard and tour
+flags live in `localStorage` under `@otto:app-settings`, keyed to the **Metro
+origin** — so a preview on `127.0.0.1:8096` does not inherit flags set on
+`localhost:8095`, and boots into the wizard. Daemon-owned state (projects,
+workspaces, chats) is unaffected, because that lives in `OTTO_HOME`, not the
+browser. Re-run only the client half of the bootstrap against the new origin; see
+[development.md](development.md#bootstrapping-it).
 
 ## launch.json
 

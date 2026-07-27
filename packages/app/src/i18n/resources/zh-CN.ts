@@ -193,6 +193,7 @@ export const zhCN: TranslationResources = {
   contextManagement: {
     back: "返回",
     tabs: {
+      prompt: "提示词",
       context: "上下文",
       findings: "值得修复",
       findingsCount: "值得修复 ({{count}})",
@@ -309,10 +310,19 @@ export const zhCN: TranslationResources = {
     category: {
       contextFiles: "上下文文件",
       memoryIndex: "记忆索引",
-      skillsRoster: "技能",
+      skillsRoster: "技能与子代理",
       mcpTools: "MCP 工具",
       ottoInjected: "Otto 提示词",
       systemPrompt: "系统提示词",
+    },
+    visibility: {
+      notVisible: "此处无法测量",
+      unverified: "估算未经验证",
+    },
+    prompt: {
+      empty: "尚未组装任何内容。",
+      total: "已组装提示词 — 每次请求约 {{tokens}} 个 token",
+      notVisibleBody: "该提供方在自己的进程内组装这一部分。Otto 无法读取，因此只列出而不展示内容。",
     },
     filePlaceholder: {
       title: "选择一个文件",
@@ -2563,8 +2573,16 @@ export const zhCN: TranslationResources = {
       noPreview: "没有可用预览",
       binaryPreviewUnavailable: "二进制预览不可用",
       binaryPreviewHint: "这是一个二进制文件，没有可显示为文本的内容。",
+      binaryPreviewKind: "二进制",
+      binaryPreviewModified: "修改于 {{when}}",
       failedToLoad: "加载文件失败",
       failedToLoadPreview: "加载文件预览失败",
+      image: {
+        zoomIn: "放大",
+        zoomOut: "缩小",
+        actualSize: "实际大小",
+        fitToWindow: "适应窗口",
+      },
     },
   },
   toolCallDetails: {
@@ -2647,6 +2665,7 @@ export const zhCN: TranslationResources = {
       gitProviders: "Git 提供商",
       providers: "提供方",
       usage: "使用情况",
+      storage: "存储",
       terminals: "终端",
       host: "概览",
     },
@@ -3209,6 +3228,32 @@ export const zhCN: TranslationResources = {
         columnWorkspace: "Workspace",
         columnUptime: "运行时长",
         stop: "停止",
+      },
+      storage: {
+        title: "来自 Agent 的图片",
+        hostImages: "这台 Host 上的图片",
+        hostImagesSummary: "{{count}} 张图片，共 {{size}}",
+        hostImagesEmpty: "还没有存储任何内容",
+        hostImagesHint:
+          "Agent 生成的截图和其他图片，保留下来是为了让过往消息仍能显示它们。清除无法撤销——那些消息会退回到只显示文字描述。",
+        previewCache: "这台设备上的缓存副本",
+        previewCacheSummary: "{{count}} 张图片，共 {{size}}",
+        previewCacheEmpty: "没有缓存",
+        previewCacheHint:
+          "本地副本，让图片立即加载。可以放心清除——需要时会重新下载。你附加到消息里的文件（{{size}}）单独保存，绝不会在这里被清除。",
+        clear: "清除",
+        clearConfirm: "清除图片",
+        clearImagesTitle: "清除这台 Host 上的图片？",
+        clearImagesMessage:
+          "这会删除 {{count}} 张图片并释放 {{size}}。原本显示它们的消息将改为显示文字描述。此操作无法撤销。",
+        clearedImages: "已清除 {{count}} 张图片，释放 {{size}}",
+        clearedPreviews: "已清除 {{count}} 张缓存图片，释放 {{size}}",
+        nothingToClear: "没有可清除的内容",
+        maxAge: "图片保留时长",
+        maxAgeHint:
+          "未使用的图片在被自动删除前保留的天数。仍在你打开的对话中显示的图片会保住位置。填 0 则关闭此项。",
+        maxTotal: "最大占用",
+        maxTotalHint: "在这台 Host 上保留的图片容量（MB）。超出后先删最旧的。填 0 则关闭此项。",
       },
       workspaces: {
         unavailable: "连接到这个 Host 以管理 Workspace",

@@ -2193,8 +2193,13 @@ function WorkspaceScreenContent({
   const workspaceDirectory = workspaceDescriptor?.workspaceDirectory || null;
   const isMissingWorkspaceDirectory = Boolean(workspaceDescriptor) && !workspaceDirectory;
   const [isImportSheetVisible, setIsImportSheetVisible] = useState(false);
+  // The draft tab that asked for the import, so the imported chat can take that
+  // tab over instead of appearing beside the empty draft the user started from.
+  // Null when the import came from the header menu, which has no tab context.
+  const importRequestTabIdRef = useRef<string | null>(null);
   const canOpenImportSheet = [client, isConnected, workspaceDirectory].every(Boolean);
-  const openImportSheet = useCallback(() => {
+  const openImportSheet = useCallback((requestingTabId?: string) => {
+    importRequestTabIdRef.current = requestingTabId ?? null;
     setIsImportSheetVisible(true);
   }, []);
   const closeImportSheet = useCallback(() => {
@@ -2731,12 +2736,25 @@ function WorkspaceScreenContent({
       if (!persistenceKey) {
         return;
       }
+      // Same handoff a submitted draft gets: the tab that requested the import
+      // becomes the imported chat. Only still-draft tabs qualify — the user may
+      // have retargeted or closed it while the import was in flight.
+      const requestingTabId = importRequestTabIdRef.current;
+      importRequestTabIdRef.current = null;
+      const requestingTab = requestingTabId
+        ? uiTabs.find((tab) => tab.tabId === requestingTabId)
+        : undefined;
+      if (requestingTab?.target.kind === "draft") {
+        retargetWorkspaceTab(persistenceKey, requestingTab.tabId, { kind: "agent", agentId });
+        navigateToTabId(requestingTab.tabId);
+        return;
+      }
       const tabId = openWorkspaceTabFocused(persistenceKey, { kind: "agent", agentId });
       if (tabId) {
         navigateToTabId(tabId);
       }
     },
-    [navigateToTabId, openWorkspaceTabFocused, persistenceKey],
+    [navigateToTabId, openWorkspaceTabFocused, persistenceKey, retargetWorkspaceTab, uiTabs],
   );
 
   const emptyWorkspaceSeedRef = useRef<string | null>(null);
@@ -3957,7 +3975,9 @@ function WorkspaceScreenContent({
             focusPaneBeforeOpen: input.focusPaneBeforeOpen,
           });
         },
-        onOpenImportSheet: openImportSheet,
+        onOpenImportSheet: () => {
+          openImportSheet(input.tab.tabId);
+        },
       }),
     [
       handleCloseTabById,
@@ -4585,6 +4605,7 @@ function WorkspaceScreenContent({
               client={client}
               serverId={normalizedServerId}
               cwd={workspaceDirectory}
+              workspaceId={normalizedWorkspaceId}
               onClose={closeImportSheet}
               onImportedAgent={handleImportedAgent}
             />

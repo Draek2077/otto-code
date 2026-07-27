@@ -265,3 +265,122 @@ describe("scanContextGraph", () => {
     expect(result.findings).toEqual([]);
   });
 });
+
+/**
+ * The roster is the category most likely to be silently undercounted: it is
+ * assembled from four directories that mostly do not exist on any given machine,
+ * so "found nothing" and "looked in the wrong place" produce identical output.
+ */
+describe("scanContextGraph roster", () => {
+  const FRONTMATTER = ["---", "name: thing", "description: does a thing", "---", "body"].join("\n");
+
+  function rosterNodes(nodes: ContextNode[]): ContextNode[] {
+    return nodes.filter((node) => node.category === "skills_roster");
+  }
+
+  it("counts a skill's frontmatter, not its body", async () => {
+    const body = "x".repeat(10_000);
+    await writeFile(
+      path.join(homeDir, ".claude", "skills", "mine", "SKILL.md"),
+      `${FRONTMATTER}\n${body}`,
+    );
+
+    const result = await scanContextGraph("claude", input());
+
+    const [skill] = rosterNodes(result.nodes);
+    expect(skill).toBeDefined();
+    // Frontmatter is ~45 bytes; the body is 10K. Sizing the file would be a 200x
+    // overstatement of a category users are told they can trim.
+    expect(skill?.bytes).toBeLessThan(200);
+  });
+
+  it("counts skills contributed by an enabled plugin", async () => {
+    await writeFile(
+      path.join(homeDir, ".claude", "settings.json"),
+      JSON.stringify({ enabledPlugins: { "feature-dev@official": true } }),
+    );
+    await writeFile(
+      path.join(
+        homeDir,
+        ".claude",
+        "plugins",
+        "cache",
+        "official",
+        "feature-dev",
+        "1.0.0",
+        "skills",
+        "plan",
+        "SKILL.md",
+      ),
+      FRONTMATTER,
+    );
+
+    const result = await scanContextGraph("claude", input());
+
+    expect(rosterNodes(result.nodes)).toHaveLength(1);
+  });
+
+  it("ignores skills from a plugin that is not enabled", async () => {
+    await writeFile(
+      path.join(
+        homeDir,
+        ".claude",
+        "plugins",
+        "cache",
+        "official",
+        "feature-dev",
+        "1.0.0",
+        "skills",
+        "plan",
+        "SKILL.md",
+      ),
+      FRONTMATTER,
+    );
+
+    const result = await scanContextGraph("claude", input());
+
+    expect(rosterNodes(result.nodes)).toEqual([]);
+  });
+
+  it("counts subagent definitions alongside skills", async () => {
+    await writeFile(path.join(homeDir, ".claude", "agents", "reviewer.md"), FRONTMATTER);
+    await writeFile(path.join(projectRoot, ".claude", "agents", "migrator.md"), FRONTMATTER);
+
+    const result = await scanContextGraph("claude", input());
+
+    expect(rosterNodes(result.nodes)).toHaveLength(2);
+  });
+
+  it("scopes a plugin's roster entries as global, because enabling one costs every project", async () => {
+    await writeFile(
+      path.join(homeDir, ".claude", "settings.json"),
+      JSON.stringify({ enabledPlugins: { "feature-dev@official": true } }),
+    );
+    await writeFile(
+      path.join(
+        homeDir,
+        ".claude",
+        "plugins",
+        "cache",
+        "official",
+        "feature-dev",
+        "1.0.0",
+        "agents",
+        "architect.md",
+      ),
+      FRONTMATTER,
+    );
+
+    const result = await scanContextGraph("claude", input());
+
+    expect(rosterNodes(result.nodes)[0]?.scope).toBe("global");
+  });
+
+  it("reports no roster for a provider with no skill or agent convention", async () => {
+    await writeFile(path.join(homeDir, ".claude", "agents", "reviewer.md"), FRONTMATTER);
+
+    const result = await scanContextGraph("opencode", input());
+
+    expect(rosterNodes(result.nodes)).toEqual([]);
+  });
+});

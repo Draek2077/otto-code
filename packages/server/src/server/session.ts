@@ -157,6 +157,10 @@ import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
 import { selectArchivedForDeletion } from "./agent/history-retention.js";
 import {
+  clearMaterializedProviderImages,
+  readMaterializedImageStats,
+} from "./agent/providers/provider-image-output.js";
+import {
   ImportSessionsRequestError,
   importProviderSession,
   listImportableProviderSessions,
@@ -3050,6 +3054,8 @@ export class Session {
         return this.handleUsageLogGetRequest(msg);
       case "context.report.get.request":
         return this.handleContextReportGetRequest(msg);
+      case "context.prompt.preview.get.request":
+        return this.handleContextPromptPreviewGetRequest(msg);
       case "context.edge.convert.request":
         return this.handleContextEdgeConvertRequest(msg);
       case "context.findings.fix.request":
@@ -3319,6 +3325,40 @@ export class Session {
     }
   }
 
+  /**
+   * The assembled prompt, for reading. Shares the report's what-if inputs so the
+   * preview always shows the same provider, window and personality the numbers
+   * on screen were computed for.
+   */
+  private async handleContextPromptPreviewGetRequest(
+    msg: Extract<SessionInboundMessage, { type: "context.prompt.preview.get.request" }>,
+  ): Promise<void> {
+    try {
+      const preview = await this.contextManagement.getPromptPreview({
+        workspaceId: msg.workspaceId,
+        ...(msg.provider ? { provider: msg.provider } : {}),
+        ...(typeof msg.windowTokens === "number" ? { windowTokens: msg.windowTokens } : {}),
+        ...(msg.personalityId ? { personalityId: msg.personalityId } : {}),
+      });
+      this.emit({
+        type: "context.prompt.preview.get.response",
+        payload: { requestId: msg.requestId, preview },
+      });
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.sessionLogger.error({ err }, "Failed to assemble context prompt preview");
+      this.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: `Failed to assemble prompt preview: ${err.message}`,
+          code: "context_prompt_preview_get_failed",
+        },
+      });
+    }
+  }
+
   private async handleContextEdgeConvertRequest(
     msg: Extract<SessionInboundMessage, { type: "context.edge.convert.request" }>,
   ): Promise<void> {
@@ -3575,6 +3615,15 @@ export class Session {
       case "register_push_token":
         this.handleRegisterPushToken(msg.token);
         return;
+      // Host-level disk the agents filled — no per-agent or per-workspace
+      // family to belong to, so it lands here rather than growing the dispatch
+      // chain. Both are synchronous: a directory listing, not IO worth awaiting.
+      case "attachments.images.get_stats.request":
+        this.handleAttachmentsImagesStatsRequest(msg);
+        return;
+      case "attachments.images.clear.request":
+        this.handleAttachmentsImagesClearRequest(msg);
+        return;
     }
   }
 
@@ -3821,6 +3870,97 @@ export class Session {
         requestId,
       },
     });
+  }
+
+  /**
+   * The Storage readout: how much disk the images agents produced occupy, and
+   * the policy currently ageing them out. Synchronous fs work on a directory of
+   * a few thousand entries, so it runs inline rather than through a worker.
+   * See docs/attachment-lifecycle.md.
+   */
+  private handleAttachmentsImagesStatsRequest(
+    msg: Extract<SessionInboundMessage, { type: "attachments.images.get_stats.request" }>,
+  ): void {
+    const config = this.daemonConfigStore.get();
+    try {
+      const stats = readMaterializedImageStats(this.ottoHome);
+      this.emit({
+        type: "attachments.images.get_stats.response",
+        payload: {
+          fileCount: stats.fileCount,
+          totalBytes: stats.totalBytes,
+          oldestAt: stats.oldestAtMs === null ? null : new Date(stats.oldestAtMs).toISOString(),
+          maxAgeDays: config.attachmentImageMaxAgeDays,
+          maxTotalMb: config.attachmentImageMaxTotalMb,
+          error: null,
+          requestId: msg.requestId,
+        },
+      });
+    } catch (error) {
+      const message = getErrorMessageOr(error, "Failed to read attachment image storage");
+      this.sessionLogger.error({ err: error, requestId: msg.requestId }, message);
+      this.emit({
+        type: "attachments.images.get_stats.response",
+        payload: {
+          fileCount: 0,
+          totalBytes: 0,
+          oldestAt: null,
+          maxAgeDays: config.attachmentImageMaxAgeDays,
+          maxTotalMb: config.attachmentImageMaxTotalMb,
+          error: message,
+          requestId: msg.requestId,
+        },
+      });
+    }
+  }
+
+  /**
+   * Reclaim, dry-run by default. A cleared image is not recoverable and the
+   * message that referenced it falls back to alt text, so the client previews
+   * first and quotes the real count and size back before committing — the same
+   * contract as `history.agents.clear_archived`.
+   */
+  private handleAttachmentsImagesClearRequest(
+    msg: Extract<SessionInboundMessage, { type: "attachments.images.clear.request" }>,
+  ): void {
+    try {
+      const result = clearMaterializedProviderImages({
+        ottoHome: this.ottoHome,
+        olderThanDays: msg.olderThanDays,
+        dryRun: msg.dryRun,
+      });
+
+      if (!msg.dryRun) {
+        this.sessionLogger.info(
+          {
+            deleted: result.deleted,
+            freedBytes: result.freedBytes,
+            olderThanDays: msg.olderThanDays,
+            requestId: msg.requestId,
+          },
+          "Cleared materialized attachment images",
+        );
+      }
+
+      this.emit({
+        type: "attachments.images.clear.response",
+        payload: { ...result, dryRun: msg.dryRun, error: null, requestId: msg.requestId },
+      });
+    } catch (error) {
+      const message = getErrorMessageOr(error, "Failed to clear attachment image storage");
+      this.sessionLogger.error({ err: error, requestId: msg.requestId }, message);
+      this.emit({
+        type: "attachments.images.clear.response",
+        payload: {
+          matched: 0,
+          deleted: 0,
+          freedBytes: 0,
+          dryRun: msg.dryRun,
+          error: message,
+          requestId: msg.requestId,
+        },
+      });
+    }
   }
 
   private async archiveAgentForClose(
@@ -5086,9 +5226,8 @@ export class Session {
       if (!normalized.cwd) {
         throw new Error("Import requires cwd from the selected provider session");
       }
-      // An imported agent mints its own workspace; ownership is its workspaceId,
-      // never an existing same-cwd workspace resolved by path.
-      const workspace = await this.workspaceProvisioning.createWorkspaceForDirectory(
+      const workspace = await this.resolveWorkspaceForImportedAgent(
+        normalized.workspaceId,
         normalized.cwd,
       );
       const { snapshot, timelineSize } = await importProviderSession({
@@ -6906,6 +7045,30 @@ export class Session {
       });
     }
     return { snapshotByWorkspaceId };
+  }
+
+  /**
+   * An import lands in the workspace it was requested from. A chat tab already
+   * has one, and minting a sibling workspace for the same folder is what used to
+   * leave a duplicate in the sidebar with the imported chat orphaned onto it.
+   * Requests with no workspace context (the home screen) resolve by directory,
+   * which reuses an existing workspace for that folder instead of adding one.
+   */
+  private async resolveWorkspaceForImportedAgent(
+    requestedWorkspaceId: string | undefined,
+    cwd: string,
+  ): Promise<PersistedWorkspaceRecord> {
+    if (requestedWorkspaceId) {
+      const requested = await this.workspaceRegistry.get(requestedWorkspaceId);
+      if (requested) {
+        return this.workspaceProvisioning.ensureWorkspaceRecordUnarchived(requested);
+      }
+      this.sessionLogger.warn(
+        { workspaceId: requestedWorkspaceId, cwd },
+        "Import requested an unknown workspace; resolving by directory instead",
+      );
+    }
+    return this.workspaceProvisioning.findOrCreateWorkspaceForDirectory(cwd);
   }
 
   private async registerWorkspaceForImportedAgent(

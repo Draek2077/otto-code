@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { useResourceSnapshot } from "@/diagnostics/resource-report/use-resource-snapshot";
+import { compactUp, SPACING } from "@/styles/theme";
 
 // A dense readout of everything the resource monitor currently knows, pinned to
 // the bottom of the Metrics screen. Grouped left-to-right by what it answers:
@@ -210,24 +211,49 @@ function shortKey(key: string): string {
   return parts.slice(-2).join(".");
 }
 
+// The strip is the bottom-most band of the app chrome, so it reads as a peer of
+// the sidebar's icon row rather than a taller slab under it: same height, to the
+// pixel. That row is a `spacing[8]` button box (1.5x on compact) inside
+// `spacing[3]` vertical padding, over a 1px rule — see `left-sidebar`'s
+// `sidebarFooter` and `sidebar-footer-nav`'s `footerIconButton`.
+//
+// Applied as a floor, not a fixed height: the readout is three text lines deep
+// and a user who scales fonts up in Settings should get a taller bar, not a
+// clipped one. At default sizes the content lands under the floor, so the two
+// bands match.
+const FOOTER_BAND_HEIGHT = ((): Record<"xs" | "sm" | "md" | "lg" | "xl", number> => {
+  const button = compactUp(SPACING[8], 1.5);
+  const chrome = SPACING[3] * 2 + 1;
+  return {
+    xs: button.xs + chrome,
+    sm: button.sm + chrome,
+    md: button.md + chrome,
+    lg: button.lg + chrome,
+    xl: button.xl + chrome,
+  };
+})();
+
 const styles = StyleSheet.create((theme) => ({
   bar: {
+    minHeight: FOOTER_BAND_HEIGHT,
+    justifyContent: "center",
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.surface0,
   },
   content: {
     flexDirection: "row",
-    alignItems: "stretch",
+    alignItems: "center",
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
-    paddingVertical: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
   },
   group: {
     flexDirection: "row",
     alignItems: "stretch",
   },
   groupInner: {
-    gap: theme.spacing[1],
+    gap: 2,
+    justifyContent: "center",
   },
   divider: {
     width: 1,
@@ -235,8 +261,11 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.border,
     marginHorizontal: theme.spacing[4],
   },
+  // Line heights are pinned tight (and derived from the live font size, which
+  // `applyAppearance` patches) so three stacked lines clear the band floor.
   groupTitle: {
     fontSize: theme.fontSize.xs,
+    lineHeight: theme.fontSize.xs + 2,
     color: theme.colors.foregroundMuted,
     textTransform: "uppercase",
     letterSpacing: 0.6,
@@ -246,21 +275,24 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
   },
   field: {
-    gap: 1,
+    gap: 0,
   },
   fieldLabel: {
     fontSize: theme.fontSize.xs,
+    lineHeight: theme.fontSize.xs + 2,
     color: theme.colors.foregroundMuted,
   },
   // Numbers line up column-to-column only in the mono face, and this strip is
   // read by scanning down the values.
   fieldValue: {
     fontSize: theme.fontSize.code,
+    lineHeight: theme.fontSize.code + 3,
     fontFamily: theme.fontFamily.mono,
     color: theme.colors.foreground,
   },
   fieldValueMuted: {
     fontSize: theme.fontSize.code,
+    lineHeight: theme.fontSize.code + 3,
     fontFamily: theme.fontFamily.mono,
     color: theme.colors.foregroundMuted,
   },
@@ -268,6 +300,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
-    paddingVertical: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
   },
 }));

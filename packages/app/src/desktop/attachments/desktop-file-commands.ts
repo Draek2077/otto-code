@@ -1,4 +1,5 @@
 import { invokeDesktopCommand } from "@/desktop/electron/invoke";
+import type { AttachmentStoreUsage, ClearPreviewAttachmentsResult } from "@/attachments/types";
 
 interface AttachmentFileResult {
   path: string;
@@ -53,4 +54,12 @@ export async function garbageCollectDesktopAttachmentFiles(input: {
   return await invokeDesktopCommand<number>("garbage_collect_attachment_files", {
     referencedIds: [...input.referencedIds],
   });
+}
+
+export async function readDesktopAttachmentUsage(): Promise<AttachmentStoreUsage> {
+  return await invokeDesktopCommand<AttachmentStoreUsage>("attachment_storage_usage", {});
+}
+
+export async function clearDesktopPreviewAttachments(): Promise<ClearPreviewAttachmentsResult> {
+  return await invokeDesktopCommand<ClearPreviewAttachmentsResult>("clear_preview_attachments", {});
 }

@@ -319,10 +319,6 @@ function StatsScreenContent(): ReactElement {
               divided={index > 0}
             />
           ))}
-          {/* Client-side resource readout, pinned below the host sections: the
-              daemon counters above say what Otto did, this says what it is
-              currently costing the machine it is running on. */}
-          <ClientResourceBar />
           {pinned.length > 0 && (
             <View style={styles.pinnedTotals}>
               {/* Bounded like the rows it totals, so the bar lines up with the
@@ -339,6 +335,12 @@ function StatsScreenContent(): ReactElement {
               </ChatWidthBounds>
             </View>
           )}
+          {/* Client-side resource readout, and always the last band on the
+              screen: the daemon counters above say what Otto did, this says
+              what it is currently costing the machine it is running on. It sits
+              below the Log tab's range totals because those belong to the
+              ledger they total — the machine readout belongs to the window. */}
+          <ClientResourceBar />
         </View>
       )}
     </View>

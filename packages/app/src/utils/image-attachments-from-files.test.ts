@@ -4,7 +4,7 @@ import {
   filesToImageAttachments,
 } from "./image-attachments-from-files";
 import { __setAttachmentStoreForTests } from "@/attachments/store";
-import type { AttachmentStore } from "@/attachments/types";
+import { EMPTY_ATTACHMENT_STORE_USAGE, type AttachmentStore } from "@/attachments/types";
 
 function createClipboardItem(params: { kind: string; type: string; file?: File | null }) {
   return {
@@ -51,6 +51,12 @@ function createTestStore(): AttachmentStore {
     },
     async delete() {},
     async garbageCollect() {},
+    async usage() {
+      return EMPTY_ATTACHMENT_STORE_USAGE;
+    },
+    async clearPreviews() {
+      return { deleted: 0, freedBytes: 0 };
+    },
   };
 }
 

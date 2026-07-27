@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileReadResult } from "@otto-code/client/internal/daemon-client";
-import type { AttachmentMetadata, AttachmentStore } from "@/attachments/types";
+import {
+  EMPTY_ATTACHMENT_STORE_USAGE,
+  type AttachmentMetadata,
+  type AttachmentStore,
+} from "@/attachments/types";
 import { __setAttachmentStoreForTests } from "@/attachments/store";
 import {
   __clearWorkspaceImageCacheForTests,
@@ -30,6 +34,8 @@ function stubAttachmentStore(): AttachmentStore {
     resolvePreviewUrl: async () => "blob:stub",
     delete: async () => undefined,
     garbageCollect: async () => undefined,
+    usage: async () => EMPTY_ATTACHMENT_STORE_USAGE,
+    clearPreviews: async () => ({ deleted: 0, freedBytes: 0 }),
   };
 }
 

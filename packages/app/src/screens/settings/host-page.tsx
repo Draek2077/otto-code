@@ -81,6 +81,7 @@ import {
   OttoToolsSection,
 } from "@/screens/settings/otto-tools-section";
 import { CodeIntelligenceSection } from "./code-intelligence-section";
+import { StorageSection } from "./storage-section";
 import { restartDaemonFromSettings } from "./daemon-restart";
 
 const ThemedArrowUp = withUnistyles(ArrowUp);
@@ -386,6 +387,31 @@ export function HostCodePage({ serverId }: { serverId: string }) {
     <View>
       {isConnected ? (
         <CodeIntelligenceSection serverId={serverId} />
+      ) : (
+        <View style={EMPTY_CARD_STYLE}>
+          <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Storage host section: what the agents on this host have accumulated on disk,
+// and the way to get it back. Its own section rather than a footnote under Code
+// or Workspaces — "where did my space go" is a question people arrive with.
+export function HostStoragePage({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
+  const host = useHostProfile(serverId);
+  const isConnected = useHostRuntimeIsConnected(serverId);
+
+  if (!host) {
+    return <HostNotFound />;
+  }
+
+  return (
+    <View>
+      {isConnected ? (
+        <StorageSection serverId={serverId} />
       ) : (
         <View style={EMPTY_CARD_STYLE}>
           <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>

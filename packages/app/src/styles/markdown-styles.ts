@@ -191,9 +191,12 @@ export function createMarkdownStyles(theme: Theme) {
       lineHeight: Math.round(theme.fontSize.code * 1.45),
     },
 
+    // Indented and fenced blocks both sit on `surfaceCode` — the editor's code
+    // well, not the elevated-card ramp. Code quoted in chat is the same
+    // material as the same code open in the editor.
     code_block: {
       ...webSelectableTextStyle,
-      backgroundColor: themeColorRef(theme, "surface2"),
+      backgroundColor: themeColorRef(theme, "surfaceCode"),
       color: themeColorRef(theme, "foreground"),
       padding: theme.spacing[3],
       borderRadius: theme.borderRadius.md,
@@ -204,7 +207,7 @@ export function createMarkdownStyles(theme: Theme) {
 
     fence: {
       ...webSelectableTextStyle,
-      backgroundColor: themeColorRef(theme, "surface2"),
+      backgroundColor: themeColorRef(theme, "surfaceCode"),
       color: themeColorRef(theme, "foreground"),
       padding: theme.spacing[3],
       borderRadius: theme.borderRadius.md,

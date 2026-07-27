@@ -26,6 +26,8 @@ These open in **Preview** mode by default; use the mode bar for raw source.
 | [markdown.md](markdown.md) | The markdown counterpart, with the **same two diagrams** for A/B comparison, plus relative, root-relative, HTML, escaping, missing and remote images |
 | [diagram.mmd](diagram.mmd) | A standalone mermaid file — a state diagram with a note |
 | [logo.svg](logo.svg) | Renders as an image, not as XML source |
+| [image.png](image.png) | The raster image path: fit/zoom/pan, and a fully transparent corner over the checkerboard |
+| [binary.bin](binary.bin) | The end of the line — a NUL byte in the first 8 bytes, so nothing can render it |
 
 The `.adoc` and `.md` files are the pair worth opening together: the diagrams in
 both are byte-identical, so they should render identically. If they don't,
@@ -71,11 +73,28 @@ parser — `yml`→yaml, `htm`→html, `cc`/`cxx`/`hpp`/`hxx`→cpp, `mjs`/`cjs`
 parser is enough to prove the mapping; add an alias file only when testing the
 extension lookup itself.
 
+## The two generated fixtures
+
+`image.png` and `binary.bin` are the exceptions to "hand-authored": you cannot
+type a PNG. Both were emitted by a throwaway Node script and are checked in as
+the smallest files that still exercise their branch.
+
+`image.png` is 320×200 RGBA at ~2.4 KB — the colours are quantized to a handful
+of levels precisely so it compresses to something worth committing. Its top-right
+quadrant is fully transparent, which is the only part of the image viewer's
+checkerboard that anything actually tests. Between it and `logo.svg` the two
+image branches are both covered: `logo.svg` is the SVG path (raw XML through
+`react-native-svg` on native), `image.png` is the raster path (bytes → attachment
+store → platform `Image`), and they take different code from the read onward.
+
+If you regenerate `image.png`, keep it under a few KB and keep the transparent
+region. If you replace it with a different format, note that the viewer parses
+its natural size from the container header (`image-dimensions.ts`) — PNG, GIF,
+JPEG, WebP, BMP and ICO are read; anything else loses the zoom controls.
+
 ## Not covered
 
-Binary formats can't be hand-authored as text, so nothing here covers `png`,
-`jpg`, `gif`, `webp`, `pdf`, `mp3`, `mp4`, fonts, or archives — all of which
+Nothing here covers `pdf`, `mp3`, `mp4`, fonts, or archives, all of which
 `PREVIEW_FIRST_EXTENSIONS` in `file-pane-render-mode.ts` sends straight to
-preview. `logo.svg` is the one image format that is also text, so it stands in
-for the image path. Drop a real PNG or MP4 in here if you need to exercise the
-binary branch.
+preview and none of which render today. `binary.bin` stands in for the whole
+class: they all land on the same "can't be previewed here" card.

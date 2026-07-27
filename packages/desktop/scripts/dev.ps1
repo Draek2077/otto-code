@@ -9,14 +9,20 @@ $env:PATH = "$RootDir\node_modules\.bin;$env:PATH"
 # Build the Electron main process
 npm run build:main
 
-# Prefer Metro's stable default port so dev browser storage keeps the same
-# localhost origin across restarts. Fall back only when earlier ports are busy.
+# Take the lowest free port in the desktop band so dev browser storage keeps the
+# same localhost origin across restarts. Fall back only when earlier ports are busy.
+#
+# The band starts at 8082, NOT 8081: `8081` belongs to the root-checkout Expo
+# (`dev:app`, and the `otto-dev` preview config), and desktop dev must never claim
+# it — otherwise the two collide whenever both are up, which is the whole reason
+# the lanes own fixed ports. Kept identical to scripts/dev.sh; the two drifted
+# apart once and Windows silently stole 8081 for a while.
 $PreviousNoColor = $env:NO_COLOR
 $PreviousForceColor = $env:FORCE_COLOR
 try {
     $env:NO_COLOR = "1"
     $env:FORCE_COLOR = "0"
-    $env:EXPO_PORT = (npx get-port-cli 8081 8082 8083 8084 8085).Trim()
+    $env:EXPO_PORT = (npx get-port-cli 8082 8083 8084 8085 8086 8087 8088 8089).Trim()
 } finally {
     if ($null -eq $PreviousNoColor) {
         Remove-Item Env:\NO_COLOR -ErrorAction SilentlyContinue

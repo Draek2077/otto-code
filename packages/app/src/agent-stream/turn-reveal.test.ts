@@ -236,6 +236,28 @@ describe("TurnRevealTicker", () => {
     assert.equal(ticker.getRevealed(), 60);
   });
 
+  it("snaps to the target off screen instead of pacing a throttled timer", () => {
+    // A backgrounded tab clamps the tick to ~1Hz. Pacing there would leave
+    // segments short of their full length for minutes, and everything waiting
+    // on a settled segment — auto-speech above all — waits with them.
+    let onScreen = false;
+    const ticker = new TurnRevealTicker({
+      turnKey: "u1",
+      target: 0,
+      isOnScreen: () => onScreen,
+    });
+    ticker.update({ turnKey: "u1", target: 5000, enabled: true });
+    ticker.tick();
+    assert.equal(ticker.getRevealed(), 5000);
+
+    // Back on screen it types again, from wherever the snap left it.
+    onScreen = true;
+    ticker.update({ turnKey: "u2", target: 0, enabled: true });
+    ticker.update({ turnKey: "u2", target: 400, enabled: true });
+    ticker.tick();
+    assert.ok(ticker.getRevealed() > 0 && ticker.getRevealed() < 400);
+  });
+
   it("notifies subscribers only when a tick moves the position", () => {
     const ticker = new TurnRevealTicker({ turnKey: "u1", target: 0 });
     let notified = 0;

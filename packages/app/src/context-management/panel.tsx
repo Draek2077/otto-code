@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type ReactElement,
   type ReactNode,
 } from "react";
@@ -43,6 +44,8 @@ import { ContextGraphTree } from "./graph-tree";
 import { ContextMemoryList } from "./memory-list";
 import { useContextPersonalityMemory } from "./use-context-personality";
 import { ContextSidebarTabs, type ContextSidebarTab } from "./sidebar-tabs";
+import { PromptPreviewView } from "./prompt-preview-view";
+import { usePromptPreview } from "./use-prompt-preview";
 import {
   ancestorKeysForNode,
   defaultExpandedKeys,
@@ -123,6 +126,15 @@ export function ContextManagementPanel(): ReactElement {
     // Selecting a personality re-scopes the whole report: its injected memory
     // joins the fixed weight, so the percentages describe what THAT personality
     // carries rather than a shared average nobody actually pays.
+    ...(selectedPersonalityId ? { personalityId: selectedPersonalityId } : {}),
+  });
+
+  // Passing a null workspace until the tab is open is the gate: assembling the
+  // preview re-reads every fixed file, which is real work to do for a pane
+  // nobody is looking at. It shares the report's what-ifs so the text on screen
+  // always describes the same request the numbers above it do.
+  const promptPreview = usePromptPreview(serverId, sidebarTab === "prompt" ? workspaceId : null, {
+    windowTokens,
     ...(selectedPersonalityId ? { personalityId: selectedPersonalityId } : {}),
   });
 
@@ -322,44 +334,31 @@ export function ContextManagementPanel(): ReactElement {
 
   // One tabbed body, rendered identically in both layouts — only its container
   // differs (a fixed sidebar column vs. a block in the phone's scroll).
-  let sidebarBody: ReactElement;
-  if (sidebarTab === "findings") {
-    sidebarBody = (
-      <ContextFindingsList
-        report={report}
-        isLoading={isLoading}
-        onReveal={handleRevealFinding}
-        fixableCount={fixableFindings.length}
-        isFixing={fixingAll}
-        onFixAll={handleFixAll}
-      />
-    );
-  } else if (sidebarTab === "memory") {
-    sidebarBody = (
-      <ContextMemoryList
-        view={memory.view}
-        isLoading={memory.isLoading}
-        error={memory.error}
-        hasPersonalitySelected={selectedPersonalityId !== null}
-        onSaveEntry={memory.saveEntry}
-        onDropEntry={memory.dropEntry}
-        onAddEntry={memory.addEntry}
-      />
-    );
-  } else {
-    sidebarBody = (
-      <ContextGraphTree
-        report={report}
-        isLoading={isLoading}
-        expandedKeys={expandedKeys}
-        selectedNodeId={selectedNode?.id ?? null}
-        revealNodeId={activeReveal?.nodeId ?? null}
-        revealNonce={activeReveal?.nonce}
-        onToggle={handleToggle}
-        onSelectNode={handleSelectNode}
-      />
-    );
-  }
+  const sidebarBody = (
+    <ContextSidebarBody
+      tab={sidebarTab}
+      report={report}
+      isLoading={isLoading}
+      promptQuery={promptPreview}
+      onReveal={handleRevealFinding}
+      fixableCount={fixableFindings.length}
+      isFixing={fixingAll}
+      onFixAll={handleFixAll}
+      memoryView={memory.view}
+      memoryIsLoading={memory.isLoading}
+      memoryError={memory.error}
+      hasPersonalitySelected={selectedPersonalityId !== null}
+      onSaveEntry={memory.saveEntry}
+      onDropEntry={memory.dropEntry}
+      onAddEntry={memory.addEntry}
+      expandedKeys={expandedKeys}
+      selectedNodeId={selectedNode?.id ?? null}
+      revealNodeId={activeReveal?.nodeId ?? null}
+      revealNonce={activeReveal?.nonce}
+      onToggle={handleToggle}
+      onSelectNode={handleSelectNode}
+    />
+  );
   const findingCount = report?.findings.length ?? 0;
 
   const [converting, setConverting] = useState(false);
@@ -600,6 +599,104 @@ export function ContextManagementPanel(): ReactElement {
       </Animated.View>
       <View style={styles.fill}>{filePane}</View>
     </View>
+  );
+}
+
+type MemoryListProps = ComponentProps<typeof ContextMemoryList>;
+type FindingsListProps = ComponentProps<typeof ContextFindingsList>;
+type GraphTreeProps = ComponentProps<typeof ContextGraphTree>;
+
+/**
+ * Which of the four tabs is showing. Split out of the panel because it is the
+ * one branch in there that is pure dispatch: four arms that share `report` and
+ * nothing else, each reading only the props its own tab needs. The props stay
+ * flat rather than bundled per tab because a bundle would be an object built in
+ * the panel's render — exactly what react-perf's new-object-as-prop rule is for.
+ */
+function ContextSidebarBody({
+  tab,
+  report,
+  isLoading,
+  promptQuery,
+  onReveal,
+  fixableCount,
+  isFixing,
+  onFixAll,
+  memoryView,
+  memoryIsLoading,
+  memoryError,
+  hasPersonalitySelected,
+  onSaveEntry,
+  onDropEntry,
+  onAddEntry,
+  expandedKeys,
+  selectedNodeId,
+  revealNodeId,
+  revealNonce,
+  onToggle,
+  onSelectNode,
+}: {
+  tab: ContextSidebarTab;
+  report: GraphTreeProps["report"];
+  isLoading: boolean;
+  promptQuery: ComponentProps<typeof PromptPreviewView>["query"];
+  onReveal: FindingsListProps["onReveal"];
+  fixableCount: FindingsListProps["fixableCount"];
+  isFixing: FindingsListProps["isFixing"];
+  onFixAll: FindingsListProps["onFixAll"];
+  memoryView: MemoryListProps["view"];
+  memoryIsLoading: MemoryListProps["isLoading"];
+  memoryError: MemoryListProps["error"];
+  hasPersonalitySelected: MemoryListProps["hasPersonalitySelected"];
+  onSaveEntry: MemoryListProps["onSaveEntry"];
+  onDropEntry: MemoryListProps["onDropEntry"];
+  onAddEntry: MemoryListProps["onAddEntry"];
+  expandedKeys: GraphTreeProps["expandedKeys"];
+  selectedNodeId: GraphTreeProps["selectedNodeId"];
+  revealNodeId: GraphTreeProps["revealNodeId"];
+  revealNonce: GraphTreeProps["revealNonce"];
+  onToggle: GraphTreeProps["onToggle"];
+  onSelectNode: GraphTreeProps["onSelectNode"];
+}): ReactElement {
+  if (tab === "prompt") {
+    return <PromptPreviewView query={promptQuery} />;
+  }
+  if (tab === "findings") {
+    return (
+      <ContextFindingsList
+        report={report}
+        isLoading={isLoading}
+        onReveal={onReveal}
+        fixableCount={fixableCount}
+        isFixing={isFixing}
+        onFixAll={onFixAll}
+      />
+    );
+  }
+  if (tab === "memory") {
+    return (
+      <ContextMemoryList
+        view={memoryView}
+        isLoading={memoryIsLoading}
+        error={memoryError}
+        hasPersonalitySelected={hasPersonalitySelected}
+        onSaveEntry={onSaveEntry}
+        onDropEntry={onDropEntry}
+        onAddEntry={onAddEntry}
+      />
+    );
+  }
+  return (
+    <ContextGraphTree
+      report={report}
+      isLoading={isLoading}
+      expandedKeys={expandedKeys}
+      selectedNodeId={selectedNodeId}
+      revealNodeId={revealNodeId}
+      revealNonce={revealNonce}
+      onToggle={onToggle}
+      onSelectNode={onSelectNode}
+    />
   );
 }
 

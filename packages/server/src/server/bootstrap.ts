@@ -191,6 +191,11 @@ import {
   resolveLocalTtsVoiceName,
 } from "./speech/providers/local/models.js";
 import { createServiceProxySubsystem, type ServiceProxySubsystem } from "./service-proxy.js";
+import {
+  DEFAULT_ATTACHMENT_IMAGE_MAX_AGE_DAYS,
+  DEFAULT_ATTACHMENT_IMAGE_MAX_TOTAL_MB,
+} from "./agent/providers/provider-image-output.js";
+import { startMaterializedImageHousekeeping } from "./materialized-image-housekeeping.js";
 import { ScriptHealthMonitor } from "./script-health-monitor.js";
 import { createScriptStatusEmitter } from "./script-status-projection.js";
 import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
@@ -658,6 +663,23 @@ function buildInitialAgentBehaviors(
   };
 }
 
+/**
+ * Retention for the images agents materialize (docs/attachment-lifecycle.md).
+ * Host-level like the store it governs, and read fresh on every sweep, so an
+ * edit takes effect on the next pass rather than at the next daemon restart.
+ */
+function buildInitialAttachmentImageRetention(persistedConfig: PersistedConfig): {
+  attachmentImageMaxAgeDays: number;
+  attachmentImageMaxTotalMb: number;
+} {
+  return {
+    attachmentImageMaxAgeDays:
+      persistedConfig.daemon?.attachmentImageMaxAgeDays ?? DEFAULT_ATTACHMENT_IMAGE_MAX_AGE_DAYS,
+    attachmentImageMaxTotalMb:
+      persistedConfig.daemon?.attachmentImageMaxTotalMb ?? DEFAULT_ATTACHMENT_IMAGE_MAX_TOTAL_MB,
+  };
+}
+
 function buildInitialMetadataGeneration(
   config: OttoDaemonConfig,
 ): MutableDaemonConfig["metadataGeneration"] {
@@ -731,6 +753,7 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     // Host-level client git-action policy; only the app consumes it, so it
     // rides the daemon config round-trip without a field on OttoDaemonConfig.
     hideMergeIntoBaseAction: persistedConfig.daemon?.hideMergeIntoBaseAction ?? false,
+    ...buildInitialAttachmentImageRetention(persistedConfig),
     enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
     appendSystemPrompt: config.appendSystemPrompt ?? "",
     speech: createInitialMutableSpeechConfig(config),
@@ -809,6 +832,17 @@ export async function createOttoDaemon(
   // Best-effort, so a failure is logged here rather than crashing startup.
   void reconcileManagedProcessLedger(managedProcesses, logger).catch((error) => {
     logger.warn({ err: error }, "Failed to reconcile managed helper process ledger");
+  });
+  const stopMaterializedImageHousekeeping = startMaterializedImageHousekeeping({
+    ottoHome: config.ottoHome,
+    logger,
+    getPolicy: () => {
+      const current = daemonConfigStore.get();
+      return {
+        maxAgeDays: current.attachmentImageMaxAgeDays,
+        maxTotalMb: current.attachmentImageMaxTotalMb,
+      };
+    },
   });
   let relayTransport: RelayTransportController | null = null;
 
@@ -2099,6 +2133,7 @@ export async function createOttoDaemon(
 
   const stop = async () => {
     scriptHealthMonitor.stop();
+    stopMaterializedImageHousekeeping();
     // Freeze both ingress and registration before taking the agent closure snapshot.
     wsServer?.prepareForShutdown();
     agentManager.prepareForShutdown();
