@@ -19,11 +19,23 @@ name: Android Play Release
 #   - GOOGLE_SERVICE_ACCOUNT_KEY     (full JSON of a Google Play service-account
 #                                     key with the "Release to testing tracks"
 #                                     permission for me.ottocode.mobile)
+#
+# Deliberately NOT triggered by `v*` (removed 2026-07-27). EAS's free tier allows
+# 15 Android builds a month, and firing this on every release tag spent half of
+# that budget on a path that has never gone green end-to-end: 20 runs, 20
+# failures, and 0.5.1 — the only build to reach Play — was uploaded by hand. The
+# APK workflow was starved as a direct result and shipped no Android artifact at
+# all for 0.5.2 through 0.7.1.
+#
+# Note that a quota-refused run is not free: EAS increments the remote versionCode
+# *before* it checks the budget, so every failed run burns a versionCode (that is
+# why the counter reads 50 while the last real build was 0.5.1).
+#
+# Restore the `v*` trigger once a submit actually succeeds from CI.
 
 on:
   push:
     tags:
-      - "v*"
       - "android-play-v*"
   workflow_dispatch:
     inputs:
