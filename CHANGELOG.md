@@ -19,6 +19,9 @@
 ### Fixed
 
 - A failed background task no longer sits in the active list looking finished, with nothing to say it failed
+- Reading back through a turn while it streams no longer throws your position toward the top of the chat
+- A sub-agent no longer shows up twice, once in the sub-agents track and once in background tasks
+- Commands an agent runs on Windows no longer lose part of the system PATH, which broke git hooks and npm scripts inside agent sessions
 - Cost estimates cover Fable 5, Opus 4.5 and Sonnet 4.5
 - A chat, personality or team saved against a "1M" model id keeps its model features instead of silently losing them
 
