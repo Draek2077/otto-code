@@ -4,6 +4,7 @@ import {
   Image,
   Pressable,
   ActivityIndicator,
+  useWindowDimensions,
   type GestureResponderEvent,
   type LayoutChangeEvent,
   StyleProp,
@@ -45,7 +46,7 @@ import {
 } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
-import { useIsCompactFormFactor } from "@/constants/layout";
+import { useIsCompactFormFactor, MAX_CONTENT_WIDTH } from "@/constants/layout";
 import Animated, {
   Easing,
   cancelAnimation,
@@ -820,6 +821,17 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
 }));
 
 const ASSISTANT_IMAGE_MIN_HEIGHT = 160;
+// Preview cap for block images in chat (e.g. browser_screenshot). A tall portrait shot scaled to
+// fit content width alone would still be enormous, so we also bound the height and let the user
+// open the attachment to see it full size.
+const ASSISTANT_IMAGE_MAX_HEIGHT = 400;
+
+// The live content width of the message bubble, measured by AssistantMessage and read by block
+// images. The message view width is variable (window size, split panes, sidebar, phone vs desktop),
+// so images size against this rather than any constant — they must never exceed the message view,
+// exactly like text. `null` until the first layout; images fall back to the content-width constant.
+const AssistantImageWidthContext = createContext<number | null>(null);
+const ASSISTANT_IMAGE_MEASURE_STYLE: ViewStyle = { alignSelf: "stretch" };
 
 const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedImage({
   uri,
@@ -867,6 +879,7 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
           setLoadState({
             status: "ready",
             aspectRatio: metadata?.aspectRatio ?? width / height,
+            width,
           });
         }
       },
@@ -886,33 +899,47 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
   const handleImageError = useCallback(() => {
     setLoadState({ status: "error" });
   }, []);
-  const [measuredWidth, setMeasuredWidth] = useState(0);
-  const handleFrameLayout = useCallback((event: LayoutChangeEvent) => {
-    const width = event.nativeEvent.layout.width;
-    setMeasuredWidth((prev) => (width > 0 && Math.abs(width - prev) > 0.5 ? width : prev));
-  }, []);
   const { t } = useTranslation();
-  const surfaceStyle = useMemo<StyleProp<ViewStyle>>(() => {
+  const { width: windowWidth } = useWindowDimensions();
+  const measuredContentWidth = useContext(AssistantImageWidthContext);
+  // A markdown image has no intrinsic width, and `width:"100%"` never resolves through the
+  // content-sized flex ancestors of an image-only message — the whole column collapses to 0 and the
+  // image renders at 0×0 even though it loaded. So we give the frame an explicit pixel size, which
+  // both sizes the image and gives the collapsed ancestors an intrinsic width to grow to. Scale the
+  // natural size down to fit the box (real message content width × ASSISTANT_IMAGE_MAX_HEIGHT),
+  // never upscaling, so a screenshot is a preview that never exceeds the (variable) message view.
+  const displaySize = useMemo(() => {
     if (loadState.status !== "ready") {
+      return null;
+    }
+    const naturalWidth = loadState.width;
+    const naturalHeight = loadState.width / loadState.aspectRatio;
+    const boxWidth =
+      measuredContentWidth && measuredContentWidth > 0
+        ? measuredContentWidth
+        : Math.min(MAX_CONTENT_WIDTH, windowWidth > 0 ? windowWidth - 24 : MAX_CONTENT_WIDTH);
+    const scale = Math.min(1, boxWidth / naturalWidth, ASSISTANT_IMAGE_MAX_HEIGHT / naturalHeight);
+    return { width: Math.round(naturalWidth * scale), height: Math.round(naturalHeight * scale) };
+  }, [loadState, measuredContentWidth, windowWidth]);
+  const surfaceStyle = useMemo<StyleProp<ViewStyle>>(() => {
+    if (displaySize === null) {
       return [assistantMessageStylesheet.imageSurface, { height: ASSISTANT_IMAGE_MIN_HEIGHT }];
     }
-    // RN-web only derives height from `aspectRatio` when the width is definite. This
-    // surface is `width:"100%"`, which stays indefinite in the markdown flex context, so
-    // aspectRatio alone collapses it to 0 height (the image loads but renders 0×0).
-    // Measure the laid-out width and set an explicit height instead — same shape as
-    // MarkdownBlockImage, which pairs aspectRatio with a concrete width.
-    if (measuredWidth > 0) {
-      return [
-        assistantMessageStylesheet.imageSurface,
-        { height: measuredWidth / loadState.aspectRatio },
-      ];
+    return [
+      assistantMessageStylesheet.imageSurface,
+      { width: displaySize.width, height: displaySize.height },
+    ];
+  }, [displaySize]);
+  const frameStyle = useMemo<StyleProp<ViewStyle>>(() => {
+    if (displaySize === null) {
+      return [assistantMessageStylesheet.imageFrame, containerStyle];
     }
-    return [assistantMessageStylesheet.imageSurface, { aspectRatio: loadState.aspectRatio }];
-  }, [loadState, measuredWidth]);
-  const frameStyle = useMemo<StyleProp<ViewStyle>>(
-    () => [assistantMessageStylesheet.imageFrame, containerStyle],
-    [containerStyle],
-  );
+    return [
+      assistantMessageStylesheet.imageFrame,
+      containerStyle,
+      { width: displaySize.width, alignSelf: "flex-start" as const },
+    ];
+  }, [containerStyle, displaySize]);
   const stateSurfaceStyle = useMemo<StyleProp<ViewStyle>>(
     () => [surfaceStyle, assistantMessageStylesheet.imageState],
     [surfaceStyle],
@@ -921,7 +948,7 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
 
   if (loadState.status !== "ready") {
     return (
-      <View style={frameStyle} onLayout={handleFrameLayout}>
+      <View style={frameStyle}>
         <View style={stateSurfaceStyle}>
           {loadState.status === "loading" ? <ActivityIndicator size="small" /> : null}
           {loadState.status === "error" ? (
@@ -935,7 +962,7 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
   }
 
   return (
-    <View style={frameStyle} onLayout={handleFrameLayout}>
+    <View style={frameStyle}>
       <View style={surfaceStyle}>
         <Image
           source={imageSource}
@@ -2004,6 +2031,16 @@ export const AssistantMessage = memo(function AssistantMessage({
   // group's top edge, shifted up by the measured height of the segments above
   // it (agent-stream/bubble-group-offsets.ts).
   const bubbleRef = useRef<View>(null);
+  // The real content width of the bubble, fed to block images so they never exceed the message
+  // view. Measured on a stretch wrapper (a direct bubble child), which fills the bubble content box
+  // regardless of the image-only column collapse below it.
+  const [contentWidth, setContentWidth] = useState<number | null>(null);
+  const handleContentLayout = useCallback((event: LayoutChangeEvent) => {
+    const width = event.nativeEvent.layout.width;
+    setContentWidth((prev) =>
+      width > 0 && (prev === null || Math.abs(width - prev) > 0.5) ? width : prev,
+    );
+  }, []);
   const groupOffsetTop = useBubbleGroupOffset(blockGroupId, blockIndex);
   // The visual bubble's identity: a standalone reply is its own group, a split
   // streamed reply shares one across its segments. Keys both the text registry
@@ -2093,16 +2130,20 @@ export const AssistantMessage = memo(function AssistantMessage({
           onLayout={blockGroupId !== undefined ? handleBubbleLayout : undefined}
         >
           {sheen}
-          {keyedBlocks.map(({ key, block }) => (
-            <AssistantMessageBlockContainer key={key} block={block}>
-              <MemoizedMarkdownBlock
-                text={block}
-                rules={markdownRules}
-                parser={markdownParser}
-                onLinkPress={handleMarkdownLinkPress}
-              />
-            </AssistantMessageBlockContainer>
-          ))}
+          <AssistantImageWidthContext.Provider value={contentWidth}>
+            <View style={ASSISTANT_IMAGE_MEASURE_STYLE} onLayout={handleContentLayout}>
+              {keyedBlocks.map(({ key, block }) => (
+                <AssistantMessageBlockContainer key={key} block={block}>
+                  <MemoizedMarkdownBlock
+                    text={block}
+                    rules={markdownRules}
+                    parser={markdownParser}
+                    onLinkPress={handleMarkdownLinkPress}
+                  />
+                </AssistantMessageBlockContainer>
+              ))}
+            </View>
+          </AssistantImageWidthContext.Provider>
           {showPlayback && serverId !== undefined && bubbleGroupId !== undefined ? (
             <AssistantBubblePlayback
               serverId={serverId}

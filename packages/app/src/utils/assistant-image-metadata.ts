@@ -10,7 +10,7 @@ export interface AssistantImageMetadata {
 
 export type AssistantImageLoadState =
   | { status: "loading" }
-  | { status: "ready"; aspectRatio: number }
+  | { status: "ready"; aspectRatio: number; width: number }
   | { status: "error" };
 
 const assistantImageMetadataCache = new Map<string, AssistantImageMetadata>();
@@ -137,7 +137,7 @@ export function getAssistantImageLoadStateFromMetadata(
   if (!metadata) {
     return { status: "loading" };
   }
-  return { status: "ready", aspectRatio: metadata.aspectRatio };
+  return { status: "ready", aspectRatio: metadata.aspectRatio, width: metadata.width };
 }
 
 export function setAssistantImageMetadata(
