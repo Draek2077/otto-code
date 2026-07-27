@@ -92,10 +92,10 @@ const CATALOG_DATA = [
     id: "codebuddy-code",
     title: "Codebuddy Code",
     description: "Tencent Cloud's official intelligent coding tool",
-    version: "2.127.0",
+    version: "2.127.2",
     iconId: "codebuddy-code",
     installLink: "https://www.codebuddy.cn/cli/",
-    command: ["npx", "-y", "@tencent-ai/codebuddy-code@2.127.0", "--acp"],
+    command: ["npx", "-y", "@tencent-ai/codebuddy-code@2.127.2", "--acp"],
   },
   {
     id: "codewhale",
@@ -174,10 +174,10 @@ const CATALOG_DATA = [
     title: "Dirac",
     description:
       "Reduces API costs by more than 50%, produces better and faster work. Uses Hash anchored parallel edits, AST manipulation and a whole lot of neat optimizations. Fully Open Source.",
-    version: "0.4.25",
+    version: "0.4.27",
     iconId: "dirac",
     installLink: "https://dirac.run",
-    command: ["npx", "-y", "dirac-cli@0.4.25", "--acp"],
+    command: ["npx", "-y", "dirac-cli@0.4.27", "--acp"],
   },
   {
     id: "factory-droid",
