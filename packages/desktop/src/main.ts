@@ -414,6 +414,43 @@ if (electronFlags) {
   log.info("[electron-flags]", electronFlags);
 }
 
+// Adds Chromium features without clobbering whatever is already on the command
+// line — appendSwitch("enable-features", …) replaces the previous value, so an
+// OTTO_ELECTRON_FLAGS-supplied list and ours have to be merged, not stacked.
+function appendChromiumFeatures(features: readonly string[]): void {
+  const existing = app.commandLine.getSwitchValue("enable-features");
+  const merged = new Set(existing ? existing.split(",").filter(Boolean) : []);
+  for (const feature of features) {
+    merged.add(feature);
+  }
+  app.commandLine.appendSwitch("enable-features", [...merged].join(","));
+}
+
+// The Otto browser pane shows guest pages in a <webview>, and those pages draw
+// Chromium's classic always-visible scrollbar — the one surface in the app that
+// still does. Every scrollable surface in Otto's own renderer sets
+// scrollbar-width: none and paints the themed auto-hiding overlay instead (see
+// use-web-scrollbar / web-desktop-scrollbar), so the browser's content area was
+// the odd one out.
+//
+// CSS is not an option for the fix: a styled ::-webkit-scrollbar still occupies
+// layout width, which would distort the very page the preview subsystem asks
+// agents to verify. Chromium's overlay scrollbars are the only mechanism that
+// both floats over content and fades out when idle, and it is a process-wide
+// switch rather than a per-webContents setting. Enabling it app-wide is
+// effectively scoped to guest pages anyway — there is no native scrollbar left
+// in Otto's own renderer for it to change. No-op on macOS, where overlay
+// scrollbars are already the platform default.
+//
+// "OverlayScrollbar" is the feature that actually does this; measured on
+// Chromium 146 (Electron 41) by loading an overflowing page and reading
+// window.innerWidth - documentElement.clientWidth, it takes the scrollbar
+// gutter from 15px to 0. The Fluent-era names ("FluentScrollbar",
+// "FluentOverlayScrollbar") are no-ops in this build — Fluent styling is
+// already the Windows default — so do not add them back as belt-and-braces:
+// unknown features are silently ignored and would read as working config.
+appendChromiumFeatures(["OverlayScrollbar"]);
+
 // VM guests without 3D acceleration (VMware "No 3D enabled") and broken GPU
 // drivers crash the GPU process and leave the window blank with no actionable
 // error. Recover automatically: honor a persisted software-rendering marker up
