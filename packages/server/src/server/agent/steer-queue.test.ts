@@ -5,6 +5,7 @@ import { createTestLogger } from "../../test-utils/test-logger.js";
 import { AgentManager } from "./agent-manager.js";
 import { startAgentRun } from "./agent-prompt.js";
 import { toAgentPayload } from "./agent-projections.js";
+import { cancelAgentRunCommand } from "./lifecycle-command.js";
 import {
   createSteerQueueEntry,
   mergeSteerQueueBatch,
@@ -418,6 +419,40 @@ describe("queued delivery", () => {
     // Already there, and never there at all: both report "nothing moved".
     expect(manager.reorderSteerQueueEntry(agentId, first!.id, 1)).toBe(false);
     expect(manager.reorderSteerQueueEntry(agentId, "no-such-id", 0)).toBe(false);
+  });
+
+  test("stopping the run keeps the queue instead of dropping it", async () => {
+    const { manager, agentId, session } = await createRunningAgent();
+    startAgentRun(manager, agentId, "then update the docs", logger, { delivery: "queue" });
+
+    await cancelAgentRunCommand({ agentManager: manager, logger }, agentId);
+    await settle();
+
+    // Stop means stop: nothing new goes out on its own...
+    expect(session.prompts).toEqual(["first turn"]);
+    expect(manager.getAgent(agentId)?.lifecycle).toBe("idle");
+    // ...but the queued message is still there, ready to send.
+    expect(manager.getSteerQueue(agentId).map((entry) => entry.prompt)).toEqual([
+      "then update the docs",
+    ]);
+    expect(toAgentPayload(manager.getAgent(agentId)!).queuedMessages).toMatchObject([
+      { preview: "then update the docs" },
+    ]);
+  });
+
+  test("the hold lasts for the cancelled turn only, so the queue runs behind the next one", async () => {
+    const { manager, agentId, session } = await createRunningAgent();
+    startAgentRun(manager, agentId, "then update the docs", logger, { delivery: "queue" });
+    await cancelAgentRunCommand({ agentManager: manager, logger }, agentId);
+    await settle();
+
+    startAgentRun(manager, agentId, "new direction", logger);
+    await settle();
+    session.completeTurn();
+    await settle();
+
+    expect(session.prompts).toEqual(["first turn", "new direction", "then update the docs"]);
+    expect(manager.getSteerQueue(agentId)).toEqual([]);
   });
 
   test("clearing empties the queue and reports how many were dropped", async () => {

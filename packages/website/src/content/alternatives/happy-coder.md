@@ -83,17 +83,17 @@ Otto's speech-to-text and text-to-speech run locally on your device. Nothing lea
 |                              | Otto                                                            | Happy Coder            |
 | ---------------------------- | --------------------------------------------------------------- | ---------------------- |
 | License                      | Open source (AGPL-3.0)                                          | Open source (MIT)      |
-| Desktop app                  | macOS, Linux, Windows                                           | —                      |
+| Desktop app                  | macOS, Linux, Windows                                           | No                     |
 | Native mobile                | Android                                                         | Android                |
 | Architecture                 | Daemon owns agent lifecycle                                     | Wraps the agent CLI    |
 | Providers                    | Claude Code, Codex, OpenCode, Pi + 30+ via ACP catalog + custom | Claude Code, Codex     |
-| Split panes and tabs         | Yes                                                             | —                      |
-| In-app terminal              | Yes                                                             | —                      |
-| In-app browser               | Yes                                                             | —                      |
-| GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                        | —                      |
-| Git worktrees                | Yes                                                             | —                      |
-| Per-worktree dev server URLs | Yes                                                             | —                      |
+| Split panes and tabs         | Yes                                                             | No                     |
+| In-app terminal              | Yes                                                             | No                     |
+| In-app browser               | Yes                                                             | No                     |
+| GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                        | No                     |
+| Git worktrees                | Yes                                                             | No                     |
+| Per-worktree dev server URLs | Yes                                                             | No                     |
 | CLI                          | Run, `--host`, ls, send, schedule, loop                         | Launch wrapped session |
-| Local voice (on-device)      | Yes                                                             | —                      |
+| Local voice (on-device)      | Yes                                                             | No                     |
 
 See also: [Otto vs Conductor](/alternatives/conductor), [Otto vs Superset](/alternatives/superset), [Otto vs OpenChamber](/alternatives/openchamber).

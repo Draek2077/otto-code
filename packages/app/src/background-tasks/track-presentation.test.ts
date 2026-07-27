@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { BackgroundShellTaskRow } from "./select";
 import {
+  BACKGROUND_TASK_AUTO_CLEAR_SETTLE_MS,
   formatBackgroundTaskElapsed,
   formatHeaderLabel,
+  isBackgroundTaskRowFailed,
   isBackgroundTaskRowRunning,
-  isBackgroundTaskRowTidyEligible,
   partitionBackgroundTaskRows,
   resolveBackgroundTaskRowAction,
+  resolveBackgroundTaskRowGroup,
   resolveRowLabel,
+  selectBackgroundTasksToAutoClear,
 } from "./track-presentation";
 
 function row(
@@ -55,50 +58,149 @@ describe("formatHeaderLabel", () => {
     ).toBe("1 active background task · 2 completed background tasks");
   });
 
-  it("counts an attention-flagged failure as active, not completed", () => {
+  it("counts a failure in its own group, never as completed", () => {
     expect(
       formatHeaderLabel(
         partitionBackgroundTaskRows([row({ id: "a", status: "error", requiresAttention: true })]),
       ),
-    ).toBe("1 active background task");
+    ).toBe("1 failed background task");
+  });
+
+  it("reports all three groups in order", () => {
+    expect(
+      formatHeaderLabel(
+        partitionBackgroundTaskRows([
+          row({ id: "a", status: "running" }),
+          row({ id: "b", status: "idle" }),
+          row({ id: "c", status: "error" }),
+        ]),
+      ),
+    ).toBe("1 active background task · 1 completed background task · 1 failed background task");
   });
 });
 
-describe("isBackgroundTaskRowTidyEligible", () => {
-  it("is not eligible while running", () => {
-    expect(isBackgroundTaskRowTidyEligible(row({ id: "a", status: "running" }))).toBe(false);
+describe("resolveBackgroundTaskRowGroup", () => {
+  it("files a running row as active", () => {
+    expect(resolveBackgroundTaskRowGroup(row({ id: "a", status: "running" }))).toBe("active");
   });
 
-  it("is eligible once idle/error/closed", () => {
-    expect(isBackgroundTaskRowTidyEligible(row({ id: "a", status: "idle" }))).toBe(true);
-    expect(isBackgroundTaskRowTidyEligible(row({ id: "a", status: "error" }))).toBe(true);
-    expect(isBackgroundTaskRowTidyEligible(row({ id: "a", status: "closed" }))).toBe(true);
+  it("files idle and closed rows as completed", () => {
+    expect(resolveBackgroundTaskRowGroup(row({ id: "a", status: "idle" }))).toBe("completed");
+    expect(resolveBackgroundTaskRowGroup(row({ id: "a", status: "closed" }))).toBe("completed");
   });
 
-  it("stays active when it requires attention even if terminal", () => {
+  it("files an errored row as failed", () => {
+    expect(resolveBackgroundTaskRowGroup(row({ id: "a", status: "error" }))).toBe("failed");
+  });
+
+  it("keys off status alone, never the attention flag", () => {
+    // The flag rides along on a failure but must not drive grouping: reading it
+    // instead of `status` is what once pinned failures in the active list.
     expect(
-      isBackgroundTaskRowTidyEligible(row({ id: "a", status: "error", requiresAttention: true })),
-    ).toBe(false);
+      resolveBackgroundTaskRowGroup(row({ id: "a", status: "idle", requiresAttention: true })),
+    ).toBe("completed");
+    expect(
+      resolveBackgroundTaskRowGroup(row({ id: "a", status: "error", requiresAttention: false })),
+    ).toBe("failed");
+  });
+});
+
+describe("isBackgroundTaskRowFailed", () => {
+  it("is true only for the error status", () => {
+    expect(isBackgroundTaskRowFailed(row({ id: "a", status: "error" }))).toBe(true);
+    expect(isBackgroundTaskRowFailed(row({ id: "a", status: "idle" }))).toBe(false);
+    expect(isBackgroundTaskRowFailed(row({ id: "a", status: "closed" }))).toBe(false);
+    expect(isBackgroundTaskRowFailed(row({ id: "a", status: "running" }))).toBe(false);
   });
 });
 
 describe("partitionBackgroundTaskRows", () => {
-  it("splits running/attention rows into active and terminal rows into completed", () => {
+  it("splits rows three ways: running, completed, and failed", () => {
     const rows = [
       row({ id: "a", status: "running" }),
       row({ id: "b", status: "idle" }),
       row({ id: "c", status: "error", requiresAttention: true }),
+      row({ id: "d", status: "closed" }),
     ];
-    const { active, completed } = partitionBackgroundTaskRows(rows);
-    expect(active.map((r) => r.id)).toEqual(["a", "c"]);
-    expect(completed.map((r) => r.id)).toEqual(["b"]);
+    const { active, completed, failed } = partitionBackgroundTaskRows(rows);
+    expect(active.map((r) => r.id)).toEqual(["a"]);
+    expect(completed.map((r) => r.id)).toEqual(["b", "d"]);
+    expect(failed.map((r) => r.id)).toEqual(["c"]);
   });
 
-  it("keeps a pinned id active even when tidy-eligible", () => {
-    const rows = [row({ id: "a", status: "idle" })];
-    const { active, completed } = partitionBackgroundTaskRows(rows, new Set(["a"]));
-    expect(active.map((r) => r.id)).toEqual(["a"]);
+  it("keeps a pinned id active even when terminal", () => {
+    const rows = [row({ id: "a", status: "idle" }), row({ id: "b", status: "error" })];
+    const { active, completed, failed } = partitionBackgroundTaskRows(rows, new Set(["a", "b"]));
+    expect(active.map((r) => r.id)).toEqual(["a", "b"]);
     expect(completed).toEqual([]);
+    expect(failed).toEqual([]);
+  });
+});
+
+describe("selectBackgroundTasksToAutoClear", () => {
+  const NOW = new Date("2026-04-20T00:10:00.000Z").getTime();
+  const settled = new Date(NOW - BACKGROUND_TASK_AUTO_CLEAR_SETTLE_MS - 1000).toISOString();
+  const fresh = new Date(NOW - 500).toISOString();
+
+  it("selects settled rows of the requested group", () => {
+    const due = selectBackgroundTasksToAutoClear(
+      [
+        row({ id: "done", status: "idle", updatedAt: settled }),
+        row({ id: "closed", status: "closed", updatedAt: settled }),
+      ],
+      { group: "completed", settleMs: BACKGROUND_TASK_AUTO_CLEAR_SETTLE_MS, now: NOW },
+    );
+    expect(due.map((r) => r.id)).toEqual(["done", "closed"]);
+  });
+
+  it("leaves a just-finished row alone until it settles", () => {
+    const due = selectBackgroundTasksToAutoClear(
+      [row({ id: "just-done", status: "idle", updatedAt: fresh })],
+      {
+        group: "completed",
+        settleMs: BACKGROUND_TASK_AUTO_CLEAR_SETTLE_MS,
+        now: NOW,
+      },
+    );
+    expect(due).toEqual([]);
+  });
+
+  it("never selects running rows", () => {
+    const due = selectBackgroundTasksToAutoClear(
+      [row({ id: "running", status: "running", updatedAt: settled })],
+      { group: "completed", settleMs: BACKGROUND_TASK_AUTO_CLEAR_SETTLE_MS, now: NOW },
+    );
+    expect(due).toEqual([]);
+  });
+
+  it("keeps the two groups' sweeps apart, so one setting can't clear the other's rows", () => {
+    const rows = [
+      row({ id: "done", status: "idle", updatedAt: settled }),
+      row({ id: "failed", status: "error", updatedAt: settled }),
+    ];
+    const input = { settleMs: BACKGROUND_TASK_AUTO_CLEAR_SETTLE_MS, now: NOW };
+    expect(
+      selectBackgroundTasksToAutoClear(rows, { ...input, group: "completed" }).map((r) => r.id),
+    ).toEqual(["done"]);
+    expect(
+      selectBackgroundTasksToAutoClear(rows, { ...input, group: "failed" }).map((r) => r.id),
+    ).toEqual(["failed"]);
+  });
+
+  it("skips excluded ids (already clearing or previously attempted)", () => {
+    const due = selectBackgroundTasksToAutoClear(
+      [
+        row({ id: "a", status: "idle", updatedAt: settled }),
+        row({ id: "b", status: "idle", updatedAt: settled }),
+      ],
+      {
+        group: "completed",
+        settleMs: BACKGROUND_TASK_AUTO_CLEAR_SETTLE_MS,
+        now: NOW,
+        excludeIds: new Set(["a"]),
+      },
+    );
+    expect(due.map((r) => r.id)).toEqual(["b"]);
   });
 });
 

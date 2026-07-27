@@ -90,10 +90,15 @@ import { useAutoClearCompletedSubagentsSetting } from "@/hooks/use-auto-clear-co
 import { SubagentsTrack } from "@/subagents/track";
 import { ChatMetricsBar } from "@/subagents/chat-metrics-bar";
 import {
+  useAutoClearCompletedBackgroundTasks,
   useBackgroundShellTasksForParent,
   useClearCompletedBackgroundTasks,
   useStopBackgroundTask,
 } from "@/background-tasks";
+import {
+  useAutoClearCompletedBackgroundTasksSetting,
+  useAutoClearFailedBackgroundTasksSetting,
+} from "@/hooks/use-auto-clear-completed-background-tasks";
 import { BackgroundTasksTrack } from "@/background-tasks/track";
 import { RateLimitWarningTrack } from "@/composer/rate-limit-warning-track";
 import { ContextHealthTrack } from "@/composer/context-health-track";
@@ -1584,6 +1589,24 @@ function ActiveAgentComposer({
     serverId,
     parentAgentId: agentId,
   });
+  // One driver per terminal group: completed and failed rows auto-clear on
+  // independent settings, so neither can sweep the other's rows.
+  const autoClearCompletedBackgroundTasks = useAutoClearCompletedBackgroundTasksSetting();
+  useAutoClearCompletedBackgroundTasks({
+    serverId,
+    parentAgentId: agentId,
+    rows: backgroundTaskRows,
+    group: "completed",
+    enabled: autoClearCompletedBackgroundTasks,
+  });
+  const autoClearFailedBackgroundTasks = useAutoClearFailedBackgroundTasksSetting();
+  useAutoClearCompletedBackgroundTasks({
+    serverId,
+    parentAgentId: agentId,
+    rows: backgroundTaskRows,
+    group: "failed",
+    enabled: autoClearFailedBackgroundTasks,
+  });
   const workspaceAttachmentScopeKey = useWorkspaceAttachmentScopeKey({
     serverId,
     cwd,
@@ -1737,7 +1760,7 @@ function ActiveAgentComposer({
         <BackgroundTasksTrack
           rows={backgroundTaskRows}
           onStopTask={handleStopBackgroundTask}
-          onClearCompleted={handleClearCompletedBackgroundTasks}
+          onClearTasks={handleClearCompletedBackgroundTasks}
         />
       ) : null}
       {/* Top of the fan: an exiting card's absolutely-positioned web clone gets

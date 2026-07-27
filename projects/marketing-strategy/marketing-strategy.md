@@ -5,7 +5,7 @@ Charter. Nothing here is built yet.
 ## Why this exists
 
 Otto inherited Paseo's public voice along with its code. The README, the landing page, the
-sponsor page, and the blog byline all spoke as Mo — his X handle, his Discord, his avatar,
+sponsor page, and the blog byline all spoke as Mo: his X handle, his Discord, his avatar,
 his first-person "I'm a solo maintainer, ping me on Discord". That is a fork of someone
 else's web identity, not a fork of their software, and it has been removed (see "Voice
 cleanup" below).
@@ -19,10 +19,10 @@ impression for anyone who hasn't already decided to try the thing.
 
 Otto's public voice is **Philippe, first person, singular**. Not "we", not a company.
 
-The story, in one paragraph — this is the canonical version; keep the site, README, and any
+The story, in one paragraph. This is the canonical version; keep the site, README, and any
 future post consistent with it:
 
-> Otto is a personal project by Philippe — not a startup, just the environment I want to
+> Otto is a personal project by Philippe, not a startup. Just the environment I want to
 > work in and the way I'm getting better at agentic coding. Most of Otto is written by the
 > agents Otto runs. The problem I keep hitting is that agents can now do an enormous amount
 > of work on their own, and it's hard to see what they did, what it cost, and where it went
@@ -33,22 +33,22 @@ future post consistent with it:
 
 Tone rules:
 
-- First person singular. Never "we" — there is no we.
+- First person singular. Never "we", because there is no we.
 - No startup posturing, no roadmap promises, no "trusted by" anything.
 - Credit upstream loudly and specifically, and say _why_ the work is good rather than just
   naming it. Two projects carry Otto and both get named sections, not footnotes:
-  - **Paseo (Mo Boudra, AGPL-3.0)** — the foundation. The compliment that is actually true:
+  - **Paseo (Mo Boudra, AGPL-3.0)**: the foundation. The compliment that is actually true:
     the hard parts were already right (process lifecycle, clean WebSocket protocol, real
     cross-platform clients, E2E relay), so Otto's work is features instead of plumbing.
-  - **Agent Flow (Simon Patole, Apache-2.0)** — the Visualizer's render layer, vendored as a
+  - **Agent Flow (Simon Patole, Apache-2.0)**: the Visualizer's render layer, vendored as a
     git subtree. The compliment that is actually true: Simon kept rendering separate from
     event collection behind a small documented bridge protocol, which is the only reason Otto
     could drive the same graph from its own provider-neutral stream and have it work for
-    every provider. Adapting it has been the most enjoyable part of the project — say so.
+    every provider. Adapting it has been the most enjoyable part of the project, so say so.
   - Trademark guardrail: never use "Agent Flow" as a UI label or ship their logos. The
     feature is **"Visualizer"**, locked (`vendor/agent-flow/TRADEMARK.md`). Attribution prose
     is fine and required; branding is not.
-- Otto takes no sponsorships of its own — support routes upstream to both.
+- Otto takes no sponsorships of its own; support routes upstream to both.
 - Lead with the observability thesis, not the feature list. The feature list is the proof,
   not the pitch.
 
@@ -58,9 +58,9 @@ Tone rules:
 | ---------------------------------------------- | ---------------------------------------------- | ------------------------------------------------ |
 | `README.md` badges                             | X @moboudra, Paseo Discord, r/OttoAI           | GitHub stars / release / issues                  |
 | `README.md` note                               | "I'm a solo maintainer… reach me on Discord"   | One-person project, GitHub Issues                |
-| `README.md`                                    | —                                              | New "Why I'm building this" section              |
+| `README.md`                                    | None                                           | New "Why I'm building this" section              |
 | `landing-page.tsx` BuiltOnPaseoSection         | "one developer wanting to shape Paseo…"        | `BuiltOnOpenSourceSection`; Philippe's story     |
-| `landing-page.tsx` upstream pillars            | 2 cards (Paseo / Otto)                         | 3 cards — Paseo, Agent Flow, Otto mission        |
+| `landing-page.tsx` upstream pillars            | 2 cards (Paseo / Otto)                         | 3 cards: Paseo, Agent Flow, Otto mission         |
 | `landing-page.tsx` FAQ + credit CTA            | "we / ours"                                    | "I / mine"; new "What powers the Visualizer?"    |
 | `sponsor.tsx`                                  | "Support Mo, the author of Paseo"              | "Support the projects Otto is built on" (both)   |
 | `README.md` credits                            | one Paseo paragraph                            | named section per project, each with the why     |
@@ -78,32 +78,32 @@ it names the real original author and not Mo: Speechmatics stays credited as the
 `expo-two-way-audio` `author` (it's their MIT library, forked once by Mo, now vendored here);
 only the Mo-fork URLs were repointed.
 
-**Deliberately left as-is:** `.github/FUNDING.yml` still lists `github: [boudra]` — this is the
+**Deliberately left as-is:** `.github/FUNDING.yml` still lists `github: [boudra]`. This is the
 repo's GitHub Sponsor button, which is the repo-level equivalent of the support page and part
 of the same intentional dedication. Revisit only if the sponsor dedication changes. (GitHub
 `custom:` URLs could add Agent Flow here to parallel the sponsor page if desired.)
 
-## Open work — channels Otto actually needs
+## Open work: channels Otto actually needs
 
 None of these exist yet. Roughly in the order they'd pay off:
 
-1. **GitHub Discussions** — turn it on for `Draek2077/otto-code`. Zero cost, right venue
+1. **GitHub Discussions**: turn it on for `Draek2077/otto-code`. Zero cost, right venue
    for "how do I…" that shouldn't be an issue, and it's already where the links point.
-2. **A Discord of our own** — the one channel people genuinely expect from a self-hosted dev
+2. **A Discord of our own**: the one channel people genuinely expect from a self-hosted dev
    tool. Only worth creating once there's someone to talk to; an empty server reads worse
    than no server. Gate on: first handful of external users.
-3. **An X / Bluesky / Mastodon account** — for release notes and short build-log posts. Pick
+3. **An X / Bluesky / Mastodon account**: for release notes and short build-log posts. Pick
    one, not three. This is also the natural home for the "agents built this, here's what
    that looked like" content, which is the genuinely differentiated angle.
-4. **The blog** — `packages/website/src/posts/` is wired up and completely empty. The blog
+4. **The blog**: `packages/website/src/posts/` is wired up and completely empty. The blog
    route, byline, and index all work; there is simply nothing in it. Cheapest credible
    first move on this list.
-5. **r/OttoAI or similar** — lowest priority. Subreddits need sustained volume; skip until
+5. **r/OttoAI or similar**: lowest priority. Subreddits need sustained volume; skip until
    there's a community that would fill one.
 
 Every one of these needs a decision from Philippe (accounts, handles, moderation appetite)
 before any code or copy lands. Nothing should be linked from the site or the app until the
-destination actually exists — that's the mistake being corrected here.
+destination actually exists. That's the mistake being corrected here.
 
 ## Content angles worth having
 
@@ -118,7 +118,7 @@ destination actually exists — that's the mistake being corrected here.
   is the fork's whole mission and is concretely demonstrable.
 
 The proof behind all three is inventoried in
-[feature-inventory.md](feature-inventory.md) — 238 verified additions beyond Paseo as of 0.7.0.
+[feature-inventory.md](feature-inventory.md): 238 verified additions beyond Paseo as of 0.7.0.
 It is source material, not copy: nothing in it is published yet, and the "lead with the thesis,
 not the list" rule above governs how it gets used.
 

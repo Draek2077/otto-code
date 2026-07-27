@@ -1,10 +1,9 @@
 /**
- * Clear terminal (completed) background shell task rows off the track. Only
- * ever called with tidy-eligible ids (terminal, not attention) — it never
- * touches a running or errored row. Clearing is unconfirmed: a completed task
- * carries nothing you can lose by dropping its row (the output is already in
- * the chat), so a confirm dialog was pure friction. Mirrors the single-row X,
- * which has always cleared without asking.
+ * Clear terminal background shell task rows off the track, whether they
+ * completed or failed. Clearing is unconfirmed: a finished task carries nothing
+ * you can lose by dropping its row (its output is already in the chat), so a
+ * confirm dialog was pure friction. Mirrors the single-row X, which has always
+ * cleared without asking.
  */
 export interface ClearCompletedBackgroundTasksDeps {
   clearBackgroundShellTasks: (parentAgentId: string, taskIds: readonly string[]) => Promise<void>;

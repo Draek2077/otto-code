@@ -5,4 +5,8 @@ export {
   useClearCompletedBackgroundTasks,
   type UseClearCompletedBackgroundTasksInput,
 } from "./use-clear-completed-background-tasks";
+export {
+  useAutoClearCompletedBackgroundTasks,
+  type UseAutoClearCompletedBackgroundTasksInput,
+} from "./use-auto-clear-completed-background-tasks";
 export { BackgroundTasksTrack, type BackgroundTasksTrackProps } from "./track";

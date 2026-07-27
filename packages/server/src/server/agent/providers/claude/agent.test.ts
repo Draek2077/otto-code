@@ -435,17 +435,17 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
 
       expect(models.map((m) => m.id)).toEqual([
         "claude-fable-5",
-        "claude-opus-5[1m]",
         "claude-opus-5",
-        "claude-opus-4-8[1m]",
         "claude-opus-4-8",
         "claude-sonnet-5",
-        "claude-opus-4-7[1m]",
         "claude-opus-4-7",
         "claude-opus-4-6[1m]",
         "claude-opus-4-6",
         "claude-sonnet-4-6[1m]",
         "claude-sonnet-4-6",
+        "claude-opus-4-5",
+        "claude-sonnet-4-5[1m]",
+        "claude-sonnet-4-5",
         "claude-haiku-4-5",
       ]);
 
@@ -479,13 +479,10 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
       };
 
       expect(getThinkingIds("claude-fable-5")).toContain("ultracode");
-      expect(getThinkingIds("claude-opus-5[1m]")).toContain("ultracode");
       expect(getThinkingIds("claude-opus-5")).toContain("ultracode");
-      expect(getThinkingIds("claude-opus-4-8[1m]")).toContain("ultracode");
       expect(getThinkingIds("claude-opus-4-8")).toContain("ultracode");
       expect(getThinkingIds("claude-sonnet-5")).toContain("xhigh");
       expect(getThinkingIds("claude-sonnet-5")).toContain("ultracode");
-      expect(getThinkingIds("claude-opus-4-7[1m]")).toContain("ultracode");
       expect(getThinkingIds("claude-opus-4-7")).toContain("ultracode");
       expect(getThinkingIds("claude-sonnet-4-6")).not.toContain("ultracode");
     } finally {
@@ -652,6 +649,24 @@ describe("ClaudeAgentSession features", () => {
         provider: "claude",
         cwd: process.cwd(),
         model: "claude-sonnet-4-6",
+      }),
+    ).resolves.toEqual([]);
+
+    // Opus 4.7's fast mode was withdrawn (`speed: "fast"` errors) and Opus 4.6
+    // never had it — neither should offer the toggle.
+    await expect(
+      client.listFeatures({
+        provider: "claude",
+        cwd: process.cwd(),
+        model: "claude-opus-4-7",
+      }),
+    ).resolves.toEqual([]);
+
+    await expect(
+      client.listFeatures({
+        provider: "claude",
+        cwd: process.cwd(),
+        model: "claude-opus-4-6",
       }),
     ).resolves.toEqual([]);
   });

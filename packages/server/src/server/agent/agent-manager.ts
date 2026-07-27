@@ -826,6 +826,17 @@ interface ManagedAgentBase {
    * raced into a second concurrent turn.
    */
   pendingSteerDrain: boolean;
+  /**
+   * Set when a cancel (the composer's stop button, ESC, `cancel_agent`) lands
+   * while messages are queued. Stop means stop, so the cancelled turn's
+   * finalize must not drain the queue into a fresh turn — but the entries
+   * survive, so the Queue track still shows them and the user can edit or send
+   * them when ready. Cleared the moment the next run starts, after which the
+   * queue drains normally again.
+   *
+   * Optional so existing `ManagedAgent` fixtures stay valid.
+   */
+  steerQueueHeld?: boolean;
   persistence: AgentPersistenceHandle | null;
   historyPrimed: boolean;
   lastUserMessageAt: Date | null;
@@ -3075,6 +3086,9 @@ export class AgentManager {
     const agent = existingAgent;
     agent.pendingReplacement = false;
     agent.pendingSteerDrain = false;
+    // A new run resumes the queue: the hold only ever covered the finalize of
+    // the turn that was cancelled.
+    agent.steerQueueHeld = false;
     agent.lastError = undefined;
 
     const pendingRun = this.foregroundRuns.createPendingRun(agentId);
@@ -3148,9 +3162,11 @@ export class AgentManager {
     // buffered instead of racing into a second concurrent turn. A terminal
     // error (or a replacement already holding the slot) skips the drain: a
     // queued turn must never run unprompted into a broken session — the queue
-    // is held and surfaced so the supervisor decides.
+    // is held and surfaced so the supervisor decides. A cancel holds it for the
+    // same reason: the user pressed stop, so nothing new starts on its own,
+    // and the queue stays put for them to send when ready.
     const drainBatch =
-      !shouldHoldBusyForReplacement && !terminalError
+      !shouldHoldBusyForReplacement && !terminalError && !mutableAgent.steerQueueHeld
         ? takeNextSteerQueueBatch(mutableAgent.steerQueue)
         : null;
     if (drainBatch) {
@@ -3343,8 +3359,31 @@ export class AgentManager {
   }
 
   /**
-   * Drop every queued message. Cancelling an agent is one "stop everything"
-   * verb: aborting the run also abandons the work you had lined up behind it.
+   * Keep the queue, but stop the cancelled turn from draining it.
+   *
+   * Cancel used to empty the queue outright, on the theory that "stop
+   * everything" includes the work lined up behind it. In practice the messages
+   * you queued are the ones you still want: stopping the run is how you make
+   * room for them, so wiping them destroys work the user typed. So stop now
+   * means exactly what it says — nothing new starts by itself — while the
+   * entries stay in the Queue track, ready to edit or send.
+   *
+   * Returns how many entries were held (0 when there was no queue), purely for
+   * logging.
+   */
+  holdSteerQueue(agentId: string): number {
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      return 0;
+    }
+    agent.steerQueueHeld = true;
+    return agent.steerQueue.length;
+  }
+
+  /**
+   * Drop every queued message — the explicit "clear the queue" verb behind
+   * `agent.queue.clear`, and the way a closing agent sheds its queue. Cancel
+   * does NOT come through here; see `holdSteerQueue`.
    */
   clearSteerQueue(agentId: string): number {
     const agent = this.agents.get(agentId);

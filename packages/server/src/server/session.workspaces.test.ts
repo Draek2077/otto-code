@@ -1613,7 +1613,7 @@ test("close_items_request archives agents and kills terminals in one batch", asy
         getObservedSubagentPayload: () => null,
         getAgent: (agentId: string) => (agentId === "agent-1" ? { id: agentId } : null),
         hasInFlightRun: (agentId: string) => agentId === "agent-1",
-        clearSteerQueue: () => 0,
+        holdSteerQueue: () => 0,
         cancelAgentRun,
         archiveAgent: async () => ({ archivedAt }),
         clearAgentAttention: async () => {},
@@ -1783,7 +1783,7 @@ test("close_items_request archives stored agents that are not currently loaded",
         getObservedSubagentPayload: () => null,
         getAgent: (agentId: string) => (agentId === "agent-live" ? { id: agentId } : null),
         hasInFlightRun: () => false,
-        clearSteerQueue: () => 0,
+        holdSteerQueue: () => 0,
         archiveAgent: async (agentId: string) => {
           if (agentId !== "agent-live") {
             throw new Error(`Unexpected live archive: ${agentId}`);
@@ -1945,7 +1945,7 @@ test("close_items_request continues after an archive failure", async () => {
         getAgent: (agentId: string) =>
           agentId === "agent-bad" || agentId === "agent-good" ? { id: agentId } : null,
         hasInFlightRun: () => false,
-        clearSteerQueue: () => 0,
+        holdSteerQueue: () => 0,
         archiveAgent: async (agentId: string) => {
           if (agentId === "agent-bad") {
             throw new Error("archive failed");

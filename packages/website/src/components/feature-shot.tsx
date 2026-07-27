@@ -4,14 +4,14 @@ import * as React from "react";
  * Real-capture slots for the landing page.
  *
  * Every image on the feature sections is produced by the demo pipeline
- * (docs/site-demos.md) — never hand-drawn. Until a capture exists, `FeatureShot`
+ * (docs/site-demos.md), never hand-drawn. Until a capture exists, `FeatureShot`
  * renders a placeholder carrying its shot id, kind and the scenario that will
  * produce it, so the page doubles as the capture backlog and no section can
  * point at an asset with no producer.
  *
  * The manifest is projects/marketing-strategy/website-showcase.md.
  *
- * Assets live in `public/shots/<id>.png` (or `.webm` for loops) — a committed
+ * Assets live in `public/shots/<id>.png` (or `.webm` for loops), a committed
  * directory, hand-picked out of the gitignored `public/demos/` run output. The
  * site is dark-only, so captures only need the Twilight pass.
  */
@@ -35,7 +35,7 @@ const KIND_LABEL: Record<ShotKind, string> = {
 };
 
 export interface FeatureShotProps {
-  /** Manifest shot id — also the asset basename under /shots. */
+  /** Manifest shot id, also the asset basename under /shots. */
   id: string;
   kind: ShotKind;
   ratio: ShotRatio;
@@ -49,7 +49,7 @@ export interface FeatureShotProps {
   src?: string;
   /** Poster frame for a loop. */
   poster?: string;
-  /** Desktop window framing — the site's job, per docs/site-demos.md. */
+  /** Desktop window framing. The site's job, per docs/site-demos.md. */
   chrome?: boolean;
   className?: string;
 }

@@ -80,14 +80,14 @@ Otto's speech-to-text and text-to-speech run locally on your device. OpenChamber
 | Desktop platforms            | macOS, Linux, Windows                                           | macOS             |
 | Mobile                       | Native Android                                                  | PWA               |
 | Providers                    | Claude Code, Codex, OpenCode, Pi + 30+ via ACP catalog + custom | OpenCode          |
-| Split panes and tabs         | Yes                                                             | —                 |
-| In-app terminal              | Yes                                                             | —                 |
-| In-app browser               | Yes                                                             | —                 |
+| Split panes and tabs         | Yes                                                             | No                |
+| In-app terminal              | Yes                                                             | No                |
+| In-app browser               | Yes                                                             | No                |
 | GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                        | Yes               |
-| CLI                          | Run, `--host`, ls, send, schedule, loop                         | —                 |
+| CLI                          | Run, `--host`, ls, send, schedule, loop                         | No                |
 | Git worktrees                | Yes                                                             | Yes               |
-| Per-worktree dev server URLs | Yes                                                             | —                 |
-| Local voice (on-device)      | Yes                                                             | —                 |
-| Self-hosted daemon           | Yes                                                             | —                 |
+| Per-worktree dev server URLs | Yes                                                             | No                |
+| Local voice (on-device)      | Yes                                                             | No                |
+| Self-hosted daemon           | Yes                                                             | No                |
 
 See also: [Otto vs Conductor](/alternatives/conductor), [Otto vs Superset](/alternatives/superset), [Otto vs Happy Coder](/alternatives/happy-coder).

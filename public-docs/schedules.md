@@ -1,6 +1,6 @@
 ---
 title: Schedules
-description: Run Otto agents on a schedule — every few minutes or on a cron.
+description: Run Otto agents on a schedule, every few minutes or on a cron.
 nav: Overview
 order: 25
 category: Schedules
@@ -12,9 +12,9 @@ A schedule runs an agent for you on a cadence: at this interval or cron time, ru
 
 The target can be:
 
-- A new agent each run — fresh daily jobs and long-running watchers.
-- An existing agent — when you want continuity.
-- The agent that created the schedule — heartbeats from inside an agent.
+- A new agent each run, for fresh daily jobs and long-running watchers.
+- An existing agent, when you want continuity.
+- The agent that created the schedule, for heartbeats from inside an agent.
 
 Cadence is either an interval, like every 30 minutes, or a cron expression, like every weekday morning. Every run is recorded, and you can pause, resume, run once, update, or delete a schedule at any time.
 
@@ -28,7 +28,7 @@ Cadence is either an interval, like every 30 minutes, or a cron expression, like
 
 ## Ways to create one
 
-- **In the app** — open the Schedules view and create one with an agent, a cadence, a repo, and a prompt. This is the main way to create and manage schedules.
-- **[From chat](/docs/schedules-chat)** — ask the agent in a chat and it sets the schedule up for you.
-- **[From the CLI](/docs/schedules-cli)** — `otto schedule create`, for headless boxes and scripts.
-- **[Over MCP](/docs/mcp)** — agents create and manage schedules programmatically.
+- **In the app**: open the Schedules view and create one with an agent, a cadence, a repo, and a prompt. This is the main way to create and manage schedules.
+- **[From chat](/docs/schedules-chat)**: ask the agent in a chat and it sets the schedule up for you.
+- **[From the CLI](/docs/schedules-cli)**: `otto schedule create`, for headless boxes and scripts.
+- **[Over MCP](/docs/mcp)**: agents create and manage schedules programmatically.

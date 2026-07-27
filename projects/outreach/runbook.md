@@ -4,7 +4,7 @@ Operational playbook. Read [outreach.md](outreach.md) for why; this is what to d
 
 ---
 
-## 1. Approved phrasing — use verbatim
+## 1. Approved phrasing: use verbatim
 
 ### How Otto talks to Claude
 
@@ -79,7 +79,7 @@ in every community in this plan.
 
 ---
 
-## 4. Post-send verification — do this every time
+## 4. Post-send verification: do this every time
 
 15 minutes after sending, **logged out or in a private window**:
 

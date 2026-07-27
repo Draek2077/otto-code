@@ -82,16 +82,16 @@ Otto's speech-to-text and text-to-speech run locally on your device. Nothing lea
 | ---------------------------- | --------------------------------------------------------------- | ------------------ |
 | License                      | Open source (AGPL-3.0)                                          | Closed source      |
 | Platforms                    | macOS, Linux, Windows                                           | macOS only         |
-| Native mobile                | Android                                                         | —                  |
+| Native mobile                | Android                                                         | No                 |
 | Providers                    | Claude Code, Codex, OpenCode, Pi + 30+ via ACP catalog + custom | Claude Code, Codex |
 | Git worktrees                | Yes                                                             | Yes                |
-| Per-worktree dev server URLs | Yes                                                             | —                  |
-| Split panes and tabs         | Yes                                                             | —                  |
+| Per-worktree dev server URLs | Yes                                                             | No                 |
+| Split panes and tabs         | Yes                                                             | No                 |
 | In-app terminal              | Yes                                                             | Yes                |
-| In-app browser               | Yes                                                             | —                  |
+| In-app browser               | Yes                                                             | No                 |
 | GitHub workflow in app       | Commit, push, PR, checks, reviews, merge                        | Yes                |
-| CLI                          | Run, `--host`, ls, send, schedule, loop                         | —                  |
-| Local voice (on-device)      | Yes                                                             | —                  |
-| Self-hosted daemon           | Yes                                                             | —                  |
+| CLI                          | Run, `--host`, ls, send, schedule, loop                         | No                 |
+| Local voice (on-device)      | Yes                                                             | No                 |
+| Self-hosted daemon           | Yes                                                             | No                 |
 
 See also: [Otto vs Superset](/alternatives/superset), [Otto vs OpenChamber](/alternatives/openchamber), [Otto vs Happy Coder](/alternatives/happy-coder).

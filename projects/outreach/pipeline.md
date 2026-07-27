@@ -1,4 +1,4 @@
-# The pipeline — AI automation architecture
+# The pipeline: AI automation architecture
 
 What the machine does, what it must never do, and how it is built.
 
@@ -37,7 +37,7 @@ GitHub's 60-day scheduled-workflow auto-disable.
 
 ---
 
-## 2. Listening — only what is free and in-ToS
+## 2. Listening: only what is free and in-ToS
 
 | Source               | Method                                                                                                                         | Status                                                                                                                                                                                                                                                                                                  |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -78,7 +78,7 @@ Phase 0.9 from a good intention into a build-time dependency.
 
 ---
 
-## 4. Drafting — and the line it must not cross
+## 4. Drafting: and the line it must not cross
 
 The drafter composes from the message house and asset library in [content.md](content.md), shaping
 per channel: length, required flair/tags, disclosure string, canonical URL, and which clip.
@@ -101,7 +101,7 @@ something only the person who built it can write.
 
 ---
 
-## 5. The governor — the part that actually matters
+## 5. The governor: the part that actually matters
 
 Runs between drafter and queue. A draft that fails any check does not reach the human.
 
@@ -131,7 +131,7 @@ Coolify at 1,000★).
 
 ---
 
-## 6. Where it runs — recommendation
+## 6. Where it runs: recommendation
 
 **Otto runs its own outreach.** A `Herald` agent personality on a scheduled agent, using the CLI above
 as its toolbelt, producing the review queue as an artifact. Otto already has scheduled agents, MCP,
@@ -149,7 +149,7 @@ the Action ever writes anywhere. Never in the repo.
 
 ---
 
-## 7. Post-send verification — the highest-value telemetry in the system
+## 7. Post-send verification: the highest-value telemetry in the system
 
 Both HN and Reddit punish silently. You can post for weeks into a void with no notification.
 

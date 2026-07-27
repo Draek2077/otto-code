@@ -23,7 +23,7 @@ export function downloadUrls(release: ReleaseAssetInfo) {
     linuxRpm: `${base}/Otto-${version}-x86_64.rpm`,
     windowsExeX64: `${base}/${windowsX64Asset ?? `Otto-Setup-${version}.exe`}`,
     windowsExeArm64: windowsArm64Asset ? `${base}/${windowsArm64Asset}` : null,
-    // Null when that release has no mac artifact — the mac jobs can finish after
+    // Null when that release has no mac artifact. The mac jobs can finish after
     // a release publishes, and a failed mac build ships without one.
     macDmgArm64: macArm64Asset ? `${base}/${macArm64Asset}` : null,
     macDmgX64: macX64Asset ? `${base}/${macX64Asset}` : null,
@@ -36,17 +36,17 @@ export const webAppUrl = "https://app.otto-code.me";
 // macOS builds ship unsigned: this fork has no Apple Developer identity, so they
 // are not notarized and cannot auto-update. Gatekeeper quarantines a downloaded
 // unsigned app and reports it as *damaged* rather than showing the usual
-// unidentified-developer prompt, so first-launch instructions aren't optional —
+// unidentified-developer prompt, so first-launch instructions aren't optional:
 // without them the build reads as a broken download.
 export const MAC_UNSIGNED_NOTE =
-  "Unsigned build — macOS will say Otto is damaged the first time. Right-click the app and choose Open, or run the command below.";
+  "Unsigned build. macOS will say Otto is damaged the first time. Right-click the app and choose Open, or run the command below.";
 
 export const MAC_QUARANTINE_COMMAND = "xattr -dr com.apple.quarantine /Applications/Otto.app";
 
 // macOS can't replace itself in place without a signing identity, so these
 // builds don't auto-update. The app notifies and links back here instead.
 export const MAC_NO_AUTOUPDATE_NOTE =
-  "These builds don't auto-update. Otto will tell you when a new version is out — download it here and replace the app.";
+  "These builds don't auto-update. Otto will tell you when a new version is out. Download it here and replace the app.";
 
 type Platform = "mac-silicon" | "mac-intel" | "windows" | "linux";
 
@@ -121,7 +121,7 @@ export function useDetectedPlatform(): Platform {
     } else if (ua.includes("mac")) {
       // Apple Silicon can't be detected from navigator.platform: Safari reports
       // "MacIntel" on every Mac, and Chrome/Edge do too. userAgentData is the
-      // only honest signal, and only Chromium exposes it — so we identify Intel
+      // only honest signal, and only Chromium exposes it, so we identify Intel
       // when it says so and default to Silicon everywhere else, which is both
       // the majority of Macs and the safer miss (the download page lists both).
       const isIntel =
@@ -215,7 +215,7 @@ export function LinuxIcon(props: React.SVGProps<SVGSVGElement>) {
 }
 
 // Generic UI icons are Material Symbols (outlined family) to match the app's
-// icon set — see docs/ui-icons.md. Brand/OS logos above stay as their marks.
+// icon set. See docs/ui-icons.md. Brand/OS logos above stay as their marks.
 export function TerminalIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg

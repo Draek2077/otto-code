@@ -14,7 +14,7 @@ export const Route = createFileRoute("/blog/")({
   },
   head: () =>
     pageMeta(
-      "Blog – Updates and announcements from the Otto team",
+      "Blog: updates and announcements about Otto",
       "Product updates, technical posts, and announcements from the Otto team. Notes on building a self-hosted, multi-agent dev environment for your phone.",
       "/blog",
     ),

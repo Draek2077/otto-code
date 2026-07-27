@@ -42,17 +42,17 @@ describe("getClaudeModels", () => {
     const models = getClaudeModels();
     expect(models.map((m) => m.id)).toEqual([
       "claude-fable-5",
-      "claude-opus-5[1m]",
       "claude-opus-5",
-      "claude-opus-4-8[1m]",
       "claude-opus-4-8",
       "claude-sonnet-5",
-      "claude-opus-4-7[1m]",
       "claude-opus-4-7",
       "claude-opus-4-6[1m]",
       "claude-opus-4-6",
       "claude-sonnet-4-6[1m]",
       "claude-sonnet-4-6",
+      "claude-opus-4-5",
+      "claude-sonnet-4-5[1m]",
+      "claude-sonnet-4-5",
       "claude-haiku-4-5",
     ]);
   });
@@ -72,17 +72,17 @@ describe("getClaudeModels", () => {
     expect(contextWindows).toEqual(
       new Map([
         ["claude-fable-5", 1_000_000],
-        ["claude-opus-5[1m]", 1_000_000],
-        ["claude-opus-5", 200_000],
-        ["claude-opus-4-8[1m]", 1_000_000],
-        ["claude-opus-4-8", 200_000],
+        ["claude-opus-5", 1_000_000],
+        ["claude-opus-4-8", 1_000_000],
         ["claude-sonnet-5", 1_000_000],
-        ["claude-opus-4-7[1m]", 1_000_000],
-        ["claude-opus-4-7", 200_000],
+        ["claude-opus-4-7", 1_000_000],
         ["claude-opus-4-6[1m]", 1_000_000],
         ["claude-opus-4-6", 200_000],
         ["claude-sonnet-4-6[1m]", 1_000_000],
         ["claude-sonnet-4-6", 200_000],
+        ["claude-opus-4-5", 200_000],
+        ["claude-sonnet-4-5[1m]", 1_000_000],
+        ["claude-sonnet-4-5", 200_000],
         ["claude-haiku-4-5", 200_000],
       ]),
     );
@@ -304,8 +304,10 @@ describe("normalizeClaudeRuntimeModelId", () => {
     expect(normalizeClaudeRuntimeModelId("openrouter/anthropic/claude-opus-4-8")).toBe(
       "claude-opus-4-8",
     );
+    // Opus 4.8 is natively 1M, so the manifest ships one entry and a decorated
+    // `[1m]` id folds back onto it rather than resolving to null.
     expect(normalizeClaudeRuntimeModelId("us.anthropic.claude-opus-4-8[1m]")).toBe(
-      "claude-opus-4-8[1m]",
+      "claude-opus-4-8",
     );
     expect(normalizeClaudeRuntimeModelId("us.anthropic.claude-opus-4-8-20260101")).toBe(
       "claude-opus-4-8",

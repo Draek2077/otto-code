@@ -10,7 +10,7 @@ export interface LifecycleAgentManager {
   getAgent(agentId: string): LifecycleAgentSnapshot | null;
   hasInFlightRun(agentId: string): boolean;
   cancelAgentRun(agentId: string): Promise<boolean>;
-  clearSteerQueue(agentId: string): number;
+  holdSteerQueue(agentId: string): number;
   clearAgentAttention(agentId: string): Promise<void>;
   archiveAgent(agentId: string): Promise<{ archivedAt: string }>;
   archiveSnapshot(agentId: string, archivedAt: string): Promise<StoredAgentRecord>;
@@ -59,12 +59,13 @@ export async function cancelAgentRunCommand(
     throw new Error(`Agent ${agentId} not found`);
   }
 
-  // Cancel is one "stop everything" verb: aborting the run also abandons the
-  // messages queued behind it. Runs before the not-running early return so an
-  // agent that somehow holds a queue while idle is still emptied.
-  const clearedQueue = agentManager.clearSteerQueue(agentId);
-  if (clearedQueue > 0) {
-    logger.debug({ agentId, clearedQueue }, "cancelAgentRunCommand: cleared queued messages");
+  // Cancel stops the run, not the plan: the queued messages stay, and the
+  // cancelled turn is stopped from draining them into a fresh turn. They sit in
+  // the Queue track ready to send. Runs BEFORE the interrupt so the hold is in
+  // place by the time the cancel finalizes the turn.
+  const heldQueue = agentManager.holdSteerQueue(agentId);
+  if (heldQueue > 0) {
+    logger.debug({ agentId, heldQueue }, "cancelAgentRunCommand: held queued messages");
   }
 
   const hasInFlightRun = agentManager.hasInFlightRun(agentId);
