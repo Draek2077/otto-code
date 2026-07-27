@@ -3,8 +3,13 @@ import { describe, expect, it } from "vitest";
 import { prependEnvPath, resolveUnpackedLibDir } from "./sherpa-runtime-env.js";
 
 // prependEnvPath joins with path.delimiter, which is ";" on Windows and ":"
-// elsewhere. Build the expectations from it so these pass on CI too.
+// elsewhere. Build the expectations from it so these pass on CI too — and keep
+// the entries themselves free of colons, since a Windows-style "C:\lib" splits
+// into two entries under a POSIX delimiter and silently defeats the dedup.
 const D = path.delimiter;
+const LIB = "/opt/lib";
+const A = "/opt/a";
+const B = "/opt/b";
 
 describe("resolveUnpackedLibDir", () => {
   const PACKAGED_WIN =
@@ -50,14 +55,14 @@ describe("resolveUnpackedLibDir", () => {
 
 describe("prependEnvPath", () => {
   it("puts the lib dir first", () => {
-    expect(prependEnvPath(`C:\\a${D}C:\\b`, "C:\\lib")).toBe(`C:\\lib${D}C:\\a${D}C:\\b`);
+    expect(prependEnvPath(`${A}${D}${B}`, LIB)).toBe(`${LIB}${D}${A}${D}${B}`);
   });
 
   it("does not duplicate an entry that is already present", () => {
-    expect(prependEnvPath(`C:\\lib${D}C:\\a`, "C:\\lib")).toBe(`C:\\lib${D}C:\\a`);
+    expect(prependEnvPath(`${LIB}${D}${A}`, LIB)).toBe(`${LIB}${D}${A}`);
   });
 
   it("handles an empty starting value", () => {
-    expect(prependEnvPath(undefined, "C:\\lib")).toBe("C:\\lib");
+    expect(prependEnvPath(undefined, LIB)).toBe(LIB);
   });
 });
