@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Latency dashboard</title>
+    <link rel="stylesheet" href="styles/main.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <h1>Latency</h1>
+      <p class="subtitle">Rolling seven-day window &middot; production</p>
+    </header>
+
+    <main id="metrics" class="grid" aria-live="polite">
+      <p class="empty">Loading metrics&hellip;</p>
+    </main>
+
+    <footer class="footnote">
+      <p>Trend compares the latest sample against the mean of the preceding ones, with a 2% tolerance band.</p>
+    </footer>
+
+    <script type="module" src="src/app.ts"></script>
+  </body>
+</html>

@@ -113,6 +113,93 @@ treats a device as an upgrader when the field is _absent_, and the app writes a
 full settings blob with `false` on first boot — so seeding an empty blob does not
 skip the wizard.
 
+##### Playbooks: starting states
+
+`--stage` takes the bootstrap further than "make the wizard go away": it puts the
+lane into a named, reproducible starting state. The stages are cumulative, so
+each is the previous one plus a step.
+
+| Stage       | State                                                             | Daemon           |
+| ----------- | ----------------------------------------------------------------- | ---------------- |
+| `fresh`     | No providers, no wizard flags, no projects — the first-run wizard | must be **down** |
+| `defaults`  | Providers and keys seeded, wizard and tour flags set (default)    | either           |
+| `project`   | + a project registered                                            | must be **up**   |
+| `workspace` | + a workspace on that project                                     | must be **up**   |
+| `chat`      | + a chat in that workspace, on a chosen model                     | must be **up**   |
+
+```bash
+npm run dev:agent:bootstrap -- --stage chat --model qwen
+```
+
+`--model` takes `haiku`, `sonnet`, `opus`, `qwen`, or a raw model id alongside
+`--provider`. `--project <path>` registers an existing directory instead of the
+lane's scratch repo; `--prompt <text>` sends a first turn. Numbers work too:
+`--stage 5` is `chat`.
+
+##### Every run starts clean
+
+Stages that touch the daemon **first tear down the lane's chats, workspaces, projects
+and sandbox**, so a scenario is never reached with the previous one still in the way.
+`--keep` opts out and composes onto existing state instead.
+
+Clean-slate is the default rather than a flag because the flag fails silently: forget
+it once and you are debugging leftover state instead of the feature. Teardown runs over
+RPCs, not by deleting files, which is what lets it work with the lane **up** — the
+alternative is stopping and restarting a daemon for every scenario, which is the
+friction this script exists to remove.
+
+Two safety properties hold it in place. Reset refuses to run against any home outside
+`packages/desktop/.dev/`, so it can never reach the installed app's state. And
+enumeration failures are never swallowed — a reset that quietly finds nothing looks
+like a clean slate and is not one, which is the most confusing way this could fail.
+
+##### Boilerplate projects
+
+`--template <name>` swaps the empty scratch repo for a real project from the
+shared corpus in `test-documents/projects/` — a plausible tree that **builds**,
+with a `break/<slug>` branch per error scenario. `--list` prints what is available.
+
+```bash
+npm run dev:agent:bootstrap -- --stage chat --template python-cli --branch break/failing-test --model qwen
+```
+
+`--verify` runs the template's declared build and test. On a `break/*` branch the
+expectation inverts: a break branch that builds clean is reported as a failure,
+because the error scenario has silently stopped working. A missing toolchain is a
+**skip**, not a failure — the repo is still worth having for highlighting, the file
+tree, diffs and the editor.
+
+`--branch` backs the workspace with an otto worktree rather than a plain directory,
+which is what makes the git surface real: a fork-point diff base, commit, rollback,
+file history, blame, branch switch, merge-into-base, archive with branch cleanup.
+The project then reads as the stack and its workspaces read as branches.
+
+The corpus and its materializer (`scripts/playbook-projects.mjs`) are **shared with
+the Playwright suites** — one corpus, two callers. An agent driving Otto by hand and
+a spec asserting about Otto work against identical ground truth, so a green suite
+stays evidence about the thing the agent just looked at. Template format and the
+rules a template has to meet are in
+[test-documents/projects/README.md](../test-documents/projects/README.md).
+
+The first two stages are file writes. The last three drive the **running** daemon
+over its WebSocket, because a project, a workspace and an agent are daemon-owned
+records — hand-writing them into `OTTO_HOME` would duplicate registry logic and
+rot the first time it changed. That is also why the workspace stage calls
+`open_project` rather than `workspace.create`: `workspace.create` never
+deduplicates by directory and the daemon rejects a second workspace on a
+directory that already backs one, so a re-run would fail. A playbook that is not
+idempotent is not a playbook.
+
+**Custom providers are registered once, at daemon startup.** Seeding `config.json`
+while the lane is running leaves the daemon unaware of `openai-compatible`, and
+`createAgent` then fails with a bare `Unknown provider`. The `chat` stage
+preflights the provider list and tells you to restart the lane instead.
+
+Where this is going — boilerplate language projects, branch-backed workspaces,
+full local git, and per-feature playbooks for artifacts, schedules, teams and the
+visualizer — is charted in
+[projects/usage-playbooks](../projects/usage-playbooks/usage-playbooks.md).
+
 **Tests and demos stay dynamic on purpose — do not pin them to a band.** Both run
 through `e2e/global-setup.ts`, which mints a throwaway `mkdtemp` `OTTO_HOME` per
 run and asks the OS for free daemon/Metro/relay ports. That is what lets several

@@ -1,0 +1,115 @@
+= Otto.Ledger architecture
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: highlight.js
+
+== Why double entry
+
+Single-entry bookkeeping records what happened to one account. Double entry records
+what happened *between* two, which turns "did we lose a transaction?" from an audit
+into an assertion: for every currency, debits and credits sum to zero. That is
+`GeneralLedger.IsBalanced`, and it is checked on every CLI run.
+
+The cost is that a posting is never one row. `Post` always appends two entries, and
+nothing else in the API can append one — there is no public `AddEntry`.
+
+== Projects
+
+[cols="1,3"]
+|===
+| Project | Responsibility
+
+| `Otto.Ledger.Core`
+| Domain types and the ledger invariant. No I/O, no console, no configuration.
+
+| `Otto.Ledger.Cli`
+| Composition and presentation: seeds a demo ledger, formats a trial balance,
+  maps domain errors onto exit codes.
+|===
+
+The dependency runs one way only, enforced by the `ProjectReference` in
+`Otto.Ledger.Cli.csproj`. Core has no reference back.
+
+== Posting flow
+
+[mermaid]
+....
+sequenceDiagram
+    participant CLI as Otto.Ledger.Cli
+    participant L as GeneralLedger
+    participant A as Account registry
+
+    CLI->>L: Post("revenue", "cash", $4200, "March invoices")
+    L->>L: reject non-positive amount
+    L->>A: Require("revenue")
+    A-->>L: Account(revenue, USD)
+    L->>A: Require("cash")
+    A-->>L: Account(cash, USD)
+    L->>L: reject currency mismatch
+    L->>L: append Debit(revenue) + Credit(cash)
+    L-->>CLI: void
+
+    CLI->>L: BalanceOf("cash")
+    L-->>CLI: Money(343050, "USD")
+....
+
+== Type relationships
+
+[mermaid]
+....
+classDiagram
+    class Money {
+        +long MinorUnits
+        +string Currency
+        +decimal ToMajorUnits()
+        +bool IsNegative
+    }
+    class Entry {
+        +string AccountId
+        +EntryKind Kind
+        +Money Amount
+        +Money SignedAmount
+    }
+    class Account {
+        +string Id
+        +string Name
+        +string Currency
+    }
+    class GeneralLedger {
+        +OpenAccount(Account)
+        +Post(from, to, amount, memo)
+        +BalanceOf(id) Money
+        +bool IsBalanced
+        +Overdrawn() IEnumerable
+    }
+    GeneralLedger "1" o-- "*" Account
+    GeneralLedger "1" o-- "*" Entry
+    Entry --> Money
+    Account --> Money
+....
+
+== Decisions
+
+=== Money is integer minor units
+
+`Money` holds `long MinorUnits`. A `decimal` would be accurate enough in practice,
+but the type then invites arithmetic in the domain that rounds differently depending
+on evaluation order. Integers make the rounding decision happen exactly once, in
+`FromMajorUnits`, with an explicit `MidpointRounding.ToEven`.
+
+=== Errors are domain exceptions, not return codes
+
+`LedgerException` is thrown for anything a caller could reasonably have got wrong:
+unknown account, duplicate account, non-positive posting, currency mismatch. The CLI
+catches it at the top of `Main` and turns it into stderr plus exit code 1, so a user
+error never surfaces as a stack trace.
+
+=== Signed amounts live on the entry
+
+`Entry.SignedAmount` negates a debit. Callers therefore never branch on
+`EntryKind` to work out a sign, which is the mistake that makes balances drift.
+
+WARNING: `Overdrawn()` recomputes `BalanceOf` per account, so it is O(accounts x
+entries). Fine at fixture scale; it wants a running balance before it is fine at
+real scale.

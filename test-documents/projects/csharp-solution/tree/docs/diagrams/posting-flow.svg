@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" role="img" aria-labelledby="title desc">
+  <title id="title">Double-entry posting flow</title>
+  <desc id="desc">A single Post call appends one debit and one credit, keeping the ledger balanced.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e3a8a"/>
+      <stop offset="100%" stop-color="#172554"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="720" height="300" fill="none"/>
+
+  <g font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+    <rect x="24" y="120" width="150" height="60" rx="8" fill="url(#card)"/>
+    <text x="99" y="146" fill="#e2e8f0" text-anchor="middle" font-weight="600">Post()</text>
+    <text x="99" y="164" fill="#94a3b8" text-anchor="middle" font-size="11">revenue &#8594; cash</text>
+
+    <line x1="180" y1="150" x2="268" y2="104" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <line x1="180" y1="150" x2="268" y2="196" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="276" y="74" width="180" height="60" rx="8" fill="#0f172a" stroke="#334155"/>
+    <text x="366" y="100" fill="#f8fafc" text-anchor="middle" font-weight="600">Debit</text>
+    <text x="366" y="118" fill="#f87171" text-anchor="middle" font-size="11">revenue &#8722;4,200.00 USD</text>
+
+    <rect x="276" y="166" width="180" height="60" rx="8" fill="#0f172a" stroke="#334155"/>
+    <text x="366" y="192" fill="#f8fafc" text-anchor="middle" font-weight="600">Credit</text>
+    <text x="366" y="210" fill="#4ade80" text-anchor="middle" font-size="11">cash +4,200.00 USD</text>
+
+    <line x1="462" y1="104" x2="548" y2="142" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <line x1="462" y1="196" x2="548" y2="158" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <rect x="556" y="120" width="140" height="60" rx="8" fill="#052e16" stroke="#166534"/>
+    <text x="626" y="146" fill="#f0fdf4" text-anchor="middle" font-weight="600">IsBalanced</text>
+    <text x="626" y="164" fill="#86efac" text-anchor="middle" font-size="11">sum = 0</text>
+
+    <text x="360" y="270" fill="#94a3b8" text-anchor="middle" font-size="11">
+      Every posting is two entries. There is no public API to append one.
+    </text>
+  </g>
+</svg>

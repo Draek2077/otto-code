@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+
+# The CLI's own data file, written by `add` / `restock` / `remove`.
+inventory.json

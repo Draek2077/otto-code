@@ -1,0 +1,69 @@
+= Scheduler architecture
+:toc: left
+:icons: font
+
+== The ordering rule
+
+Two keys, applied in order:
+
+. Priority, descending. `CRITICAL` before `HIGH` before `NORMAL` before `LOW`.
+. Estimate, ascending. Among equally urgent work, short jobs first.
+
+The second key is what keeps the queue draining. Sorting on priority alone lets one
+180-minute `CRITICAL` task block a 25-minute one, and queue length flatlines while it runs.
+
+[mermaid]
+....
+flowchart TD
+    A[submit task] --> B{duplicate id?}
+    B -- yes --> C[IllegalStateException]
+    B -- no --> D[append to backlog]
+    D --> E[drainOrder]
+    E --> F[sort by priority desc]
+    F --> G[then by estimate asc]
+    G --> H[[worked in this order]]
+....
+
+== Types
+
+[mermaid]
+....
+classDiagram
+    class Priority {
+        <<enumeration>>
+        LOW
+        NORMAL
+        HIGH
+        CRITICAL
+        +outranks(Priority) boolean
+    }
+    class Task {
+        <<record>>
+        +String id
+        +String name
+        +Priority priority
+        +Duration estimate
+        +isLongRunning() boolean
+    }
+    class Scheduler {
+        -List~Task~ tasks
+        +submit(Task)
+        +drainOrder() List~Task~
+        +next() Optional~Task~
+        +totalEstimate() Duration
+        +byPriority() Map
+        +longRunning() List~Task~
+    }
+    Scheduler "1" o-- "*" Task
+    Task --> Priority
+....
+
+== Invariants
+
+* No two tasks share an id. Enforced in `submit`, which scans before appending.
+* A `Task` cannot exist in an invalid state — the compact constructor rejects a blank
+  id and a negative estimate, so there is no window where one is half-built.
+* `next()` and `drainOrder().get(0)` always agree; both use the same comparator.
+
+WARNING: `submit` is O(n) because it scans for the duplicate id, making a bulk load
+O(n²). Fine at fixture scale. A `Set` of ids alongside the list is the fix.

@@ -1,0 +1,56 @@
+= Dashboard architecture
+:icons: font
+
+== Layering
+
+Three modules, one direction. Nothing below `app.ts` knows a browser exists, which is
+what makes the whole calculation testable in Node with no DOM shim.
+
+[mermaid]
+....
+flowchart LR
+    H[index.html] --> A[app.ts]
+    A --> F[format.ts]
+    A --> S[sparkline.ts]
+    S --> F
+    C[main.css] -.styles.-> H
+    T[tests] --> F
+    T --> S
+    T --> A
+    style F fill:#0f172a,color:#e2e8f0
+    style S fill:#0f172a,color:#e2e8f0
+....
+
+`app.ts` is the only module that touches `document`, and it does so behind a
+`typeof document !== "undefined"` guard so a test can import it safely.
+
+== Trend calculation
+
+[mermaid]
+....
+flowchart TD
+    A[samples] --> B{fewer than 2?}
+    B -- yes --> C[flat]
+    B -- no --> D[baseline = mean of all but last]
+    D --> E{baseline == 0?}
+    E -- yes --> F{latest == 0?}
+    F -- yes --> C
+    F -- no --> G[up]
+    E -- no --> H[delta = latest - baseline / baseline]
+    H --> I{abs delta <= tolerance?}
+    I -- yes --> C
+    I -- no --> J{delta > 0?}
+    J -- yes --> G
+    J -- no --> K[down]
+....
+
+TIP: The tolerance band exists so ordinary noise does not paint every card red. It
+defaults to 2% and is a parameter, not a constant.
+
+== Styling
+
+CSS custom properties on `:root`, overridden in a `prefers-color-scheme: dark` block.
+Trend colour is driven by a `data-trend` attribute rather than a class, so the
+renderer emits one attribute and the stylesheet owns every colour decision.
+
+Hover transitions sit behind `prefers-reduced-motion: no-preference`.

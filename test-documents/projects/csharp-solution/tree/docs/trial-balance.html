@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Otto.Ledger — trial balance, March</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #0f172a;
+        --muted: #64748b;
+        --rule: #e2e8f0;
+        --credit: #15803d;
+        --debit: #b91c1c;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg: #0b1120; --fg: #e2e8f0; --rule: #1e293b; --credit: #4ade80; --debit: #f87171; }
+      }
+      body {
+        margin: 0;
+        padding: 2.5rem 1.5rem;
+        background: var(--bg);
+        color: var(--fg);
+        font: 15px/1.6 ui-sans-serif, system-ui, sans-serif;
+      }
+      main { max-width: 46rem; margin: 0 auto; }
+      h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+      p.sub { color: var(--muted); margin: 0 0 2rem; }
+      table { width: 100%; border-collapse: collapse; }
+      caption { text-align: left; font-weight: 600; padding-bottom: 0.75rem; }
+      th, td { padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--rule); text-align: left; }
+      th:last-child, td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+      tfoot td { font-weight: 600; border-bottom: none; }
+      .credit { color: var(--credit); }
+      .debit { color: var(--debit); }
+      .verdict { margin-top: 2rem; padding: 0.75rem 1rem; border-left: 3px solid var(--credit); background: color-mix(in srgb, var(--credit) 10%, transparent); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Trial balance</h1>
+      <p class="sub">Otto.Ledger &middot; period ending 31 March &middot; all amounts USD</p>
+
+      <table>
+        <caption>Accounts</caption>
+        <thead>
+          <tr><th scope="col">Account</th><th scope="col">Type</th><th scope="col">Balance</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Cash on hand</td><td>Asset</td><td class="credit">3,430.50</td></tr>
+          <tr><td>Rent expense</td><td>Expense</td><td class="credit">1,750.00</td></tr>
+          <tr><td>Revenue</td><td>Income</td><td class="debit">-5,180.50</td></tr>
+        </tbody>
+        <tfoot>
+          <tr><td colspan="2">Net</td><td>0.00</td></tr>
+        </tfoot>
+      </table>
+
+      <p class="verdict"><strong>Balanced.</strong> 6 entries across 3 postings; debits and credits cancel exactly.</p>
+    </main>
+  </body>
+</html>

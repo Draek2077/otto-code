@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Otto.Ledger.Cli/Otto.Ledger.Cli.csproj" />
+    <Project Path="src/Otto.Ledger.Core/Otto.Ledger.Core.csproj" />
+  </Folder>
+</Solution>

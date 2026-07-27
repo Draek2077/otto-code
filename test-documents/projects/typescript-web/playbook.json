@@ -1,0 +1,17 @@
+{
+  "label": "TypeScript Web",
+  "description": "Latency dashboard: HTML, CSS with dark mode, TypeScript modules, SVG sparklines, node:test suites",
+  "tool": "node",
+  "toolVersionArgs": ["--version"],
+  "test": ["node", "--test", "tests/format.test.ts", "tests/render.test.ts"],
+  "breaks": [
+    {
+      "slug": "failing-test",
+      "detail": "the trend tolerance band widens to 50%, so a doubling reads as flat and two assertions fail"
+    },
+    {
+      "slug": "syntax-error",
+      "detail": "unclosed template literal in sparkline.ts - the module fails to parse before any test runs"
+    }
+  ]
+}
