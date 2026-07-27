@@ -130,6 +130,29 @@ The same data feeds three other consumers, which is the point of doing it once:
   on a machine without it. Cheapest correctness win in the whole charter.
 - **The playbooks**, replacing the per-template `probeToolchain` with the shared catalog.
 
+## Install instructions are generated, not written
+
+Users need "how do I install a Go toolchain on my machine", and that is a
+[`public-docs/`](../../public-docs/index.md) page — the user-facing manual, not `docs/`, which is for
+how Otto is built.
+
+**The page is generated from the catalog.** Roughly forty languages across three platforms is over a
+hundred install commands; hand-maintained, that table is stale the week after it is written, and it
+would disagree with the in-app report that reads from the catalog — which is worse than having
+neither, because the user cannot tell which one to trust. The `install` block already carries per
+platform commands for exactly this reason.
+
+Two audiences, one source:
+
+- **In-app**, in the Code section report: only what this machine is missing, with the command for
+  _this_ platform, copyable. Contextual and short.
+- **In `public-docs/`**, the full table, all platforms, for someone setting up before they install
+  Otto or reading on a different machine than the one they are configuring.
+
+Write the page when Phase 1 lands and the catalog exists to generate it from. Writing it earlier means
+hand-authoring install commands for languages Otto does not yet support, which is a promise the
+product cannot keep.
+
 ## Godot
 
 Worth its own section because it is the case that does not fit the shape above, and the misfit is
