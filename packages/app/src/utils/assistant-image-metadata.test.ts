@@ -56,6 +56,9 @@ describe("assistant image metadata", () => {
     ).toEqual({
       status: "ready",
       aspectRatio: 9 / 16,
+      // `width` is part of the ready state (see AssistantImageLoadState); the
+      // consumer in message.tsx sizes the placeholder from it.
+      width: 900,
     });
   });
 
