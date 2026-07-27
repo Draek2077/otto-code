@@ -678,3 +678,41 @@ Always run typecheck after changes:
 ```bash
 npm run typecheck
 ```
+
+## Git hooks dying instantly in an agent session (Windows)
+
+**Symptom:** `git commit` inside an agent session fails with all three lefthook jobs
+(format / lint / typecheck) exiting non-zero in well under a second, reporting
+`'node' is not recognized as an internal or external command` or `'"node"' is not
+recognized`. Running the same three checks by hand passes. A sub-second triple
+failure is the tell: a real typecheck takes tens of seconds, so nothing was ever
+checked.
+
+**Cause, and why it only bites agents.** The daemon prepends the sherpa-onnx
+library directory to its own `PATH` so the speech addon can find its DLLs
+(`applySherpaLoaderEnv`), and every process the daemon spawns inherits it. In a
+packaged desktop build that directory used to resolve _inside_ `app.asar`, which
+is an archive file rather than a directory. Git runs hooks through its bundled
+MSYS `sh`, and MSYS rewrites `PATH` from POSIX to Windows form for native
+children. It gives up at the `app.asar` entry and silently drops every entry
+after it — including the one holding `node`. So the hook's `npm run` starts, its
+script shell cannot resolve `node`, and the job dies. Your own terminal is
+unaffected because nothing there inherits the daemon's `PATH`.
+
+**Fixed** in `sherpa-runtime-env.ts` by redirecting the resolved directory to its
+`app.asar.unpacked` twin, which is a real directory (and is where
+electron-builder puts native modules, so the old path could never have loaded
+the addon anyway). `resolveUnpackedLibDir` owns the redirect and is unit-tested.
+
+**If you see it again**, confirm before assuming anything is wrong with your
+changes:
+
+```bash
+# 43 entries here, but far fewer reaching an npm script means PATH is truncated
+"C:\Program Files\Git\bin\sh.exe" -c 'echo "$PATH"'
+"C:\Program Files\Git\bin\sh.exe" -c 'npm exec -c "echo %PATH%"'
+```
+
+Any entry that points inside a `.asar` is the culprit. Do not "fix" it by
+committing with `--no-verify` as a habit: that silently gives up the pre-commit
+gate on every agent commit.

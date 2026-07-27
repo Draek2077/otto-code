@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -47,6 +48,37 @@ export function prependEnvPath(existing: string | undefined, value: string): str
   return [value, ...parts].join(path.delimiter);
 }
 
+/**
+ * Redirect a path that landed inside `app.asar` to its `app.asar.unpacked`
+ * twin. In a packaged Electron build `require.resolve` returns a path inside
+ * the asar archive, which is a FILE, not a directory: nothing loads from it,
+ * and electron-builder unpacks native modules to `app.asar.unpacked` for
+ * exactly that reason.
+ *
+ * On Windows the un-redirected path is not merely useless, it is destructive.
+ * We prepend this directory to the daemon's own PATH so the native addon can
+ * find its DLLs, and every process the daemon spawns inherits it. Git's MSYS
+ * layer rewrites PATH from POSIX to Windows form for native children, and it
+ * gives up at the `app.asar` entry, silently dropping every entry after it,
+ * including the one holding node itself. The symptom is every git hook in an
+ * agent session dying in under a second with "'node' is not recognized", which
+ * reads as a failed check rather than as a truncated PATH. See
+ * docs/development.md.
+ *
+ * `exists` is injectable so the redirect is testable without a packaged build.
+ */
+export function resolveUnpackedLibDir(
+  dir: string,
+  exists: (candidate: string) => boolean = existsSync,
+): string {
+  const match = dir.match(/^(.*app\.asar)([\\/].*)$/);
+  if (!match) {
+    return dir;
+  }
+  const unpacked = `${match[1]}.unpacked${match[2]}`;
+  return exists(unpacked) ? unpacked : dir;
+}
+
 export function resolveSherpaLoaderEnv(
   platform: NodeJS.Platform = process.platform,
   arch: string = process.arch,
@@ -62,7 +94,7 @@ export function resolveSherpaLoaderEnv(
     const pkgJson = require.resolve(`${packageName}/package.json`);
     return {
       key,
-      libDir: path.dirname(pkgJson),
+      libDir: resolveUnpackedLibDir(path.dirname(pkgJson)),
       packageName,
     };
   } catch {
