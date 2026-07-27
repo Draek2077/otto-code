@@ -2522,6 +2522,43 @@ describe("ClaudeAgentSession context window usage", () => {
     expect(live.filter((event) => event.type === "background_shell_task_updated")).toEqual([]);
   });
 
+  test("level signal does not double-file a local_agent run as a background task", async () => {
+    const session = await createSessionForTest();
+
+    // The CLI's real task_type for an Agent/Task run is "local_agent", and the
+    // SDK documents the level signal as arriving BEFORE the task_started edge.
+    // Filing it here would give one sub-agent two rows: a background task and an
+    // observed sub-agent, same title, seconds apart.
+    const live = session.translateMessageToEvents({
+      type: "system",
+      subtype: "background_tasks_changed",
+      tasks: [
+        { task_id: "agent-1", task_type: "local_agent", description: "Run the release chain" },
+      ],
+      uuid: "bg-agent-1",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+    expect(live.filter((event) => event.type === "background_shell_task_updated")).toEqual([]);
+
+    const started = session.translateMessageToEvents({
+      type: "system",
+      subtype: "task_started",
+      task_id: "agent-1",
+      task_type: "local_agent",
+      description: "Run the release chain",
+      uuid: "task-started-agent-1",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+
+    expect(started).toContainEqual(
+      expect.objectContaining({
+        type: "observed_subagent_updated",
+        update: expect.objectContaining({ taskId: "agent-1", status: "running" }),
+      }),
+    );
+    expect(started.filter((event) => event.type === "background_shell_task_updated")).toEqual([]);
+  });
+
   test("result.result is not duplicated when assistant text already streamed with zero token usage", async () => {
     const queryFactory = createQueryFactoryForTurns([
       [

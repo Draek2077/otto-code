@@ -400,6 +400,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const [expandedInlineToolCallIds, setExpandedInlineToolCallIds] = useState<Set<string>>(
       new Set(),
     );
+    // While the reader is scrolled away from the bottom, freeze the boundary
+    // between mounted and virtualized history. Left free, it advances on its own
+    // as the agent streams, and the turn it hands to the virtualizer collapses
+    // from measured heights to estimates in one frame — which clamps scrollTop
+    // and throws the reader back toward the top of the chat. Pin it at whatever
+    // it was when they scrolled away; release when they come back to the bottom,
+    // where the same collapse happens off screen. See findMountedWindowStart.
+    const [pinnedMountedWindowStartId, setPinnedMountedWindowStartId] = useState<string | null>(
+      null,
+    );
     const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
     const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
 
@@ -443,6 +453,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     useEffect(() => {
       setIsNearBottom(true);
       setExpandedInlineToolCallIds(new Set());
+      setPinnedMountedWindowStartId(null);
     }, [agentId]);
 
     const handleInlinePathPress = useStableEvent(
@@ -611,8 +622,28 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         platform: isWeb ? "web" : "native",
         isMobileBreakpoint: isMobile,
         groupConsecutiveActions,
+        pinnedMountedWindowStartId,
       });
-    }, [agent.status, isMobile, deferredStreamHead, deferredStreamItems, groupConsecutiveActions]);
+    }, [
+      agent.status,
+      isMobile,
+      deferredStreamHead,
+      deferredStreamItems,
+      groupConsecutiveActions,
+      pinnedMountedWindowStartId,
+    ]);
+    const mountedWindowStartId = baseRenderModel.segments.historyMounted[0]?.id ?? null;
+    const mountedWindowStartIdRef = useRef(mountedWindowStartId);
+    mountedWindowStartIdRef.current = mountedWindowStartId;
+    // Depends on isNearBottom alone: the pin is taken once on the way up and
+    // dropped once on the way back, so this never re-runs off its own output.
+    useEffect(() => {
+      if (isNearBottom) {
+        setPinnedMountedWindowStartId(null);
+        return;
+      }
+      setPinnedMountedWindowStartId((current) => current ?? mountedWindowStartIdRef.current);
+    }, [isNearBottom]);
     const streamLayout = useMemo(
       () =>
         layoutStream({
