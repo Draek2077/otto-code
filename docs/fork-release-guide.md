@@ -33,6 +33,16 @@ gap this doc tracks.
 
 ## Infrastructure inventory
 
+**Update (2026-07-27): the Play workflow no longer fires on `v*` — it was starving the APK.**
+EAS's free plan allows **15 Android builds a month**, and a `v*` tag was spending two of them: one
+AAB for Play, one sideload APK. The Play half never went green from CI (20 runs, 20 failures; 0.5.1
+reached Play by hand), and the quota ran out on 2026-07-12, after which **0.5.2 through 0.7.1
+shipped with no Android artifact at all**. `android-play-release.yml` now triggers only on
+`android-play-v*` / `workflow_dispatch`; restore `v*` once a submit succeeds from CI. Two traps
+worth remembering: a quota-refused run still **burns a versionCode** (EAS increments before it
+checks the budget — that's why the counter reads 50 while the last real build was 0.5.1), and
+`v*` matches beta tags, so every prerelease spends from the same 15.
+
 **Update (2026-07-08): Cloudflare is live — this superseded the self-host direction.** A
 `CLOUDFLARE_API_TOKEN` repo secret was added on 2026-07-05, both `wrangler.toml`s carry the
 fork's own `account_id` with `otto-code.me` routes, and as of the v0.4.2 release the
@@ -210,10 +220,15 @@ before you've set up EAS; not a distribution mechanism for other users.
 ### Play internal-track auto-submit
 
 `.github/workflows/android-play-release.yml` is the automated replacement for hand-downloading the
-AAB and uploading it in the Play Console. On a `v*` tag it builds an AAB via EAS's `production`
-profile and runs `eas submit --profile internal` (see `eas.json`'s `submit.internal`, which reads
+AAB and uploading it in the Play Console. It builds an AAB via EAS's `production` profile and runs
+`eas submit --profile internal` (see `eas.json`'s `submit.internal`, which reads
 `packages/app/google-service-account.json`). It's kept separate from `android-apk-release.yml` so
 the sideload APK and the Play submit retry independently.
+
+**It does not run on `v*`** (removed 2026-07-27 — see the infrastructure-inventory update above).
+Trigger it with an `android-play-vX.Y.Z` tag or `workflow_dispatch`. On the free plan the two
+Android workflows share one 15-build monthly budget, and this one has never completed a submit from
+CI, so it no longer takes a slot from the sideload APK by default.
 
 **Repo secrets it needs** (both set): `EXPO_TOKEN` (authenticates EAS) and
 `GOOGLE_SERVICE_ACCOUNT_KEY` (full JSON of a Play service-account key). The workflow materializes

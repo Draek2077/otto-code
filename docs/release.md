@@ -188,14 +188,18 @@ If N+1 is a hotfix for a bug in N, dispatch `desktop-rollout.yml -f tag=v0.1.<N+
 
 ## Mobile builds (EAS)
 
-> **Fork reality (Draek2077/otto-code, updated 2026-07-18):** this fork's mobile release paths
-> live in this repo's own workflows, not upstream's EAS-GitHub-app-triggered flow:
+> **Fork reality (Draek2077/otto-code, updated 2026-07-27):** this fork's mobile release paths
+> live in this repo's own workflows, not upstream's EAS-GitHub-app-triggered flow. All of them draw
+> on **one shared EAS free-plan budget of 15 Android builds a month** — see
+> [fork-release-guide.md](fork-release-guide.md)'s infrastructure inventory for how that budget was
+> exhausted on 2026-07-12:
 >
 > - **Android APK (GitHub Release asset)** — `.github/workflows/android-apk-release.yml`. Live and
->   active; needs only `EXPO_TOKEN`.
-> - **Android (Play Store internal track)** — `.github/workflows/android-play-release.yml`. Live and
->   active; auto-submits to Play's internal testing track on a `v*` tag. Needs `EXPO_TOKEN` +
->   `GOOGLE_SERVICE_ACCOUNT_KEY`.
+>   active on `v*`; needs only `EXPO_TOKEN`. One EAS Android build per release tag, betas included.
+> - **Android (Play Store internal track)** — `.github/workflows/android-play-release.yml`. Wired
+>   but **off `v*`** as of 2026-07-27: it has never completed a submit from CI, and leaving it on
+>   every tag spent half the monthly Android budget. Trigger it with an `android-play-v*` tag or
+>   `workflow_dispatch`. Needs `EXPO_TOKEN` + `GOOGLE_SERVICE_ACCOUNT_KEY`.
 > - **iOS (TestFlight)** — `.github/workflows/ios-release.yml`. Wired but **gated off**: no Apple
 >   Developer account or App Store Connect app exists yet, so the workflow's signing gate skips it
 >   cleanly on every tag push. See [fork-release-guide.md](fork-release-guide.md)'s "iOS release"
