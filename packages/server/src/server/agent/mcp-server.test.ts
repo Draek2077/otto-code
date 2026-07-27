@@ -172,6 +172,22 @@ async function waitForWorkspaceBranch(
   });
 }
 
+// The workspace record's branch and the worktree's git branch are written by two
+// different paths — the workspace-name generator upserts the record, while the
+// first-agent branch auto-namer renames the git branch — so a record that already
+// carries the generated name does not prove the rename has landed. Poll the git
+// branch the assertion is actually about rather than assuming the two writes are
+// ordered; it still fails loudly if the rename never happens.
+async function waitForWorktreeGitBranch(cwd: string, branch: string): Promise<void> {
+  await vi.waitFor(
+    () =>
+      expect(
+        execFileSync("git", ["branch", "--show-current"], { cwd, stdio: "pipe" }).toString().trim(),
+      ).toBe(branch),
+    { timeout: 5_000 },
+  );
+}
+
 async function waitForUnexpectedWorkspaceNamingSideEffects(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 25));
 }
@@ -1919,6 +1935,7 @@ describe("create_agent MCP tool", () => {
       await waitForWorkspaceTitle(workspaceRecords, workspaceId, "Workspace Auto Title Flow");
 
       const agentCwd = z.string().parse(spies.agentManager.createAgent.mock.calls[0]?.[0].cwd);
+      await waitForWorktreeGitBranch(agentCwd, "workspace-auto-title-flow");
       const workspace = workspaceRecords.get(workspaceId);
       const branchName = execFileSync("git", ["branch", "--show-current"], {
         cwd: agentCwd,
@@ -2026,6 +2043,7 @@ describe("create_agent MCP tool", () => {
       await waitForWorkspaceBranch(workspaceRecords, workspaceId, "generated-manual-race-title");
 
       const agentCwd = z.string().parse(spies.agentManager.createAgent.mock.calls[0]?.[0].cwd);
+      await waitForWorktreeGitBranch(agentCwd, "generated-manual-race-title");
       const workspace = workspaceRecords.get(workspaceId);
       const branchName = execFileSync("git", ["branch", "--show-current"], {
         cwd: agentCwd,

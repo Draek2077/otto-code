@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
 import { Buffer } from "node:buffer";
+import { chromium } from "@playwright/test";
 import dotenv from "dotenv";
 import { loadDaemonClientConstructor } from "./helpers/daemon-client-loader";
 import { createNodeWebSocketFactory, type NodeWebSocketFactory } from "./helpers/node-ws-factory";
@@ -96,6 +97,27 @@ function formatRecentOutput(getRecentOutput?: () => string): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Metro accepts TCP connections long before it has compiled the web bundle, so
+// waitForServer below only proves the port is listening. The first navigation is
+// what triggers the compile, and on CI that runs well past a spec's 60s budget —
+// so whichever spec happened to be first in a shard paid for it and failed on
+// `page.goto` (diff-row-alignment as attempt #1, shards 2 and 4). Each shard
+// spawns its own Metro, so each one has to be warmed. Doing it here puts the
+// compile outside every test's clock; it costs nothing net, since the first
+// navigation would have paid it anyway.
+async function warmMetroWebBundle(input: { metroPort: number; timeoutMs: number }): Promise<void> {
+  const browser = await chromium.launch({ channel: process.env.E2E_BROWSER_CHANNEL });
+  try {
+    const page = await browser.newPage();
+    await page.goto(`http://localhost:${input.metroPort}/`, {
+      waitUntil: "load",
+      timeout: input.timeoutMs,
+    });
+  } finally {
+    await browser.close();
+  }
 }
 
 async function waitForServer(port: number, options: WaitForServerOptions): Promise<void> {
@@ -943,6 +965,8 @@ export default async function globalSetup() {
         getRecentOutput: metroLineBuffer.dump,
       }),
     ]);
+
+    await warmMetroWebBundle({ metroPort, timeoutMs: 180000 });
 
     const offer = await waitForPairingOfferFromDaemon({
       port,

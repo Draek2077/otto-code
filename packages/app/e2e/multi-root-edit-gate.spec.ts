@@ -18,10 +18,13 @@ import { openProjects, openProjectSettings } from "./helpers/project-settings";
 import { seedWorkspace, type SeededWorkspace } from "./helpers/seed-client";
 import { createTempDirectory, type TempDirectory } from "./helpers/workspace";
 
-// Gated multi-root editing (projects/cross-project-open.ts resolveEditGate):
-// any file can be previewed in place, editing is gated by origin — free for
-// the current or a linked project, warn-with-suppress for another unlinked
-// project, warn-every-time for a file outside every project. The UI entry
+// Multi-root file opening (projects/cross-project-open.ts resolveEditGate):
+// any file opens and edits in place. Origin decides the banner, not a gate —
+// none for the current or a linked project, a project-named one for another
+// unlinked project, an unnamed one for a file outside every project. Editing is
+// never held behind a confirm dialog (file-tab-pane.tsx): the banner carries the
+// trade-off instead, since an out-of-project edit is not part of the agent's
+// context and not part of this workspace's Git changes. The UI entry
 // point for a cross-project open is a chat file link (an absolute path in
 // assistant inline code, components/message.tsx code_inline rule →
 // AssistantInlineCodePathLink). The mock provider has no free-text echo, so
@@ -102,7 +105,7 @@ test.afterAll(async () => {
 });
 
 test.describe("Gated multi-root editing", () => {
-  test("unlinked project file previews in place but editing is gated", async ({ page }) => {
+  test("unlinked project file previews in place and edits behind a banner", async ({ page }) => {
     test.setTimeout(120_000);
     await unlinkAB();
     await openChatWithFileLink(page, `${workspaceB.workspaceDirectory}/${GATED_FILE}`);
@@ -116,33 +119,23 @@ test.describe("Gated multi-root editing", () => {
     await expect(banner).toBeVisible({ timeout: 30_000 });
     await expect(banner).toContainText(workspaceB.projectDisplayName);
 
-    // Preview works; the editor is clamped off until the warning is accepted.
+    // Markdown still opens in preview (defaultFileViewMode), so the editor is
+    // absent until the view mode is switched — not because editing is blocked.
     await expect(filePreviewSurface(page)).toContainText("Gated note body", { timeout: 30_000 });
     await expect(fileTabEditorContent(page)).toHaveCount(0);
 
-    // Switching to editor raises the suppressible other-project warning.
-    await page.getByTestId("file-view-mode-editor").click();
+    // Switching to editor just works: no confirm dialog, and the banner stays
+    // up the whole time as the standing reminder of where the file lives.
     const dialog = page.getByTestId("confirm-dialog");
-    await expect(dialog).toBeVisible({ timeout: 10_000 });
-    await expect(dialog).toContainText(workspaceB.projectDisplayName);
-    await expect(page.getByTestId("confirm-dialog-checkbox")).toBeVisible();
-
-    // Rejecting leaves the file in preview.
-    await page.getByTestId("confirm-dialog-cancel").click();
-    await expect(dialog).toBeHidden({ timeout: 10_000 });
-    await expect(fileTabEditorContent(page)).toHaveCount(0);
-
-    // Accepting (without suppression) unlocks the editor; the banner stays.
     await page.getByTestId("file-view-mode-editor").click();
-    await expect(dialog).toBeVisible({ timeout: 10_000 });
-    await page.getByTestId("confirm-dialog-confirm").click();
+    await expect(dialog).toHaveCount(0);
     await expect(fileTabEditorContent(page)).toContainText("Gated note body", {
       timeout: 30_000,
     });
     await expect(banner).toBeVisible();
 
-    // Acceptance is per tab: close and reopen, and the file is clamped back
-    // to preview (despite the remembered editor mode) and warns again.
+    // Reopening the tab re-derives the banner from the live link set rather
+    // than from any per-tab acceptance, and still never warns.
     const fileTab = page
       .locator('[data-testid^="workspace-tab-file_"]')
       .filter({ hasText: GATED_FILE })
@@ -152,12 +145,8 @@ test.describe("Gated multi-root editing", () => {
     await expect(fileTab).toBeHidden({ timeout: 30_000 });
     await chatFileLink(page, GATED_FILE).click();
     await expect(fileTabPane(page)).toBeVisible({ timeout: 30_000 });
-    await expect(filePreviewSurface(page)).toBeVisible({ timeout: 30_000 });
-    await expect(fileTabEditorContent(page)).toHaveCount(0);
-    await page.getByTestId("file-view-mode-editor").click();
-    await expect(dialog).toBeVisible({ timeout: 10_000 });
-    await page.getByTestId("confirm-dialog-cancel").click();
-    await expect(dialog).toBeHidden({ timeout: 10_000 });
+    await expect(banner).toBeVisible({ timeout: 30_000 });
+    await expect(dialog).toHaveCount(0);
   });
 
   test("linking the projects bidirectionally lifts the edit gate", async ({ page }) => {
@@ -201,7 +190,7 @@ test.describe("Gated multi-root editing", () => {
     });
   });
 
-  test("a file outside every project always warns before editing", async ({ page }) => {
+  test("a file outside every project edits in place under an unnamed banner", async ({ page }) => {
     test.setTimeout(120_000);
     const outsideNotePath = join(outsideDir.path, OUTSIDE_FILE);
     await openChatWithFileLink(page, outsideNotePath);
@@ -216,20 +205,16 @@ test.describe("Gated multi-root editing", () => {
     await expect(banner).toHaveText(/Editing outside the project/);
     await expect(banner).not.toContainText("(");
 
-    // Preview works; the editor is clamped until the warning is accepted.
+    // Markdown opens in preview by default; the editor is one click away.
     await expect(filePreviewSurface(page)).toContainText("Outside note body", {
       timeout: 30_000,
     });
     await expect(fileTabEditorContent(page)).toHaveCount(0);
 
-    // The outside-project warning has no "don't ask again" checkbox.
+    // Editing a file that belongs to no project is allowed outright — the
+    // banner is the whole warning, so no dialog stands in the way.
     await page.getByTestId("file-view-mode-editor").click();
-    const dialog = page.getByTestId("confirm-dialog");
-    await expect(dialog).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByTestId("confirm-dialog-checkbox")).toHaveCount(0);
-
-    // Accepting unlocks real editing: a save writes through to the file.
-    await page.getByTestId("confirm-dialog-confirm").click();
+    await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
     await expect(fileTabEditorContent(page)).toContainText("Outside note body", {
       timeout: 30_000,
     });
