@@ -78,6 +78,27 @@ describe("buildPromptPreview", () => {
     ]);
   });
 
+  it("assembles only the requested category, and reads nothing else", async () => {
+    const read = readFile({ "/tmp/CLAUDE.md": "rules" });
+    let reads = 0;
+    const preview = await buildPromptPreview({
+      report: report({ nodes: [node("CLAUDE.md", "context_files")] }),
+      runtimeTextByCategory: { otto_injected: "team + personality" },
+      categories: ["otto_injected"],
+      readFile: async (path) => {
+        reads += 1;
+        return read(path);
+      },
+    });
+
+    // Reading Otto's own injected stack must not drag every context file in
+    // with it — not in the text, and not in the token figure above it.
+    expect(preview.sections).toEqual([
+      expect.objectContaining({ category: "otto_injected", text: "team + personality" }),
+    ]);
+    expect(reads).toBe(0);
+  });
+
   it("keeps an unmeasurable section with no text rather than omitting it", async () => {
     const preview = await buildPromptPreview({
       report: report({

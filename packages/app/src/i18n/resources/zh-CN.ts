@@ -193,7 +193,6 @@ export const zhCN: TranslationResources = {
   contextManagement: {
     back: "返回",
     tabs: {
-      prompt: "提示词",
       context: "上下文",
       findings: "值得修复",
       findingsCount: "值得修复 ({{count}})",
@@ -201,7 +200,7 @@ export const zhCN: TranslationResources = {
       memoryCount: "记忆 ({{count}})",
     },
     personalitySelector: {
-      label: "正在查看谁的上下文",
+      label: "查看对象",
       everyone: "所有人",
       searchPlaceholder: "搜索人格",
       lessons_one: "已记住 {{count}} 条经验",
@@ -321,7 +320,8 @@ export const zhCN: TranslationResources = {
     },
     prompt: {
       empty: "尚未组装任何内容。",
-      total: "已组装提示词 — 每次请求约 {{tokens}} 个 token",
+      readOnly: "只读",
+      sectionTokens: "每次请求约 {{tokens}} 个 token",
       notVisibleBody: "该提供方在自己的进程内组装这一部分。Otto 无法读取，因此只列出而不展示内容。",
     },
     filePlaceholder: {

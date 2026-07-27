@@ -196,7 +196,6 @@ export const fr: TranslationResources = {
   contextManagement: {
     back: "Retour",
     tabs: {
-      prompt: "Prompt",
       context: "Contexte",
       findings: "À corriger",
       findingsCount: "À corriger ({{count}})",
@@ -204,7 +203,7 @@ export const fr: TranslationResources = {
       memoryCount: "Mémoire ({{count}})",
     },
     personalitySelector: {
-      label: "Contexte affiché pour",
+      label: "Affiché pour",
       everyone: "Tout le monde",
       searchPlaceholder: "Rechercher une personnalité",
       lessons_one: "{{count}} leçon",
@@ -328,7 +327,8 @@ export const fr: TranslationResources = {
     },
     prompt: {
       empty: "Rien d'assemblé pour l'instant.",
-      total: "Prompt assemblé — environ {{tokens}} tokens par requête",
+      readOnly: "Lecture seule",
+      sectionTokens: "Environ {{tokens}} tokens par requête",
       notVisibleBody:
         "Ce fournisseur compose cette partie dans son propre processus. Otto ne peut pas la lire : elle est signalée mais non affichée.",
     },

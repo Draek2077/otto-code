@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, type ReactElement } from "reac
 import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { ContextNode, ContextReport } from "@otto-code/protocol/messages";
+import type { ContextCategory, ContextNode, ContextReport } from "@otto-code/protocol/messages";
 import { Link, Zap } from "@/components/icons/material-icons";
 import { TreeChevron, TreeIndentGuides, TREE_INDENT_PER_LEVEL } from "@/components/tree-primitives";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 import { CATEGORY_LABEL_KEYS, formatTokens } from "./format";
-import { buildContextTree, type ContextTreeRow } from "./graph-model";
+import { buildContextTree, isPromptSectionCategory, type ContextTreeRow } from "./graph-model";
 import { ScopeBadge, ScopeIcon, SCOPE_ICON_SIZE } from "./scope-icon";
 
 // Themed icons: `color` is required on every icon and `useUnistyles()` is banned
@@ -33,11 +33,15 @@ interface ContextGraphTreeProps {
   isLoading: boolean;
   expandedKeys: ReadonlySet<string>;
   selectedNodeId: string | null;
+  /** The prompt-section row being read, when one is selected instead of a file. */
+  selectedCategory?: ContextCategory | null;
   /** Bumped by the fix list to scroll that file's row into view. */
   revealNodeId?: string | null;
   revealNonce?: number;
   onToggle: (key: string) => void;
   onSelectNode: (node: ContextNode) => void;
+  /** A prompt row was opened for reading — see `isPromptSectionCategory`. */
+  onSelectCategory: (category: ContextCategory) => void;
 }
 
 /**
@@ -54,10 +58,12 @@ export function ContextGraphTree({
   isLoading,
   expandedKeys,
   selectedNodeId,
+  selectedCategory,
   revealNodeId,
   revealNonce,
   onToggle,
   onSelectNode,
+  onSelectCategory,
 }: ContextGraphTreeProps): ReactElement {
   const { t } = useTranslation();
   const rows = useMemo(
@@ -112,12 +118,17 @@ export function ContextGraphTree({
       <ContextTreeRowView
         row={item}
         expanded={expandedKeys.has(item.key)}
-        selected={item.kind === "node" && item.node?.id === selectedNodeId}
+        selected={
+          item.kind === "category"
+            ? item.category != null && item.category === selectedCategory
+            : item.node?.id === selectedNodeId
+        }
         onToggle={onToggle}
         onSelectNode={onSelectNode}
+        onSelectCategory={onSelectCategory}
       />
     ),
-    [expandedKeys, onSelectNode, onToggle, selectedNodeId],
+    [expandedKeys, onSelectCategory, onSelectNode, onToggle, selectedCategory, selectedNodeId],
   );
 
   if (rows.length === 0) {
@@ -162,6 +173,7 @@ interface ContextTreeRowViewProps {
   selected: boolean;
   onToggle: (key: string) => void;
   onSelectNode: (node: ContextNode) => void;
+  onSelectCategory: (category: ContextCategory) => void;
 }
 
 function ContextTreeRowView({
@@ -170,6 +182,7 @@ function ContextTreeRowView({
   selected,
   onToggle,
   onSelectNode,
+  onSelectCategory,
 }: ContextTreeRowViewProps): ReactElement {
   const { t } = useTranslation();
 
@@ -179,8 +192,14 @@ function ContextTreeRowView({
       if (row.expandable) onToggle(row.key);
       return;
     }
+    // A prompt category has no files under it, so pressing it can only mean
+    // "show me that text" — the same gesture a file row spends on the editor.
+    if (row.category && isPromptSectionCategory(row.category)) {
+      onSelectCategory(row.category);
+      return;
+    }
     if (row.expandable) onToggle(row.key);
-  }, [onSelectNode, onToggle, row]);
+  }, [onSelectCategory, onSelectNode, onToggle, row]);
 
   const label =
     row.kind === "category"

@@ -2823,6 +2823,11 @@ export const ContextPromptPreviewGetRequestMessageSchema = z.object({
   provider: z.string().optional(),
   windowTokens: z.number().optional(),
   personalityId: z.string().optional(),
+  // Assemble only this category. The tab reads one section at a time — the user
+  // clicked a row in the tree — and assembling the rest would re-read every
+  // context file on disk to build text nobody asked to see. Omitted means all,
+  // which is what an older client sends.
+  category: ContextCategorySchema.optional(),
 });
 
 export const ContextPromptPreviewGetResponseMessageSchema = z.object({

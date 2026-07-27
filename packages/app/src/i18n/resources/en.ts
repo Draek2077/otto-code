@@ -196,7 +196,6 @@ export const en = {
   contextManagement: {
     back: "Back",
     tabs: {
-      prompt: "Prompt",
       context: "Context",
       findings: "Issues",
       findingsCount: "Issues ({{count}})",
@@ -204,7 +203,7 @@ export const en = {
       memoryCount: "Memory ({{count}})",
     },
     personalitySelector: {
-      label: "Viewing context for",
+      label: "Viewing for",
       everyone: "Everyone",
       searchPlaceholder: "Search personalities",
       lessons_one: "{{count}} lesson",
@@ -288,7 +287,7 @@ export const en = {
       title: "Context sent per turn:",
       ofWindow: "{{percent}} of the window",
       workingRoom: "Leaves about {{room}} to work with",
-      window: "Evaluate against",
+      window: "Evaluate with",
       breakdown: "Every request",
       notCounted: "Not counted",
       conditional: "{{tokens}} loads only when the agent works in that area",
@@ -336,7 +335,8 @@ export const en = {
     },
     prompt: {
       empty: "Nothing assembled yet.",
-      total: "Assembled prompt — about {{tokens}} tokens every request",
+      readOnly: "Read-only",
+      sectionTokens: "About {{tokens}} tokens every request",
       notVisibleBody:
         "This provider composes this part inside its own process. Otto cannot read it, so it is listed but not shown.",
     },

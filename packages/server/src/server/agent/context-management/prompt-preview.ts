@@ -60,6 +60,12 @@ export interface BuildPromptPreviewInput {
   report: ContextReport;
   /** Text Otto composed itself, keyed by the category it belongs to. */
   runtimeTextByCategory?: Partial<Record<ContextCategory, string>>;
+  /**
+   * Restrict the assembly to these categories, in the same reading order.
+   * Omitted means every category — reading one section must not cost a re-read
+   * of every context file on disk.
+   */
+  categories?: readonly ContextCategory[];
   /** Injected for tests; defaults to reading the real file. */
   readFile?: (absolutePath: string) => Promise<string>;
 }
@@ -79,8 +85,11 @@ export async function buildPromptPreview(
     report.categoryTotals.map((total) => [total.category, total.visibility]),
   );
 
+  const wanted = input.categories ? new Set(input.categories) : null;
+
   const sections: ContextPromptSection[] = [];
   for (const category of SECTION_ORDER) {
+    if (wanted && !wanted.has(category)) continue;
     const visibility = visibilityByCategory.get(category);
 
     // The disclosure case: a category the report explicitly flagged as

@@ -25,6 +25,17 @@ import type { ContextCategory, ContextCategoryVisibility } from "./types.js";
 /** Scans are cheap, but focus switches should feel instant. */
 const CACHE_TTL_MS = 15_000;
 
+/**
+ * A personality's lessons as they are actually injected — the same text the
+ * Memory tab shows, because both come from `composeMemoryBrief`.
+ */
+export interface PersonalityMemoryBrief {
+  text: string;
+  estTokens: number;
+}
+
+const EMPTY_MEMORY_BRIEF: PersonalityMemoryBrief = { text: "", estTokens: 0 };
+
 export interface WorkspaceContextLocation {
   cwd: string;
   projectRoot: string;
@@ -60,15 +71,16 @@ export interface ContextManagementServiceDeps {
   /** Provider + model + Otto-composed weight for the workspace's active agent. */
   resolveRuntime(workspaceId: string): Promise<WorkspaceContextRuntime | null>;
   /**
-   * Injected-memory weight for one personality in one project, so the report can
-   * answer "what would this cost if <personality> ran here". Absent on hosts
-   * that don't wire personality memory — the report is then simply
-   * personality-agnostic, which is the pre-memory behavior.
+   * The injected memory brief for one personality in one project, so the report
+   * can answer "what would this cost if <personality> ran here" and the preview
+   * can show the text that cost buys. Absent on hosts that don't wire
+   * personality memory — the report is then simply personality-agnostic, which
+   * is the pre-memory behavior.
    */
-  resolvePersonalityMemoryTokens?: (params: {
+  resolvePersonalityMemoryBrief?: (params: {
     personalityId: string;
     projectRoot: string;
-  }) => Promise<number>;
+  }) => Promise<PersonalityMemoryBrief>;
   thresholds?: ContextThresholds;
   homeDir?: string;
 }
@@ -85,6 +97,15 @@ export interface GetContextReportInput {
    * moment personalities started accruing lessons.
    */
   personalityId?: string;
+}
+
+export interface GetPromptPreviewInput extends GetContextReportInput {
+  /**
+   * Assemble only this section. The tab shows one section at a time, and the
+   * ones worth reading are runtime text Otto already holds — assembling the rest
+   * would re-read every context file on disk to build text nobody asked for.
+   */
+  category?: ContextCategory;
 }
 
 interface CacheEntry {
@@ -169,10 +190,9 @@ export class ContextManagementService {
     // it belongs in `otto_injected` rather than a category of its own —
     // ContextCategory is a z.enum travelling daemon->client, and a new member
     // would make a new daemon's report unparseable by an older client.
-    const personalityMemoryTokens = await this.resolveMemoryTokens(
-      personalityId,
-      location.projectRoot,
-    );
+    const personalityMemoryTokens = (
+      await this.resolveMemoryBrief(personalityId, location.projectRoot)
+    ).estTokens;
     if (personalityMemoryTokens > 0) {
       runtimeTokensByCategory.otto_injected =
         (runtimeTokensByCategory.otto_injected ?? 0) + personalityMemoryTokens;
@@ -258,39 +278,51 @@ export class ContextManagementService {
    * disagree about the same request. Returns null on the same terms the report
    * does — no workspace, or no provider to resolve conventions from.
    */
-  async getPromptPreview(input: GetContextReportInput): Promise<ContextPromptPreview | null> {
+  async getPromptPreview(input: GetPromptPreviewInput): Promise<ContextPromptPreview | null> {
     const report = await this.getReport(input);
     if (!report) return null;
 
     const runtime = await this.deps.resolveRuntime(input.workspaceId);
     const runtimeTextByCategory: Partial<Record<ContextCategory, string>> = {};
-    if (runtime?.injectedPromptText) {
-      runtimeTextByCategory.otto_injected = runtime.injectedPromptText;
-    }
+    // Everything Otto itself puts in front of the model, in injection order: the
+    // system-prompt override and daemon append (which is where the team and the
+    // personality's role text land), then the personality's memory brief. The
+    // report counts the brief in this same category, so leaving it out here
+    // would make the pane and the row above it disagree about one number.
+    const location = await this.deps.resolveLocation(input.workspaceId);
+    const memoryBrief = location
+      ? await this.resolveMemoryBrief(input.personalityId, location.projectRoot)
+      : EMPTY_MEMORY_BRIEF;
+    const injected = [runtime?.injectedPromptText, memoryBrief.text].filter(Boolean).join("\n\n");
+    if (injected) runtimeTextByCategory.otto_injected = injected;
     if (runtime?.systemPromptText) runtimeTextByCategory.system_prompt = runtime.systemPromptText;
     if (runtime?.mcpToolsText) runtimeTextByCategory.mcp_tools = runtime.mcpToolsText;
 
-    return buildPromptPreview({ report, runtimeTextByCategory });
+    return buildPromptPreview({
+      report,
+      runtimeTextByCategory,
+      ...(input.category ? { categories: [input.category] } : {}),
+    });
   }
 
   /**
-   * The personality's injected memory weight, or 0. Never throws and never
+   * The personality's injected memory brief, or nothing. Never throws and never
    * blocks the report: a memory read failing must cost the numbers their memory
    * line, not cost the user the whole report.
    */
-  private async resolveMemoryTokens(
+  private async resolveMemoryBrief(
     personalityId: string | undefined,
     projectRoot: string,
-  ): Promise<number> {
-    if (!personalityId || !this.deps.resolvePersonalityMemoryTokens) return 0;
+  ): Promise<PersonalityMemoryBrief> {
+    if (!personalityId || !this.deps.resolvePersonalityMemoryBrief) return EMPTY_MEMORY_BRIEF;
     try {
-      return await this.deps.resolvePersonalityMemoryTokens({ personalityId, projectRoot });
+      return await this.deps.resolvePersonalityMemoryBrief({ personalityId, projectRoot });
     } catch (error) {
       this.deps.logger.warn(
         { err: error, personalityId },
         "Failed to resolve personality memory weight; reporting without it",
       );
-      return 0;
+      return EMPTY_MEMORY_BRIEF;
     }
   }
 }

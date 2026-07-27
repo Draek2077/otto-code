@@ -196,7 +196,6 @@ export const ptBR: TranslationResources = {
   contextManagement: {
     back: "Voltar",
     tabs: {
-      prompt: "Prompt",
       context: "Contexto",
       findings: "Vale corrigir",
       findingsCount: "Vale corrigir ({{count}})",
@@ -204,7 +203,7 @@ export const ptBR: TranslationResources = {
       memoryCount: "Memória ({{count}})",
     },
     personalitySelector: {
-      label: "Vendo o contexto de",
+      label: "Vendo para",
       everyone: "Todos",
       searchPlaceholder: "Buscar personalidades",
       lessons_one: "{{count}} lição",
@@ -328,7 +327,8 @@ export const ptBR: TranslationResources = {
     },
     prompt: {
       empty: "Nada montado ainda.",
-      total: "Prompt montado — cerca de {{tokens}} tokens por requisição",
+      readOnly: "Somente leitura",
+      sectionTokens: "Cerca de {{tokens}} tokens por requisição",
       notVisibleBody:
         "Este provedor compõe esta parte dentro do próprio processo. O Otto não consegue lê-la, então ela é listada mas não exibida.",
     },

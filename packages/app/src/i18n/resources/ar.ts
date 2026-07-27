@@ -195,7 +195,6 @@ export const ar: TranslationResources = {
   contextManagement: {
     back: "رجوع",
     tabs: {
-      prompt: "الموجّه",
       context: "السياق",
       findings: "يستحق الإصلاح",
       findingsCount: "يستحق الإصلاح ({{count}})",
@@ -203,7 +202,7 @@ export const ar: TranslationResources = {
       memoryCount: "الذاكرة ({{count}})",
     },
     personalitySelector: {
-      label: "عرض السياق الخاص بـ",
+      label: "العرض لـ",
       everyone: "الجميع",
       searchPlaceholder: "ابحث في الشخصيات",
       lessons_one: "{{count}} درس",
@@ -323,7 +322,8 @@ export const ar: TranslationResources = {
     },
     prompt: {
       empty: "لم يُجمَّع شيء بعد.",
-      total: "الموجّه المُجمَّع — نحو {{tokens}} رمزًا في كل طلب",
+      readOnly: "للقراءة فقط",
+      sectionTokens: "نحو {{tokens}} رمزًا في كل طلب",
       notVisibleBody:
         "يُنشئ هذا المزوّد هذا الجزء داخل عمليته الخاصة. لا يستطيع Otto قراءته، لذا يُذكر دون عرضه.",
     },

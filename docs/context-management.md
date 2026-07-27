@@ -165,8 +165,16 @@ Three rules ride with the percentage:
 factor the three panes collapse to a drill-down stack (summary → tree → editor) with back
 navigation.
 
-**Both scope pickers are dropdowns, on one row.** _"Evaluate against"_ (window) and _"Viewing
-context for"_ (personality) share `scope-select.tsx`, which wraps `SelectField` and puts the label
+**Pane 3 shows a file or a prompt section, never both.** They are one selection, and whichever was
+picked last owns the pane — `use-context-selection.ts` holds that rule because three call sites move
+it (the tree, the fix list's reveal, the report re-seed) and each getting the precedence right
+independently is how two rows end up highlighted at once.
+
+**The sidebar tab strip spans the width left beside the compaction action** (`stretch`). Three
+segments at most — Context, Memory, Issues — so an equal split still fits "Issues (40)".
+
+**Both scope pickers are dropdowns, on one row.** _"Evaluate with"_ (window) and _"Viewing for"_
+(personality) share `scope-select.tsx`, which wraps `SelectField` and puts the label
 inside the trigger so each control reads as a sentence its value finishes. They started as two
 wrapping chip rows and cost four rows of the panel's first screen before a single number appeared —
 and the personality row grew without bound, one chip per name the host collects. A dropdown costs
@@ -226,29 +234,46 @@ root to open to. The pane opens to the highest-impact **project-scoped** file.
 save path, never an auto-write. Zero → written → trimmed is what makes this a management surface
 rather than a nag.
 
-## The assembled prompt — reading, never editing
+## Prompt sections — reading, never editing
 
 The graph answers _what is loaded_ and _what it costs_. It cannot answer the question users ask
 first — **"so what is the model actually reading?"** — because a tree of filenames and token counts
-never shows the thing itself. `prompt-preview.ts` concatenates the real content in load order:
-provider preset → Otto's injected prompt → context files → memory index → roster → MCP schemas.
+never shows the thing itself. `prompt-preview.ts` assembles the real content.
 
-Four rules, all load-bearing:
+**It is a row in the tree, not a tab.** Most rows resolve to a file, and clicking one opens it in the
+editor; the rows that do not — `otto_injected`, and on openai-compat `system_prompt` and `mcp_tools`
+— are prompt text Otto composes at request time, and clicking one opens that text read-only in the
+same pane (`PromptSectionView`). One gesture, one pane, and the answer sits under the row that
+raised the question. A whole-prompt tab was tried first and removed: it stacked every section into
+one 11K wall in which the thing you clicked for was unfindable.
 
-- **Derived, never authoritative.** Sections are re-read from the files the scan resolved, and
-  `context.prompt.preview.get` has **no matching write RPC**. Editing stays per file in the existing
-  pane, against the real file rather than a concatenation of several — so a stale preview can only
-  be stale, never wrong in a way that lands on disk.
-- **Built on `getReport`, not beside it.** The preview shows exactly the files the graph counted,
-  under the same provider/window/personality what-ifs. Two independent resolutions of "what is
-  loaded" would eventually disagree, on screen, about the same request.
-- **A section Otto cannot see ships empty and says so** — same `not_visible` rule as the category
-  rows. An omitted section reads as "the provider sends nothing before your files", which is false
-  for every CLI-backed provider.
+Five rules, all load-bearing:
+
+- **One section per request.** `context.prompt.preview.get` takes an optional `category`, and the app
+  always sends it. Reading Otto's injected stack must not re-read every context file on disk to
+  build text nobody asked to see — and must not report their tokens either.
+- **A prompt row shows the whole stack for that category, and nothing else.** `otto_injected` is the
+  system-prompt override, the daemon append (where team and personality role text land) and the
+  personality's memory brief, in injection order. The brief is in the row's token total, so leaving
+  it out of the text would make the pane and the row above it disagree about one number.
+- **Derived, never authoritative.** Sections are re-read from the files the scan resolved, and there
+  is **no matching write RPC**. Editing stays per file in the existing pane, against the real file —
+  so a stale preview can only be stale, never wrong in a way that lands on disk.
+- **Built on `getReport`, not beside it.** The preview shows exactly what the graph counted, under
+  the same provider/window/personality what-ifs. Two independent resolutions of "what is loaded"
+  would eventually disagree, on screen, about the same request.
 - **Fixed weight only, and the roster shows frontmatter only.** Conditional and referenced files are
   not in the request; a skill's body is not either. Rendering either would contradict the token
   figure sitting next to it — which is precisely the misconception this view exists to end.
   `extractFrontmatter` is shared with the scanner so the two can never drift.
+
+**A category Otto cannot see leaves the tree.** `not_visible` with no files under it means the
+provider composes that part inside its own process: no number, no text, nothing to expand. On every
+CLI-backed provider that is `system_prompt` and `mcp_tools`, and a permanent "not available here"
+row is a dead end rather than a disclosure. Where Otto owns the payload (openai-compat) the same two
+categories are measurable and readable, and the rows stay. This is the one place the `not_visible`
+rule hides a row instead of explaining it — everywhere else the disclosure has a number or a parent
+to attach to.
 
 ## Operations
 

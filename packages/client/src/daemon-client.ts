@@ -107,6 +107,7 @@ import type {
   OttoWorktreeListResponse,
   OttoWorktreeArchiveResponse,
   ProjectIconResponse,
+  ContextCategory,
   ContextPromptPreviewGetResponseMessage,
   ContextReportGetResponseMessage,
   ContextEdgeConvertResponseMessage,
@@ -5635,6 +5636,8 @@ export class DaemonClient {
       provider?: string;
       windowTokens?: number;
       personalityId?: string;
+      /** Assemble only this section; omitted means the whole prompt. */
+      category?: ContextCategory;
     },
     requestId?: string,
   ): Promise<ContextPromptPreviewGetResponseMessage["payload"]> {
@@ -5646,6 +5649,7 @@ export class DaemonClient {
         ...(input.provider ? { provider: input.provider } : {}),
         ...(typeof input.windowTokens === "number" ? { windowTokens: input.windowTokens } : {}),
         ...(input.personalityId ? { personalityId: input.personalityId } : {}),
+        ...(input.category ? { category: input.category } : {}),
       },
       responseType: "context.prompt.preview.get.response",
     });

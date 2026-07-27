@@ -3,9 +3,8 @@ import { View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
-import { useIsCompactFormFactor } from "@/constants/layout";
 
-export type ContextSidebarTab = "context" | "prompt" | "findings" | "memory";
+export type ContextSidebarTab = "context" | "findings" | "memory";
 
 interface ContextSidebarTabsProps {
   active: ContextSidebarTab;
@@ -30,12 +29,11 @@ interface ContextSidebarTabsProps {
 /**
  * Splits the lower half of the sidebar into the load graph, the selected
  * personality's remembered lessons (on a host that stores them), and the fix
- * list. Plain SegmentedControl, same as the Metrics tabs, and deliberately
- * NOT `stretch`: an equal three-way split shrinks every segment to the same
- * width, and "Issues (40)" is the one whose count can outgrow that share —
- * `stretch` would ellipsis it rather than let it keep its own width while
- * Context and Memory stay at theirs. `wrap` on compact is the fallback for
- * when even the natural total does not fit a phone's width.
+ * list. `stretch`, so the row of segments spans whatever width is left beside
+ * the compaction action rather than trailing off into empty sidebar — this
+ * control *is* the row, not a chip sitting in a toolbar. Three segments at most,
+ * so an equal split is wide enough for "Issues (40)" to keep its count; that
+ * concern is what kept this un-stretched while a fourth segment existed.
  *
  * The issues segment takes the `warning` tone while it holds anything — the
  * mode chip's amber, not a treatment of its own. That is the whole signal:
@@ -54,7 +52,6 @@ export function ContextSidebarTabs({
   leading,
 }: ContextSidebarTabsProps): ReactElement {
   const { t } = useTranslation();
-  const isCompact = useIsCompactFormFactor();
 
   const options = useMemo<SegmentedControlOption<ContextSidebarTab>[]>(() => {
     const segments: SegmentedControlOption<ContextSidebarTab>[] = [
@@ -64,13 +61,6 @@ export function ContextSidebarTabs({
         testID: "context-sidebar-tab-context",
       },
     ];
-    // Sits next to Context because it answers the same question in the other
-    // direction: the tree says what is loaded, this says what that reads like.
-    segments.push({
-      value: "prompt",
-      label: t("contextManagement.tabs.prompt"),
-      testID: "context-sidebar-tab-prompt",
-    });
     if (lessonCount !== null) {
       segments.push({
         value: "memory",
@@ -102,10 +92,11 @@ export function ContextSidebarTabs({
           value={active}
           onValueChange={onChange}
           size="sm"
-          // Segments never shrink below their label (see below), so on a
-          // narrow phone they wrap onto a second line instead of clipping —
-          // same fallback the Metrics tabs use.
-          wrap={isCompact}
+          // Stretch and wrap are mutually exclusive: stretched segments each
+          // take an equal share of one line, so there is never a second line to
+          // wrap onto. At three segments that share is wide enough everywhere
+          // the panel opens, phone included.
+          stretch
           testID="context-sidebar-tabs"
         />
       </View>

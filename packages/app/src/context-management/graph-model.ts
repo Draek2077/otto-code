@@ -51,6 +51,22 @@ const CATEGORY_ORDER: ContextCategory[] = [
   "system_prompt",
 ];
 
+/**
+ * Categories that are prompt text rather than files — Otto composes them at
+ * request time, so their row opens the assembled section instead of an editor.
+ * Everything else in the tree resolves to a file on disk, which the file pane
+ * already handles.
+ */
+const PROMPT_SECTION_CATEGORIES: ReadonlySet<ContextCategory> = new Set<ContextCategory>([
+  "mcp_tools",
+  "otto_injected",
+  "system_prompt",
+]);
+
+export function isPromptSectionCategory(category: ContextCategory): boolean {
+  return PROMPT_SECTION_CATEGORIES.has(category);
+}
+
 interface ChildLink {
   nodeId: string;
   edgeKind: "import" | "reference";
@@ -135,6 +151,12 @@ export function buildContextTree(input: BuildContextTreeInput): ContextTreeRow[]
     // Categories Otto knows only as a number (MCP schemas, injected prompt)
     // still deserve a row — they are often the biggest thing in the request.
     if (roots.length === 0 && !total) continue;
+    // But a row with no files under it, no number, and no text to read is a
+    // dead end: `not_visible` means the provider composes that part inside its
+    // own process, so the row could only ever say "not available here". On a
+    // provider where Otto owns the payload the same category is measurable and
+    // readable, and the row stays.
+    if (roots.length === 0 && total?.visibility === "not_visible") continue;
 
     const expanded = expandedKeys.has(category);
     rows.push({

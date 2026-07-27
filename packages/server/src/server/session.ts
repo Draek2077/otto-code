@@ -1235,10 +1235,10 @@ export class Session {
       // A personality's injected lessons are fixed weight like any other prompt
       // text, so the report has to count them or its percentages understate what
       // a personality-backed chat actually carries.
-      resolvePersonalityMemoryTokens: async ({ personalityId, projectRoot }) => {
-        if (!this.personalityMemory) return 0;
+      resolvePersonalityMemoryBrief: async ({ personalityId, projectRoot }) => {
+        if (!this.personalityMemory) return { text: "", estTokens: 0 };
         const view = await this.personalityMemory.view({ personalityId, projectRoot });
-        return view.brief.estTokens;
+        return { text: view.brief.text, estTokens: view.brief.estTokens };
       },
       resolveLocation: async (workspaceId) => {
         const workspace = await this.workspaceRegistry.get(workspaceId);
@@ -3339,6 +3339,7 @@ export class Session {
         ...(msg.provider ? { provider: msg.provider } : {}),
         ...(typeof msg.windowTokens === "number" ? { windowTokens: msg.windowTokens } : {}),
         ...(msg.personalityId ? { personalityId: msg.personalityId } : {}),
+        ...(msg.category ? { category: msg.category } : {}),
       });
       this.emit({
         type: "context.prompt.preview.get.response",
