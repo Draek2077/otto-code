@@ -197,7 +197,6 @@ export const ja: TranslationResources = {
   contextManagement: {
     back: "戻る",
     tabs: {
-      prompt: "プロンプト",
       context: "コンテキスト",
       findings: "直す価値あり",
       findingsCount: "直す価値あり ({{count}})",
@@ -205,7 +204,7 @@ export const ja: TranslationResources = {
       memoryCount: "メモリ ({{count}})",
     },
     personalitySelector: {
-      label: "コンテキストの表示対象",
+      label: "表示対象",
       everyone: "全員",
       searchPlaceholder: "パーソナリティを検索",
       lessons_one: "教訓 {{count}} 件",
@@ -328,7 +327,8 @@ export const ja: TranslationResources = {
     },
     prompt: {
       empty: "まだ何も組み立てられていません。",
-      total: "組み立て済みプロンプト — 毎リクエスト約 {{tokens}} トークン",
+      readOnly: "読み取り専用",
+      sectionTokens: "毎リクエスト約 {{tokens}} トークン",
       notVisibleBody:
         "このプロバイダーはこの部分を自身のプロセス内で組み立てます。Otto からは読めないため、記載のみで内容は表示しません。",
     },

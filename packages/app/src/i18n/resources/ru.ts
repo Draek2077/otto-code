@@ -196,7 +196,6 @@ export const ru: TranslationResources = {
   contextManagement: {
     back: "Назад",
     tabs: {
-      prompt: "Промпт",
       context: "Контекст",
       findings: "Стоит исправить",
       findingsCount: "Стоит исправить ({{count}})",
@@ -204,7 +203,7 @@ export const ru: TranslationResources = {
       memoryCount: "Память ({{count}})",
     },
     personalitySelector: {
-      label: "Контекст показан для",
+      label: "Показано для",
       everyone: "Все",
       searchPlaceholder: "Поиск личностей",
       lessons_one: "{{count}} урок",
@@ -281,7 +280,7 @@ export const ru: TranslationResources = {
       title: "Контекст, отправляемый за ход:",
       ofWindow: "{{percent}} окна",
       workingRoom: "Остаётся около {{room}} для работы",
-      window: "Оценивать для",
+      window: "Оценивать с",
       breakdown: "В каждом запросе",
       notCounted: "Не учитывается",
       conditional: "{{tokens}} загружаются, только когда агент работает в этой области",
@@ -327,7 +326,8 @@ export const ru: TranslationResources = {
     },
     prompt: {
       empty: "Пока нечего собирать.",
-      total: "Собранный промпт — около {{tokens}} токенов в каждом запросе",
+      readOnly: "Только для чтения",
+      sectionTokens: "Около {{tokens}} токенов в каждом запросе",
       notVisibleBody:
         "Этот провайдер формирует эту часть внутри своего процесса. Otto не может её прочитать, поэтому она указана, но не показана.",
     },

@@ -1,6 +1,6 @@
 # AGENTS.md — Otto Server Development Guide
 
-For AI coding agents working in `packages/server`. Supplements [CLAUDE.md](../CLAUDE.md) at the repo root.
+For AI coding agents working in `packages/server`. Supplements at the repo root.
 
 ## Project Overview
 
@@ -145,7 +145,7 @@ Tests prove behavior, not structure. Every test should answer: "what user-visibl
 
 ## Critical Rules
 
-1. **NEVER restart the daemon on port 6868** — that is the installed app's daemon over `~/.otto`, and restarting it kills your own process. Dev runs on `6788` over `packages/desktop/.dev/otto-home`; see [../docs/development.md](../docs/development.md).
+1. **NEVER restart the daemon on port 6868** — that is the installed app's daemon over `~/.otto`, and restarting it kills your own process. Dev runs on `6788` over `packages/desktop/.dev/otto-home`; see .
 2. **NEVER assume timeouts need a restart** — they can be transient
 3. **Always run `npm run typecheck` after changes**
 4. **NEVER add auth checks to tests** — agent providers handle their own auth
@@ -187,10 +187,10 @@ npm run db:query -- "SELECT * FROM agent_timeline_rows..."
 
 ## Relevant Docs
 
-| File                                                       | What it covers                                   |
-| ---------------------------------------------------------- | ------------------------------------------------ |
-| [../CLAUDE.md](../CLAUDE.md)                               | Repository overview, critical rules, quick start |
-| [../docs/architecture.md](../docs/architecture.md)         | System design, WebSocket protocol, data flow     |
-| [../docs/coding-standards.md](../docs/coding-standards.md) | Type hygiene, error handling, React patterns     |
-| [../docs/testing.md](../docs/testing.md)                   | TDD workflow, determinism, real deps over mocks  |
-| [../SECURITY.md](../SECURITY.md)                           | Relay threat model, E2E encryption               |
+| File | What it covers                                   |
+| ---- | ------------------------------------------------ |
+|      | Repository overview, critical rules, quick start |
+|      | System design, WebSocket protocol, data flow     |
+|      | Type hygiene, error handling, React patterns     |
+|      | TDD workflow, determinism, real deps over mocks  |
+|      | Relay threat model, E2E encryption               |

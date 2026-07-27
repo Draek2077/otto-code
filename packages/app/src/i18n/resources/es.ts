@@ -195,7 +195,6 @@ export const es: TranslationResources = {
   contextManagement: {
     back: "Atrás",
     tabs: {
-      prompt: "Prompt",
       context: "Contexto",
       findings: "Conviene arreglar",
       findingsCount: "Conviene arreglar ({{count}})",
@@ -203,7 +202,7 @@ export const es: TranslationResources = {
       memoryCount: "Memoria ({{count}})",
     },
     personalitySelector: {
-      label: "Viendo el contexto de",
+      label: "Viendo para",
       everyone: "Todos",
       searchPlaceholder: "Buscar personalidades",
       lessons_one: "{{count}} lección",
@@ -327,7 +326,8 @@ export const es: TranslationResources = {
     },
     prompt: {
       empty: "Aún no hay nada ensamblado.",
-      total: "Prompt ensamblado: unos {{tokens}} tokens en cada solicitud",
+      readOnly: "Solo lectura",
+      sectionTokens: "Unos {{tokens}} tokens en cada solicitud",
       notVisibleBody:
         "Este proveedor compone esta parte dentro de su propio proceso. Otto no puede leerla, así que se indica pero no se muestra.",
     },

@@ -20,7 +20,7 @@ import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-nativ
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { ContextNode } from "@otto-code/protocol/messages";
+import type { ContextCategory, ContextNode } from "@otto-code/protocol/messages";
 import { FileTabPane } from "@/components/file-tab-pane";
 import { AlertTriangle, ChevronLeft, X } from "@/components/icons/material-icons";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
@@ -44,15 +44,16 @@ import { ContextGraphTree } from "./graph-tree";
 import { ContextMemoryList } from "./memory-list";
 import { useContextPersonalityMemory } from "./use-context-personality";
 import { ContextSidebarTabs, type ContextSidebarTab } from "./sidebar-tabs";
-import { PromptPreviewView } from "./prompt-preview-view";
+import { PromptSectionView } from "./prompt-preview-view";
 import { usePromptPreview } from "./use-prompt-preview";
+import { CATEGORY_LABEL_KEYS } from "./format";
 import {
   ancestorKeysForNode,
   defaultExpandedKeys,
   findInboundEdge,
-  pickInitialNode,
   splitAbsolutePath,
 } from "./graph-model";
+import { useContextSelection } from "./use-context-selection";
 import { LoadModeControl } from "./load-mode-control";
 import { ContextSummary } from "./summary";
 import { useContextReportQuery } from "./use-context-report";
@@ -129,35 +130,42 @@ export function ContextManagementPanel(): ReactElement {
     ...(selectedPersonalityId ? { personalityId: selectedPersonalityId } : {}),
   });
 
-  // Passing a null workspace until the tab is open is the gate: assembling the
-  // preview re-reads every fixed file, which is real work to do for a pane
-  // nobody is looking at. It shares the report's what-ifs so the text on screen
-  // always describes the same request the numbers above it do.
-  const promptPreview = usePromptPreview(serverId, sidebarTab === "prompt" ? workspaceId : null, {
-    windowTokens,
-    ...(selectedPersonalityId ? { personalityId: selectedPersonalityId } : {}),
-  });
-
   const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(
     () => new Set(["context_files"]),
   );
-  const [selectedNode, setSelectedNode] = useState<ContextNode | null>(null);
-  const [compactShowsFile, setCompactShowsFile] = useState(false);
+  // A file row and a prompt row share the right-hand pane; see the hook for the
+  // precedence rule the three call sites that move this all have to agree on.
+  const {
+    node: selectedNode,
+    category: selectedCategory,
+    highlightNodeId,
+    hasSelection,
+    showsPane: compactShowsPane,
+    selectNode,
+    selectCategory,
+    goBack: handleCompactBack,
+  } = useContextSelection({ report, isCompact });
+
+  // Passing a null workspace until a prompt row is selected is the gate:
+  // assembling a section is real work to do for a pane nobody is looking at. It
+  // shares the report's what-ifs so the text on screen always describes the same
+  // request the numbers above it do.
+  const promptPreview = usePromptPreview(serverId, selectedCategory ? workspaceId : null, {
+    windowTokens,
+    ...(selectedPersonalityId ? { personalityId: selectedPersonalityId } : {}),
+    ...(selectedCategory ? { category: selectedCategory } : {}),
+  });
 
   // The compact layout puts the whole page in one scroll, so the page itself
   // needs the overlay bar too — not just the lists inside it.
   const compactScrollRef = useRef<ScrollView>(null);
   const compactScrollbar = useWebScrollViewScrollbar(compactScrollRef, { enabled: isWeb });
 
-  // Re-seed when a different report arrives (provider or window changed), but
-  // never stomp a selection the user made themselves.
+  // The tree's own re-seed: which rows are open. The selection hook owns the
+  // other half of the same report change.
   useEffect(() => {
     if (!report) return;
     setExpandedKeys(defaultExpandedKeys(report));
-    setSelectedNode((current) => {
-      if (current && report.nodes.some((node) => node.id === current.id)) return current;
-      return pickInitialNode(report);
-    });
   }, [report]);
 
   const handleToggle = useCallback((key: string) => {
@@ -171,16 +179,6 @@ export function ContextManagementPanel(): ReactElement {
       return next;
     });
   }, []);
-
-  const handleSelectNode = useCallback(
-    (node: ContextNode) => {
-      setSelectedNode(node);
-      if (isCompact) setCompactShowsFile(true);
-    },
-    [isCompact],
-  );
-
-  const handleCompactBack = useCallback(() => setCompactShowsFile(false), []);
 
   // What the fix list sent us to. One action does four things, because any
   // fewer leaves the user hunting: open the file at the line, reveal and select
@@ -204,7 +202,7 @@ export function ContextManagementPanel(): ReactElement {
           mode: "editor",
         });
       }
-      setSelectedNode(node);
+      selectNode(node);
       setExpandedKeys((prev) => new Set([...prev, ...ancestorKeysForNode(report, node.id)]));
       setSidebarTab("context");
       setRevealed((prev) => ({
@@ -216,9 +214,8 @@ export function ContextManagementPanel(): ReactElement {
         // the tree and the editor watch a counter rather than the identity.
         nonce: (prev?.nonce ?? 0) + 1,
       }));
-      if (isCompact) setCompactShowsFile(true);
     },
-    [isCompact, report, serverId, workspaceId],
+    [report, selectNode, serverId, workspaceId],
   );
 
   const handleDismissReveal = useCallback(() => setRevealed(null), []);
@@ -339,7 +336,6 @@ export function ContextManagementPanel(): ReactElement {
       tab={sidebarTab}
       report={report}
       isLoading={isLoading}
-      promptQuery={promptPreview}
       onReveal={handleRevealFinding}
       fixableCount={fixableFindings.length}
       isFixing={fixingAll}
@@ -352,11 +348,15 @@ export function ContextManagementPanel(): ReactElement {
       onDropEntry={memory.dropEntry}
       onAddEntry={memory.addEntry}
       expandedKeys={expandedKeys}
-      selectedNodeId={selectedNode?.id ?? null}
+      // Exactly one row is highlighted: the prompt section wins while it owns
+      // the pane, and the file it displaced stays remembered underneath.
+      selectedNodeId={highlightNodeId}
+      selectedCategory={selectedCategory}
       revealNodeId={activeReveal?.nodeId ?? null}
       revealNonce={activeReveal?.nonce}
       onToggle={handleToggle}
-      onSelectNode={handleSelectNode}
+      onSelectNode={selectNode}
+      onSelectCategory={selectCategory}
     />
   );
   const findingCount = report?.findings.length ?? 0;
@@ -425,36 +425,17 @@ export function ContextManagementPanel(): ReactElement {
     [report, selectedNode, serverId, workspaceId],
   );
 
+  // "No context at all" and "nothing picked yet" are different placeholders.
+  const isEmptyReport = report != null && report.nodes.length === 0;
+
   const filePane = useMemo(() => {
+    // A prompt section owns the pane while one is selected. It is read-only and
+    // has no file behind it, so none of the file chrome below applies.
+    if (selectedCategory) {
+      return <PromptSectionView category={selectedCategory} query={promptPreview} />;
+    }
     if (!selectedNode || !workspaceId) {
-      // Before the first scan lands there is nothing to pick yet, so "Pick a
-      // file" reads as a broken tab. Say what is actually happening instead.
-      if (isLoading) {
-        return (
-          <View style={styles.filePlaceholder} testID="context-file-loading">
-            <ActivityIndicator size="small" />
-            <Text style={styles.placeholderBody}>{t("contextManagement.summary.loading")}</Text>
-          </View>
-        );
-      }
-      return (
-        <View style={styles.filePlaceholder}>
-          <Text style={styles.placeholderTitle}>
-            {t(
-              report && report.nodes.length === 0
-                ? "contextManagement.emptyState.title"
-                : "contextManagement.filePlaceholder.title",
-            )}
-          </Text>
-          <Text style={styles.placeholderBody}>
-            {t(
-              report && report.nodes.length === 0
-                ? "contextManagement.emptyState.body"
-                : "contextManagement.filePlaceholder.body",
-            )}
-          </Text>
-        </View>
-      );
+      return <ContextFilePlaceholder isLoading={isLoading} isEmptyReport={isEmptyReport} />;
     }
     // Desktop: the load-mode switch rides in the file toolbar rather than above
     // it — a second full-width bar spent a whole row saying two words. A phone
@@ -504,34 +485,26 @@ export function ContextManagementPanel(): ReactElement {
     backIconSize.sm,
     handleDismissReveal,
     isCompact,
+    isEmptyReport,
     isLoading,
     loadModeControl,
-    report,
+    promptPreview,
+    selectedCategory,
     selectedNode,
     serverId,
-    t,
     workspaceId,
   ]);
 
   if (isCompact) {
-    if (compactShowsFile && selectedNode) {
+    if (compactShowsPane && hasSelection) {
       return (
         <View style={styles.root} testID="context-management-panel">
-          <View style={styles.compactHeader}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t("contextManagement.back")}
-              onPress={handleCompactBack}
-              style={styles.backButton}
-              hitSlop={8}
-              testID="context-management-back"
-            >
-              <ThemedChevronLeft size={backIconSize.md} style={styles.backIcon} />
-              <Text style={styles.backLabel} numberOfLines={1}>
-                {selectedNode.relPath}
-              </Text>
-            </Pressable>
-          </View>
+          <CompactPaneHeader
+            node={selectedNode}
+            category={selectedCategory}
+            iconSize={backIconSize.md}
+            onBack={handleCompactBack}
+          />
           <View style={styles.fill}>{filePane}</View>
         </View>
       );
@@ -607,8 +580,8 @@ type FindingsListProps = ComponentProps<typeof ContextFindingsList>;
 type GraphTreeProps = ComponentProps<typeof ContextGraphTree>;
 
 /**
- * Which of the four tabs is showing. Split out of the panel because it is the
- * one branch in there that is pure dispatch: four arms that share `report` and
+ * Which of the three tabs is showing. Split out of the panel because it is the
+ * one branch in there that is pure dispatch: three arms that share `report` and
  * nothing else, each reading only the props its own tab needs. The props stay
  * flat rather than bundled per tab because a bundle would be an object built in
  * the panel's render — exactly what react-perf's new-object-as-prop rule is for.
@@ -617,7 +590,6 @@ function ContextSidebarBody({
   tab,
   report,
   isLoading,
-  promptQuery,
   onReveal,
   fixableCount,
   isFixing,
@@ -631,15 +603,16 @@ function ContextSidebarBody({
   onAddEntry,
   expandedKeys,
   selectedNodeId,
+  selectedCategory,
   revealNodeId,
   revealNonce,
   onToggle,
   onSelectNode,
+  onSelectCategory,
 }: {
   tab: ContextSidebarTab;
   report: GraphTreeProps["report"];
   isLoading: boolean;
-  promptQuery: ComponentProps<typeof PromptPreviewView>["query"];
   onReveal: FindingsListProps["onReveal"];
   fixableCount: FindingsListProps["fixableCount"];
   isFixing: FindingsListProps["isFixing"];
@@ -653,14 +626,13 @@ function ContextSidebarBody({
   onAddEntry: MemoryListProps["onAddEntry"];
   expandedKeys: GraphTreeProps["expandedKeys"];
   selectedNodeId: GraphTreeProps["selectedNodeId"];
+  selectedCategory: GraphTreeProps["selectedCategory"];
   revealNodeId: GraphTreeProps["revealNodeId"];
   revealNonce: GraphTreeProps["revealNonce"];
   onToggle: GraphTreeProps["onToggle"];
   onSelectNode: GraphTreeProps["onSelectNode"];
+  onSelectCategory: GraphTreeProps["onSelectCategory"];
 }): ReactElement {
-  if (tab === "prompt") {
-    return <PromptPreviewView query={promptQuery} />;
-  }
   if (tab === "findings") {
     return (
       <ContextFindingsList
@@ -692,11 +664,82 @@ function ContextSidebarBody({
       isLoading={isLoading}
       expandedKeys={expandedKeys}
       selectedNodeId={selectedNodeId}
+      selectedCategory={selectedCategory}
       revealNodeId={revealNodeId}
       revealNonce={revealNonce}
       onToggle={onToggle}
       onSelectNode={onSelectNode}
+      onSelectCategory={onSelectCategory}
     />
+  );
+}
+
+/**
+ * The phone's drill-down header. Three panes cannot coexist at that width, so
+ * the pane takes the screen and this is the way back — titled with whatever the
+ * pane is showing, a file's path or a prompt section's name.
+ */
+function CompactPaneHeader({
+  node,
+  category,
+  iconSize,
+  onBack,
+}: {
+  node: ContextNode | null;
+  category: ContextCategory | null;
+  iconSize: number;
+  onBack: () => void;
+}): ReactElement {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.compactHeader}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t("contextManagement.back")}
+        onPress={onBack}
+        style={styles.backButton}
+        hitSlop={8}
+        testID="context-management-back"
+      >
+        <ThemedChevronLeft size={iconSize} style={styles.backIcon} />
+        <Text style={styles.backLabel} numberOfLines={1}>
+          {category ? t(CATEGORY_LABEL_KEYS[category]) : (node?.relPath ?? "")}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/**
+ * The pane before anything is picked. Before the first scan lands there is
+ * nothing to pick yet, so "Pick a file" reads as a broken tab — say what is
+ * actually happening instead. And a project that loads nothing is a clean slate
+ * rather than an error, which is a different sentence again.
+ */
+function ContextFilePlaceholder({
+  isLoading,
+  isEmptyReport,
+}: {
+  isLoading: boolean;
+  isEmptyReport: boolean;
+}): ReactElement {
+  const { t } = useTranslation();
+  if (isLoading) {
+    return (
+      <View style={styles.filePlaceholder} testID="context-file-loading">
+        <ActivityIndicator size="small" />
+        <Text style={styles.placeholderBody}>{t("contextManagement.summary.loading")}</Text>
+      </View>
+    );
+  }
+  const prefix = isEmptyReport
+    ? "contextManagement.emptyState"
+    : "contextManagement.filePlaceholder";
+  return (
+    <View style={styles.filePlaceholder}>
+      <Text style={styles.placeholderTitle}>{t(`${prefix}.title`)}</Text>
+      <Text style={styles.placeholderBody}>{t(`${prefix}.body`)}</Text>
+    </View>
   );
 }
 
