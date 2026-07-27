@@ -51,19 +51,9 @@ const EXPECTED_CLAUDE_MODELS = [
     descriptionFragment: "Most powerful",
   },
   {
-    id: "claude-opus-5[1m]",
-    model: "Opus 5 1M",
-    descriptionFragment: "1M context window",
-  },
-  {
     id: "claude-opus-5",
     model: "Opus 5",
     descriptionFragment: "Latest release",
-  },
-  {
-    id: "claude-opus-4-8[1m]",
-    model: "Opus 4.8 1M",
-    descriptionFragment: "1M context window",
   },
   {
     id: "claude-opus-4-8",
@@ -74,11 +64,6 @@ const EXPECTED_CLAUDE_MODELS = [
     id: "claude-sonnet-5",
     model: "Sonnet 5",
     descriptionFragment: "Best for everyday tasks",
-  },
-  {
-    id: "claude-opus-4-7[1m]",
-    model: "Opus 4.7 1M",
-    descriptionFragment: "1M context window",
   },
   {
     id: "claude-opus-4-7",
@@ -103,7 +88,22 @@ const EXPECTED_CLAUDE_MODELS = [
   {
     id: "claude-opus-4-6",
     model: "Opus 4.6",
-    descriptionFragment: "Most capable",
+    descriptionFragment: "Legacy release",
+  },
+  {
+    id: "claude-opus-4-5",
+    model: "Opus 4.5",
+    descriptionFragment: "Legacy release",
+  },
+  {
+    id: "claude-sonnet-4-5[1m]",
+    model: "Sonnet 4.5 1M",
+    descriptionFragment: "1M context window",
+  },
+  {
+    id: "claude-sonnet-4-5",
+    model: "Sonnet 4.5",
+    descriptionFragment: "Legacy release",
   },
   {
     id: "claude-haiku-4-5",

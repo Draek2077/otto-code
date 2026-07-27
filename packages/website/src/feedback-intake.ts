@@ -4,12 +4,12 @@ import { env } from "cloudflare:workers";
 //
 // The app POSTs here directly rather than going through its daemon: a report
 // about "I can't reach my host" must still be sendable, and no sink here needs
-// host credentials. Reporters are anonymous by construction — the only identity
+// host credentials. Reporters are anonymous by construction: the only identity
 // is whatever they type into the optional contact field.
 //
 // Kept as a plain fetch handler rather than a TanStack server fn because the
-// callers are cross-origin app builds — native, Electron, and web on other
-// origins — which need explicit CORS and a stable URL.
+// callers are cross-origin app builds (native, Electron, and web on other
+// origins) which need explicit CORS and a stable URL.
 
 export const FEEDBACK_INTAKE_PATH = "/api/feedback";
 
@@ -126,7 +126,7 @@ export function buildFeedbackEmbeds(input: FeedbackInput): DiscordEmbed[] {
   }
 
   const primary: DiscordEmbed = {
-    title: `Otto — ${KIND_LABELS[input.kind]}`,
+    title: `Otto: ${KIND_LABELS[input.kind]}`,
     description: truncate(input.message, 4096),
     color: KIND_COLORS[input.kind],
     timestamp: new Date().toISOString(),
@@ -135,7 +135,7 @@ export function buildFeedbackEmbeds(input: FeedbackInput): DiscordEmbed[] {
     primary.fields = fields;
   }
   if (!input.contact) {
-    primary.footer = { text: "Anonymous — no reply address given" };
+    primary.footer = { text: "Anonymous, no reply address given" };
   }
 
   const embeds: DiscordEmbed[] = [primary];
@@ -214,7 +214,7 @@ export async function handleFeedbackRequest(request: Request): Promise<Response>
   }
 
   if (await isRateLimited(request)) {
-    return jsonResponse({ ok: false, error: "too many reports — try again later" }, 429);
+    return jsonResponse({ ok: false, error: "too many reports, try again later" }, 429);
   }
 
   const webhookUrl = (env as { FEEDBACK_WEBHOOK_URL?: string }).FEEDBACK_WEBHOOK_URL;

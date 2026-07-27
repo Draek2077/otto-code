@@ -1,4 +1,4 @@
-# Content — assets, copy shapes, calendar
+# Content: assets, copy shapes, calendar
 
 What gets made, in what order, and what each channel expects. Positioning and the message house live
 in [outreach.md](outreach.md) §3; this file is the production plan.
@@ -63,14 +63,14 @@ The blog system works (`packages/website/posts/`, drafts hidden unless `?drafts`
 published posts**. Every Phase 1 submission points at a site whose blog is empty. These three fix
 that, and each does double duty as a channel asset.
 
-1. **"Giving a local model the frontier harness"** — the parity thesis, with A1 embedded and the
+1. **"Giving a local model the frontier harness"**: the parity thesis, with A1 embedded and the
    engineering detail underneath: how preview verification, subagent observation, and compaction were
    made provider-neutral. This is the Console.dev and Show HN backbone.
-2. **"What happens when your provider changes the rules"** — the independence argument.
+2. **"What happens when your provider changes the rules"**: the independence argument.
    Deliberately written _before_ it is needed: OpenCode gained ~18,000 stars in two weeks when
    Anthropic blocked it, and the next such incident will happen. Must state precisely how Otto talks
    to Claude (see [runbook.md](runbook.md) §1).
-3. **"Proof, not 'should work now'"** — the preview subsystem as a design argument about agents that
+3. **"Proof, not 'should work now'"**: the preview subsystem as a design argument about agents that
    verify their own work. The most technically interesting thing in the repo, and the one most likely
    to survive a Lobsters or r/programming audience.
 
@@ -105,9 +105,9 @@ code — visible shipping is itself a distribution channel.
 
 ## 5. Things to say every time
 
-- **"Otto is a fork of [Paseo](https://github.com/getpaseo/paseo)"** — first, unprompted, every time.
-- **The honest gaps** — macOS builds are unsigned (Gatekeeper friction, no auto-update), no iOS,
+- **"Otto is a fork of [Paseo](https://github.com/getpaseo/paseo)"**: first, unprompted, every time.
+- **The honest gaps**: macOS builds are unsigned (Gatekeeper friction, no auto-update), no iOS,
   Play internal-track only. Volunteering these defuses them; being caught omitting them costs the
   thread.
-- **How Otto talks to Claude** — the approved phrasing in [runbook.md](runbook.md) §1, verbatim.
-- **"I built this"** — the maker voice is the whole strategy. Never the passive corporate register.
+- **How Otto talks to Claude**: the approved phrasing in [runbook.md](runbook.md) §1, verbatim.
+- **"I built this"**: the maker voice is the whole strategy. Never the passive corporate register.

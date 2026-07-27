@@ -45,7 +45,7 @@ class FakeLifecycleAgentManager implements LifecycleAgentManager {
   readonly notifiedAgentIds: string[] = [];
   readonly modeUpdates: Array<{ agentId: string; modeId: string }> = [];
   readonly detachedAgentIds: string[] = [];
-  readonly clearedSteerQueueAgentIds: string[] = [];
+  readonly heldSteerQueueAgentIds: string[] = [];
   readonly steerQueueSizes = new Map<string, number>();
   inFlightAgentIds = new Set<string>();
 
@@ -64,13 +64,9 @@ class FakeLifecycleAgentManager implements LifecycleAgentManager {
     return this.inFlightAgentIds.delete(agentId);
   }
 
-  clearSteerQueue(agentId: string): number {
-    const size = this.steerQueueSizes.get(agentId) ?? 0;
-    if (size > 0) {
-      this.steerQueueSizes.set(agentId, 0);
-      this.clearedSteerQueueAgentIds.push(agentId);
-    }
-    return size;
+  holdSteerQueue(agentId: string): number {
+    this.heldSteerQueueAgentIds.push(agentId);
+    return this.steerQueueSizes.get(agentId) ?? 0;
   }
 
   async clearAgentAttention(agentId: string): Promise<void> {
@@ -180,6 +176,20 @@ describe("agent lifecycle commands", () => {
       cancelled: true,
     });
     expect(manager.cancelledAgentIds).toEqual(["agent-1"]);
+  });
+
+  test("stopping a run holds the queued messages instead of dropping them", async () => {
+    const storage = new FakeLifecycleAgentStorage();
+    const manager = new FakeLifecycleAgentManager(storage);
+    manager.liveAgents.set("agent-1", managedAgent("agent-1", "running"));
+    manager.inFlightAgentIds.add("agent-1");
+    manager.steerQueueSizes.set("agent-1", 2);
+
+    await cancelAgentRunCommand({ agentManager: manager, logger }, "agent-1");
+
+    // Held, not cleared: the messages the user typed survive the stop.
+    expect(manager.heldSteerQueueAgentIds).toEqual(["agent-1"]);
+    expect(manager.steerQueueSizes.get("agent-1")).toBe(2);
   });
 
   test("archives a live agent after canceling and clearing attention", async () => {

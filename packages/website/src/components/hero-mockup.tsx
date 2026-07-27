@@ -639,7 +639,7 @@ function TerminalPane() {
 function ExplorerSidebar() {
   return (
     <div className="flex flex-col bg-mock-sidebar border-l border-mock-border w-[28%] flex-shrink-0 overflow-hidden">
-      {/* Explorer header — h-12, Changes/Files tabs */}
+      {/* Explorer header: h-12, Changes/Files tabs */}
       <div className="flex items-center h-10 px-2 border-b border-mock-border flex-shrink-0">
         <div className="flex items-center gap-1">
           <div className="flex items-center px-3 py-1.5 rounded-md bg-mock-surface1">
@@ -651,7 +651,7 @@ function ExplorerSidebar() {
         </div>
       </div>
 
-      {/* Secondary header — h-9, Uncommitted dropdown + filter icons */}
+      {/* Secondary header: h-9, Uncommitted dropdown + filter icons */}
       <div className="flex items-center justify-between h-9 border-b border-mock-border flex-shrink-0">
         <div className="flex items-center gap-1 ml-2 px-1 h-6 rounded">
           <span className="text-[11px] text-mock-fg-muted">Uncommitted</span>
@@ -664,7 +664,7 @@ function ExplorerSidebar() {
         </div>
       </div>
 
-      {/* File header — expanded */}
+      {/* File header, expanded */}
       <div className="flex items-center justify-between pl-2 pr-2 py-1.5 border-b border-mock-border flex-shrink-0">
         <div className="flex items-center gap-1 flex-1 min-w-0 overflow-hidden">
           <ChevronDown size={10} className="text-mock-fg-muted flex-shrink-0" />
@@ -832,7 +832,7 @@ function Sidebar() {
       <div className="flex-1 overflow-hidden pt-1 pb-4 min-h-0">
         {SIDEBAR_PROJECTS.map((project) => (
           <div key={project.name} className="mb-2">
-            {/* Project row — icon aligns with traffic lights / sessions */}
+            {/* Project row: icon aligns with traffic lights / sessions */}
             <div className="flex items-center gap-2 min-h-[32px] py-1.5 pl-3 pr-2">
               <div className="w-4 h-4 rounded-sm border border-mock-border flex items-center justify-center flex-shrink-0">
                 <span className="text-[9px] text-mock-fg-muted leading-none">
@@ -844,7 +844,7 @@ function Sidebar() {
               </span>
             </div>
 
-            {/* Workspace rows — indented one level */}
+            {/* Workspace rows, indented one level */}
             {project.workspaces.map((workspace) => (
               <SidebarWorkspaceRow key={workspace.name} workspace={workspace} />
             ))}
@@ -852,7 +852,7 @@ function Sidebar() {
         ))}
       </div>
 
-      {/* Footer — dot aligns with traffic lights / icons */}
+      {/* Footer: dot aligns with traffic lights / icons */}
       <div className="flex items-center justify-between pl-3 pr-2 py-3 border-t border-mock-border">
         <div className="flex items-center gap-2 min-w-0 flex-shrink">
           <div className="w-2 h-2 rounded-full bg-mock-green flex-shrink-0" />
@@ -967,16 +967,16 @@ function DesktopMockup() {
         className="mx-auto rounded-xl overflow-hidden border border-mock-border bg-mock-surface0 shadow-[6px_6px_0_rgba(0,0,0,0.4)] origin-top-left"
         style={innerStyle}
       >
-        {/* Top-level: left sidebar | center column | explorer sidebar — all full height */}
+        {/* Top-level: left sidebar | center column | explorer sidebar, all full height */}
         <div className="flex aspect-video">
-          {/* Left sidebar — full height */}
+          {/* Left sidebar, full height */}
           <motion.div {...fade(D.sidebar)} className="contents">
             <Sidebar />
           </motion.div>
 
           {/* Center column: title bar + split panes */}
           <div className="flex flex-col flex-1 min-w-0 min-h-0">
-            {/* Title bar — belongs to center column only */}
+            {/* Title bar, belongs to center column only */}
             <motion.div
               {...fade(D.titleBar)}
               className="flex items-center h-10 px-2 bg-mock-surface0 border-b border-mock-border flex-shrink-0"
@@ -988,7 +988,7 @@ function DesktopMockup() {
             <DesktopSplitPanes />
           </div>
 
-          {/* Explorer sidebar — full height, pushes center column */}
+          {/* Explorer sidebar: full height, pushes center column */}
           <motion.div {...fade(D.diffPanel)} className="contents">
             <ExplorerSidebar />
           </motion.div>

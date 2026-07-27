@@ -14,13 +14,13 @@ Otto has first-class voice support for dictation and voice mode conversations wi
 
 The quickest way to set voice up is **Host settings → Speech**, no config editing required. Three cards:
 
-- **Dictation** — turn dictation on, pick the speech-to-text engine (local or OpenAI) and model.
-- **Voice mode** — turn voice mode on, pick STT and TTS engines and models, choose a **voice** (with a preview button), and set the **speaking speed** (0.75× / 1× / 1.25× / 1.5×).
-- **OpenAI speech key** — one shared API key that unlocks the OpenAI STT/TTS engines. Leave it empty to use local speech only.
+- **Dictation**: turn dictation on, pick the speech-to-text engine (local or OpenAI) and model.
+- **Voice mode**: turn voice mode on, pick STT and TTS engines and models, choose a **voice** (with a preview button), and set the **speaking speed** (0.75× / 1× / 1.25× / 1.5×).
+- **OpenAI speech key**: one shared API key that unlocks the OpenAI STT/TTS engines. Leave it empty to use local speech only.
 
 Everything below documents the same settings as `config.json` and environment variables, for headless hosts, scripting, or advanced tuning. The UI writes the same config, so you can mix the two.
 
-[Agent personalities](/docs/personalities) can carry a voice of their own — an agent spawned from one speaks in that voice instead of the host default. If a personality's voice isn't available on the host, playback falls back to the default voice.
+[Agent personalities](/docs/personalities) can carry a voice of their own: an agent spawned from one speaks in that voice instead of the host default. If a personality's voice isn't available on the host, playback falls back to the default voice.
 
 ## Philosophy
 
@@ -46,7 +46,7 @@ Missing models are downloaded at daemon startup into `$OTTO_HOME/models/local-sp
 | Model ID                      | Notes                                                                                                                |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `kokoro-multi-lang-v1_0`      | Kokoro v1.0 (default). 53 voices across English, Spanish, French, Hindi, Italian, Japanese, Portuguese, and Chinese. |
-| `kokoro-int8-multi-lang-v1_0` | Kokoro v1.0, int8 — the same voices, smaller and faster, slightly lower fidelity.                                    |
+| `kokoro-int8-multi-lang-v1_0` | Kokoro v1.0, int8: the same voices, smaller and faster, slightly lower fidelity.                                     |
 | `kokoro-en-v0_19`             | Kokoro v0.19 (legacy). 11 English voices. The former default.                                                        |
 
 Pick a voice by name (e.g. `af_heart`) rather than a numeric speaker id; the Host settings voice picker lists the friendly names, and the preview button plays a sample.
@@ -58,7 +58,7 @@ Pick a voice by name (e.g. `af_heart`) rather than a numeric speaker id; the Hos
 | `parakeet-tdt-0.6b-v2-int8` | English only (default). Includes punctuation and capitalization.                                                                                                                                                                                                             |
 | `parakeet-tdt-0.6b-v3-int8` | 25 European languages, auto-detected: Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Russian, Slovak, Slovenian, Spanish, Swedish, Ukrainian. |
 
-**To use a non-English language, switch the local STT model to `parakeet-tdt-0.6b-v3-int8`.** v3 detects the spoken language automatically — there is no per-language setting for it. The `language` field below does **not** steer the local Parakeet model (v2 is English-only, v3 auto-detects); it only applies to the OpenAI STT provider.
+**To use a non-English language, switch the local STT model to `parakeet-tdt-0.6b-v3-int8`.** v3 detects the spoken language automatically. There is no per-language setting for it. The `language` field below does **not** steer the local Parakeet model (v2 is English-only, v3 auto-detects); it only applies to the OpenAI STT provider.
 
 ```json
 {
@@ -86,7 +86,7 @@ Pick a voice by name (e.g. `af_heart`) rather than a numeric speaker id; the Hos
 }
 ```
 
-For multilingual local dictation, set the model to v3 — it auto-detects the language, so no `language` field is needed:
+For multilingual local dictation, set the model to v3, which auto-detects the language, so no `language` field is needed:
 
 ```json
 {

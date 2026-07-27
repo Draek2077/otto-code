@@ -27,17 +27,24 @@ export const KNOWN_MODEL_TIERS: Readonly<Record<string, ModelTier>> = {
   // Opus variants are "deep", non-1M Opus and Sonnet are "standard", Haiku is
   // "fast". Fable (1M, most powerful) is "deep".
   "claude-fable-5": "deep",
+  // Opus 4.7/4.8/5 are natively 1M, so the plain ids are "deep" and the manifest
+  // ships no `[1m]` row for them. The decorated ids stay mapped here because the
+  // CLI still accepts them and a user's settings.json or an older agent record
+  // may carry one.
   "claude-opus-5[1m]": "deep",
-  "claude-opus-5": "standard",
+  "claude-opus-5": "deep",
   "claude-opus-4-8[1m]": "deep",
-  "claude-opus-4-8": "standard",
+  "claude-opus-4-8": "deep",
   "claude-opus-4-7[1m]": "deep",
-  "claude-opus-4-7": "standard",
+  "claude-opus-4-7": "deep",
   "claude-opus-4-6[1m]": "deep",
   "claude-opus-4-6": "standard",
+  "claude-opus-4-5": "standard",
   "claude-sonnet-5": "standard",
   "claude-sonnet-4-6[1m]": "standard",
   "claude-sonnet-4-6": "standard",
+  "claude-sonnet-4-5[1m]": "standard",
+  "claude-sonnet-4-5": "standard",
   "claude-haiku-4-5": "fast",
   "claude-haiku-4-5-20251001": "fast",
   // OpenAI (GPT / o-series)

@@ -6,7 +6,7 @@ export const Route = createFileRoute("/sponsor")({
   head: () =>
     pageMeta(
       "Support the projects Otto is built on",
-      "Otto takes no sponsorships. Support goes to the open-source projects underneath it — Paseo by Mo, and Agent Flow by Simon Patole.",
+      "Otto takes no sponsorships. Support goes to the open-source projects underneath it: Paseo by Mo, and Agent Flow by Simon Patole.",
       "/sponsor",
     ),
   component: Sponsor,
@@ -37,23 +37,23 @@ function Sponsor() {
           >
             Mo
           </a>
-          . I say that up front, and proudly: Paseo is a phenomenal platform — a self-hosted daemon
-          for orchestrating coding agents across desktop, mobile, web, and CLI — and the fact that
+          . I say that up front, and proudly: Paseo is a phenomenal platform, a self-hosted daemon
+          for orchestrating coding agents across desktop, mobile, web, and CLI, and the fact that
           it&apos;s open source is what made Otto possible at all.
         </p>
 
         <p>
-          Otto is a personal project by Philippe — not a startup, just the environment I want to
-          work in and the way I&apos;m getting better at agentic coding. Most of Otto is written by
-          the agents Otto runs. The problem I keep hitting is that agents can now do an enormous
-          amount of work on their own, and it&apos;s hard to see what they did, what it cost, and
-          where it went sideways — so the work leans toward making that legible, and toward pulling
-          good open-source pieces into one setup that works end to end.
+          Otto is a personal project by Philippe, not a startup. Just the environment I want to work
+          in and the way I&apos;m getting better at agentic coding. Most of Otto is written by the
+          agents Otto runs. The problem I keep hitting is that agents can now do an enormous amount
+          of work on their own, and it&apos;s hard to see what they did, what it cost, and where it
+          went sideways, so the work leans toward making that legible, and toward pulling good
+          open-source pieces into one setup that works end to end.
         </p>
 
         <p>
-          Which means Otto is mostly other people&apos;s hard work, assembled — and the two projects
-          it leans on hardest deserve naming properly.
+          Which means Otto is mostly other people&apos;s hard work, assembled. The two projects it
+          leans on hardest deserve naming properly.
         </p>
 
         <p>
@@ -83,7 +83,7 @@ function Sponsor() {
           >
             Simon Patole
           </a>{" "}
-          is the render layer behind Otto&apos;s Visualizer — the live node-graph of agents,
+          is the render layer behind Otto&apos;s Visualizer, the live node-graph of agents,
           subagents, tool calls, and timeline that makes an autonomous run something you can watch
           instead of guess at. It&apos;s beautiful work, and it fit because Simon kept rendering
           separate from event collection behind a small documented bridge protocol. That one
@@ -94,7 +94,7 @@ function Sponsor() {
 
         <p>
           To be transparent: Otto is not affiliated with or endorsed by Paseo or Agent Flow. Their
-          communities, sponsors, and reputations are their authors&apos; accomplishments, not mine —
+          communities, sponsors, and reputations are their authors&apos; accomplishments, not mine.
           I just think they deserve the credit and the support. Agent Flow&apos;s name and logos are
           its own; Otto never ships them as its own branding.
         </p>

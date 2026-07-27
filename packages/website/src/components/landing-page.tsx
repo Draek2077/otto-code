@@ -8,7 +8,7 @@ import {
   type Transition,
 } from "framer-motion";
 
-// Shared motion presets — hoisted so every JSX site receives the same object
+// Shared motion presets, hoisted so every JSX site receives the same object
 // reference and doesn't trigger jsx-no-new-object-as-prop.
 const FADE_IN_UP = { opacity: 0, y: 20 };
 const FADE_IN = { opacity: 1, y: 0 };
@@ -79,7 +79,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
       {/* Phone showcase */}
       <PhoneShowcase />
 
-      {/* Content section — order and grouping: see
+      {/* Content section. Order and grouping: see
           projects/marketing-strategy/website-showcase.md */}
       <div className="bg-background">
         <main className="p-6 md:p-20 md:pt-40 max-w-5xl mx-auto">
@@ -106,8 +106,8 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
 }
 
 /**
- * The hero is a looping capture of the real app mid-turn — spinner spinning,
- * tokens streaming — not a still. Until `hero-desktop` is captured, the old
+ * The hero is a looping capture of the real app mid-turn: spinner spinning,
+ * tokens streaming. Not a still. Until `hero-desktop` is captured, the old
  * hand-built replica keeps rendering. Flip this to false the moment the asset
  * lands, then delete hero-mockup.tsx.
  */
@@ -123,7 +123,7 @@ function HeroVisual() {
       chrome
       scenario="00-website-hero"
       alt="Otto running an agent across a chat pane and a live diff"
-      spec="The whole app mid-turn: both staged repos in the sidebar, a real streaming reply with a named personality, and a second pane showing colour — the diff or the browser."
+      spec="The whole app mid-turn: both staged repos in the sidebar, a real streaming reply with a named personality, and a second pane showing colour, either the diff or the browser."
     />
   );
 }
@@ -256,7 +256,7 @@ function BuiltOnPaseoSection() {
     >
       <SectionTitle
         title="Built on Paseo"
-        description="Everything above stands on a foundation someone else got right first. Multi-provider agent orchestration, a self-hosted daemon, real clients on every platform, split panes, worktrees, the CLI — that is Paseo, and Otto keeps all of it intact."
+        description="Everything above stands on a foundation someone else got right first. Multi-provider agent orchestration, a self-hosted daemon, real clients on every platform, split panes, worktrees, the CLI. That is Paseo, and Otto keeps all of it intact."
       />
 
       <div className="space-y-4">
@@ -279,15 +279,15 @@ function BuiltOnPaseoSection() {
             Mo
           </a>
           : a self-hosted daemon that orchestrates coding agents across desktop, mobile, web, and
-          CLI. What makes it such a good base is that the hard parts are already right — process
-          lifecycle, a clean WebSocket protocol, real cross-platform clients — so the work on top is
+          CLI. What makes it such a good base is that the hard parts are already right: process
+          lifecycle, a clean WebSocket protocol, real cross-platform clients. So the work on top is
           actual features instead of plumbing. Otto keeps that full foundation intact, with upstream
           history preserved, and builds on it. That&apos;s the open-source community working exactly
           as it should, and I&apos;m not shy about it.
         </p>
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          Otto&apos;s Visualizer — the live node-graph of what your agents are actually doing — is
-          the render layer of{" "}
+          Otto&apos;s Visualizer, the live node-graph of what your agents are actually doing, is the
+          render layer of{" "}
           <a
             href="https://github.com/patoles/agent-flow"
             target="_blank"
@@ -308,21 +308,21 @@ function BuiltOnPaseoSection() {
           . It is a genuinely lovely piece of work, and the reason it slotted in at all is a design
           decision Simon got right: the renderer is cleanly separated from how events are collected,
           talking to a small documented bridge protocol. So Otto could feed it its own
-          provider-neutral event stream and have the graph light up for every provider on day one —
-          Claude, Codex, OpenCode, or a local model — instead of just the ones the original ingests.
+          provider-neutral event stream and have the graph light up for every provider on day one
+          (Claude, Codex, OpenCode, or a local model) instead of just the ones the original ingests.
           Adapting it has been the most enjoyable part of this project. If the orchestration graph
           is the bit you like, go star Agent Flow too.
         </p>
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          Otto is a personal project by Philippe — not a startup, just the environment I want to
-          work in and the way I&apos;m getting better at agentic coding. Most of Otto is written by
-          the agents Otto runs. The problem I keep hitting is that agents can now do an enormous
-          amount of work on their own, and it&apos;s hard to see what they did, what it cost, and
-          where it went sideways. So the work leans toward making that legible: real per-subagent
-          token and cost accounting, the orchestration graph, and browser-verified previews so an
-          agent proves a change instead of claiming it. The rest is finding open-source pieces this
-          good and fitting them into one setup that works end to end. All credit for the foundations
-          belongs to the people who wrote them.
+          Otto is a personal project by Philippe, not a startup. Just the environment I want to work
+          in and the way I&apos;m getting better at agentic coding. Most of Otto is written by the
+          agents Otto runs. The problem I keep hitting is that agents can now do an enormous amount
+          of work on their own, and it&apos;s hard to see what they did, what it cost, and where it
+          went sideways. So the work leans toward making that legible: real per-subagent token and
+          cost accounting, the orchestration graph, and browser-verified previews so an agent proves
+          a change instead of claiming it. The rest is finding open-source pieces this good and
+          fitting them into one setup that works end to end. All credit for the foundations belongs
+          to the people who wrote them.
         </p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {UPSTREAM_PILLARS.map((pillar) => (
@@ -389,7 +389,7 @@ function SplitPanesBlock() {
         ratio="16/9"
         scenario="15-workspace-layouts"
         alt="One Otto workspace split into an agent chat, a browser pane, a terminal and a diff"
-        spec="A real four-pane workspace — agent, browser, terminal, diff — each pane with genuine content, tab rows visible."
+        spec="A real four-pane workspace (agent, browser, terminal, diff), each pane with genuine content, tab rows visible."
       />
     </SubFeature>
   );
@@ -440,7 +440,7 @@ function ThemesBlock() {
         ratio="16/9"
         scenario="12-themes"
         alt="The same Otto workspace rendered in three different themes"
-        spec="Triptych — one identical workspace in three themes (Twilight, Daylight, Neotokyo), same scroll position in each so the comparison reads instantly."
+        spec="Triptych: one identical workspace in three themes (Twilight, Daylight, Neotokyo), same scroll position in each so the comparison reads instantly."
       />
       <div className="space-y-6 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
         <div className="space-y-3">
@@ -518,7 +518,7 @@ function BringAnyModelSection() {
   return (
     <FeatureSection
       title="Bring any model"
-      description="Point Otto at any OpenAI-compatible endpoint and it becomes a first-class agent provider — with the same frontier-level tooling as the built-in ones: coding tools, browser-verified previews, MCP servers, context compaction, and rich permission modes. Run models locally or on your own server; your prompts never have to leave your network."
+      description="Point Otto at any OpenAI-compatible endpoint and it becomes a first-class agent provider, with the same frontier-level tooling as the built-in ones: coding tools, browser-verified previews, MCP servers, context compaction, and rich permission modes. Run models locally or on your own server; your prompts never have to leave your network."
     >
       <div className="space-y-4">
         <FeatureShot
@@ -528,7 +528,7 @@ function BringAnyModelSection() {
           chrome
           scenario="02-preview-verify, DEMO_PROVIDER=local-ai"
           alt="A local model running Otto's browser verification loop end to end"
-          spec="The same verification loop as the Preview section, driven by a model served from LM Studio — the model badge must be legible. This is the proof that none of it is Claude-only."
+          spec="The same verification loop as the Preview section, driven by a model served from LM Studio. The model badge must be legible. This is the proof that none of it is Claude-only."
         />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {OPENAI_COMPATIBLE_ENDPOINTS.map((name) => (
@@ -546,7 +546,7 @@ function BringAnyModelSection() {
           ratio="16/10"
           scenario="17-multi-provider"
           alt="Otto's provider settings with a local endpoint configured"
-          spec="Provider settings with a local endpoint filled in and its model list loaded — Connection and Models tabs visible, no empty fields."
+          spec="Provider settings with a local endpoint filled in and its model list loaded. Connection and Models tabs visible, no empty fields."
         />
       </div>
     </FeatureSection>
@@ -554,7 +554,7 @@ function BringAnyModelSection() {
 }
 
 // Starter team of agent personalities. Each carries two "spinner" glow colors
-// (the app tints a running agent's identity with them) — represented here as a
+// (the app tints a running agent's identity with them), represented here as a
 // gradient orb. Style objects live at module scope so JSX passes a stable
 // reference (jsx-no-new-object-as-prop).
 const PERSONALITY_TEAM = [
@@ -634,7 +634,7 @@ function AgentTeamSection() {
   return (
     <FeatureSection
       title="A team of agents, by name"
-      description="Save a provider, model, effort, permission mode, and prompt as a named personality with one or more roles. Pick one at the top of any model picker, or let an orchestrator spawn a whole team by role — a Worker to build, a Judger to review, an Advisor for a second opinion. Each gets its own color and voice, on a frontier API or a local model alike. They remember what they learn, and you can read, edit and transfer those lessons."
+      description="Save a provider, model, effort, permission mode, and prompt as a named personality with one or more roles. Pick one at the top of any model picker, or let an orchestrator spawn a whole team by role: a Worker to build, a Judger to review, an Advisor for a second opinion. Each gets its own color and voice, on a frontier API or a local model alike. They remember what they learn, and you can read, edit and transfer those lessons."
     >
       <div className="space-y-4">
         <FeatureShot
@@ -644,7 +644,7 @@ function AgentTeamSection() {
           chrome
           scenario="23-orchestration-runs"
           alt="The Runs view following a multi-phase orchestration across several agents"
-          spec="A multi-phase run in flight — phases listed, one active, several named personalities working under it with their own colours."
+          spec="A multi-phase run in flight: phases listed, one active, several named personalities working under it with their own colours."
         />
         <ShotRow cols={3}>
           <FeatureShot
@@ -669,7 +669,7 @@ function AgentTeamSection() {
             ratio="4/3"
             scenario="23-orchestration-runs"
             alt="A personality's accrued lessons"
-            spec="The personality memory panel with several real accrued lessons — the sci-fi-sounding feature that actually works."
+            spec="The personality memory panel with several real accrued lessons. The sci-fi-sounding feature that actually works."
           />
         </ShotRow>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -688,7 +688,7 @@ function AgentTeamSection() {
   );
 }
 
-// Generic UI icons — Material Symbols (outlined family), matching the app's icon
+// Generic UI icons: Material Symbols (outlined family), matching the app's icon
 // set (docs/ui-icons.md). Brand/provider logos below keep their own marks.
 function MaterialGlyph({ path, ...props }: { path: string } & React.SVGProps<SVGSVGElement>) {
   return (
@@ -918,7 +918,7 @@ function ShipSection() {
   return (
     <FeatureSection
       title="Review, preview, ship"
-      description="Review the diff against the right base, commit the files you choose with a message written by a Writer personality, then open a PR and merge — without leaving Otto. Investigate any file through git while you are at it: what changed, when, and who wrote each line."
+      description="Review the diff against the right base, commit the files you choose with a message written by a Writer personality, then open a PR and merge, without leaving Otto. Investigate any file through git while you are at it: what changed, when, and who wrote each line."
     >
       <div className="space-y-4">
         <FeatureShot
@@ -928,7 +928,7 @@ function ShipSection() {
           chrome
           scenario="03-diff-review"
           alt="The Changes view showing a real diff across several files"
-          spec="Changes view with the staged repo's uncommitted work — several files, real additions and deletions, the file list and the diff body both in frame."
+          spec="Changes view with the staged repo's uncommitted work: several files, real additions and deletions, the file list and the diff body both in frame."
         />
         <ShotRow cols={3}>
           <FeatureShot
@@ -937,7 +937,7 @@ function ShipSection() {
             ratio="4/3"
             scenario="10-diff-ai-review"
             alt="Committing selected files with an AI-written message"
-            spec="The commit sheet with files checked and a generated message filled in — never an empty form."
+            spec="The commit sheet with files checked and a generated message filled in. Never an empty form."
           />
           <FeatureShot
             id="ship-blame"
@@ -945,7 +945,7 @@ function ShipSection() {
             ratio="4/3"
             scenario="25-git-history"
             alt="Blame gutter showing who last wrote each line"
-            spec="A file open with the blame gutter populated — plausible authors and dates from the staged history."
+            spec="A file open with the blame gutter populated, with plausible authors and dates from the staged history."
           />
           <FeatureShot
             id="ship-worktree"
@@ -965,7 +965,7 @@ function AutonomousWorkSection() {
   return (
     <FeatureSection
       title="Work that runs without you"
-      description="Agents generate shareable artifacts, run on a cron schedule, take on background tasks you can monitor or stop from the chat, and offer follow-up work as chips you start in a new chat, a sub-agent, or a fresh worktree. Unattended runs are deny-by-default — nothing pre-approved, nothing surprising."
+      description="Agents generate shareable artifacts, run on a cron schedule, take on background tasks you can monitor or stop from the chat, and offer follow-up work as chips you start in a new chat, a sub-agent, or a fresh worktree. Unattended runs are deny-by-default: nothing pre-approved, nothing surprising."
     >
       <div className="space-y-4">
         <ShotRow>
@@ -975,7 +975,7 @@ function AutonomousWorkSection() {
             ratio="4/3"
             scenario="13-artifacts"
             alt="The Artifacts screen with generated documents"
-            spec="A populated Artifacts grid — several real generated documents, each card showing the personality that made it."
+            spec="A populated Artifacts grid: several real generated documents, each card showing the personality that made it."
           />
           <FeatureShot
             id="auto-artifact-tab"
@@ -1023,7 +1023,7 @@ function CodeIdeSection() {
           chrome
           scenario="24-code-intelligence"
           alt="Renaming a symbol across a whole project"
-          spec="A rename running across several files — the preview of affected sites, then the applied result. The single clearest proof this is a real IDE."
+          spec="A rename running across several files: the preview of affected sites, then the applied result. The single clearest proof this is a real IDE."
         />
         <ShotRow cols={3}>
           <FeatureShot
@@ -1060,7 +1060,7 @@ function VisualizerSection() {
   return (
     <FeatureSection
       title="See what your agents are doing"
-      description="A live, interactive map of the work in progress — agents, subagents, tool calls, messages, and a file-attention heatmap — that works for every provider and opens from any chat or scoped to a single run. Scrub the timeline, pin it as a picture-in-picture over your workspace, or let it read the room out loud."
+      description="A live, interactive map of the work in progress (agents, subagents, tool calls, messages, and a file-attention heatmap) that works for every provider and opens from any chat or scoped to a single run. Scrub the timeline, pin it as a picture-in-picture over your workspace, or let it read the room out loud."
     >
       <div className="space-y-4">
         <FeatureShot
@@ -1070,7 +1070,7 @@ function VisualizerSection() {
           chrome
           scenario="08-visualizer"
           alt="The Visualizer graph animating while agents work"
-          spec="The graph mid-run with a parent agent fanning out to subagents — nodes settling, tool calls firing, the heatmap warming. Motion is the whole point."
+          spec="The graph mid-run with a parent agent fanning out to subagents: nodes settling, tool calls firing, the heatmap warming. Motion is the whole point."
         />
         <ShotRow>
           <FeatureShot
@@ -1079,7 +1079,7 @@ function VisualizerSection() {
             ratio="4/3"
             scenario="08-visualizer"
             alt="A single agent node with its context readout and tool cards"
-            spec="One node close up — personality colour, context ring, and the tool cards with their token costs."
+            spec="One node close up: personality colour, context ring, and the tool cards with their token costs."
           />
           <FeatureShot
             id="viz-pip"
@@ -1100,7 +1100,7 @@ function VisualizerSection() {
           >
             Agent Flow
           </a>{" "}
-          by Simon Patole, fed by Otto&apos;s own provider-neutral event stream — which is why it
+          by Simon Patole, fed by Otto&apos;s own provider-neutral event stream, which is why it
           lights up for every provider, not just one. Go star it.
         </p>
       </div>
@@ -1112,7 +1112,7 @@ function PreviewVerificationSection() {
   return (
     <FeatureSection
       title="Agents that prove their work"
-      description="Otto ships a rebuilt, more functional preview server system. Agents start your dev server from a launch config, open the app in a browser pane, and verify their own changes — reading accessibility snapshots, inspecting the DOM, checking the console and network, clicking and filling forms, resizing the viewport, and capturing screenshots. You get proof, not 'should work now, can you check?'"
+      description="Otto ships a rebuilt, more functional preview server system. Agents start your dev server from a launch config, open the app in a browser pane, and verify their own changes: reading accessibility snapshots, inspecting the DOM, checking the console and network, clicking and filling forms, resizing the viewport, and capturing screenshots. You get proof, not 'should work now, can you check?'"
     >
       <div className="space-y-4">
         <FeatureShot
@@ -1229,7 +1229,7 @@ function VoiceSection() {
   return (
     <FeatureSection
       title="Voice control, fully local"
-      description="Speech-to-text and text-to-speech run entirely on your machine by default — nothing leaves your network. Replies queue up and play in order, with pauses where a voice would take them, and every personality can speak its own lines when it joins, starts thinking, and finishes."
+      description="Speech-to-text and text-to-speech run entirely on your machine by default. Nothing leaves your network. Replies queue up and play in order, with pauses where a voice would take them, and every personality can speak its own lines when it joins, starts thinking, and finishes."
     >
       <div className="space-y-4">
         <FeatureShot
@@ -1239,7 +1239,7 @@ function VoiceSection() {
           chrome
           scenario="21-voice"
           alt="Voice mode driving an agent conversation hands-free"
-          spec="Voice mode live — the listening indicator, dictated text landing in the composer, then the reply being spoken back with its playback state visible."
+          spec="Voice mode live: the listening indicator, dictated text landing in the composer, then the reply being spoken back with its playback state visible."
         />
         <FeatureShot
           id="voice-playback"
@@ -1269,7 +1269,7 @@ function InterfaceSection() {
             chrome
             scenario="22-widgets"
             alt="An agent-built interactive widget inside the conversation"
-            spec="A real widget rendered inline in the chat — something interactive the agent built, not a static card. The best five seconds in this section."
+            spec="A real widget rendered inline in the chat: something interactive the agent built, not a static card. The best five seconds in this section."
           />
           <ShotRow>
             <FeatureShot
@@ -1286,7 +1286,7 @@ function InterfaceSection() {
               ratio="4/3"
               scenario="22-widgets"
               alt="A Mermaid diagram rendered in chat"
-              spec="A Mermaid diagram rendered in a reply — legible at reading size, not a wall of nodes."
+              spec="A Mermaid diagram rendered in a reply, legible at reading size, not a wall of nodes."
             />
           </ShotRow>
         </div>
@@ -1300,7 +1300,7 @@ function CostSection() {
   return (
     <FeatureSection
       title="Know what it costs"
-      description="A Context Management tab accounts for everything filling an agent's window before you type — context files, memory, skills, MCP tools, Otto's own prompt — read as a share of the model window rather than a bare token count. Usage is itemized per agent and per sub-agent at any nesting depth, with cost reported by the provider or left blank, never estimated from a rate table."
+      description="A Context Management tab accounts for everything filling an agent's window before you type (context files, memory, skills, MCP tools, Otto's own prompt), read as a share of the model window rather than a bare token count. Usage is itemized per agent and per sub-agent at any nesting depth, with cost reported by the provider or left blank, never estimated from a rate table."
     >
       <div className="space-y-4">
         <FeatureShot
@@ -1310,7 +1310,7 @@ function CostSection() {
           chrome
           scenario="20-context-cost"
           alt="The Context Management tab accounting for a full context window"
-          spec="The three-pane Context tab with a real inventory — every category present, percentages of the window shown, and a finding selected so its assembled text is visible."
+          spec="The three-pane Context tab with a real inventory: every category present, percentages of the window shown, and a finding selected so its assembled text is visible."
         />
         <ShotRow>
           <FeatureShot
@@ -1319,7 +1319,7 @@ function CostSection() {
             ratio="4/3"
             scenario="20-context-cost"
             alt="The itemized usage log grouped by chat turn"
-            spec="The Usage Log tab — several turns, sub-agents nested under the turn that spawned them, real token and cost columns."
+            spec="The Usage Log tab: several turns, sub-agents nested under the turn that spawned them, real token and cost columns."
           />
           <FeatureShot
             id="cost-metrics"
@@ -1383,7 +1383,7 @@ function DownloadButton() {
   const release = useRelease();
   const detectedPlatform = useDetectedPlatform();
   // Falls back to the download page when the detected platform has no artifact
-  // on this release — mac builds can be absent if their job failed.
+  // on this release. Mac builds can be absent if their job failed.
   const primary = getDownloadOptions(release).find((o) => o.platform === detectedPlatform);
 
   if (!primary) {
@@ -1778,12 +1778,12 @@ function PhoneShowcase() {
         </p>
       </motion.div>
 
-      {/* Phone trio — side phones are absolute, start behind center, slide outward with perspective rotation */}
+      {/* Phone trio. Side phones are absolute, start behind center, slide outward with perspective rotation */}
       <div
         className="relative flex items-center justify-center overflow-x-clip w-full"
         style={PHONE_PERSPECTIVE_STYLE}
       >
-        {/* Left phone — rotated to face inward */}
+        {/* Left phone, rotated to face inward */}
         <motion.div style={leftPhoneStyle} className="w-[160px] md:w-[240px] absolute">
           <img
             src="/phone-1-480.webp"
@@ -1818,7 +1818,7 @@ function PhoneShowcase() {
           />
         </motion.div>
 
-        {/* Right phone — rotated to face inward */}
+        {/* Right phone, rotated to face inward */}
         <motion.div style={rightPhoneStyle} className="w-[160px] md:w-[240px] absolute">
           <img
             src="/phone-3-480.webp"
@@ -1921,10 +1921,10 @@ function FAQ() {
           >
             Paseo
           </a>
-          , with full upstream history preserved. I&apos;m proud of that lineage — Paseo is a
+          , with full upstream history preserved. I&apos;m proud of that lineage. Paseo is a
           fantastic platform to build on. Otto tracks upstream improvements and adds its own
           direction on top: growing into a fully featured agentic coding assistant, with in-browser
-          preview verification, artifacts, and frontier-model tooling brought to every provider —
+          preview verification, artifacts, and frontier-model tooling brought to every provider,
           cloud APIs and local models alike. Otto is an independent project and isn&apos;t
           affiliated with or endorsed by the Paseo team; Paseo&apos;s community, sponsors, and
           testimonials are theirs, not mine.
@@ -1949,7 +1949,7 @@ function FAQ() {
             Simon Patole
           </a>
           , vendored into Otto and fed by Otto&apos;s own provider-neutral event stream rather than
-          its original ingestion — which is why the graph works for every provider, not just one.
+          its original ingestion, which is why the graph works for every provider, not just one.
           Simon&apos;s separation between rendering and event collection is what made that possible,
           and it&apos;s been a pleasure to work with. Agent Flow is an independent project; it
           doesn&apos;t endorse Otto, and its name and logos are its own. Go star it.
@@ -2054,7 +2054,7 @@ function PaseoCreditCTA() {
             Mo
           </a>
           . None of this would exist without the platform Mo built and shares under an open-source
-          license — that generosity is what makes projects like Otto possible. The Visualizer is the
+          license. That generosity is what makes projects like Otto possible. The Visualizer is the
           same story: it&apos;s the render layer of{" "}
           <a
             href="https://github.com/patoles/agent-flow"
@@ -2077,7 +2077,7 @@ function PaseoCreditCTA() {
         </p>
         <p>
           Otto doesn&apos;t take sponsorships or donations. If you&apos;d like to support this work,
-          support the projects underneath it instead — they did the hard parts.
+          support the projects underneath it instead. They did the hard parts.
         </p>
       </div>
       <div className="flex flex-wrap gap-3 pt-2">

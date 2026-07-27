@@ -51,7 +51,7 @@ function Download() {
         </div>
 
         <div className="divide-y divide-border">
-          {/* macOS — unsigned builds; the notes are load-bearing, see MAC_UNSIGNED_NOTE */}
+          {/* macOS: unsigned builds; the notes are load-bearing, see MAC_UNSIGNED_NOTE */}
           <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
@@ -63,7 +63,7 @@ function Download() {
                 {urls.macDmgX64 && <DownloadPill href={urls.macDmgX64} label="Intel" />}
                 {!urls.macDmgArm64 && !urls.macDmgX64 && (
                   <p className="text-sm text-muted-foreground">
-                    Not attached to this release — check GitHub releases.
+                    Not attached to this release. Check GitHub releases.
                   </p>
                 )}
               </div>
@@ -126,14 +126,14 @@ function Download() {
             </div>
           </div>
 
-          {/* iOS — no builds; unlike macOS there's no unsigned escape hatch */}
+          {/* iOS: no builds; unlike macOS there's no unsigned escape hatch */}
           <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-center gap-3">
               <AppleIcon className="h-5 w-5 text-foreground" />
               <span className="font-medium">iOS</span>
             </div>
             <p className="text-sm text-muted-foreground sm:max-w-md sm:text-right">
-              Not currently available — installing on iOS requires an Apple Developer account, with
+              Not currently available. Installing on iOS requires an Apple Developer account, with
               no unsigned route like the Mac has. The Web App works great on iPhone in the meantime.
             </p>
           </div>

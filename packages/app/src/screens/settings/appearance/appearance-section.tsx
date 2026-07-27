@@ -900,13 +900,6 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
-  const handleAutoClearCompletedSubagentsChange = useCallback(
-    (autoClearCompletedSubagents: boolean) => {
-      void updateSettings({ autoClearCompletedSubagents });
-    },
-    [updateSettings],
-  );
-
   const handleSyntaxThemeChange = useCallback(
     (syntaxTheme: SyntaxThemeId) => {
       void updateSettings({ syntaxTheme });
@@ -1213,16 +1206,8 @@ export function AppearanceSection() {
             onValueChange={handleWrapCodeLinesChange}
             testID="settings-wrap-code-lines-switch"
           />
-          {/* i18n: English-only pending a translation pass (auto-clear sub-agents). */}
-          <LayoutToggleRow
-            title="Auto-clear completed sub-agents"
-            hint="Automatically remove finished sub-agents from a chat's track once they settle, instead of leaving them for a manual clear. Their token totals stay counted in the track header."
-            accessibilityLabel="Auto-clear completed sub-agents"
-            value={settings.autoClearCompletedSubagents}
-            withBorder
-            onValueChange={handleAutoClearCompletedSubagentsChange}
-            testID="settings-auto-clear-completed-subagents-switch"
-          />
+          {/* The auto-clear toggles used to sit here. They govern track behavior,
+              not presentation, so they moved to General > Agents. */}
           <TextEffectsRow value={settings.textEffectTheme} onChange={handleTextEffectThemeChange} />
         </View>
       </SettingsSection>

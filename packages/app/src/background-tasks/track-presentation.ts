@@ -2,45 +2,104 @@ import { formatDuration } from "@/utils/time";
 import type { BackgroundShellTaskRow } from "./select";
 
 /**
- * A row is tidy-eligible (auto-collapses into the "Completed" group) once it
- * is terminal AND not flagged for attention — a failed command stays visible
- * so the failure signal is never buried. Mirrors
- * subagents/track-presentation.ts's isSubagentRowTidyEligible, but every
- * background shell task uses the same status set (no attend distinction).
+ * Which group a row is filed under. Terminal work splits two ways so a failed
+ * command is never filed as if it had succeeded: it collapses out of the active
+ * list like anything else that finished, but into its own "Failed" group with
+ * its own clear controls.
  */
-export function isBackgroundTaskRowTidyEligible(row: BackgroundShellTaskRow): boolean {
-  if (row.requiresAttention) {
-    return false;
+export type BackgroundTaskGroup = "active" | "completed" | "failed";
+
+/** The two terminal groups, i.e. everything the clear controls can act on. */
+export type TerminalBackgroundTaskGroup = Exclude<BackgroundTaskGroup, "active">;
+
+/**
+ * A row whose command reported failure. `status` is the single grouping signal:
+ * the daemon derives it from the provider's terminal notification ("failed" to
+ * "error", "stopped" to "closed", anything else to "idle"). The wire also sets
+ * `requiresAttention` on a failure, but grouping deliberately ignores it so
+ * there is exactly one thing to reason about. Grouping once keyed off that flag
+ * instead, which left failures pinned in the active list with nothing on the
+ * row to say why they would not tidy.
+ */
+export function isBackgroundTaskRowFailed(row: BackgroundShellTaskRow): boolean {
+  return row.status === "error";
+}
+
+/** The group a row belongs to, before pinning is applied. */
+export function resolveBackgroundTaskRowGroup(row: BackgroundShellTaskRow): BackgroundTaskGroup {
+  if (row.status === "running") {
+    return "active";
   }
-  return row.status === "error" || row.status === "closed" || row.status === "idle";
+  return isBackgroundTaskRowFailed(row) ? "failed" : "completed";
 }
 
 export interface PartitionedBackgroundTaskRows {
   active: BackgroundShellTaskRow[];
   completed: BackgroundShellTaskRow[];
+  failed: BackgroundShellTaskRow[];
 }
 
 /**
- * Split rows into the active list and the collapsed "Completed" group. Rows
- * in `pinnedIds` stay active even when tidy-eligible — the track pins a row
- * the user just stopped so it doesn't instantly vanish into the collapsed
- * group under their pointer. Mirrors subagents/track-presentation.ts's
- * partitionSubagentRows.
+ * Split rows into the active list and the two collapsed terminal groups. Rows
+ * in `pinnedIds` stay active even when terminal: the track pins a row the user
+ * just stopped so it doesn't instantly vanish into a collapsed group under
+ * their pointer. Mirrors subagents/track-presentation.ts's partitionSubagentRows.
  */
 export function partitionBackgroundTaskRows(
   rows: readonly BackgroundShellTaskRow[],
   pinnedIds?: ReadonlySet<string>,
 ): PartitionedBackgroundTaskRows {
-  const active: BackgroundShellTaskRow[] = [];
-  const completed: BackgroundShellTaskRow[] = [];
+  const partitioned: PartitionedBackgroundTaskRows = { active: [], completed: [], failed: [] };
   for (const row of rows) {
-    if (isBackgroundTaskRowTidyEligible(row) && !pinnedIds?.has(row.id)) {
-      completed.push(row);
-    } else {
-      active.push(row);
-    }
+    const group = pinnedIds?.has(row.id) ? "active" : resolveBackgroundTaskRowGroup(row);
+    partitioned[group].push(row);
   }
-  return { active, completed };
+  return partitioned;
+}
+
+// How long a completed row must stay terminal before the auto-clear driver
+// clears it. A short settle so the row is visibly finished (and its final
+// elapsed readout registers) before it tidies itself away. Deliberately its own
+// constant rather than a shared one with the sub-agents track: the two tracks
+// carry different weight and may want to diverge.
+export const BACKGROUND_TASK_AUTO_CLEAR_SETTLE_MS = 4000;
+
+export interface BackgroundTaskAutoClearSelectionInput {
+  /**
+   * Which terminal group to sweep. Completed and failed auto-clear on separate
+   * settings, so a driver only ever selects from the one group it is enabled for.
+   */
+  group: TerminalBackgroundTaskGroup;
+  settleMs: number;
+  now: number;
+  /** Ids already clearing or previously attempted, never re-selected. */
+  excludeIds?: ReadonlySet<string>;
+}
+
+/**
+ * The rows in `group` due to auto-clear: exactly the set that group renders,
+ * minus excluded ids, minus anything that has not been terminal for at least
+ * `settleMs`. Pure so the driver's timing logic is unit-testable. Mirrors
+ * subagents/track-presentation.ts's selectSubagentsToAutoClear.
+ */
+export function selectBackgroundTasksToAutoClear(
+  rows: readonly BackgroundShellTaskRow[],
+  input: BackgroundTaskAutoClearSelectionInput,
+): BackgroundShellTaskRow[] {
+  const due: BackgroundShellTaskRow[] = [];
+  for (const row of rows) {
+    if (resolveBackgroundTaskRowGroup(row) !== input.group) {
+      continue;
+    }
+    if (input.excludeIds?.has(row.id)) {
+      continue;
+    }
+    if (input.now - new Date(row.updatedAt).getTime() < input.settleMs) {
+      continue;
+    }
+    due.push(row);
+  }
+  return due;
 }
 
 export type BackgroundTaskRowAction = "stop" | "clear";
@@ -74,30 +133,36 @@ export function formatBackgroundTaskElapsed(row: BackgroundShellTaskRow): string
   return formatDuration(Math.max(0, ms));
 }
 
+/** "2 completed background tasks", with the noun pluralized off the count. */
+function formatGroupCount(count: number, state: string): string {
+  return `${count} ${state} ${count === 1 ? "background task" : "background tasks"}`;
+}
+
 /**
  * Header summary for the collapsed track. Mirrors the list's own
- * active/completed split (the same wording subagents/track-presentation.ts
- * uses) so the header reads as a summary of the two groups below it rather
- * than a third framing — "3 background tasks · 1 running" said nothing about
- * what the other two were.
+ * active/completed/failed split (the same wording subagents/track-presentation.ts
+ * uses) so the header reads as a summary of the groups below it rather than a
+ * third framing. "3 background tasks · 1 running" said nothing about what the
+ * other two were, and folding failures into "completed" said something wrong.
  *
- * "active" rather than "running" on purpose: the active group also holds
- * terminal-but-attention-flagged rows (a failed command stays out of the
- * Completed group), so calling them running would be wrong.
+ * "active" rather than "running" on purpose: a row the user just stopped is
+ * pinned active until the track re-partitions, so calling the group running
+ * would be wrong.
  */
-export function formatHeaderLabel({ active, completed }: PartitionedBackgroundTaskRows): string {
+export function formatHeaderLabel({
+  active,
+  completed,
+  failed,
+}: PartitionedBackgroundTaskRows): string {
   const parts: string[] = [];
   if (active.length > 0) {
-    parts.push(
-      `${active.length} active ${active.length === 1 ? "background task" : "background tasks"}`,
-    );
+    parts.push(formatGroupCount(active.length, "active"));
   }
   if (completed.length > 0) {
-    parts.push(
-      `${completed.length} completed ${
-        completed.length === 1 ? "background task" : "background tasks"
-      }`,
-    );
+    parts.push(formatGroupCount(completed.length, "completed"));
+  }
+  if (failed.length > 0) {
+    parts.push(formatGroupCount(failed.length, "failed"));
   }
   return parts.join(" · ");
 }

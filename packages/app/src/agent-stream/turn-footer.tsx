@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { formatTokenCount } from "@/components/context-window-meter.utils";
+import { formatLiveTokenCount } from "@/components/context-window-meter.utils";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -165,7 +165,7 @@ const WorkingIndicator = memo(function WorkingIndicator({
       ) : null}
       {inFlightTurnStartedAt && estimatedTokens !== null && estimatedTokens > 0 ? (
         <Text style={stylesheet.workingTokens} testID="turn-working-tokens">
-          {`• ~${formatTokenCount(estimatedTokens)} tokens`}
+          {`• ${formatLiveTokenCount(estimatedTokens)} tokens`}
         </Text>
       ) : null}
     </View>

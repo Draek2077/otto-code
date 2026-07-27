@@ -1,4 +1,4 @@
-# Outreach — getting Otto known
+# Outreach: getting Otto known
 
 **Status:** charter, approved to plan · **Opened:** 2026-07-19 · **Owner:** Draekz (maker voice)
 
@@ -48,9 +48,9 @@ this charter is not "post it on Reddit and Hacker News."
 
 ### 2a. The mobile pitch is no longer a differentiator
 
-- **2026-02-24** — Anthropic shipped [Claude Code Remote Control](https://code.claude.com/docs/en/remote-control):
+- **2026-02-24**: Anthropic shipped [Claude Code Remote Control](https://code.claude.com/docs/en/remote-control):
   continue a local session from phone or browser via claude.ai. First-party, free, zero setup.
-- **2026-04** — Cline shipped mobile ("how to vibe code from your phone") and, in March, Kanban, a
+- **2026-04**: Cline shipped mobile ("how to vibe code from your phone") and, in March, Kanban, a
   CLI-agnostic multi-agent orchestrator.
 
 "Drive your local agents from your phone" was Otto's headline. As of five months ago it is table
@@ -92,7 +92,7 @@ directory presence and sustained visible shipping.
   daily.dev drops sources inactive 3+ months. **Directory listings are only durable if commits are.
   Visible shipping is itself a distribution channel.**
 
-### 2d. The cold-start reality — verified 2026-07-19, and it governs everything
+### 2d. The cold-start reality: verified 2026-07-19, and it governs everything
 
 | Fact                              | Value                                                                               |
 | --------------------------------- | ----------------------------------------------------------------------------------- |
@@ -165,7 +165,7 @@ in reserve** — not a launch.
   auto-update), no iOS build, Play is internal-track only. State it up front in every post.
   Volunteering the gap defuses it; being caught omitting it costs the thread.
 
-### Anti-positioning — what we never say
+### Anti-positioning: what we never say
 
 Not "the best." Not "Cursor killer." Not a feature-list dump. Never a comparison that disparages
 Paseo, Cline, OpenCode, or Zed — we are asking to stand in their communities. Never "vibe coding" as
@@ -175,7 +175,7 @@ category when someone else raised it.
 
 ---
 
-## 4. The automation boundary — and why "fully automated" is the wrong target
+## 4. The automation boundary: and why "fully automated" is the wrong target
 
 The ask was a strategy "fully automated by AI." Here is the honest engineering answer: **roughly 80%
 of the work automates cleanly and legally, and the remaining 20% is both prohibited and
@@ -248,7 +248,7 @@ telling. See [pipeline.md](pipeline.md) §6.
 
 ---
 
-## 5. Separation — where this lives
+## 5. Separation: where this lives
 
 Per the fork convention that the website is independent of the product, outreach is independent of
 both.
@@ -271,7 +271,7 @@ per the CLAUDE.md convention.
 
 ## 6. Phases
 
-### Phase 0 — Readiness gate ⛔ nothing goes outward until every box is checked
+### Phase 0: Readiness gate ⛔ nothing goes outward until every box is checked
 
 The landing surface is what every channel points at. Today the blog has zero posts, the demo pipeline's
 output is not wired into the site, and the sponsor link points at upstream's author.
@@ -295,7 +295,7 @@ output is not wired into the site, and the sponsor link points at upstream's aut
 Otto is, watches it work, and can download it — and the dossier has no unverified rule for any Phase
 1 or 3 channel.
 
-### Phase 1 — Permanent surfaces (formal routes, zero etiquette risk)
+### Phase 1: Permanent surfaces (formal routes, zero etiquette risk)
 
 Every item here is an official submission channel where self-submission is explicitly invited. No
 community judgment, no ban risk, no timing games. **This is the highest value-per-risk work in the
@@ -343,7 +343,7 @@ would qualify, not Otto); `modelcontextprotocol/servers` (closed to listings); `
 (requires being a for-profit company); `sourcegraph/awesome-code-ai` (archived); There's An AI For That
 and Futurepedia (no free path — $49–$347, prompt-tourist audience).
 
-### Phase 1b — Packaging is a discovery channel
+### Phase 1b: Packaging is a discovery channel
 
 Overlooked in the original framing and worth as much as any post: package managers and homelab app
 stores are **browsable, indexed, permanently-listed surfaces with their own built-in traffic**. Every
@@ -366,34 +366,34 @@ one of these also lowers install friction, which is what actually converts a rea
 degrades badly inside a sandbox that only sees its own volume. Decide the story before submitting, and
 make sure provider credential setup works from the web UI without SSHing into a container.
 
-### Phase 2 — Build the pipeline
+### Phase 2: Build the pipeline
 
 Full architecture in [pipeline.md](pipeline.md). Sequenced after Phase 1 because Phase 1 needs no
 tooling and shouldn't wait for it.
 
-### Phase 3 — Community presence (earn standing before spending it)
+### Phase 3: Community presence (earn standing before spending it)
 
 Ordered by permanence and inverse risk. **Forums before Discord** — a forum post is SEO-indexed and
 permanent; a Discord message scrolls away in four minutes.
 
-1. **Forums** — [community.openai.com](https://community.openai.com/) Codex category,
+1. **Forums**: [community.openai.com](https://community.openai.com/) Codex category,
    [GitHub Copilot Conversations](https://github.com/orgs/community/discussions/categories/copilot-conversations),
    [discuss.huggingface.co](https://discuss.huggingface.co/)
-2. **DEV `#showdev`** — full article body (linking out violates their terms), `canonical_url` home, 4 tags max, AI-assistance disclosure per their CoC
+2. **DEV `#showdev`**: full article body (linking out violates their terms), `canonical_url` home, 4 tags max, AI-assistance disclosure per their CoC
 3. **Fosstodon** (needs an invite; registrations closed) — as a person, never a bare link, ≤3 hashtags. Their ad rule bans "repetitive self-promotion **for profit**"; Otto is free and AGPL, so a real post with context sits inside every clause. Fallbacks: hachyderm.io, floss.social.
-4. **Bluesky** — compounding, not a launch channel. Getting added to dev starter packs is the highest-leverage action. No link suppression, unlike X.
-5. **Reddit, tiered** — one sub at a time, days apart, never near-identical text, and read [channels.md](channels.md) for the verbatim rule of each:
+4. **Bluesky**: compounding, not a launch channel. Getting added to dev starter packs is the highest-leverage action. No link suppression, unlike X.
+5. **Reddit, tiered**: one sub at a time, days apart, never near-identical text, and read [channels.md](channels.md) for the verbatim rule of each:
    - **r/selfhosted is gated until ~2026-10-05.** Rule 6, verbatim: projects "younger than 3 months (measured by **first public presence**)" may only be posted in the New Project Megathread. Otto's first public presence is 2026-07-05. Until then: **megathread only.** Rule 2 also requires the app be "production ready and have docs."
    - Then r/LocalLLaMA → r/ClaudeCode (flair required: `Showcase` or `Resource`) → r/coolgithubprojects, r/mcp → r/opensource (sanctioned "Promotional" flair).
-   - **r/programming is not a flat no** — the rule is narrower than assumed. Verbatim: "Technical writeups on what makes a project technically challenging, interesting, or educational are allowed and encouraged, but just a link to a github page or a list of features is not." That is a Phase 4 essay target, not a Phase 3 project post.
+   - **r/programming is not a flat no**: the rule is narrower than assumed. Verbatim: "Technical writeups on what makes a project technically challenging, interesting, or educational are allowed and encouraged, but just a link to a github page or a list of features is not." That is a Phase 4 essay target, not a Phase 3 project post.
    - **r/webdev is Showoff Saturday only**, and its rules name the 9:1 ratio explicitly.
-6. **Discord** — join five, lurk a week, read `#rules`, post in at most two. Order: OpenCode → **Zoo Code** → LM Studio → Ollama → Aider. **Latent Space last**, once there's a result worth showing; a bad drop there poisons the newsletter and podcast tier.
+6. **Discord**: join five, lurk a week, read `#rules`, post in at most two. Order: OpenCode → **Zoo Code** → LM Studio → Ollama → Aider. **Latent Space last**, once there's a result worth showing; a bad drop there poisons the newsletter and podcast tier.
 
 **The Zoo Code opening:** Roo Code archived 2026-05-15 with 24,362 stars. The community fork
 [Zoo Code](https://www.zoocode.dev/) has 1,367 stars and a "help us keep this alive" posture. That
 audience is displaced, actively looking, philosophically aligned, and nobody is courting them.
 
-### Phase 4 — The citable artifact (the highest-leverage idea in this plan)
+### Phase 4: The citable artifact (the highest-leverage idea in this plan)
 
 **The Aider lesson.** Aider's own launch thread scored 432 points once. Its _leaderboard_ generated
 front-page HN threads for years — "Claude 3 beats GPT-4 on Aider's code editing benchmark" (202 pts)
@@ -420,7 +420,7 @@ marketing, it is worthless**; its entire value is that a third party can point a
 Sequenced here — after the pipeline, before the big swing — because it takes real engineering and
 because the Show HN is far stronger with it in hand.
 
-### Phase 5 — The writing engine (the compounding one)
+### Phase 5: The writing engine (the compounding one)
 
 The Cline lesson: **the argument is the marketing, and the product is the proof.** One substantial
 essay every 2–3 weeks on the independence thesis, published on otto-code.me, cross-posted to DEV with
@@ -430,7 +430,7 @@ The essay that must be written **before** it is needed: _"What happens when your
 rules."_ OpenCode gained ~18,000 stars in two weeks when Anthropic blocked it. The next such incident
 will happen; the piece should already exist. Full calendar in [content.md](content.md).
 
-### Phase 6 — The big swing (once, and retryable)
+### Phase 6: The big swing (once, and retryable)
 
 **Show HN**, spent on a real milestone — v1.0, or the moment provider parity is complete across all
 providers. Not a version bump; HN's Show HN rules exclude "new features and upgrades." Otto qualifies
@@ -458,7 +458,7 @@ The rule that matters is "don't delete and repost," not "never post twice."
 
 ---
 
-## 7. Measurement — four numbers, no telemetry
+## 7. Measurement: four numbers, no telemetry
 
 Otto collects nothing from users and that does not change. Everything below is first-party or public
 API.
@@ -502,7 +502,7 @@ Stated so they don't get relitigated:
 - **No vote solicitation, ever, anywhere.** Banned by HN, Reddit, and Product Hunt; detection is good and consequences are permanent.
 - **No second account, no alt, no "project account" posting alongside the maker account.** Single strongest astroturf signal on every platform.
 - **No automated replies, likes, follows, or votes.** Prohibited by Bluesky, X, Reddit, Discord.
-- **No Discord listening in servers we don't own** — ToS-prohibited in substance; automated user accounts are a ban-on-detection offense.
+- **No Discord listening in servers we don't own**: ToS-prohibited in substance; automated user accounts are a ban-on-detection offense.
 - **No paid placement, sponsored reviews, or press-release lanes.** Nothing is being sold; buying attention would undercut the entire positioning.
 - **No Product Hunt launch.** Wrong audience (founders and marketers, not people who will run a daemon), ~144 average upvotes in H1 2026, a permanent public number attached to Otto, and ban clauses that trigger on things solo makers do innocently.
 - **No Hashnode, no Medium.** Hashnode paywalled its API in May 2026 and DEV does everything it does for free; Medium closed Boost nominations 2026-05-31 and de-distributes self-promotional writing.

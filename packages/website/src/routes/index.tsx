@@ -5,8 +5,8 @@ import { pageMeta } from "~/meta";
 export const Route = createFileRoute("/")({
   head: () =>
     pageMeta(
-      "Otto – The agentic coding assistant for Claude Code, Codex, Copilot, and local models",
-      "A fully featured, self-hosted agentic coding assistant: frontier-model tooling — browser-verified previews, artifacts, rich permission modes — for every provider, cloud and local alike. Drive it from your desk or your phone. Your code stays on your machines.",
+      "Otto: the agentic coding assistant for Claude Code, Codex, Copilot, and local models",
+      "A fully featured, self-hosted agentic coding assistant: frontier-model tooling (browser-verified previews, artifacts, rich permission modes) for every provider, cloud and local alike. Drive it from your desk or your phone. Your code stays on your machines.",
       "/",
     ),
   component: Home,

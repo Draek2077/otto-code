@@ -315,6 +315,20 @@ export interface AppSettings {
   // (see subagents/cleared-subagent-tokens-store.ts). Device-local presentation
   // only. Default off. See docs/agent-lifecycle.md (the sub-agents track).
   autoClearCompletedSubagents: boolean;
+  // Auto-clear completed background shell tasks out of a chat's background tasks
+  // track once they settle, instead of leaving them in the collapsed "Completed"
+  // group for a manual "Clear all completed". Separate from
+  // autoClearCompletedSubagents on purpose: a finished background shell is
+  // throwaway (its output is already in the chat), while a cleared sub-agent is
+  // an archived chat, so the two preferences are independent. Device-local
+  // presentation only. Default off. See docs/chat-lifecycle.md (the Background
+  // Tasks track).
+  autoClearCompletedBackgroundTasks: boolean;
+  // The same, for the track's "Failed" group. Split from the completed flag on
+  // purpose: a failed shell is a result you may not have read yet, so sweeping
+  // away the successes says nothing about wanting the failures gone too.
+  // Device-local presentation only. Default off.
+  autoClearFailedBackgroundTasks: boolean;
   // One-time onboarding tour. `false` on a genuinely fresh install (the tour
   // runs once); backfilled to `true` for any device that already has persisted
   // settings, so upgraders never suddenly see the tour. See migrateTutorialFlag.
@@ -536,6 +550,8 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   textEffectTheme: DEFAULT_TEXT_EFFECT_THEME,
   wrapCodeLines: true,
   autoClearCompletedSubagents: false,
+  autoClearCompletedBackgroundTasks: false,
+  autoClearFailedBackgroundTasks: false,
   hasCompletedTutorial: false,
   interfaceMode: null,
   hasCompletedSetupWizard: false,
@@ -1020,6 +1036,12 @@ function pickChatCodeSettings(stored: Partial<AppSettings>): Partial<AppSettings
   }
   if (typeof stored.autoClearCompletedSubagents === "boolean") {
     result.autoClearCompletedSubagents = stored.autoClearCompletedSubagents;
+  }
+  if (typeof stored.autoClearCompletedBackgroundTasks === "boolean") {
+    result.autoClearCompletedBackgroundTasks = stored.autoClearCompletedBackgroundTasks;
+  }
+  if (typeof stored.autoClearFailedBackgroundTasks === "boolean") {
+    result.autoClearFailedBackgroundTasks = stored.autoClearFailedBackgroundTasks;
   }
   if (typeof stored.chatBubbleGradient === "boolean") {
     result.chatBubbleGradient = stored.chatBubbleGradient;

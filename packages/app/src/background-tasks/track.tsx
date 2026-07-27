@@ -14,6 +14,7 @@ import type { BackgroundShellTaskRow } from "./select";
 import {
   formatBackgroundTaskElapsed,
   formatHeaderLabel,
+  isBackgroundTaskRowFailed,
   isBackgroundTaskRowRunning,
   partitionBackgroundTaskRows,
   resolveBackgroundTaskRowAction,
@@ -31,11 +32,16 @@ const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foregrou
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
+// A failed row reads red throughout: icon, command, and elapsed. The failure is
+// the only thing on the row that distinguishes it from a clean finish, so it has
+// to be legible at a glance rather than inferred from which group it sits in.
+const dangerColorMapping = (theme: Theme) => ({ color: theme.colors.statusDanger });
 
 export interface BackgroundTasksTrackProps {
   rows: BackgroundShellTaskRow[];
   onStopTask: (id: string) => void;
-  onClearCompleted: (ids: readonly string[]) => void;
+  /** Clear the given rows off the track. Serves every clear control here. */
+  onClearTasks: (ids: readonly string[]) => void;
 }
 
 const BACKGROUND_TASKS_LIST_MAX_HEIGHT = 200;
@@ -43,12 +49,14 @@ const BACKGROUND_TASKS_LIST_MAX_HEIGHT = 200;
 export function BackgroundTasksTrack({
   rows,
   onStopTask,
-  onClearCompleted,
+  onClearTasks,
 }: BackgroundTasksTrackProps): ReactElement | null {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [completedExpanded, setCompletedExpanded] = useState(false);
+  const [failedExpanded, setFailedExpanded] = useState(false);
   // A row the user just stopped stays pinned in the active list instead of
-  // instantly tidying into the collapsed Completed group under their pointer.
+  // instantly tidying into a collapsed group under their pointer.
   const [pinnedIds, setPinnedIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const toggleExpanded = useCallback(() => {
@@ -57,6 +65,9 @@ export function BackgroundTasksTrack({
   }, []);
   const toggleCompletedExpanded = useCallback(() => {
     setCompletedExpanded((current) => !current);
+  }, []);
+  const toggleFailedExpanded = useCallback(() => {
+    setFailedExpanded((current) => !current);
   }, []);
 
   const handleStopTask = useCallback(
@@ -74,14 +85,18 @@ export function BackgroundTasksTrack({
     [onStopTask],
   );
 
-  const { active, completed } = useMemo(
+  const { active, completed, failed } = useMemo(
     () => partitionBackgroundTaskRows(rows, pinnedIds),
     [rows, pinnedIds],
   );
   const completedIds = useMemo(() => completed.map((row) => row.id), [completed]);
+  const failedIds = useMemo(() => failed.map((row) => row.id), [failed]);
   const handleClearCompleted = useCallback(() => {
-    onClearCompleted(completedIds);
-  }, [onClearCompleted, completedIds]);
+    onClearTasks(completedIds);
+  }, [onClearTasks, completedIds]);
+  const handleClearFailed = useCallback(() => {
+    onClearTasks(failedIds);
+  }, [onClearTasks, failedIds]);
 
   const surfaceStyle = useMemo(
     () => [styles.surface, expanded && styles.surfaceExpanded],
@@ -103,7 +118,7 @@ export function BackgroundTasksTrack({
 
   // Summarize the same partition the list renders, so a pinned row is counted
   // in the group it is actually shown in.
-  const headerLabel = formatHeaderLabel({ active, completed });
+  const headerLabel = formatHeaderLabel({ active, completed, failed });
 
   return (
     <ComposerTrackTransition layer={COMPOSER_TRACK_LAYERS.backgroundTasks}>
@@ -134,28 +149,44 @@ export function BackgroundTasksTrack({
                 nestedScrollEnabled
               >
                 {active.map((row) => (
-                  // Clear must target *this* row's id. An active row can be
-                  // terminal-but-attention-flagged (a failed command stays out
-                  // of the Completed group), so it owns a working X of its own —
-                  // routing it through the bulk "clear completed" handler would
-                  // pass a list that never contains this row, and the X would do
+                  // Clear targets *this* row's id, not the bulk group list: a
+                  // pinned row sits in the active list while still being
+                  // terminal, so routing its X through a group handler would
+                  // pass a list that never contains it and the X would do
                   // nothing.
                   <BackgroundTaskTrackRow
                     key={row.id}
                     row={row}
                     onStopTask={handleStopTask}
-                    onClearTask={onClearCompleted}
+                    onClearTask={onClearTasks}
                   />
                 ))}
                 {completed.length > 0 ? (
-                  <CompletedBackgroundTasksGroup
+                  <BackgroundTasksGroup
                     rows={completed}
                     flushTop={active.length === 0}
                     expanded={completedExpanded}
+                    headerLabel={t("backgroundTasks.completedGroup", { count: completed.length })}
+                    clearTooltip={t("backgroundTasks.clearCompletedTooltip")}
+                    testIDPrefix="background-tasks-track-completed"
                     onToggle={toggleCompletedExpanded}
                     onClear={handleClearCompleted}
                     onStopTask={handleStopTask}
-                    onClearOne={onClearCompleted}
+                    onClearOne={onClearTasks}
+                  />
+                ) : null}
+                {failed.length > 0 ? (
+                  <BackgroundTasksGroup
+                    rows={failed}
+                    flushTop={active.length === 0 && completed.length === 0}
+                    expanded={failedExpanded}
+                    headerLabel={t("backgroundTasks.failedGroup", { count: failed.length })}
+                    clearTooltip={t("backgroundTasks.clearFailedTooltip")}
+                    testIDPrefix="background-tasks-track-failed"
+                    onToggle={toggleFailedExpanded}
+                    onClear={handleClearFailed}
+                    onStopTask={handleStopTask}
+                    onClearOne={onClearTasks}
                   />
                 ) : null}
               </ScrollView>
@@ -167,43 +198,51 @@ export function BackgroundTasksTrack({
   );
 }
 
-interface CompletedBackgroundTasksGroupProps {
+interface BackgroundTasksGroupProps {
   rows: BackgroundShellTaskRow[];
-  /** No active rows above — drop the separator gap so the group sits flush. */
+  /** Nothing rendered above, so drop the separator gap and sit flush. */
   flushTop: boolean;
   expanded: boolean;
+  headerLabel: string;
+  clearTooltip: string;
+  testIDPrefix: string;
   onToggle: () => void;
   onClear: () => void;
   onStopTask: (id: string) => void;
   onClearOne: (ids: readonly string[]) => void;
 }
 
-// Finished work tidies itself but stays reachable: terminal, non-attention
-// rows collapse into a "Completed (N)" group (collapsed by default) with a
-// bulk "Clear all". Mirrors subagents/track.tsx's CompletedSubagentsGroup.
-function CompletedBackgroundTasksGroup({
+// Finished work tidies itself but stays reachable: terminal rows collapse into
+// a "Completed (N)" or "Failed (N)" group (collapsed by default) with a bulk
+// "Clear all". One component for both because the two groups differ only in
+// their wording and which rows they hold. Failures earn their own group rather
+// than a shared one so clearing the noise never clears the signal with it.
+// Mirrors subagents/track.tsx's CompletedSubagentsGroup.
+function BackgroundTasksGroup({
   rows,
   flushTop,
   expanded,
+  headerLabel,
+  clearTooltip,
+  testIDPrefix,
   onToggle,
   onClear,
   onStopTask,
   onClearOne,
-}: CompletedBackgroundTasksGroupProps): ReactElement {
+}: BackgroundTasksGroupProps): ReactElement {
   const { t } = useTranslation();
-  const headerLabel = t("backgroundTasks.completedGroup", { count: rows.length });
   const clearLabel = t("backgroundTasks.clearCompleted");
 
   return (
     <View
       style={flushTop ? styles.completedGroupFlush : styles.completedGroup}
-      testID="background-tasks-track-completed-group"
+      testID={`${testIDPrefix}-group`}
     >
       <View style={styles.completedHeaderRow}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={headerLabel}
-          testID="background-tasks-track-completed-toggle"
+          testID={`${testIDPrefix}-toggle`}
           onPress={onToggle}
           style={styles.completedToggle}
         >
@@ -220,8 +259,8 @@ function CompletedBackgroundTasksGroup({
           <TooltipTrigger asChild>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={clearLabel}
-              testID="background-tasks-track-clear-completed"
+              accessibilityLabel={clearTooltip}
+              testID={`${testIDPrefix}-clear`}
               onPress={onClear}
               style={styles.clearButton}
               hitSlop={8}
@@ -230,7 +269,7 @@ function CompletedBackgroundTasksGroup({
             </Pressable>
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
-            <Text style={styles.tooltipText}>{t("backgroundTasks.clearCompletedTooltip")}</Text>
+            <Text style={styles.tooltipText}>{clearTooltip}</Text>
           </TooltipContent>
         </Tooltip>
       </View>
@@ -264,6 +303,7 @@ function BackgroundTaskTrackRow({
   const displayLabel = resolveRowLabel(row);
   const rowAction = resolveBackgroundTaskRowAction(row.status);
   const isRunning = isBackgroundTaskRowRunning(row.status);
+  const isFailed = isBackgroundTaskRowFailed(row);
   const frozenElapsed = formatBackgroundTaskElapsed(row);
   const handleStopPress = useCallback(() => {
     onStopTask(row.id);
@@ -284,14 +324,18 @@ function BackgroundTaskTrackRow({
       style={hovered ? styles.rowActive : styles.row}
       testID={`background-tasks-track-row-${row.id}`}
     >
-      <ThemedTerminal size={14} uniProps={foregroundMutedColorMapping} />
-      <Text style={styles.rowLabel} numberOfLines={1}>
+      <ThemedTerminal
+        size={14}
+        uniProps={isFailed ? dangerColorMapping : foregroundMutedColorMapping}
+      />
+      <Text style={isFailed ? styles.rowLabelFailed : styles.rowLabel} numberOfLines={1}>
         {displayLabel}
       </Text>
       <BackgroundTaskElapsed
         rowId={row.id}
         startedAt={row.createdAt}
         isRunning={isRunning}
+        isFailed={isFailed}
         frozenElapsed={frozenElapsed}
       />
       <BackgroundTaskRowActions
@@ -310,11 +354,13 @@ function BackgroundTaskElapsed({
   rowId,
   startedAt,
   isRunning,
+  isFailed,
   frozenElapsed,
 }: {
   rowId: string;
   startedAt: string;
   isRunning: boolean;
+  isFailed: boolean;
   frozenElapsed: string | null;
 }): ReactElement | null {
   if (isRunning) {
@@ -332,7 +378,7 @@ function BackgroundTaskElapsed({
   }
   return (
     <Text
-      style={styles.rowMeta}
+      style={isFailed ? styles.rowMetaFailed : styles.rowMeta}
       numberOfLines={1}
       testID={`background-tasks-track-elapsed-${rowId}`}
     >
@@ -507,10 +553,22 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
   },
+  rowLabelFailed: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.statusDanger,
+  },
   rowMeta: {
     flexShrink: 0,
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
+    fontVariant: ["tabular-nums"],
+  },
+  rowMetaFailed: {
+    flexShrink: 0,
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.statusDanger,
     fontVariant: ["tabular-nums"],
   },
   completedGroup: {

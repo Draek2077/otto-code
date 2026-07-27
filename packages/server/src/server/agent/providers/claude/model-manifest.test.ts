@@ -20,17 +20,17 @@ describe("claude model manifest", () => {
       Object.fromEntries(CLAUDE_MODEL_MANIFEST.map((model) => [model.id, catalogTier(model.id)])),
     ).toEqual({
       "claude-fable-5": "deep",
-      "claude-opus-5[1m]": "deep",
-      "claude-opus-5": "standard",
-      "claude-opus-4-8[1m]": "deep",
-      "claude-opus-4-8": "standard",
+      "claude-opus-5": "deep",
+      "claude-opus-4-8": "deep",
       "claude-sonnet-5": "standard",
-      "claude-opus-4-7[1m]": "deep",
-      "claude-opus-4-7": "standard",
+      "claude-opus-4-7": "deep",
       "claude-opus-4-6[1m]": "deep",
       "claude-opus-4-6": "standard",
       "claude-sonnet-4-6[1m]": "standard",
       "claude-sonnet-4-6": "standard",
+      "claude-opus-4-5": "standard",
+      "claude-sonnet-4-5[1m]": "standard",
+      "claude-sonnet-4-5": "standard",
       "claude-haiku-4-5": "fast",
     });
   });

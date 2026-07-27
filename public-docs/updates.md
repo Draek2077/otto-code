@@ -36,7 +36,7 @@ v0.1.92-beta.2
 v0.1.92-beta.3
 ```
 
-When the release is ready, the final stable tag is `v0.1.92` — not `v0.1.93`. The betas are checkpoints on the way to the same stable version.
+When the release is ready, the final stable tag is `v0.1.92`, not `v0.1.93`. The betas are checkpoints on the way to the same stable version.
 
 ## Stable channel
 
@@ -48,7 +48,7 @@ Stable releases are what most users should run.
 
 The beta channel gets every prerelease as soon as it's published, with no rollout delay. When a beta is promoted to stable, beta users receive that stable update immediately too.
 
-Betas are the best way to get fixes and features early. If you hit a bug, report it — beta feedback is what makes stable releases reliable.
+Betas are the best way to get fixes and features early. If you hit a bug, report it. Beta feedback is what makes stable releases reliable.
 
 ### How to join the beta channel
 
@@ -64,7 +64,7 @@ The app will check for beta updates from then on.
 
 Desktop releases and the CLI are usually available first. App Store and Play Store releases can lag behind because they go through review.
 
-There is no beta channel in the app stores right now — only stable builds are submitted. If you want early Android builds, download the APK from the [GitHub releases page](https://github.com/Draek2077/otto-code/releases).
+There is no beta channel in the app stores right now; only stable builds are submitted. If you want early Android builds, download the APK from the [GitHub releases page](https://github.com/Draek2077/otto-code/releases).
 
 ## What to do if something breaks
 

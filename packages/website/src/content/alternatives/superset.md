@@ -100,17 +100,17 @@ Superset is free for one seat with local workspaces only. Team features and sync
 | ---------------------------- | ----------------------------------------------------- | -------------------------------------- |
 | License                      | Open source (AGPL-3.0)                                | Source-available (Elastic License 2.0) |
 | Platforms                    | macOS, Linux, Windows                                 | macOS only                             |
-| Native mobile                | iOS, Android                                          | —                                      |
+| Native mobile                | iOS, Android                                          | No                                     |
 | Login required               | No                                                    | Yes (Superset account)                 |
 | Pricing                      | Free                                                  | Free 1 seat, $20/seat/mo Pro           |
 | Per-agent native UI          | Yes (modes, slash commands, file picker, diff viewer) | Terminal output                        |
 | Split panes and tabs         | Yes                                                   | Yes (terminals)                        |
-| In-app browser               | Yes                                                   | —                                      |
+| In-app browser               | Yes                                                   | No                                     |
 | GitHub workflow in app       | Commit, push, PR, checks, reviews, merge              | Yes                                    |
 | Git worktrees                | Yes                                                   | Yes                                    |
-| Per-worktree dev server URLs | Yes                                                   | —                                      |
-| CLI                          | Run, `--host`, ls, send, schedule, loop               | —                                      |
-| Local voice (on-device)      | Yes                                                   | —                                      |
-| Self-hosted daemon           | Yes                                                   | —                                      |
+| Per-worktree dev server URLs | Yes                                                   | No                                     |
+| CLI                          | Run, `--host`, ls, send, schedule, loop               | No                                     |
+| Local voice (on-device)      | Yes                                                   | No                                     |
+| Self-hosted daemon           | Yes                                                   | No                                     |
 
 See also: [Otto vs Conductor](/alternatives/conductor), [Otto vs OpenChamber](/alternatives/openchamber), [Otto vs Happy Coder](/alternatives/happy-coder).

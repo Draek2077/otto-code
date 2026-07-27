@@ -12,10 +12,10 @@ Otto gives agents a [real browser inside Otto](/docs/browser). Standalone tools 
 
 Use the Otto browser when:
 
-- **You're running agents remotely and want to watch.** You see the same browser the agent is driving, live in the Otto desktop app — not a headless browser on a box you can't see.
+- **You're running agents remotely and want to watch.** You see the same browser the agent is driving, live in the Otto desktop app, not a headless browser on a box you can't see.
 - **You want the browser inside Otto.** It's a tab in the same session, not a separate agent window to manage.
-- **You don't want to set up extra tools.** It's built in — no separate MCP server or CLI to install and wire up.
+- **You don't want to set up extra tools.** It's built in, with no separate MCP server or CLI to install and wire up.
 
-Reach for Playwright or agent-browser when the browser work stands on its own — headless CI runs, an existing test suite, or automation that isn't tied to an agent session in Otto.
+Reach for Playwright or agent-browser when the browser work stands on its own: headless CI runs, an existing test suite, or automation that isn't tied to an agent session in Otto.
 
 The Otto browser is [desktop only for now](/docs/browser).

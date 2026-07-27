@@ -20,7 +20,7 @@ const MAC_X64_ASSET_PATTERN = /^Otto-.*-x64-unsigned\.dmg$/;
 
 // macOS stays out of the required set on purpose. The mac jobs can finish after
 // the release publishes, and `finalize-rollout` tolerates a failed mac build so
-// Windows/Linux still ship — requiring a mac asset here would pin the whole site
+// Windows/Linux still ship. Requiring a mac asset here would pin the whole site
 // to an older release whenever mac alone fails. Missing mac assets degrade to
 // "no mac links" instead.
 const REQUIRED_ASSET_PATTERNS = [

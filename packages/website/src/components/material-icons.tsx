@@ -1,7 +1,7 @@
 import * as React from "react";
 
 // Generic UI icons for the website, drawn from Material Symbols (outlined
-// family) to match the app's icon set — see docs/ui-icons.md. Glyph keys mirror
+// family) to match the app's icon set. See docs/ui-icons.md. Glyph keys mirror
 // packages/app/scripts/material-symbols-map.json so a name means the same thing
 // in both surfaces. Brand and provider logos are NOT here; those keep their own
 // marks. Icons inside UI mockups (hero-mockup, etc.) are image representations

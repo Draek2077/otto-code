@@ -9,7 +9,7 @@ import "~/styles.css";
 export const Route = createFileRoute("/agents")({
   head: () =>
     pageMeta(
-      "Supported agents – Every coding agent Otto runs",
+      "Supported agents: every coding agent Otto runs",
       "Run Claude Code, Codex, Copilot, OpenCode, Cursor CLI, Gemini CLI, and dozens more coding agents from your phone. Self-hosted, your code stays on your machine.",
       "/agents",
     ),
@@ -29,7 +29,7 @@ function AgentsPage() {
               Every agent Otto supports
             </h1>
             <p className="text-white/70 text-lg leading-relaxed">
-              Otto runs the native CLI for {AGENT_PAGES.length} coding agents — your skills, your
+              Otto runs the native CLI for {AGENT_PAGES.length} coding agents. Your skills, your
               config, your MCP servers, all intact. Drive any of them from your phone.
             </p>
           </header>

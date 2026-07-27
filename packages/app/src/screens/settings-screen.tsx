@@ -431,6 +431,9 @@ interface GeneralSectionProps {
   handlePromptSuggestionsEnabledChange: (enabled: boolean) => void;
   handleRateLimitWarningsEnabledChange: (enabled: boolean) => void;
   handleContextWarningsEnabledChange: (enabled: boolean) => void;
+  handleAutoClearCompletedSubagentsChange: (enabled: boolean) => void;
+  handleAutoClearCompletedBackgroundTasksChange: (enabled: boolean) => void;
+  handleAutoClearFailedBackgroundTasksChange: (enabled: boolean) => void;
   handlePinnedTaskListEnabledChange: (enabled: boolean) => void;
   handlePinnedTaskListAutoDismissChange: (enabled: boolean) => void;
   handleSendBehaviorChange: (behavior: SendBehavior) => void;
@@ -523,6 +526,9 @@ function GeneralSection({
   handlePromptSuggestionsEnabledChange,
   handleRateLimitWarningsEnabledChange,
   handleContextWarningsEnabledChange,
+  handleAutoClearCompletedSubagentsChange,
+  handleAutoClearCompletedBackgroundTasksChange,
+  handleAutoClearFailedBackgroundTasksChange,
   handlePinnedTaskListEnabledChange,
   handlePinnedTaskListAutoDismissChange,
   handleSendBehaviorChange,
@@ -870,6 +876,57 @@ function GeneralSection({
               onValueChange={handleContextWarningsEnabledChange}
               accessibilityLabel="Context weight warnings"
               testID="settings-context-warnings-switch"
+            />
+          </View>
+          {/* The three auto-clear toggles govern the tracks above the message
+              box (sub-agents, background tasks). Behavior, not presentation, so
+              they live here rather than under Appearance where they started. */}
+          <View style={ROW_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>Auto-clear completed sub-agents</Text>
+              <Text style={settingsStyles.rowHint}>
+                Automatically remove finished sub-agents from a chat&apos;s track once they settle,
+                instead of leaving them for a manual clear. Their token totals stay counted in the
+                track header.
+              </Text>
+            </View>
+            <Switch
+              value={settings.autoClearCompletedSubagents}
+              onValueChange={handleAutoClearCompletedSubagentsChange}
+              accessibilityLabel="Auto-clear completed sub-agents"
+              testID="settings-auto-clear-completed-subagents-switch"
+            />
+          </View>
+          <View style={ROW_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>Auto-clear completed background tasks</Text>
+              <Text style={settingsStyles.rowHint}>
+                Automatically remove finished background shell tasks from a chat&apos;s track once
+                they settle, instead of leaving them for a manual clear. Their output stays in the
+                chat.
+              </Text>
+            </View>
+            <Switch
+              value={settings.autoClearCompletedBackgroundTasks}
+              onValueChange={handleAutoClearCompletedBackgroundTasksChange}
+              accessibilityLabel="Auto-clear completed background tasks"
+              testID="settings-auto-clear-completed-background-tasks-switch"
+            />
+          </View>
+          <View style={ROW_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>Auto-clear failed background tasks</Text>
+              <Text style={settingsStyles.rowHint}>
+                Do the same for background shell tasks that failed. Off by default and separate from
+                the setting above, so tidying away the ones that succeeded never sweeps a failure
+                you haven&apos;t read yet.
+              </Text>
+            </View>
+            <Switch
+              value={settings.autoClearFailedBackgroundTasks}
+              onValueChange={handleAutoClearFailedBackgroundTasksChange}
+              accessibilityLabel="Auto-clear failed background tasks"
+              testID="settings-auto-clear-failed-background-tasks-switch"
             />
           </View>
         </View>
@@ -1933,6 +1990,27 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     [updateSettings],
   );
 
+  const handleAutoClearCompletedSubagentsChange = useCallback(
+    (autoClearCompletedSubagents: boolean) => {
+      void updateSettings({ autoClearCompletedSubagents });
+    },
+    [updateSettings],
+  );
+
+  const handleAutoClearCompletedBackgroundTasksChange = useCallback(
+    (autoClearCompletedBackgroundTasks: boolean) => {
+      void updateSettings({ autoClearCompletedBackgroundTasks });
+    },
+    [updateSettings],
+  );
+
+  const handleAutoClearFailedBackgroundTasksChange = useCallback(
+    (autoClearFailedBackgroundTasks: boolean) => {
+      void updateSettings({ autoClearFailedBackgroundTasks });
+    },
+    [updateSettings],
+  );
+
   const handlePinnedTaskListEnabledChange = useCallback(
     (pinnedTaskListEnabled: boolean) => {
       void updateSettings({ pinnedTaskListEnabled });
@@ -2281,6 +2359,13 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               handlePromptSuggestionsEnabledChange={handlePromptSuggestionsEnabledChange}
               handleRateLimitWarningsEnabledChange={handleRateLimitWarningsEnabledChange}
               handleContextWarningsEnabledChange={handleContextWarningsEnabledChange}
+              handleAutoClearCompletedSubagentsChange={handleAutoClearCompletedSubagentsChange}
+              handleAutoClearCompletedBackgroundTasksChange={
+                handleAutoClearCompletedBackgroundTasksChange
+              }
+              handleAutoClearFailedBackgroundTasksChange={
+                handleAutoClearFailedBackgroundTasksChange
+              }
               handlePinnedTaskListEnabledChange={handlePinnedTaskListEnabledChange}
               handlePinnedTaskListAutoDismissChange={handlePinnedTaskListAutoDismissChange}
               handleSendBehaviorChange={handleSendBehaviorChange}
