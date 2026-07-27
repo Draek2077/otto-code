@@ -68,7 +68,7 @@ Everything currently in this tree. Status vocabulary: **Charter** (nothing built
 | [e2e-qa-coverage](e2e-qa-coverage/e2e-qa-coverage.md)                                           | Partial | Full-app Playwright QA across 3 tiers. T1 and T2 green; Phase 3.5 iron-out and the ❌ rows remain. Tier design folded into [docs/testing.md](../docs/testing.md). **[coverage-matrix.md](e2e-qa-coverage/coverage-matrix.md) is live tooling, not a plan** — `scripts/e2e-coverage-check.mjs` and the QA reporter read it at runtime, so this folder cannot drain                                                                                                                                                                                                               |
 | [godot-integration](godot-integration/godot-integration.md)                                     | Charter | The rare engine whose whole project is diffable text, so Changes, blame and history work on it already. Missing: grammars for `.gd`/`.tscn`/`.tres`/`.gdshader`, `project.godot` as a project marker, and a **socket** transport for the LSP pool — GDScript's server is hosted inside the running editor, not spawned over stdio. C# Godot projects need nothing new. Whether the web export runs and is inspectable in Otto's browser pane is unverified and decides how ambitious this gets                                                                                  |
 | [graph-templates](graph-templates/graph-templates.md)                                           | Charter | **Do the graphs actually work?** The measurement layer (per-node accounting, capability scoring, multi-mechanism grading, a T2 golden-graph harness) plus the starter-template library (Plan–Execute–Verify, review sweep, research→synthesize, full dev process, **Perform and Teach**). Engine-side decisions it builds on: `archdocs/pages/12` §"Decided, not built"                                                                                                                                                                                                         |
-| [marketing-strategy](marketing-strategy/marketing-strategy.md)                                  | Charter | Otto's public voice (Philippe, first person) and the channels still to create. Companion: [feature-inventory.md](marketing-strategy/feature-inventory.md) — the verified full accounting of what Otto adds beyond Paseo (238 items as of 0.7.0), **held locally, published nowhere yet**                                                                                                                                                                                                                                                                                        |
+| [marketing-strategy](marketing-strategy/marketing-strategy.md)                                  | Charter | Otto's public voice (Philippe, first person) and the channels still to create. Companions: [feature-inventory.md](marketing-strategy/feature-inventory.md) — the verified full accounting of what Otto adds beyond Paseo (238 items as of 0.7.0), **held locally, published nowhere yet**; [website-showcase.md](marketing-strategy/website-showcase.md) — how those 21 groups collapse into eleven landing-page sections, the 34-shot manifest and the `WebsiteHero` staging definition                                                                                        |
 | [mobile-daemon](mobile-daemon/mobile-daemon.md)                                                 | Charter | Embedded API-native daemon on the phone ("This device" host); no CLIs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | [multiplayer](multiplayer/multiplayer.md)                                                       | Charter | Presence, entering each other's workspaces, opt-in follow — never forced mirroring                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | [observed-subagents](observed-subagents/observed-subagents.md)                                  | Partial | Provider subagents promoted to read-only track rows. Claude proof shipped; generalizing is adapter-only work. **[provider-adapters.md](observed-subagents/provider-adapters.md) is the adapter contract** and is cited from `docs/`                                                                                                                                                                                                                                                                                                                                             |
@@ -613,15 +613,33 @@ follows is everything that charter had left._
 
 ### Testing & tooling
 
-- 🔴 **`main` has a failing unit test, and has had since the LSP landing.**
-  `packages/client/src/index.test.ts` ("config actions delegate to existing daemon config RPCs")
-  asserts the parsed daemon config with `resolves.toEqual` — a strict deep equal. `0a8abeb7d` gave
-  `lsp` a schema `.default(...)` and `beb4b833a` did the same for `dotnetSolutionManagement`
-  (`protocol/src/messages.ts`), so the client now fills two keys the expectation does not list. The
-  test file itself was last touched in `a1254c4ba`, well before either. **Repro:** clean checkout of
-  `main`, `npx vitest run packages/client/src/index.test.ts`. A fix is already sitting **uncommitted**
-  in the working tree and is green there — it just has to land before the 0.7.0 cut, or the release is
-  cut over a red suite. Worth asking separately why CI did not catch it.
+- 🔴 **`main` CI has not been green since 2026-07-12, and two releases were cut over it.** The last
+  successful `CI` run on `main` is 2026-07-12; every run since is `failure` or `cancelled`, so both
+  0.7.0 and 0.7.1 shipped over a red suite. The strict-deep-equal drift in
+  `packages/client/src/index.test.ts` recurs every time a config key gains a schema `.default(...)`
+  (most recently `attachmentImageMaxAgeDays` / `attachmentImageMaxTotalMb`); it is fixed again, but
+  the pattern will keep biting until the expectation stops enumerating every defaulted key. **The
+  real problem is that a red `main` stopped being treated as a signal** — nobody was reading the runs,
+  so a 15-day outage looked like background noise.
+- 🟡 **`mcp-server.test.ts` worktree-branch assertions assumed two independent writes were ordered.**
+  The workspace record's `branch` and the worktree's actual git branch are written by _different_
+  paths — the workspace-name generator upserts the record, the first-agent branch auto-namer renames
+  git — so waiting on the record and then reading git immediately is a cross-path ordering assumption.
+  It holds locally (121/121 across three full-file runs on Windows) and lost once under CI load,
+  producing "registry says `generated-manual-race-title`, worktree says
+  `feat/manual-title-placeholder`". Both affected assertions now poll the git branch they are actually
+  about (`waitForWorktreeGitBranch`). **Not fully closed:** the failure never reproduced locally, so
+  the ordering explanation is inferred from the code rather than observed. If it recurs, the next
+  suspect is `attemptFirstAgentBranchAutoName` (`otto-worktree-service.ts:159`), which returns
+  `renamed: true` unconditionally with `branchName: renamedBranch.currentBranch ?? targetName` —
+  though a failed `git branch -m` rejects rather than resolving, so that does not explain it alone.
+- 🟡 **E2E global setup called Metro ready when the port opened, not when the bundle was built.**
+  `waitForServer` is a raw TCP connect, which Metro satisfies long before it has compiled the web
+  bundle; the first navigation triggers the compile, and on CI that ran past a spec's 60s budget. Each
+  shard spawns its own Metro, so whichever spec happened to be first in a shard paid for it and failed
+  on `page.goto` — `diff-row-alignment` as attempt #1 in shard 2, and the same signature in shard 4.
+  `global-setup.ts` now warms the bundle with a real navigation before any test runs. Distinct from
+  the `test-results`/`ENOENT` Metro failure below, which kills an already-running bundler.
 - 🔴 **Metro dies mid-E2E when Playwright churns `packages/app/test-results`.** Playwright's default
   `outputDir` sits **inside Metro's watched project root**, so deleting a scratch dir makes Metro's
   watcher throw `ENOENT`, the Expo CLI rethrow, and the bundler exit. Every later navigation then
@@ -665,6 +683,17 @@ follows is everything that charter had left._
   lives now), `13-artifacts` and `14-schedules` (both free _if_ the seeder plants the files),
   `15-workspace-layouts`, then `16-terminals`, `17-multi-provider`, `18-worktrees`, `19-editor-ide`.
   Two remain storyboards only: `01-agent-live` and `10-diff-ai-review`.
+  **The demand side is now written down:**
+  [marketing-strategy/website-showcase.md](marketing-strategy/website-showcase.md) maps the landing
+  page's eleven sections to a 35-shot manifest and names the producing scenario for each, so what
+  the site needs and what the pipeline builds stay one list. It adds `00-website-hero` (a curated
+  full-frame **looping** capture that absorbs `hero-shot`, plus a content-curation pass on the
+  `mango-storefront` template, whose filenames and comments are site copy), and five scenarios the
+  backlog above never named: `20-context-cost`, `21-voice`, `22-widgets`, `23-orchestration-runs`,
+  `24-code-intelligence`, `25-git-history`. Twelve of the 35 shots already have a producer. Cheapest
+  win in the table: `model-local-verify` is `02-preview-verify` re-run with
+  `DEMO_PROVIDER=local-ai` — no authoring, one run, and it is the proof that preview verification is
+  not Claude-only.
   (c) **Mobile passes.** Same scenarios at a phone viewport via a `demo-mobile` project rather than
   forked specs, opting in per scenario after one explicit compact-layout verification — mobile
   navigation differs (sheets, tab switcher), and desktop-only beats are skipped, not simulated. This
