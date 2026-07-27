@@ -15,6 +15,7 @@ import type { ContextGraphScanResult } from "./context-graph-scanner.js";
 import type {
   ContextCategory,
   ContextCategoryTotal,
+  ContextCategoryVisibility,
   ContextReport,
   ContextSeverity,
 } from "./types.js";
@@ -85,6 +86,13 @@ export interface EvaluateContextInput {
    * without needing a file on disk.
    */
   runtimeTokensByCategory?: Partial<Record<ContextCategory, number>>;
+  /**
+   * What Otto can honestly claim to see per category for this provider. A
+   * category marked `not_visible` is reported even at zero tokens — that row is
+   * the disclosure, and suppressing it is how an unmeasurable cost reads as an
+   * absent one.
+   */
+  visibilityByCategory?: Partial<Record<ContextCategory, ContextCategoryVisibility>>;
 }
 
 export function evaluateContext(input: EvaluateContextInput): ContextReport {
@@ -113,19 +121,28 @@ export function evaluateContext(input: EvaluateContextInput): ContextReport {
     fixedByCategory.set(key, (fixedByCategory.get(key) ?? 0) + tokens);
   }
 
-  const categoryTotals: ContextCategoryTotal[] = ALL_CATEGORIES.filter(
-    (category) => (fixedByCategory.get(category) ?? 0) > 0,
-  ).map((category) => {
+  const visibilityByCategory = input.visibilityByCategory ?? {};
+  const categoryTotals: ContextCategoryTotal[] = ALL_CATEGORIES.filter((category) => {
+    if ((fixedByCategory.get(category) ?? 0) > 0) return true;
+    // An unmeasurable category is exactly the one worth naming. Everything else
+    // that weighs nothing stays out of the list, as before.
+    return visibilityByCategory[category] === "not_visible";
+  }).map((category) => {
     const estTokens = fixedByCategory.get(category) ?? 0;
     const sharePercent = toShare(estTokens, windowTokens);
-    return {
+    const total: ContextCategoryTotal = {
       category,
       estTokens,
       sharePercent,
       severity: severityForShare(sharePercent, thresholds),
     };
+    const visibility = visibilityByCategory[category];
+    if (visibility) total.visibility = visibility;
+    return total;
   });
 
+  // `not_visible` rows carry zero tokens by construction, so they cannot inflate
+  // the headline — the total stays a sum of what was actually measured.
   const fixedTotal = categoryTotals.reduce((sum, total) => sum + total.estTokens, 0);
   const aggregateShare = toShare(fixedTotal, windowTokens);
   // Overflowing the window is not "very expensive", it is broken — requests

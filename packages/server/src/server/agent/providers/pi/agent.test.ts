@@ -14,9 +14,13 @@ import path from "node:path";
 import pino from "pino";
 import { describe, expect, onTestFinished, test } from "vitest";
 
+import { withTemporaryOttoHome } from "../../../../test-utils/temp-otto-home.js";
 import type { AgentSession, AgentSessionConfig, AgentStreamEvent } from "../../agent-sdk-types.js";
 import { PiRpcAgentClient, PiRpcAgentSession, transformPiModels } from "./agent.js";
 import { FakePi } from "./test-utils/fake-pi.js";
+
+// Provider images materialize under $OTTO_HOME; keep them out of the real one.
+withTemporaryOttoHome("otto-home-pi-test");
 
 const ONE_BY_ONE_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
@@ -689,9 +693,7 @@ describe("PiRpcAgentSession", () => {
       expect(prompt.message).not.toContain(ONE_BY_ONE_PNG_BASE64);
       imagePath = prompt.message.match(/\[Image available at: (.+)\]/)?.[1];
       expect(imagePath).toBeTypeOf("string");
-      expect(imagePath).toMatch(
-        /otto-attachments(?:-[^\\/]+)?[\\/](?:[^\\/]+[\\/])?[0-9a-f]{64}\.png$/,
-      );
+      expect(imagePath).toMatch(/attachments[\\/][0-9a-f]{64}\.png$/);
       expect(existsSync(imagePath!)).toBe(true);
     } finally {
       if (imagePath) {

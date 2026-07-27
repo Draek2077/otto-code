@@ -666,6 +666,7 @@ function PreviewOnlyView({
           eol={fileInfo.eol}
           isText={fileInfo.kind === "text"}
           cursor={null}
+          imageDimensions={fileInfo.imageDimensions}
         />
       ) : null}
 

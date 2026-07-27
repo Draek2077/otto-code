@@ -8,6 +8,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 
+import { withTemporaryOttoHome } from "../../../test-utils/temp-otto-home.js";
 import type {
   AgentLaunchContext,
   AgentSession,
@@ -35,6 +36,9 @@ import {
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { asInternals as castInternals, createStub } from "../../test-utils/class-mocks.js";
 import { buildProviderRegistry } from "../provider-registry.js";
+
+// Provider images materialize under $OTTO_HOME; keep them out of the real one.
+withTemporaryOttoHome("otto-home-codex-test");
 
 interface CollaborationModeRecord {
   name: string;
@@ -3193,7 +3197,7 @@ describe("Codex app-server provider", () => {
     expect(event.item.text).not.toContain("data:image");
     expect(event.item.text).not.toContain(ONE_BY_ONE_PNG_BASE64);
     const source = markdownImageSource(event.item.text);
-    expect(source).toMatch(/otto-attachments(?:-[^\\/]+)?[\\/].+\.png$/);
+    expect(source).toMatch(/attachments[\\/].+\.png$/);
     expect(existsSync(source)).toBe(true);
     rmSync(source, { force: true });
   });
@@ -3309,7 +3313,7 @@ describe("Codex app-server provider", () => {
       }
       expect(JSON.stringify(events)).not.toContain(ONE_BY_ONE_PNG_BASE64);
       const source = markdownImageSource(imageEvent.item.text);
-      expect(source).toMatch(/otto-attachments(?:-[^\\/]+)?[\\/].+\.png$/);
+      expect(source).toMatch(/attachments[\\/].+\.png$/);
       expect(existsSync(source)).toBe(true);
       rmSync(source, { force: true });
       appServer.assertNoErrors();

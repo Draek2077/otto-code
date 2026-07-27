@@ -140,3 +140,50 @@ describe("evaluateContext", () => {
     expect(report.aggregateSeverity).toBe("critical");
   });
 });
+
+/**
+ * Zero tokens means two different things — "there is none" and "we cannot see
+ * it" — and only one of them should reach the user as a row.
+ */
+describe("evaluateContext category visibility", () => {
+  function evaluateWithVisibility(
+    visibilityByCategory: Parameters<typeof evaluateContext>[0]["visibilityByCategory"],
+  ) {
+    return evaluateContext({
+      provider: "claude",
+      windowTokens: 200_000,
+      scan: scan([node("CLAUDE.md", 1_000)]),
+      scannedAt: "2026-07-19T00:00:00.000Z",
+      visibilityByCategory,
+    });
+  }
+
+  it("reports an unmeasurable category as a zero-token row rather than omitting it", () => {
+    const report = evaluateWithVisibility({ system_prompt: "not_visible" });
+
+    const row = report.categoryTotals.find((total) => total.category === "system_prompt");
+    expect(row).toMatchObject({ estTokens: 0, visibility: "not_visible" });
+  });
+
+  it("keeps an unmeasurable category out of the headline total", () => {
+    const report = evaluateWithVisibility({ system_prompt: "not_visible" });
+
+    // The disclosure row must not move a number it has no number for.
+    expect(report.fixedTotal).toBe(1_000);
+    expect(report.workingRoom).toBe(199_000);
+  });
+
+  it("still omits a category that is simply absent", () => {
+    const report = evaluateWithVisibility({ mcp_tools: "exact" });
+
+    expect(report.categoryTotals.map((total) => total.category)).not.toContain("mcp_tools");
+  });
+
+  it("stamps visibility on a category that does have weight", () => {
+    const report = evaluateWithVisibility({ context_files: "convention" });
+
+    expect(
+      report.categoryTotals.find((total) => total.category === "context_files")?.visibility,
+    ).toBe("convention");
+  });
+});

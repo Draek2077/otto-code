@@ -5,7 +5,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { useIsCompactFormFactor } from "@/constants/layout";
 
-export type ContextSidebarTab = "context" | "findings" | "memory";
+export type ContextSidebarTab = "context" | "prompt" | "findings" | "memory";
 
 interface ContextSidebarTabsProps {
   active: ContextSidebarTab;
@@ -64,6 +64,13 @@ export function ContextSidebarTabs({
         testID: "context-sidebar-tab-context",
       },
     ];
+    // Sits next to Context because it answers the same question in the other
+    // direction: the tree says what is loaded, this says what that reads like.
+    segments.push({
+      value: "prompt",
+      label: t("contextManagement.tabs.prompt"),
+      testID: "context-sidebar-tab-prompt",
+    });
     if (lessonCount !== null) {
       segments.push({
         value: "memory",

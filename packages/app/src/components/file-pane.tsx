@@ -1,16 +1,8 @@
-import React, {
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { FileReadResult } from "@otto-code/client/internal/daemon-client";
 import {
   ActivityIndicator,
-  Image as RNImage,
   ScrollView as RNScrollView,
   Text,
   View,
@@ -41,7 +33,8 @@ import {
   type PreviewLineMatchRange,
 } from "@/components/file-preview-find";
 import { isNative, isWeb } from "@/constants/platform";
-import { SvgXml } from "react-native-svg";
+import { ImagePreview } from "@/components/image-preview";
+import { readImageDimensions, type ImageDimensions } from "@/components/image-dimensions";
 import type { AttachmentMetadata } from "@/attachments/types";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
 import { persistAttachmentFromBytes } from "@/attachments/service";
@@ -49,6 +42,7 @@ import { createPreviewAttachmentId, getFileNameFromPath } from "@/attachments/ut
 import { explorerFileFromReadResult } from "@/file-explorer/read-result";
 import type { FileEol } from "@otto-code/protocol/messages";
 import { formatFileSize } from "@/utils/format-file-size";
+import { formatTimeAgo } from "@/utils/time";
 import { resolveFilePreviewReadTarget } from "@/file-explorer/preview-target";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import { useRetainedPanelActive } from "@/components/retained-panel";
@@ -81,6 +75,12 @@ export interface FilePreviewFileInfo {
   size: number;
   /** Null when the read path didn't report line endings (binary transfer). */
   eol: FileEol | null;
+  /**
+   * Natural pixel size, for images whose container we could parse. Null for
+   * every other kind, and for an image format we have no header reader for —
+   * in which case the viewer keeps working, minus the zoom controls.
+   */
+  imageDimensions: ImageDimensions | null;
 }
 
 /**
@@ -98,6 +98,47 @@ function readPreviewFileFacts(file: ExplorerFile | null | undefined): {
     size: file?.size ?? 0,
     eol: file?.eol ?? null,
   };
+}
+
+/**
+ * Push what the read learned back up to the file tab, which uses it to gate the
+ * editor modes and to fill the status bar.
+ *
+ * A hook rather than an inline effect so `FilePreview` keeps its
+ * cyclomatic-complexity budget for the query itself. Every dependency is a
+ * primitive — including the two halves of the dimensions — because a refetch
+ * hands back equal-but-new objects, and depending on those would re-report on
+ * every poll.
+ */
+function useReportedFileInfo({
+  file,
+  imageDimensions,
+  path,
+  onFileInfo,
+}: {
+  file: ExplorerFile | null;
+  imageDimensions: ImageDimensions | null;
+  path: string;
+  onFileInfo?: (info: FilePreviewFileInfo | null) => void;
+}): void {
+  const { kind, size, eol } = readPreviewFileFacts(file);
+  const width = imageDimensions?.width ?? null;
+  const height = imageDimensions?.height ?? null;
+  const onFileInfoRef = useRef(onFileInfo);
+  onFileInfoRef.current = onFileInfo;
+  useEffect(() => {
+    if (!kind) {
+      onFileInfoRef.current?.(null);
+      return;
+    }
+    onFileInfoRef.current?.({
+      kind,
+      isRenderedDocument: kind === "text" && renderedDocumentKind(path) !== null,
+      size,
+      eol,
+      imageDimensions: width !== null && height !== null ? { width, height } : null,
+    });
+  }, [eol, height, kind, path, size, width]);
 }
 
 /** Scroll-viewport snapshot the split view uses for proportional sync. */
@@ -141,6 +182,7 @@ interface FilePreviewBodyProps {
   location: WorkspaceFileLocation;
   imagePreviewUri: string | null;
   svgXml: string | null;
+  imageDimensions: ImageDimensions | null;
   /** Where a rendered document's own relative image srcs resolve; null outside a workspace. */
   workspaceImages: WorkspaceImageSource | null;
   /**
@@ -179,15 +221,22 @@ async function createFilePanePreview(file: FileReadResult | null): Promise<{
   file: ExplorerFile | null;
   imageAttachment: AttachmentMetadata | null;
   svgXml: string | null;
+  imageDimensions: ImageDimensions | null;
 }> {
   if (!file) {
-    return { file: null, imageAttachment: null, svgXml: null };
+    return { file: null, imageAttachment: null, svgXml: null, imageDimensions: null };
   }
 
   const explorerFile = explorerFileFromReadResult(file);
   if (file.kind !== "image") {
-    return { file: explorerFile, imageAttachment: null, svgXml: null };
+    return { file: explorerFile, imageAttachment: null, svgXml: null, imageDimensions: null };
   }
+
+  // Parsed from the bytes we already hold rather than measured after paint:
+  // fit-to-pane, the zoom percentage and the status-bar readout all need the
+  // natural size on the first frame, and there is no synchronous cross-platform
+  // way to ask the image itself.
+  const imageDimensions = readImageDimensions(file.bytes, file.mime);
 
   // Native Image can't decode SVG; render the raw XML via react-native-svg
   // instead of persisting an attachment it could never display.
@@ -196,6 +245,7 @@ async function createFilePanePreview(file: FileReadResult | null): Promise<{
       file: explorerFile,
       imageAttachment: null,
       svgXml: new TextDecoder().decode(file.bytes),
+      imageDimensions,
     };
   }
 
@@ -216,6 +266,7 @@ async function createFilePanePreview(file: FileReadResult | null): Promise<{
     file: explorerFile,
     imageAttachment,
     svgXml: null,
+    imageDimensions,
   };
 }
 
@@ -337,25 +388,6 @@ const codeLineStyles = StyleSheet.create((theme) => ({
   },
 }));
 
-function NativeSvgPreview({ xml, size }: { xml: string; size: number }) {
-  const { t } = useTranslation();
-  const [failed, setFailed] = useState(false);
-  const handleError = useCallback(() => setFailed(true), []);
-  if (failed) {
-    return (
-      <View style={styles.centerState}>
-        <Text style={styles.emptyText}>{t("panels.file.binaryPreviewUnavailable")}</Text>
-        <Text style={styles.binaryMetaText}>{formatFileSize({ size })}</Text>
-      </View>
-    );
-  }
-  return (
-    <View style={styles.previewSvg}>
-      <SvgXml xml={xml} width="100%" height="100%" onError={handleError} />
-    </View>
-  );
-}
-
 /**
  * Find-in-preview: scan the file for the query, report the count, keep the
  * active match in view, and hand back the per-line ranges the code lines tint.
@@ -434,6 +466,7 @@ function FilePreviewBody({
   location,
   imagePreviewUri,
   svgXml,
+  imageDimensions,
   workspaceImages,
   wrapLines = false,
   contentOverride,
@@ -624,11 +657,6 @@ function FilePreviewBody({
     [effectiveContent, highlightedLines, lineHeight, scrollToSyncTop],
   );
 
-  const imageSource = useMemo(
-    () => (imagePreviewUri ? { uri: imagePreviewUri } : null),
-    [imagePreviewUri],
-  );
-
   const matchRangesByLine = usePreviewFindHighlights({
     enabled: Boolean(highlightedLines),
     content: effectiveContent,
@@ -778,6 +806,8 @@ function FilePreviewBody({
   }
 
   if (preview.kind === "image") {
+    // The bytes are already in hand by the time `preview` exists; this waits on
+    // the attachment write that turns them into a URL the platform can load.
     if (!svgXml && !imagePreviewUri) {
       return (
         <View style={styles.centerState}>
@@ -788,37 +818,62 @@ function FilePreviewBody({
     }
 
     return (
-      <View style={styles.previewScrollContainer}>
-        <RNScrollView
-          ref={previewScrollRef}
-          style={styles.previewContent}
-          contentContainerStyle={styles.previewImageScrollContent}
-          onLayout={scrollbar.onLayout}
-          onScroll={scrollbar.onScroll}
-          onContentSizeChange={scrollbar.onContentSizeChange}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={!showWebScrollbar}
-        >
-          {svgXml ? (
-            <NativeSvgPreview xml={svgXml} size={preview.size} />
-          ) : (
-            <RNImage
-              source={imageSource ?? undefined}
-              style={styles.previewImage}
-              resizeMode="contain"
-            />
-          )}
-        </RNScrollView>
-        {scrollbar.overlay}
-      </View>
+      <ImagePreview
+        uri={imagePreviewUri}
+        svgXml={svgXml}
+        dimensions={imageDimensions}
+        byteSize={preview.size}
+        sourceKey={filePath}
+        showWebScrollbar={showWebScrollbar}
+      />
     );
   }
+
+  return <BinaryPreview file={preview} />;
+}
+
+/**
+ * The end of the line for a file nothing can render: a plain statement plus the
+ * facts a file manager would show. It stays a statement rather than becoming a
+ * hex dump on purpose — a hex view of an arbitrary binary answers a question
+ * almost nobody opening a file tab is asking, and the honest read here is
+ * "there is nothing to see", said clearly.
+ */
+function BinaryPreview({ file }: { file: ExplorerFile }) {
+  const { t } = useTranslation();
+  const extension = useMemo(() => {
+    // `getFileNameFromPath` returns null for a path that is empty or all
+    // separators — a shape the explorer should never hand us, but the facts row
+    // simply omits the extension rather than asserting it away.
+    const name = getFileNameFromPath(file.path);
+    if (!name) {
+      return null;
+    }
+    // A leading dot is the whole name (`.env`), not an extension.
+    const dot = name.lastIndexOf(".");
+    return dot > 0 ? name.slice(dot) : null;
+  }, [file.path]);
+  const modified = useMemo(() => {
+    const date = new Date(file.modifiedAt);
+    return Number.isNaN(date.getTime()) ? null : formatTimeAgo(date);
+  }, [file.modifiedAt]);
+
+  const facts = [
+    t("panels.file.binaryPreviewKind"),
+    formatFileSize({ size: file.size }),
+    extension,
+  ].filter(Boolean);
 
   return (
     <View style={styles.centerState}>
       <Text style={styles.emptyText}>{t("panels.file.binaryPreviewUnavailable")}</Text>
       <Text style={styles.binaryMetaText}>{t("panels.file.binaryPreviewHint")}</Text>
-      <Text style={styles.binaryMetaText}>{formatFileSize({ size: preview.size })}</Text>
+      <Text style={styles.binaryMetaText}>{facts.join(" · ")}</Text>
+      {modified ? (
+        <Text style={styles.binaryMetaText}>
+          {t("panels.file.binaryPreviewModified", { when: modified })}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -898,6 +953,7 @@ export function FilePreview({
           file: null as ExplorerFile | null,
           imageAttachment: null,
           svgXml: null,
+          imageDimensions: null as ImageDimensions | null,
           error: t("workspace.terminal.hostDisconnected"),
         };
       }
@@ -908,6 +964,7 @@ export function FilePreview({
           file: preview.file,
           imageAttachment: preview.imageAttachment,
           svgXml: preview.svgXml,
+          imageDimensions: preview.imageDimensions,
           error: null,
         };
       } catch (error) {
@@ -915,6 +972,7 @@ export function FilePreview({
           file: null,
           imageAttachment: null,
           svgXml: null,
+          imageDimensions: null,
           error: error instanceof Error ? error.message : t("panels.file.failedToLoad"),
         };
       }
@@ -952,23 +1010,13 @@ export function FilePreview({
     });
   }, [client, readTarget, refetchFile]);
 
-  // Destructured to primitives so the effect below fires on real changes rather
-  // than on every refetch handing back an equal-but-new object.
-  const { kind: fileKind, size: fileSize, eol: fileEol } = readPreviewFileFacts(query.data?.file);
-  const onFileInfoRef = useRef(onFileInfo);
-  onFileInfoRef.current = onFileInfo;
-  useEffect(() => {
-    onFileInfoRef.current?.(
-      fileKind
-        ? {
-            kind: fileKind,
-            isRenderedDocument: fileKind === "text" && renderedDocumentKind(location.path) !== null,
-            size: fileSize,
-            eol: fileEol,
-          }
-        : null,
-    );
-  }, [fileKind, fileSize, fileEol, location.path]);
+  const imageDimensions = query.data?.imageDimensions ?? null;
+  useReportedFileInfo({
+    file: query.data?.file ?? null,
+    imageDimensions,
+    path: location.path,
+    onFileInfo,
+  });
 
   return (
     <View style={styles.container} testID="workspace-file-pane">
@@ -990,6 +1038,7 @@ export function FilePreview({
         location={location}
         imagePreviewUri={imagePreviewUri}
         svgXml={query.data?.svgXml ?? null}
+        imageDimensions={imageDimensions}
         workspaceImages={workspaceImages}
         wrapLines={wrapLines}
         contentOverride={contentOverride}
@@ -1065,20 +1114,6 @@ const styles = StyleSheet.create((theme) => {
       fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.code,
       lineHeight: theme.fontSize.code * 1.45,
-    },
-    previewImageScrollContent: {
-      flexGrow: 1,
-      padding: theme.spacing[4],
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    previewImage: {
-      width: "100%",
-      height: 420,
-    },
-    previewSvg: {
-      width: "100%",
-      height: 420,
     },
   };
 });

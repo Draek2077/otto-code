@@ -196,6 +196,7 @@ export const ptBR: TranslationResources = {
   contextManagement: {
     back: "Voltar",
     tabs: {
+      prompt: "Prompt",
       context: "Contexto",
       findings: "Vale corrigir",
       findingsCount: "Vale corrigir ({{count}})",
@@ -316,10 +317,20 @@ export const ptBR: TranslationResources = {
     category: {
       contextFiles: "Arquivos de contexto",
       memoryIndex: "Índice de memória",
-      skillsRoster: "Habilidades",
+      skillsRoster: "Habilidades e agentes",
       mcpTools: "Ferramentas MCP",
       ottoInjected: "Prompt do Otto",
       systemPrompt: "Prompt do sistema",
+    },
+    visibility: {
+      notVisible: "não mensurável aqui",
+      unverified: "estimativa não verificada",
+    },
+    prompt: {
+      empty: "Nada montado ainda.",
+      total: "Prompt montado — cerca de {{tokens}} tokens por requisição",
+      notVisibleBody:
+        "Este provedor compõe esta parte dentro do próprio processo. O Otto não consegue lê-la, então ela é listada mas não exibida.",
     },
     filePlaceholder: {
       title: "Escolha um arquivo",
@@ -2647,8 +2658,16 @@ export const ptBR: TranslationResources = {
       noPreview: "Nenhuma prévia disponível",
       binaryPreviewUnavailable: "Prévia binária indisponível",
       binaryPreviewHint: "É um arquivo binário, então não há nada para mostrar como texto.",
+      binaryPreviewKind: "Binário",
+      binaryPreviewModified: "Modificado {{when}}",
       failedToLoad: "Falha ao carregar arquivo",
       failedToLoadPreview: "Falha ao carregar prévia do arquivo",
+      image: {
+        zoomIn: "Ampliar",
+        zoomOut: "Reduzir",
+        actualSize: "Tamanho real",
+        fitToWindow: "Ajustar à janela",
+      },
     },
   },
   toolCallDetails: {
@@ -2732,6 +2751,7 @@ export const ptBR: TranslationResources = {
       gitProviders: "Provedores de Git",
       providers: "Provedores",
       usage: "Uso",
+      storage: "Armazenamento",
       terminals: "Terminais",
       host: "Visão geral",
     },
@@ -3301,6 +3321,33 @@ export const ptBR: TranslationResources = {
         columnWorkspace: "Workspace",
         columnUptime: "Tempo ativo",
         stop: "Parar",
+      },
+      storage: {
+        title: "Imagens dos agentes",
+        hostImages: "Imagens neste host",
+        hostImagesSummary: "{{size}} em {{count}} imagens",
+        hostImagesEmpty: "Nada armazenado ainda",
+        hostImagesHint:
+          "Capturas de tela e outras imagens que seus agentes produziram, guardadas para que mensagens antigas ainda consigam exibi-las. Limpar não pode ser desfeito — essas mensagens passam a mostrar a descrição.",
+        previewCache: "Cópias em cache neste dispositivo",
+        previewCacheSummary: "{{size}} em {{count}} imagens",
+        previewCacheEmpty: "Nada em cache",
+        previewCacheHint:
+          "Cópias locais para as imagens carregarem na hora. Pode limpar sem risco — elas são baixadas de novo quando preciso. Os arquivos que você anexou a mensagens ({{size}}) ficam guardados à parte e nunca são limpos aqui.",
+        clear: "Limpar",
+        clearConfirm: "Limpar imagens",
+        clearImagesTitle: "Limpar as imagens deste host?",
+        clearImagesMessage:
+          "Isto exclui {{count}} imagens e libera {{size}}. As mensagens que as exibiam passam a mostrar a descrição. Não dá para desfazer.",
+        clearedImages: "{{count}} imagens limpas, liberando {{size}}",
+        clearedPreviews: "{{count}} imagens em cache limpas, liberando {{size}}",
+        nothingToClear: "Não há nada para limpar",
+        maxAge: "Manter as imagens por",
+        maxAgeHint:
+          "Dias que uma imagem sem uso é mantida antes de ser removida automaticamente. Uma imagem ainda exibida num chat que você abre mantém o lugar dela. 0 desliga isto.",
+        maxTotal: "Tamanho máximo",
+        maxTotalHint:
+          "Megabytes de imagens para manter neste host. Passando disso, as mais antigas saem primeiro. 0 desliga isto.",
       },
       workspaces: {
         unavailable: "Conecte-se a este host para gerenciar workspaces",

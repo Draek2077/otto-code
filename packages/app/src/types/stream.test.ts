@@ -513,9 +513,9 @@ describe("stream reducer canonical tool calls", () => {
   });
 
   // The reply's last paragraph streams as the live head and is rewritten when the
-  // head flushes, so its id — the list key — changes and the row remounts. Per-row
-  // state cannot survive that; anything that has to (auto-speech's "I watched this
-  // being written" latch, agent-stream/live-turn-witness.ts) must key off the
+  // head flushes, so its id changes and every consumer keyed by it sees a brand
+  // new thing. Anything tracking a segment across that boundary (auto-speech's
+  // handled-segment watermark, voice/auto-speech-segments.ts) must key off the
   // group/block pair instead, which this pins down.
   it("rewrites the live head's id on flush but keeps its group and block index", () => {
     const messageId = "msg-final-block-identity";

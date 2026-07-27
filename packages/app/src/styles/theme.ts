@@ -276,6 +276,30 @@ function lightenHex(hex: string, amount: number): string {
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
 
+// The code well: one step deeper than the surrounding chrome. There is no theme
+// token below `surface0` (it is the base of the elevation scale, and going
+// deeper means opposite directions in light vs dark), so the well is derived
+// from `surface0` itself: scaled toward black, which preserves hue so a tinted
+// palette stays on-tint. The amount is luminance-aware — near-black dark
+// surfaces barely move under a small fraction, while a white light surface
+// would over-darken, so dark themes deepen far more than light ones. The result
+// is "the same surface, deeper" in every theme: a subtle grey on the white
+// theme, a near-black on the dark ones. Builders only, same CSS-var rule as
+// `lightenHex`.
+function deepenHex(hex: string): string {
+  const value = Number.parseInt(hex.slice(1, 7), 16);
+  const r = (value >> 16) & 0xff;
+  const g = (value >> 8) & 0xff;
+  const b = value & 0xff;
+  // Relative luminance (0 = black, 1 = white), rough but enough to steer the amount.
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  // Light (luminance ≈ 1): ~0.035 → a whisper darker. Dark (luminance ≈ 0):
+  // ~0.25 → a clear step toward black, roughly the pre-lift surface values.
+  const scale = 1 - (0.035 + (1 - luminance) * 0.215);
+  const clamp = (channel: number) => Math.round(Math.max(0, Math.min(255, channel * scale)));
+  return `#${((clamp(r) << 16) | (clamp(g) << 8) | clamp(b)).toString(16).padStart(6, "0")}`;
+}
+
 // ---------------------------------------------------------------------------
 // Font contrast — the reading-ink strength control (Appearance → Fonts)
 // ---------------------------------------------------------------------------
@@ -443,6 +467,11 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     // app background so the content underneath dims through. Same rule as the
     // bubbles above — derived here, never `${surface0}cc` in a stylesheet.
     surfaceScrim: `${tint.surface0}cc`,
+    // The one background for every surface that shows code: the editor's code
+    // well, markdown fences, and the tool-call code/terminal blocks. A code
+    // block reads as the same material wherever it appears, and it never
+    // collides with the elevated-card ramp (surface2/3) it used to borrow from.
+    surfaceCode: deepenHex(tint.surface0),
 
     // Text
     foreground: tint.foreground,
@@ -740,6 +769,8 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     surfaceAssistantBubble: `${tint.surface2}bf`,
     // In-place busy scrim — see the light builder's note.
     surfaceScrim: `${tint.surface0}cc`,
+    // Code-showing surfaces — see the light builder's note.
+    surfaceCode: deepenHex(tint.surface0),
 
     foreground: darkForeground,
     foregroundMuted: tint.foregroundMuted,
@@ -1270,6 +1301,12 @@ function buildBlackVariantColors(tint: BlackVariantTint) {
     surfaceAssistantBubble: `${tint.surface2}bf`,
     // Scrim re-derived from the black canvas, matching the surface0 override.
     surfaceScrim: "#000000cc",
+    // The code well inverts on black. Everywhere else it is surface0 scaled
+    // toward black; against a #000000 canvas there is nothing deeper to scale
+    // to, and a code block that renders pure black on pure black is invisible.
+    // The variant's first lifted step is the same read — "not the canvas" —
+    // taken in the only direction black leaves open.
+    surfaceCode: tint.surface1,
     surfaceDiffEmpty: tint.surfaceDiffEmpty,
     border: tint.border,
     borderAccent: tint.borderAccent,

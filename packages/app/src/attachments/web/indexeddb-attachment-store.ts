@@ -9,6 +9,7 @@ import {
   normalizeMimeType,
   parseDataUrl,
 } from "@/attachments/utils";
+import { isPreviewAttachmentId } from "@/attachments/preview-pins";
 
 interface StoredBlobRecord {
   id: string;
@@ -218,6 +219,71 @@ export function createIndexedDbAttachmentStore(): AttachmentStore {
 
           tx.addEventListener("error", () => {
             reject(tx.error ?? new Error("Failed to garbage collect IndexedDB attachments."));
+          });
+        });
+      } finally {
+        db.close();
+      }
+    },
+
+    async usage() {
+      const db = await openAttachmentDb();
+      try {
+        const records = await runTx<StoredBlobRecord[]>(db, "readonly", (store) => store.getAll());
+        const usage = {
+          previewCount: 0,
+          previewBytes: 0,
+          otherCount: 0,
+          otherBytes: 0,
+        };
+        for (const record of records) {
+          const size = record.blob?.size ?? 0;
+          if (isPreviewAttachmentId(record.id)) {
+            usage.previewCount += 1;
+            usage.previewBytes += size;
+          } else {
+            usage.otherCount += 1;
+            usage.otherBytes += size;
+          }
+        }
+        return usage;
+      } finally {
+        db.close();
+      }
+    },
+
+    async clearPreviews() {
+      const db = await openAttachmentDb();
+      try {
+        return await new Promise<{ deleted: number; freedBytes: number }>((resolve, reject) => {
+          const tx = db.transaction(STORE_NAME, "readwrite");
+          const store = tx.objectStore(STORE_NAME);
+          const cursorRequest = store.openCursor();
+          let deleted = 0;
+          let freedBytes = 0;
+
+          cursorRequest.addEventListener("error", () => {
+            reject(
+              cursorRequest.error ?? new Error("Failed to iterate IndexedDB attachment store."),
+            );
+          });
+
+          cursorRequest.addEventListener("success", () => {
+            const cursor = cursorRequest.result;
+            if (!cursor) {
+              resolve({ deleted, freedBytes });
+              return;
+            }
+            if (isPreviewAttachmentId(String(cursor.key))) {
+              freedBytes += (cursor.value as StoredBlobRecord).blob?.size ?? 0;
+              deleted += 1;
+              cursor.delete();
+            }
+            cursor.continue();
+          });
+
+          tx.addEventListener("error", () => {
+            reject(tx.error ?? new Error("Failed to clear IndexedDB preview attachments."));
           });
         });
       } finally {

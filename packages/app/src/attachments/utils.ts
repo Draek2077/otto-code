@@ -1,6 +1,7 @@
 import { generateMessageId } from "@/types/stream";
 import { isAbsolutePath } from "@/utils/path";
 import { isRasterImageMimeType } from "./file-types";
+import { pinPreviewAttachmentId, PREVIEW_ATTACHMENT_ID_PREFIX } from "./preview-pins";
 
 export function generateAttachmentId(): string {
   return `att_${generateMessageId()}`;
@@ -81,6 +82,13 @@ export function getFileNameFromPath(path: string | null | undefined): string | n
   return fileName || null;
 }
 
+/**
+ * Mints the id for a preview attachment — a UI-owned copy of an image that
+ * lives on the daemon, keyed by identity so re-reading the same file reuses the
+ * same stored copy. Minting pins the id: preview attachments hang off no draft,
+ * so without a pin the attachment GC deletes the file as soon as anything
+ * touches a draft. See attachments/preview-pins.ts.
+ */
 export function createPreviewAttachmentId(input: {
   mimeType: string;
   path?: string | null;
@@ -93,7 +101,9 @@ export function createPreviewAttachmentId(input: {
   const modifiedAt = input.modifiedAt?.trim() ?? "";
   const contentLength = Number.isFinite(input.contentLength) ? String(input.contentLength) : "";
   const hash = hashString(`${input.mimeType}\0${path}\0${size}\0${modifiedAt}\0${contentLength}`);
-  return `preview_${size || contentLength || "unknown"}_${hash}`;
+  const id = `${PREVIEW_ATTACHMENT_ID_PREFIX}${size || contentLength || "unknown"}_${hash}`;
+  pinPreviewAttachmentId(id);
+  return id;
 }
 
 export async function blobToBase64(blob: Blob): Promise<string> {

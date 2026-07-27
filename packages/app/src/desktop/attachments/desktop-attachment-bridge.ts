@@ -1,8 +1,14 @@
-import type { AttachmentMetadata } from "@/attachments/types";
+import type {
+  AttachmentMetadata,
+  AttachmentStoreUsage,
+  ClearPreviewAttachmentsResult,
+} from "@/attachments/types";
 import {
+  clearDesktopPreviewAttachments,
   copyDesktopAttachmentFile,
   deleteDesktopAttachmentFile,
   garbageCollectDesktopAttachmentFiles,
+  readDesktopAttachmentUsage,
   writeDesktopAttachmentBase64,
   writeDesktopAttachmentBytes,
 } from "@/desktop/attachments/desktop-file-commands";
@@ -36,6 +42,8 @@ export interface DesktopAttachmentBridge {
   }): Promise<DesktopAttachmentFileResult>;
   deleteFile(input: { path: string }): Promise<boolean>;
   garbageCollect(input: { referencedIds: readonly string[] }): Promise<number>;
+  usage(): Promise<AttachmentStoreUsage>;
+  clearPreviews(): Promise<ClearPreviewAttachmentsResult>;
   readFileBase64(path: string): Promise<string>;
   resolvePreviewUrl(attachment: AttachmentMetadata): Promise<string>;
   releasePreviewUrl(input: { url: string }): Promise<void>;
@@ -52,6 +60,8 @@ export function createDesktopAttachmentBridge(): DesktopAttachmentBridge {
     writeBytes: writeDesktopAttachmentBytes,
     deleteFile: deleteDesktopAttachmentFile,
     garbageCollect: garbageCollectDesktopAttachmentFiles,
+    usage: readDesktopAttachmentUsage,
+    clearPreviews: clearDesktopPreviewAttachments,
     readFileBase64: readDesktopFileBase64,
     resolvePreviewUrl: (attachment) => previewUrls.resolve(attachment),
     releasePreviewUrl: (input) => previewUrls.release(input),

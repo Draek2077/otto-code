@@ -11,6 +11,7 @@
  */
 
 import path from "node:path";
+import { resolveEnabledPluginRoots } from "./plugin-roots.js";
 import type {
   ContextCategory,
   ContextConfidence,
@@ -45,6 +46,18 @@ export interface ProviderConvention {
   resolveLoadPoints(input: ContextResolutionInput): ContextLoadPoint[];
   /** Directories whose per-skill `SKILL.md` children contribute roster weight. */
   resolveSkillRoots(input: ContextResolutionInput): string[];
+  /**
+   * Directories whose `*.md` children define subagents. Their frontmatter —
+   * name, description, tool grant — is advertised on every request exactly like
+   * a skill's, so it is roster weight by the same argument.
+   */
+  resolveAgentRoots(input: ContextResolutionInput): string[];
+  /**
+   * Install roots of enabled plugins, each of which may contribute `skills/` and
+   * `agents/` of its own. Async and optional because it reads the provider's
+   * settings from disk; a provider with no plugin mechanism omits it.
+   */
+  resolvePluginRoots?(input: ContextResolutionInput): Promise<string[]>;
   /**
    * Root under which subdirectory context files load *conditionally* — only
    * once the agent touches that subtree. Null when the provider has no such
@@ -126,6 +139,14 @@ const CLAUDE_CONVENTION: ProviderConvention = {
     return [path.join(homeDir, ".claude", "skills"), path.join(projectRoot, ".claude", "skills")];
   },
 
+  resolveAgentRoots({ projectRoot, homeDir }): string[] {
+    return [path.join(homeDir, ".claude", "agents"), path.join(projectRoot, ".claude", "agents")];
+  },
+
+  resolvePluginRoots({ homeDir }): Promise<string[]> {
+    return resolveEnabledPluginRoots(path.join(homeDir, ".claude"));
+  },
+
   resolveSubdirectoryScanRoot({ projectRoot }): string | null {
     return projectRoot;
   },
@@ -197,6 +218,13 @@ const CODEX_CONVENTION: ProviderConvention = {
     return [path.join(codexHome, "skills"), path.join(projectRoot, ".codex", "skills")];
   },
 
+  // No subagent convention is documented for Codex. An empty list reports
+  // "nothing found" honestly; inventing a path would produce a category that is
+  // silently zero for a different reason than the true one.
+  resolveAgentRoots(): string[] {
+    return [];
+  },
+
   resolveSubdirectoryScanRoot({ projectRoot }): string | null {
     return projectRoot;
   },
@@ -244,6 +272,10 @@ const OPENCODE_CONVENTION: ProviderConvention = {
   },
 
   resolveSkillRoots(): string[] {
+    return [];
+  },
+
+  resolveAgentRoots(): string[] {
     return [];
   },
 

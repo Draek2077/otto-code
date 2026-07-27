@@ -5,9 +5,11 @@ import { app, ipcMain, powerMonitor } from "electron";
 import log from "electron-log/main";
 import { resolveOttoHome, spawnProcess } from "@otto-code/server";
 import {
+  clearManagedPreviewAttachments,
   copyAttachmentFileToManagedStorage,
   deleteManagedAttachmentFile,
   garbageCollectManagedAttachmentFiles,
+  readManagedAttachmentUsage,
   readManagedFileBase64,
   writeAttachmentBase64,
   writeAttachmentBytes,
@@ -602,6 +604,8 @@ export function createDaemonCommandHandlers(options?: {
     read_file_base64: (args) => readManagedFileBase64(args ?? {}),
     delete_attachment_file: (args) => deleteManagedAttachmentFile(args ?? {}),
     garbage_collect_attachment_files: (args) => garbageCollectManagedAttachmentFiles(args ?? {}),
+    attachment_storage_usage: () => readManagedAttachmentUsage(),
+    clear_preview_attachments: () => clearManagedPreviewAttachments(),
     open_local_daemon_transport: async (args) => {
       const target = args as { transportType: "socket" | "pipe"; transportPath: string };
       return await openLocalTransportSession(target);

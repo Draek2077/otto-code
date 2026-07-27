@@ -88,6 +88,33 @@ export function HighlightedLines({ lines, startLine, wrap = false }: Highlighted
   );
 }
 
+/**
+ * Pre-tokenized lines as inline spans for a caller-owned parent `<Text>`,
+ * newlines included.
+ *
+ * `HighlightedLines` renders one `<View>` per line, so it can't be mixed with
+ * plain text inside a single `<Text>`. This is for the case where it has to be:
+ * the shell command that shares a Text with its `$` prompt and its (unhighlighted)
+ * output. Style comes from the parent — these spans only carry token colors.
+ */
+export function highlightedSpans(lines: KeyedLine[]): React.ReactNode[] {
+  const spans: React.ReactNode[] = [];
+  lines.forEach((line, lineIndex) => {
+    if (lineIndex > 0) spans.push(<Text key={`${line.key}-nl`}>{"\n"}</Text>);
+    for (const { key, token } of line.tokens) {
+      spans.push(
+        <Text
+          key={`${line.key}-${key}`}
+          style={token.style ? syntaxTokenStyleFor(token.style) : undefined}
+        >
+          {token.text}
+        </Text>,
+      );
+    }
+  });
+  return spans;
+}
+
 const styles = StyleSheet.create((theme) => ({
   row: {
     flexDirection: "row",

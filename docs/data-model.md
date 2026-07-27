@@ -472,6 +472,13 @@ history surfaces tolerate transient orphaned workspaces by omitting those rows s
 blank the whole History screen, but mutation paths should repair or remove the orphaned state rather
 than treating it as valid.
 
+**Two workspaces may share a `cwd`, but nothing creates one implicitly.** A same-directory sibling
+exists only because the user explicitly asked for it. Every path that needs a workspace for a
+directory adopts the one the request came from: `create_agent_request` and `import_agent_request`
+both carry an optional `workspaceId` and honour it, and a request without one resolves by directory
+(`findOrCreateWorkspaceForDirectory`) rather than minting. Import used to mint unconditionally, which
+left a duplicate workspace in the sidebar owning the chat the user had just imported in place.
+
 ---
 
 ## 8. Artifacts

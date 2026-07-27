@@ -195,6 +195,7 @@ export const ar: TranslationResources = {
   contextManagement: {
     back: "رجوع",
     tabs: {
+      prompt: "الموجّه",
       context: "السياق",
       findings: "يستحق الإصلاح",
       findingsCount: "يستحق الإصلاح ({{count}})",
@@ -311,10 +312,20 @@ export const ar: TranslationResources = {
     category: {
       contextFiles: "ملفات السياق",
       memoryIndex: "فهرس الذاكرة",
-      skillsRoster: "المهارات",
+      skillsRoster: "المهارات والوكلاء",
       mcpTools: "أدوات MCP",
       ottoInjected: "موجّه Otto",
       systemPrompt: "موجّه النظام",
+    },
+    visibility: {
+      notVisible: "غير قابل للقياس هنا",
+      unverified: "تقدير غير مُتحقَّق منه",
+    },
+    prompt: {
+      empty: "لم يُجمَّع شيء بعد.",
+      total: "الموجّه المُجمَّع — نحو {{tokens}} رمزًا في كل طلب",
+      notVisibleBody:
+        "يُنشئ هذا المزوّد هذا الجزء داخل عمليته الخاصة. لا يستطيع Otto قراءته، لذا يُذكر دون عرضه.",
     },
     filePlaceholder: {
       title: "اختر ملفًا",
@@ -2596,8 +2607,16 @@ export const ar: TranslationResources = {
       noPreview: "لا تتوفر معاينة",
       binaryPreviewUnavailable: "المعاينة الثنائية غير متاحة",
       binaryPreviewHint: "إنه ملف ثنائي، لذا لا يوجد ما يمكن عرضه كنص.",
+      binaryPreviewKind: "ثنائي",
+      binaryPreviewModified: "عُدِّل {{when}}",
       failedToLoad: "فشل تحميل الملف",
       failedToLoadPreview: "فشل تحميل معاينة الملف",
+      image: {
+        zoomIn: "تكبير",
+        zoomOut: "تصغير",
+        actualSize: "الحجم الفعلي",
+        fitToWindow: "ملاءمة النافذة",
+      },
     },
   },
   toolCallDetails: {
@@ -2680,6 +2699,7 @@ export const ar: TranslationResources = {
       gitProviders: "موفّرو Git",
       providers: "مقدمي الخدمات",
       usage: "الاستخدام",
+      storage: "التخزين",
       terminals: "الطرفيات",
       host: "نظرة عامة",
     },
@@ -3244,6 +3264,33 @@ export const ar: TranslationResources = {
         columnWorkspace: "Workspace",
         columnUptime: "مدة التشغيل",
         stop: "إيقاف",
+      },
+      storage: {
+        title: "الصور من الوكلاء",
+        hostImages: "الصور على هذا المضيف",
+        hostImagesSummary: "{{size}} عبر {{count}} صورة",
+        hostImagesEmpty: "لا شيء مخزَّن بعد",
+        hostImagesHint:
+          "لقطات الشاشة والصور الأخرى التي أنتجها وكلاؤك، محفوظة كي تظل الرسائل السابقة قادرة على عرضها. لا يمكن التراجع عن المسح — ستعود تلك الرسائل إلى عرض الوصف النصي.",
+        previewCache: "نسخ مؤقتة على هذا الجهاز",
+        previewCacheSummary: "{{size}} عبر {{count}} صورة",
+        previewCacheEmpty: "لا شيء في الذاكرة المؤقتة",
+        previewCacheHint:
+          "نسخ محلية لتحميل الصور فورًا. مسحها آمن — يُعاد تنزيلها عند الحاجة. أما الملفات التي أرفقتها بالرسائل ({{size}}) فتُحفظ بشكل منفصل ولا تُمسح من هنا أبدًا.",
+        clear: "مسح",
+        clearConfirm: "مسح الصور",
+        clearImagesTitle: "مسح الصور على هذا المضيف؟",
+        clearImagesMessage:
+          "سيؤدي هذا إلى حذف {{count}} صورة وتحرير {{size}}. الرسائل التي كانت تعرضها ستعود إلى عرض الوصف النصي بدلًا منها. لا يمكن التراجع عن ذلك.",
+        clearedImages: "تم مسح {{count}} صورة وتحرير {{size}}",
+        clearedPreviews: "تم مسح {{count}} صورة مؤقتة وتحرير {{size}}",
+        nothingToClear: "لا يوجد ما يمكن مسحه",
+        maxAge: "الاحتفاظ بالصور لمدة",
+        maxAgeHint:
+          "عدد الأيام التي تُحفظ فيها صورة غير مستخدمة قبل إزالتها تلقائيًا. الصورة التي ما زالت تظهر في محادثة تفتحها تحتفظ بمكانها. القيمة 0 تعطّل ذلك.",
+        maxTotal: "الحجم الأقصى",
+        maxTotalHint:
+          "عدد الميغابايتات من الصور المحفوظة على هذا المضيف. بعد هذا الحد تُحذف الأقدم أولًا. القيمة 0 تعطّل ذلك.",
       },
       workspaces: {
         unavailable: "اتصل بهذا المضيف لإدارة الـ Workspaces",

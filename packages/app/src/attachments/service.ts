@@ -1,5 +1,10 @@
-import type { AttachmentMetadata } from "@/attachments/types";
+import type {
+  AttachmentMetadata,
+  AttachmentStoreUsage,
+  ClearPreviewAttachmentsResult,
+} from "@/attachments/types";
 import { getAttachmentStore } from "@/attachments/store";
+import { clearPinnedPreviewAttachmentIds } from "@/attachments/preview-pins";
 
 export async function persistAttachmentFromBlob(input: {
   blob: Blob;
@@ -135,4 +140,22 @@ export async function garbageCollectAttachments(input: {
 }): Promise<void> {
   const store = await getAttachmentStore();
   await store.garbageCollect({ referencedIds: input.referencedIds });
+}
+
+/** Sizes the local attachment store for the Storage settings section. */
+export async function readAttachmentStoreUsage(): Promise<AttachmentStoreUsage> {
+  const store = await getAttachmentStore();
+  return await store.usage();
+}
+
+/**
+ * Drops every preview attachment. The pins go with them: keeping an id pinned
+ * for a file that no longer exists would only stop the GC reclaiming whatever
+ * replaces it, and the next render re-mints and re-pins anyway.
+ */
+export async function clearPreviewAttachments(): Promise<ClearPreviewAttachmentsResult> {
+  const store = await getAttachmentStore();
+  const result = await store.clearPreviews();
+  clearPinnedPreviewAttachmentIds();
+  return result;
 }

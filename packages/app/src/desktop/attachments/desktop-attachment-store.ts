@@ -236,5 +236,13 @@ export function createDesktopAttachmentStore(bridge: DesktopAttachmentBridge): A
         referencedIds: Array.from(referencedIds),
       });
     },
+
+    async usage() {
+      return await bridge.usage();
+    },
+
+    async clearPreviews() {
+      return await bridge.clearPreviews();
+    },
   };
 }

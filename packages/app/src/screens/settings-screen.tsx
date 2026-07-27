@@ -30,6 +30,7 @@ import {
   DataObject,
   Gauge,
   Groups,
+  HardDrive,
   Keyboard,
   Stethoscope,
   Info,
@@ -129,6 +130,7 @@ import {
   HostSettingsPage,
   HostProvidersPage,
   HostUsagePage,
+  HostStoragePage,
   HostWorkspacesPage,
   HostTerminalsPage,
 } from "@/screens/settings/host-page";
@@ -257,6 +259,9 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   },
   { id: "providers", labelKey: "settings.hostSections.providers", icon: Boxes },
   { id: "usage", labelKey: "settings.hostSections.usage", icon: Gauge },
+  // Not developer-only: reclaiming the disk agents filled is a plain user need,
+  // and User mode is exactly where someone asks where their space went.
+  { id: "storage", labelKey: "settings.hostSections.storage", icon: HardDrive },
   {
     id: "terminals",
     labelKey: "settings.hostSections.terminals",
@@ -287,6 +292,8 @@ function renderHostSettingsContent(
       return <HostProvidersPage serverId={view.serverId} />;
     case "usage":
       return <HostUsagePage serverId={view.serverId} />;
+    case "storage":
+      return <HostStoragePage serverId={view.serverId} />;
     case "terminals":
       return isDeveloperMode ? <HostTerminalsPage serverId={view.serverId} /> : null;
     case "host":

@@ -53,11 +53,13 @@ const RESERVED_LOCAL_PORTS = new Set([
   // --- Agent lane (scripts/dev-agent.{sh,ps1}) ---
   // Daemon + Expo web an agent drives on its own.
   6799, 8095,
-  // Root-checkout Expo, and the desktop dev Expo fallback range that
-  // packages/desktop/scripts/dev.{ps1,sh} probes in order.
+  // Root-checkout Expo (8081, `dev:app` and the `otto-dev` preview config), then
+  // the desktop dev Expo band that packages/desktop/scripts/dev.{ps1,sh} probes
+  // in order. Desktop dev starts at 8082 and never claims 8081.
   8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089,
-  // `.claude/launch.json` otto-app-preview Expo, and the archdocs server.
-  8090, 4400,
+  // The docs/marketing sites (`.claude/launch.json`): website, then archdocs.
+  // Deliberately outside the 808x Expo band — see packages/website/vite.config.ts.
+  4300, 4400,
   // Electron remote-debugging (CDP) for the desktop dev shell.
   9223,
   // --- Third-party ---

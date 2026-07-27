@@ -196,6 +196,7 @@ export const en = {
   contextManagement: {
     back: "Back",
     tabs: {
+      prompt: "Prompt",
       context: "Context",
       findings: "Issues",
       findingsCount: "Issues ({{count}})",
@@ -322,10 +323,22 @@ export const en = {
     category: {
       contextFiles: "Context files",
       memoryIndex: "Memory index",
-      skillsRoster: "Skills",
+      // Covers subagent definitions too: both are advertised to the model as a
+      // name plus a description, and both are trimmed the same way.
+      skillsRoster: "Skills & agents",
       mcpTools: "MCP tools",
       ottoInjected: "Otto prompt",
       systemPrompt: "System prompt",
+    },
+    visibility: {
+      notVisible: "not measurable here",
+      unverified: "estimate unverified",
+    },
+    prompt: {
+      empty: "Nothing assembled yet.",
+      total: "Assembled prompt — about {{tokens}} tokens every request",
+      notVisibleBody:
+        "This provider composes this part inside its own process. Otto cannot read it, so it is listed but not shown.",
     },
     filePlaceholder: {
       title: "Pick a file",
@@ -2642,8 +2655,16 @@ export const en = {
       noPreview: "No preview available",
       binaryPreviewUnavailable: "This file can't be previewed here",
       binaryPreviewHint: "It's a binary file, so there's nothing to show as text.",
+      binaryPreviewKind: "Binary",
+      binaryPreviewModified: "Modified {{when}}",
       failedToLoad: "Failed to load file",
       failedToLoadPreview: "Failed to load file preview",
+      image: {
+        zoomIn: "Zoom in",
+        zoomOut: "Zoom out",
+        actualSize: "Actual size",
+        fitToWindow: "Fit to window",
+      },
     },
   },
   toolCallDetails: {
@@ -2727,6 +2748,7 @@ export const en = {
       gitProviders: "Git",
       providers: "Providers",
       usage: "Usage",
+      storage: "Storage",
       terminals: "Terminals",
       host: "Overview",
     },
@@ -3291,6 +3313,33 @@ export const en = {
         columnWorkspace: "Workspace",
         columnUptime: "Uptime",
         stop: "Stop",
+      },
+      storage: {
+        title: "Images from agents",
+        hostImages: "Images on this host",
+        hostImagesSummary: "{{size}} across {{count}} images",
+        hostImagesEmpty: "Nothing stored yet",
+        hostImagesHint:
+          "Screenshots and other images your agents produced, kept so past messages can still show them. Clearing them cannot be undone — those messages fall back to their description.",
+        previewCache: "Cached copies on this device",
+        previewCacheSummary: "{{size}} across {{count}} images",
+        previewCacheEmpty: "Nothing cached",
+        previewCacheHint:
+          "Local copies so images load instantly. Safe to clear — they download again when needed. Files you attached to messages ({{size}}) are kept separately and are never cleared here.",
+        clear: "Clear",
+        clearConfirm: "Clear images",
+        clearImagesTitle: "Clear images on this host?",
+        clearImagesMessage:
+          "This deletes {{count}} images and frees {{size}}. Messages that showed them will fall back to their description instead. This cannot be undone.",
+        clearedImages: "Cleared {{count}} images, freeing {{size}}",
+        clearedPreviews: "Cleared {{count}} cached images, freeing {{size}}",
+        nothingToClear: "There is nothing to clear",
+        maxAge: "Keep images for",
+        maxAgeHint:
+          "Days an unused image is kept before it is removed automatically. An image still shown in a chat you open keeps its place. 0 turns this off.",
+        maxTotal: "Maximum size",
+        maxTotalHint:
+          "Megabytes of images to keep on this host. Past this, the oldest go first. 0 turns this off.",
       },
       workspaces: {
         unavailable: "Connect to this host to manage workspaces",

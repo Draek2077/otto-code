@@ -78,6 +78,8 @@ const daemonConfig: MutableDaemonConfig = {
   modelTierOverrides: [],
   autoArchiveAfterMerge: false,
   hideMergeIntoBaseAction: false,
+  attachmentImageMaxAgeDays: 30,
+  attachmentImageMaxTotalMb: 512,
   enableTerminalAgentHooks: false,
   appendSystemPrompt: "",
 };

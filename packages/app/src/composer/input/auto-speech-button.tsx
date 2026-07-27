@@ -21,8 +21,8 @@ import { Volume2, VolumeX } from "@/components/icons/material-icons";
 import { useTtsSpeakFeature } from "@/components/message-playback-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
-import { useAppSettings } from "@/hooks/use-settings";
-import { useAutoSpeechActive } from "@/voice/auto-speech-queue";
+import { useAppSettings, useAppSettingValue } from "@/hooks/use-settings";
+import { buildAgentAutoSpeechKey, type AppSettings } from "@/hooks/use-settings/storage";
 import { compactUp, type Theme } from "@/styles/theme";
 
 const ThemedVolume2 = withUnistyles(Volume2);
@@ -34,6 +34,7 @@ const iconAccentMapping = (theme: Theme) => ({ color: theme.colors.accent });
 
 interface AutoSpeechButtonProps {
   serverId: string | undefined;
+  agentId: string | undefined;
   buttonIconSize: number;
 }
 
@@ -47,22 +48,36 @@ interface AutoSpeechButtonProps {
 // toggle does not change size when you flip it.
 const SPEAKER_OPTICAL_SCALE = 0.85;
 
-export function AutoSpeechButton({ serverId, buttonIconSize }: AutoSpeechButtonProps) {
+const selectAgentAutoSpeechEnabled = (settings: AppSettings): Record<string, boolean> =>
+  settings.agentAutoSpeechEnabled;
+
+export function AutoSpeechButton({ serverId, agentId, buttonIconSize }: AutoSpeechButtonProps) {
   const { t } = useTranslation();
   const canSpeak = useTtsSpeakFeature(serverId ?? "");
-  // The queue's own view of the mode, not the raw setting: the toggle must read
-  // as on exactly when playback would happen.
-  const enabled = useAutoSpeechActive();
+  // The mode is per chat, so the toggle reads and writes one key of a sparse
+  // record rather than a global flag.
+  const enabledAgents = useAppSettingValue(selectAgentAutoSpeechEnabled);
   const { updateSettings } = useAppSettings();
+  const agentKey = serverId && agentId ? buildAgentAutoSpeechKey(serverId, agentId) : null;
+  const enabled = agentKey ? (enabledAgents[agentKey] ?? false) : false;
   const audioEngine = useVoiceAudioEngineOptional();
 
   const handlePress = useCallback(() => {
+    if (!agentKey) {
+      return;
+    }
     const next = !enabled;
     if (next) {
       void audioEngine?.initialize().catch(() => undefined);
     }
-    void updateSettings({ autoSpeech: next }).catch(() => undefined);
-  }, [audioEngine, enabled, updateSettings]);
+    // Off DELETES the key instead of storing `false`. The record is persisted
+    // for the life of the install and nothing prunes it, so a chat you muted
+    // once must not cost a row forever — and an absent key already means off.
+    const { [agentKey]: _cleared, ...rest } = enabledAgents;
+    void updateSettings({
+      agentAutoSpeechEnabled: next ? { ...rest, [agentKey]: true } : rest,
+    }).catch(() => undefined);
+  }, [agentKey, enabled, enabledAgents, audioEngine, updateSettings]);
 
   const glyphSize = Math.round(buttonIconSize * SPEAKER_OPTICAL_SCALE);
   const renderIcon = useCallback(

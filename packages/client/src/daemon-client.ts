@@ -107,6 +107,7 @@ import type {
   OttoWorktreeListResponse,
   OttoWorktreeArchiveResponse,
   ProjectIconResponse,
+  ContextPromptPreviewGetResponseMessage,
   ContextReportGetResponseMessage,
   ContextEdgeConvertResponseMessage,
   ContextFindingsFixResponseMessage,
@@ -150,6 +151,8 @@ import type {
   SubscribeTerminalResponse,
   SubscribeTerminalRequest,
   CloseItemsResponse,
+  AttachmentsImagesClearResponse,
+  AttachmentsImagesStatsResponse,
   HistoryAgentsClearArchivedResponse,
   KillTerminalResponse,
   CaptureTerminalResponse,
@@ -242,6 +245,12 @@ const perfNow: () => number =
 
 interface ImportAgentInputBase {
   cwd?: string;
+  /**
+   * Workspace the import was requested from. Supply it whenever the caller has
+   * one, so the imported session lands in that workspace instead of the daemon
+   * resolving (or minting) another workspace for the same directory.
+   */
+  workspaceId?: string;
   labels?: Record<string, string>;
 }
 
@@ -2736,6 +2745,45 @@ export class DaemonClient {
     });
   }
 
+  /**
+   * How much disk the images agents produced occupy on this host, plus the
+   * retention policy currently ageing them out. Gated by
+   * `server_info.features.attachmentStorage`.
+   */
+  async getAttachmentImageStats(
+    requestId?: string,
+  ): Promise<AttachmentsImagesStatsResponse["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"attachments.images.get_stats.response">({
+      requestId,
+      message: { type: "attachments.images.get_stats.request" },
+    });
+  }
+
+  /**
+   * Reclaims the materialized image store. Call once with `dryRun: true` for
+   * the count and size the confirm dialog quotes, then again with
+   * `dryRun: false` to delete.
+   *
+   * Cleared images do not come back: a message that referenced one renders its
+   * alt text from then on. Scope is the whole host — filenames are a content
+   * hash, so per-chat or per-workspace scope does not exist. Gated by
+   * `server_info.features.attachmentStorage`.
+   */
+  async clearAttachmentImages(options: {
+    dryRun: boolean;
+    olderThanDays?: number;
+    requestId?: string;
+  }): Promise<AttachmentsImagesClearResponse["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"attachments.images.clear.response">({
+      requestId: options.requestId,
+      message: {
+        type: "attachments.images.clear.request",
+        dryRun: options.dryRun,
+        olderThanDays: options.olderThanDays ?? 0,
+      },
+    });
+  }
+
   async archiveAgent(agentId: string): Promise<{ archivedAt: string }> {
     const requestId = this.createRequestId();
     const message = SessionInboundMessageSchema.parse({
@@ -3229,6 +3277,7 @@ export class DaemonClient {
         ? { providerId: input.providerId, providerHandleId: input.providerHandleId }
         : { provider: input.provider, sessionId: input.sessionId }),
       ...(input.cwd ? { cwd: input.cwd } : {}),
+      ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
       ...(input.labels && Object.keys(input.labels).length > 0 ? { labels: input.labels } : {}),
     });
 
@@ -5573,6 +5622,32 @@ export class DaemonClient {
         ...(input.personalityId ? { personalityId: input.personalityId } : {}),
       },
       responseType: "context.report.get.response",
+    });
+  }
+
+  /**
+   * The assembled prompt, for reading. Takes the same what-if inputs as the
+   * report so the text on screen always matches the numbers beside it.
+   */
+  async requestContextPromptPreview(
+    input: {
+      workspaceId: string;
+      provider?: string;
+      windowTokens?: number;
+      personalityId?: string;
+    },
+    requestId?: string,
+  ): Promise<ContextPromptPreviewGetResponseMessage["payload"]> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "context.prompt.preview.get.request",
+        workspaceId: input.workspaceId,
+        ...(input.provider ? { provider: input.provider } : {}),
+        ...(typeof input.windowTokens === "number" ? { windowTokens: input.windowTokens } : {}),
+        ...(input.personalityId ? { personalityId: input.personalityId } : {}),
+      },
+      responseType: "context.prompt.preview.get.response",
     });
   }
 

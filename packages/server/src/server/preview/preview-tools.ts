@@ -215,7 +215,7 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
       title: "Start preview dev server",
       description:
         "Start a dev server by name from .claude/launch.json, and open (or re-find) its designated preview tab in the Otto browser — the same tab the user sees. " +
-        "Reuses the server if already running. ALWAYS use this instead of shell commands to run dev servers. " +
+        "Reuses the server if already running — including one Otto didn't start, which comes back adopted under an ext:<port> id with no captured logs. ALWAYS use this instead of shell commands to run dev servers. " +
         "The result's browser.browserId is the tab to verify against: pass it to browser_snapshot, browser_click, browser_screenshot, etc. Don't open extra tabs for verification. " +
         "If .claude/launch.json doesn't exist, create it first with this format:\n" +
         LAUNCH_JSON_FORMAT +
@@ -252,6 +252,9 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
           reused: started.reused,
           browser,
           logTail: started.logTail,
+          // Present when the server was adopted rather than spawned: says why
+          // there are no logs and what preview_stop would actually kill.
+          ...(started.note ? { note: started.note } : {}),
         });
       } catch (error) {
         return failure(toMessage(error));
@@ -290,7 +293,7 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
     {
       title: "List preview dev servers",
       description:
-        "List dev servers started with preview_start. Returns serverIds for use with the other preview_* tools.",
+        "List the dev servers running for this workspace — ones started with preview_start, plus any already-running configured server Otto has observed. Returns serverIds for use with the other preview_* tools.",
       inputSchema: {},
       outputSchema: PreviewToolOutputSchema,
     },

@@ -21,7 +21,7 @@ import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { extensionFromPath, highlightToKeyedLines } from "@/utils/highlight-cache";
-import { HighlightedLines } from "./highlighted-content";
+import { HighlightedLines, highlightedSpans } from "./highlighted-content";
 import { DiffViewer } from "./diff-viewer";
 import { getCodeInsets } from "./code-insets";
 import { isWeb } from "@/constants/platform";
@@ -249,6 +249,13 @@ function ShellDetailSection({ command, output, ds }: ShellDetailProps) {
   const normalizedCommand = command.replace(/\n+$/, "");
   const commandOutput = (output ?? "").replace(/^\n+/, "");
   const hasOutput = commandOutput.length > 0;
+  // The command is shell source and gets the shell grammar; the output below it
+  // is whatever the program printed and stays plain — highlighting arbitrary
+  // stdout as shell paints false structure onto it.
+  const commandSpans = useMemo(() => {
+    const lines = highlightToKeyedLines(normalizedCommand, "sh");
+    return lines ? highlightedSpans(lines) : null;
+  }, [normalizedCommand]);
   return (
     <View style={ds.sectionFillStyle}>
       <View style={ds.codeBlockFillStyle}>
@@ -261,7 +268,7 @@ function ShellDetailSection({ command, output, ds }: ShellDetailProps) {
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
               <Text selectable style={ds.codeTextStyle}>
                 <Text style={styles.shellPrompt}>$ </Text>
-                {normalizedCommand}
+                {commandSpans ?? normalizedCommand}
                 {hasOutput ? `\n\n${commandOutput}` : ""}
               </Text>
             </View>
@@ -899,18 +906,21 @@ const styles = StyleSheet.create((theme) => {
       color: theme.colors.foregroundMuted,
       fontSize: theme.fontSize.xs,
     },
+    // Every code/terminal surface in a tool card sits on `surfaceCode` — the
+    // same well the editor paints (styles/theme.ts). Boxed or full-bleed, a
+    // command, a diff, a file read and a JSON payload are one material.
     diffContainer: {
       borderWidth: theme.borderWidth[1],
       borderColor: theme.colors.border,
       borderRadius: theme.borderRadius.base,
       overflow: "hidden",
-      backgroundColor: theme.colors.surface2,
+      backgroundColor: theme.colors.surfaceCode,
     },
     fullBleedBlock: {
       borderWidth: 0,
       borderRadius: 0,
       overflow: "hidden",
-      backgroundColor: theme.colors.surface1,
+      backgroundColor: theme.colors.surfaceCode,
     },
     codeVerticalScroll: {},
     codeVerticalContent: {
@@ -929,7 +939,7 @@ const styles = StyleSheet.create((theme) => {
       borderWidth: theme.borderWidth[1],
       borderColor: theme.colors.border,
       borderRadius: theme.borderRadius.base,
-      backgroundColor: theme.colors.surface2,
+      backgroundColor: theme.colors.surfaceCode,
     },
     scrollContent: {
       padding: insets.padding,
@@ -995,7 +1005,7 @@ const styles = StyleSheet.create((theme) => {
       borderWidth: theme.borderWidth[1],
       borderColor: theme.colors.border,
       borderRadius: theme.borderRadius.base,
-      backgroundColor: theme.colors.surface2,
+      backgroundColor: theme.colors.surfaceCode,
     },
     jsonScrollError: {
       borderColor: theme.colors.destructive,

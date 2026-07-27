@@ -10,6 +10,7 @@ import {
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { useSessionStore, type SessionState } from "@/stores/session-store";
 import { useWorkspaceAttachmentsStore } from "@/attachments/workspace-attachments-store";
+import { collectPinnedPreviewAttachmentIds } from "@/attachments/preview-pins";
 import {
   applyClearDraftRecord,
   collectReferencedAttachmentIdsFromState,
@@ -141,6 +142,12 @@ async function runAttachmentGc(): Promise<void> {
     collectStreamUserImageIds(session.agentStreamTail, referencedIds);
     collectStreamUserImageIds(session.agentStreamHead, referencedIds);
   }
+
+  // Preview attachments — the local copies behind assistant markdown images and
+  // file-tab image previews — hang off no draft at all, so they are referenced
+  // only by their pins. Without this the GC deleted every browser screenshot in
+  // the transcript on the next keystroke. See attachments/preview-pins.ts.
+  collectPinnedPreviewAttachmentIds(referencedIds);
 
   // Browser-element screenshots live in the workspace attachment store, not in
   // drafts, so collect their ids here to keep them from being garbage collected

@@ -26,6 +26,8 @@ export interface NormalizedImportAgentRequest {
   provider: AgentProvider;
   providerHandleId: string;
   cwd?: string;
+  /** Workspace the import was requested from, when the client had one. */
+  workspaceId?: string;
   labels?: Record<string, string>;
   requestId: string;
 }
@@ -82,6 +84,7 @@ export function normalizeImportAgentRequest(
     provider: provider as AgentProvider,
     providerHandleId,
     cwd: msg.cwd,
+    workspaceId: msg.workspaceId,
     labels: msg.labels,
     requestId: msg.requestId,
   };

@@ -7,6 +7,7 @@ import {
   Abc,
   DataObject,
   HardDrive,
+  Image as ImageIcon,
   Pilcrow,
   TextSelectStart,
 } from "@/components/icons/material-icons";
@@ -34,6 +35,7 @@ const ThemedHardDrive = withUnistyles(HardDrive);
 const ThemedPilcrow = withUnistyles(Pilcrow);
 const ThemedAbc = withUnistyles(Abc);
 const ThemedTextSelectStart = withUnistyles(TextSelectStart);
+const ThemedImage = withUnistyles(ImageIcon);
 
 /** Ln/Col, plus a selection summary when there is one — VS Code's phrasing. */
 function formatCursor(cursor: EditorCursorPosition): string {
@@ -78,6 +80,12 @@ interface EditorStatusBarProps {
   isText: boolean;
   /** Null in preview mode, and until the editor reports its first position. */
   cursor: EditorCursorPosition | null;
+  /**
+   * Natural pixel size of a previewed image. Null for everything else — and for
+   * an image whose container we could not measure, where an invented size would
+   * be worse than a missing one.
+   */
+  imageDimensions?: { width: number; height: number } | null;
   /**
    * Problems the language servers found. Rendered as per-severity totals at the far right,
    * behind a divider, and absent entirely when there are none — a clean file earns no
@@ -166,6 +174,7 @@ export function EditorStatusBar({
   eol,
   isText,
   cursor,
+  imageDimensions,
   diagnostics,
 }: EditorStatusBarProps) {
   const iconSize = useIconSize();
@@ -197,6 +206,14 @@ export function EditorStatusBar({
           <SeverityTotal key={entry.severity} severity={entry.severity} count={entry.count} />
         ))}
         {totals.length > 0 ? <View style={styles.divider} /> : null}
+        {imageDimensions ? (
+          <View style={styles.item}>
+            <ThemedImage size={iconSize.xs} uniProps={mutedIconColor} />
+            <Text style={styles.numericText} numberOfLines={1}>
+              {`${imageDimensions.width} × ${imageDimensions.height}`}
+            </Text>
+          </View>
+        ) : null}
         {eol ? (
           <View style={styles.item}>
             <ThemedPilcrow size={iconSize.xs} uniProps={mutedIconColor} />

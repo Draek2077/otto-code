@@ -147,19 +147,29 @@ export async function scanContextGraph(
     }
   }
 
-  // 4. Skills roster — only the frontmatter rides every request; the body loads
-  //    on invocation, so sizing the whole file would overstate it badly.
-  for (const skillRoot of convention.resolveSkillRoots(input)) {
+  // 4. Skills and subagents — only the frontmatter rides every request; the
+  //    body loads on invocation, so sizing the whole file would overstate it
+  //    badly. Plugin-contributed rosters count the same as hand-written ones:
+  //    the model is told about them identically, and the user's lever (disable
+  //    the plugin) only makes sense if the weight is visible first.
+  const pluginRoots = (await convention.resolvePluginRoots?.(input)) ?? [];
+  const skillRoots = [
+    ...convention.resolveSkillRoots(input),
+    ...pluginRoots.map((root) => path.join(root, "skills")),
+  ];
+  for (const skillRoot of skillRoots) {
     for (const skillFile of await listSkillFiles(skillRoot)) {
-      const frontmatter = await readFrontmatter(skillFile);
-      if (frontmatter == null) continue;
-      await builder.addSyntheticNode({
-        absolutePath: skillFile,
-        scope: skillRoot.startsWith(input.homeDir) ? "global" : "project",
-        category: "skills_roster",
-        costClass: "fixed",
-        bytes: frontmatter.length,
-      });
+      await addRosterEntry(builder, skillFile, skillRoot, input);
+    }
+  }
+
+  const agentRoots = [
+    ...convention.resolveAgentRoots(input),
+    ...pluginRoots.map((root) => path.join(root, "agents")),
+  ];
+  for (const agentRoot of agentRoots) {
+    for (const agentFile of await listAgentFiles(agentRoot)) {
+      await addRosterEntry(builder, agentFile, agentRoot, input);
     }
   }
 
@@ -502,6 +512,30 @@ async function isReadableFile(absolutePath: string): Promise<boolean> {
   }
 }
 
+/**
+ * Adds one roster entry (a skill or a subagent) sized by its frontmatter.
+ * Entries whose frontmatter cannot be read contribute nothing rather than their
+ * whole body — an unparseable file is not evidence of a large advertisement.
+ */
+async function addRosterEntry(
+  builder: GraphBuilder,
+  filePath: string,
+  rootDir: string,
+  input: ContextResolutionInput,
+): Promise<void> {
+  const frontmatter = await readFrontmatter(filePath);
+  if (frontmatter == null) return;
+  await builder.addSyntheticNode({
+    absolutePath: filePath,
+    // Plugin roots live under the home config dir, so they land on `global`
+    // here — which is true: enabling a plugin costs every project on the machine.
+    scope: rootDir.startsWith(input.homeDir) ? "global" : "project",
+    category: "skills_roster",
+    costClass: "fixed",
+    bytes: frontmatter.length,
+  });
+}
+
 async function listSkillFiles(skillRoot: string): Promise<string[]> {
   let entries;
   try {
@@ -519,6 +553,22 @@ async function listSkillFiles(skillRoot: string): Promise<string[]> {
 }
 
 /**
+ * Subagents are flat `*.md` files in the directory, not `<name>/SKILL.md`
+ * bundles — the one structural difference between the two rosters.
+ */
+async function listAgentFiles(agentRoot: string): Promise<string[]> {
+  let entries;
+  try {
+    entries = await fs.readdir(agentRoot, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".md"))
+    .map((entry) => path.join(agentRoot, entry.name));
+}
+
+/**
  * A skill's fixed cost is its frontmatter (name + description), which is what
  * goes into the roster. The body only loads when the skill is invoked.
  */
@@ -529,6 +579,15 @@ async function readFrontmatter(filePath: string): Promise<string | null> {
   } catch {
     return null;
   }
+  return extractFrontmatter(text);
+}
+
+/**
+ * Exported so the prompt preview shows a roster entry the way the model gets it
+ * — frontmatter only. Two copies of this rule would drift, and the preview would
+ * quietly start showing skill bodies that are not in the request.
+ */
+export function extractFrontmatter(text: string): string | null {
   const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
   return match ? (match[1] ?? null) : null;
 }

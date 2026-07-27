@@ -155,11 +155,6 @@ import {
   useAssistantBubbleHasText,
 } from "@/agent-stream/assistant-bubble-text";
 import { useIsMessagePlaybackActive } from "@/agent-stream/message-playback-activity";
-import {
-  markLiveTurnSegmentWitnessed,
-  wasLiveTurnSegmentWitnessed,
-} from "@/agent-stream/live-turn-witness";
-import { autoSpeechQueue } from "@/voice/auto-speech-queue";
 export type { InlinePathTarget } from "@/assistant-file-links";
 export type { AssistantForkTarget };
 
@@ -224,6 +219,7 @@ const mutedForegroundColorMapping = (theme: Theme) => ({
   color: theme.colors.mutedForeground,
 });
 const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
+const warningColorMapping = (theme: Theme) => ({ color: theme.colors.statusWarning });
 const WEB_TOOLCALL_SHIMMER_KEYFRAME_CSS = `
   @keyframes ${WEB_TOOLCALL_SHIMMER_ANIMATION_NAME} {
     0% {
@@ -890,16 +886,29 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
   const handleImageError = useCallback(() => {
     setLoadState({ status: "error" });
   }, []);
+  const [measuredWidth, setMeasuredWidth] = useState(0);
+  const handleFrameLayout = useCallback((event: LayoutChangeEvent) => {
+    const width = event.nativeEvent.layout.width;
+    setMeasuredWidth((prev) => (width > 0 && Math.abs(width - prev) > 0.5 ? width : prev));
+  }, []);
   const { t } = useTranslation();
-  const surfaceStyle = useMemo<StyleProp<ViewStyle>>(
-    () => [
-      assistantMessageStylesheet.imageSurface,
-      loadState.status === "ready"
-        ? { aspectRatio: loadState.aspectRatio }
-        : { height: ASSISTANT_IMAGE_MIN_HEIGHT },
-    ],
-    [loadState],
-  );
+  const surfaceStyle = useMemo<StyleProp<ViewStyle>>(() => {
+    if (loadState.status !== "ready") {
+      return [assistantMessageStylesheet.imageSurface, { height: ASSISTANT_IMAGE_MIN_HEIGHT }];
+    }
+    // RN-web only derives height from `aspectRatio` when the width is definite. This
+    // surface is `width:"100%"`, which stays indefinite in the markdown flex context, so
+    // aspectRatio alone collapses it to 0 height (the image loads but renders 0×0).
+    // Measure the laid-out width and set an explicit height instead — same shape as
+    // MarkdownBlockImage, which pairs aspectRatio with a concrete width.
+    if (measuredWidth > 0) {
+      return [
+        assistantMessageStylesheet.imageSurface,
+        { height: measuredWidth / loadState.aspectRatio },
+      ];
+    }
+    return [assistantMessageStylesheet.imageSurface, { aspectRatio: loadState.aspectRatio }];
+  }, [loadState, measuredWidth]);
   const frameStyle = useMemo<StyleProp<ViewStyle>>(
     () => [assistantMessageStylesheet.imageFrame, containerStyle],
     [containerStyle],
@@ -912,7 +921,7 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
 
   if (loadState.status !== "ready") {
     return (
-      <View style={frameStyle}>
+      <View style={frameStyle} onLayout={handleFrameLayout}>
         <View style={stateSurfaceStyle}>
           {loadState.status === "loading" ? <ActivityIndicator size="small" /> : null}
           {loadState.status === "error" ? (
@@ -926,7 +935,7 @@ const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedIm
   }
 
   return (
-    <View style={frameStyle}>
+    <View style={frameStyle} onLayout={handleFrameLayout}>
       <View style={surfaceStyle}>
         <Image
           source={imageSource}
@@ -2035,14 +2044,12 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   const playback = useAssistantBubblePlaybackState({
     serverId,
-    agentId,
     spacing,
     groupId: bubbleGroupId,
     blockIndex: bubbleBlockIndex,
     message,
     displayedLength: displayMessage.length,
     isTurnTail,
-    revealBudget,
   });
   const {
     showPlayback,
@@ -2118,7 +2125,6 @@ export const AssistantMessage = memo(function AssistantMessage({
  */
 function useAssistantBubblePlaybackState(input: {
   serverId?: string;
-  agentId?: string;
   spacing: AssistantMessageProps["spacing"];
   groupId: string | undefined;
   blockIndex: number;
@@ -2126,22 +2132,18 @@ function useAssistantBubblePlaybackState(input: {
   /** How much of `message` the typewriter reveal has laid out so far. */
   displayedLength: number;
   isTurnTail: boolean | undefined;
-  revealBudget: number | undefined;
 }): {
   showPlayback: boolean;
   visible: boolean;
   handlePointerEnter: () => void;
   handlePointerLeave: () => void;
 } {
-  const { serverId, agentId, spacing, groupId, blockIndex, message } = input;
+  const { serverId, spacing, groupId, blockIndex, message } = input;
   // "Received in full": the model has moved past this item AND the typewriter
   // has finished laying it out. Both halves matter — a bubble still growing
   // across the screen is not a message you can be offered to play, and text the
   // reader has not been shown yet is not text to read aloud.
   const isSettled = input.isTurnTail !== true && input.displayedLength >= message.length;
-  // Part of a turn that is being written right now: an item only carries a
-  // reveal span (or the tail flag) while its turn runs.
-  const isLiveTurnItem = input.revealBudget !== undefined || input.isTurnTail === true;
   const [hovered, setHovered] = useState(false);
   const handlePointerEnter = useCallback(() => setHovered(true), []);
   const handlePointerLeave = useCallback(() => setHovered(false), []);
@@ -2158,53 +2160,11 @@ function useAssistantBubblePlaybackState(input: {
     reportAssistantBubbleText({ groupId, blockIndex, text: message });
   }, [groupId, blockIndex, message]);
 
-  // Auto-speech reads what it WATCHED being written, never what was already on
-  // screen: opening a chat must not start reciting its history. "Watched" is
-  // exactly `isLiveTurnItem` — an item only carries a reveal span (or the tail
-  // flag) while its turn is running, and a history row never renders with
-  // either. It has to be latched, because the flag goes false the instant the
-  // turn ends, which is the same commit the segment becomes speakable.
-  //
-  // The latch is a module registry keyed by (groupId, blockIndex) rather than a
-  // ref, because a ref does not survive the turn ending: the segment that is
-  // live at that moment is remounted under a new id as the stream head flushes
-  // into the tail, so a ref-latched row lost its memory of being live and the
-  // reply's last paragraph was never spoken (see live-turn-witness.ts).
-  //
-  // Recorded during render, like the ref it replaces, so the mark lands even if
-  // this row is torn down before its effects flush — the remount above is
-  // precisely that case. Marking is idempotent and notifies nobody, so it is
-  // safe to do from render.
-  if (isLiveTurnItem && groupId !== undefined) {
-    markLiveTurnSegmentWitnessed({ groupId, blockIndex });
-  }
-
-  const enqueuedRef = useRef(false);
-  useEffect(() => {
-    if (
-      enqueuedRef.current ||
-      !isSettled ||
-      !canPlay ||
-      serverId === undefined ||
-      groupId === undefined ||
-      !wasLiveTurnSegmentWitnessed({ groupId, blockIndex })
-    ) {
-      return;
-    }
-    // Per SEGMENT, not per bubble: blocks are promoted out of the live item as
-    // they complete, so queueing each one keeps speech following the reply
-    // paragraph by paragraph instead of waiting for the whole turn. The queue
-    // ignores this outright when auto-speech is off, and dedupes on the text —
-    // this row's identity is not stable enough to dedupe on (see the queue's
-    // `fingerprint`).
-    enqueuedRef.current = true;
-    autoSpeechQueue.enqueue({
-      groupId,
-      serverId,
-      ...(agentId ? { agentId } : {}),
-      text: message,
-    });
-  }, [agentId, blockIndex, canPlay, groupId, isSettled, message, serverId]);
+  // Auto-speech deliberately does NOT feed itself from here. A row lives only
+  // while its chat is on screen, which made switching chats silence the chat you
+  // walked away from; the queue is fed from the store instead, by one headless
+  // source per enabled chat (voice/auto-speech-source.tsx). What this row still
+  // owns is the Play affordance below.
 
   // One button per *visual* bubble, so it goes on the segment that ends the
   // group: "default" is a standalone reply and "compactTop" is the last segment
@@ -2684,6 +2644,8 @@ const todoListCardStylesheet = StyleSheet.create((theme) => ({
   },
 }));
 
+export type ExpandableBadgeErrorLevel = "error" | "warning";
+
 interface ExpandableBadgeProps {
   label: string;
   secondaryLabel?: string;
@@ -2695,7 +2657,11 @@ interface ExpandableBadgeProps {
   onDetailHoverChange?: (hovered: boolean) => void;
   renderDetails?: () => ReactNode;
   isLoading?: boolean;
-  isError?: boolean;
+  // How loudly the badge reports failure. "error" is a red triangle: the action
+  // itself failed, or every action in a group did. "warning" is amber: some but
+  // not all of a group's actions failed, which is an alert about a run that
+  // mostly worked — not a failed run. Undefined means nothing failed.
+  errorLevel?: ExpandableBadgeErrorLevel;
   isLastInSequence?: boolean;
   disableOuterSpacing?: boolean;
   // Grouped contexts (ActionGroup) space rows with a parent `gap` instead of
@@ -2924,21 +2890,21 @@ const LUCIDE_CHEVRON_NUDGE_LEFT: ViewStyle = { marginLeft: -4 };
 const TRIANGLE_ALERT_ICON_OPACITY: ViewStyle = { opacity: 0.8 };
 
 function renderExpandableBadgeIcon({
-  isError,
+  errorLevel,
   isActive,
   ThemedIcon,
 }: {
-  isError: boolean;
+  errorLevel: ExpandableBadgeErrorLevel | undefined;
   isActive: boolean;
   ThemedIcon: ComponentType<{ size?: number; uniProps?: typeof foregroundColorMapping }> | null;
 }): ReactNode {
-  if (isError) {
+  if (errorLevel) {
     return (
       <View style={LUCIDE_TOOL_ICON_NUDGE_LEFT}>
         <ThemedTriangleAlertIcon
           size={12}
           style={TRIANGLE_ALERT_ICON_OPACITY}
-          uniProps={destructiveColorMapping}
+          uniProps={errorLevel === "warning" ? warningColorMapping : destructiveColorMapping}
         />
       </View>
     );
@@ -3110,7 +3076,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   onDetailHoverChange,
   renderDetails,
   isLoading = false,
-  isError = false,
+  errorLevel,
   isLastInSequence = false,
   disableOuterSpacing,
   disableExpandedSpacing = false,
@@ -3367,7 +3333,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   );
 
   const ThemedIcon = useMemo(() => (icon ? withUnistyles(icon) : null), [icon]);
-  const iconNode = renderExpandableBadgeIcon({ isError, isActive, ThemedIcon });
+  const iconNode = renderExpandableBadgeIcon({ errorLevel, isActive, ThemedIcon });
   const iconSlotNode = renderExpandableBadgeIconSlot({
     showChevron: isInteractive && isHovered,
     chevronStyle,
@@ -3450,7 +3416,7 @@ function areExpandableBadgePropsEqual(previous: ExpandableBadgeProps, next: Expa
   if (previous.isExpanded !== next.isExpanded) return false;
   if (previous.style !== next.style) return false;
   if (previous.isLoading !== next.isLoading) return false;
-  if (previous.isError !== next.isError) return false;
+  if (previous.errorLevel !== next.errorLevel) return false;
   if (previous.isLastInSequence !== next.isLastInSequence) return false;
   if (previous.disableOuterSpacing !== next.disableOuterSpacing) return false;
   if (previous.disableExpandedSpacing !== next.disableExpandedSpacing) return false;
@@ -3638,7 +3604,9 @@ export const ToolCall = memo(function ToolCall({
       onOpenFile={handleOpenFile}
       renderDetails={presentation.canOpenDetails && shouldRenderInline ? renderDetails : undefined}
       isLoading={status === "running" || status === "executing"}
-      isError={status === "failed"}
+      // A single action that failed is always the loud red: there is no
+      // surrounding set to soften it against.
+      errorLevel={status === "failed" ? "error" : undefined}
       isLastInSequence={isLastInSequence}
       disableOuterSpacing={disableOuterSpacing}
       disableExpandedSpacing={disableExpandedSpacing}

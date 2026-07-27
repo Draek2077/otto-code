@@ -129,12 +129,31 @@ export interface ContextEdge {
   range: ContextRange;
 }
 
+/**
+ * How well Otto can see a category *for this provider*.
+ *
+ * `not_visible` is the member that earns this type: a provider that composes a
+ * chunk of its payload internally (every CLI-backed one) leaves Otto with no way
+ * to measure it. Reporting that as zero tokens is a lie the user cannot detect,
+ * and dropping the row entirely is the same lie with better manners. The row
+ * ships, states what is unmeasurable and why, and does not pretend to a number.
+ */
+export type ContextCategoryVisibility = ContextConfidence | "not_visible";
+
 export interface ContextCategoryTotal {
   category: ContextCategory;
   estTokens: number;
   /** Share of the evaluated context window, 0–100, one decimal place. */
   sharePercent: number;
   severity: ContextSeverity;
+  /**
+   * Per-category, per-provider disclosure. Optional on the wire: an older client
+   * that does not render it still gets correct totals.
+   *
+   * COMPAT(contextCategoryVisibility): added in v0.7.1, drop the optionality
+   * when the floor is >= v0.7.1.
+   */
+  visibility?: ContextCategoryVisibility;
 }
 
 export interface ContextReport {

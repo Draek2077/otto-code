@@ -195,6 +195,65 @@ describe("DevServerManager", () => {
     );
   });
 
+  test("adopts a configured server it did not start instead of refusing the port", async () => {
+    const manager = createManager();
+    const listener = net.createServer();
+    const port = await new Promise<number>((resolve, reject) => {
+      listener.once("error", reject);
+      listener.listen(0, "127.0.0.1", () => {
+        resolve((listener.address() as net.AddressInfo).port);
+      });
+    });
+    try {
+      const cwd = await createExternalProject(port);
+
+      const started = await manager.start({ cwd, name: "external" });
+
+      expect(started.reused).toBe(true);
+      expect(started.server.serverId).toBe(`ext:${port}`);
+      expect(started.server.status).toBe("running");
+      expect(started.server.url).toBe(`http://127.0.0.1:${port}/`);
+      expect(started.note).toMatch(/already serving/);
+
+      // Adopted servers are real enough to list and to designate a tab for.
+      expect(manager.list(cwd).map((entry) => entry.serverId)).toEqual([`ext:${port}`]);
+      manager.bindTab(started.server.serverId, "browser-1");
+      expect(manager.boundTab(started.server.serverId)).toBe("browser-1");
+      expect(manager.getServer(started.server.serverId)?.boundBrowserId).toBe("browser-1");
+
+      // What they can't do is produce logs Otto never captured.
+      expect(() => manager.logs(started.server.serverId)).toThrow(/did not start/);
+    } finally {
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
+  });
+
+  test("forgets an adopted server once nothing is listening on its port", async () => {
+    const manager = createManager();
+    const listener = net.createServer();
+    const port = await new Promise<number>((resolve, reject) => {
+      listener.once("error", reject);
+      listener.listen(0, "127.0.0.1", () => {
+        resolve((listener.address() as net.AddressInfo).port);
+      });
+    });
+    const cwd = await createExternalProject(port);
+    await manager.start({ cwd, name: "external" });
+    expect(manager.list(cwd)).toHaveLength(1);
+
+    await new Promise<void>((resolve) => listener.close(() => resolve()));
+
+    const reconciled = await manager.reconcileRunning({
+      cwd,
+      configured: [{ name: "external", port }],
+    });
+
+    expect(reconciled).toHaveLength(0);
+    expect(manager.list(cwd)).toHaveLength(0);
+    // And the adoption no longer authorizes a tree-kill of whatever takes the port next.
+    await expect(manager.stop(`ext:${port}`)).rejects.toThrow(/not a preview server/);
+  });
+
   test("refuses to stop an external server on a protected port", async () => {
     const manager = createManager();
     const listener = net.createServer();
@@ -228,7 +287,7 @@ describe("DevServerManager", () => {
     });
     try {
       // External stops require the port to have been observed as a configured
-      // server first (see externalPortCwds).
+      // server first (see externalServers).
       const cwd = await createExternalProject(port);
       await manager.reconcileRunning({ cwd, configured: [{ name: "external", port }] });
       const stopped = await manager.stop(`ext:${port}`);

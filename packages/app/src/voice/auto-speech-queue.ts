@@ -1,10 +1,11 @@
 // Auto-speech — read incoming assistant prose aloud, in order, as it lands.
 //
-// The composer's speaker toggle turns it on. From then on every assistant bubble
-// segment is queued the moment it is FINAL (the model has moved past it and the
-// typewriter reveal has caught up) and spoken one after another. Synthesis is
-// slower than generation, so the queue IS the feature: playback falls behind and
-// drains at its own pace instead of dropping lines or talking over itself.
+// The composer's speaker toggle turns it on per chat (per agent). From then on
+// every assistant bubble segment from that chat is queued the moment it is FINAL
+// (the model has moved past it and the typewriter reveal has caught up) and spoken
+// one after another. Synthesis is slower than generation, so the queue IS the
+// feature: playback falls behind and drains at its own pace instead of dropping
+// lines or talking over itself.
 //
 // Why a module singleton rather than a hook or a store slice: there is exactly
 // one speaker on the device. Two chats streaming side by side have to share one
@@ -17,13 +18,25 @@
 // the shared audio engine, the agent's personality voice. What is left here is
 // pure control flow, which is what makes the interruption rules testable.
 //
+// Per-agent toggling (agentAutoSpeechEnabled): each chat enables auto-speech on
+// its own, from its own composer toggle. The queue holds the enabled set;
+// `syncEnabledAgents` reconciles it against the persisted settings record.
+//
+// Deliberately NOT gated on app/tab visibility. Auto-speech is the one feature
+// whose whole point is that you are not looking at the screen — a phone in a
+// pocket or a tab in the background must keep reading. What did stop it there
+// was upstream: the typewriter reveal's timer is throttled off screen, so
+// segments never reached full length and nothing was ever offered. That is
+// fixed where it happens, in `agent-stream/turn-reveal.ts`.
+//
 // The interruption rules, which are the whole design:
-//   * Toggling auto-speech off aborts the current utterance and empties the
-//     queue. Immediately — a mode you turned off must go quiet at once.
-//   * Pressing Play on any message TAKES OVER: the queue is emptied and auto
-//     playback is held until that manual playback ends, then resumes with
-//     whatever arrives next. Deliberately not with the backlog the user
-//     interrupted — by the time they finish listening, it is stale.
+//   * Toggling auto-speech off for a chat aborts ITS current utterance and
+//     drops ITS queued items. Other chats keep reading.
+//   * Pressing Play on any message TAKES OVER, device-wide: there is one
+//     speaker, so the whole queue is emptied — every chat's — and auto playback
+//     is held until that manual playback ends, then resumes with whatever
+//     arrives next. Deliberately not with the backlog the user interrupted —
+//     by the time they finish listening, it is stale.
 //   * Pressing the button on the message auto-speech is currently reading stops
 //     it and empties the queue without leaving the mode.
 import { useSyncExternalStore } from "react";
@@ -50,6 +63,18 @@ export interface AutoSpeechSpeaker {
 const MAX_TRACKED_KEYS = 512;
 
 /**
+ * Which chat an item belongs to. Same shape as the settings record's key
+ * (`buildAgentAutoSpeechKey`), so the two sets compare directly.
+ *
+ * Null without an agent id: an item nobody can attribute to a chat cannot be
+ * matched against a per-chat toggle, so it is never spoken.
+ */
+function agentKey(serverId: string, agentId?: string): string | null {
+  if (!agentId) return null;
+  return `${serverId}:${agentId}`;
+}
+
+/**
  * What "the same message" means for dedupe: its TEXT, not its stream-item id.
  *
  * Ids are not stable. A canonical timeline replace rebuilds a finished turn's
@@ -73,7 +98,8 @@ function fingerprint(serverId: string, text: string): string {
 }
 
 class AutoSpeechQueue {
-  private enabled = false;
+  /** The chats reading aloud right now, as `${serverId}:${agentId}` keys. */
+  private readonly enabledAgents = new Set<string>();
   private queue: AutoSpeechItem[] = [];
   private active: AutoSpeechItem | null = null;
   /** Non-null while a manual playback owns the speaker. */
@@ -99,7 +125,11 @@ class AutoSpeechQueue {
     };
   };
 
-  isEnabled = (): boolean => this.enabled;
+  /** Whether this chat reads its replies aloud. */
+  isAgentEnabled(serverId: string, agentId?: string): boolean {
+    const key = agentKey(serverId, agentId);
+    return key !== null && this.enabledAgents.has(key);
+  }
 
   /** The bubble currently being read by auto-speech, or null. */
   getSpeakingGroupId = (): string | null => this.active?.groupId ?? null;
@@ -107,13 +137,64 @@ class AutoSpeechQueue {
   /** Queued and not yet started — the backlog the user can hear coming. */
   getPendingCount = (): number => this.queue.length;
 
-  setEnabled(enabled: boolean): void {
-    if (this.enabled === enabled) {
+  /**
+   * Reconcile the enabled set against the persisted settings record — the host
+   * calls this on every settings change.
+   *
+   * Wholesale rather than key-by-key because the record is SPARSE: turning a
+   * chat off deletes its key rather than storing `false`, so an absent key is
+   * the off signal and a loop over what is present would never see it.
+   */
+  syncEnabledAgents(record: Readonly<Record<string, boolean>>): void {
+    const next = new Set<string>();
+    for (const [key, enabled] of Object.entries(record)) {
+      if (enabled && key.includes(":")) {
+        next.add(key);
+      }
+    }
+    // Collected before disabling: `disableAgent` mutates the set being read.
+    const stale: string[] = [];
+    for (const key of this.enabledAgents) {
+      if (!next.has(key)) {
+        stale.push(key);
+      }
+    }
+    for (const key of stale) {
+      this.disableAgent(key);
+    }
+    for (const key of next) {
+      this.enableAgent(key);
+    }
+  }
+
+  /**
+   * Turn one chat's auto-speech on or off. Off aborts that chat's utterance and
+   * drops its queued items; every other chat keeps reading.
+   */
+  setAgentEnabled(serverId: string, agentId: string, enabled: boolean): void {
+    const key = `${serverId}:${agentId}`;
+    if (enabled) {
+      this.enableAgent(key);
+    } else {
+      this.disableAgent(key);
+    }
+  }
+
+  private enableAgent(key: string): void {
+    if (this.enabledAgents.has(key)) {
       return;
     }
-    this.enabled = enabled;
-    if (!enabled) {
-      this.queue = [];
+    this.enabledAgents.add(key);
+    this.emit();
+    void this.drain();
+  }
+
+  private disableAgent(key: string): void {
+    if (!this.enabledAgents.delete(key)) {
+      return;
+    }
+    this.queue = this.queue.filter((item) => agentKey(item.serverId, item.agentId) !== key);
+    if (this.active && agentKey(this.active.serverId, this.active.agentId) === key) {
       this.abortActive();
     }
     this.emit();
@@ -152,12 +233,18 @@ class AutoSpeechQueue {
   }
 
   /**
-   * Offer a finished message segment. Silently ignored when auto-speech is off,
-   * when the segment has already been offered, or when it has nothing to say —
-   * callers are message rows and must not have to know the mode's state.
+   * Offer a finished message segment. Silently ignored when the chat it belongs
+   * to has auto-speech off, when the segment has already been offered, or when
+   * it has nothing to say — callers are message rows and must not have to know
+   * the mode's state.
+   *
+   * Accepting marks the fingerprint immediately, not at speak time: a segment
+   * the user interrupted (Play on another message, Stop) is gone for good, and
+   * a row that remounts afterwards must not resurrect the backlog they just
+   * dismissed.
    */
   enqueue(item: AutoSpeechItem): void {
-    if (!this.enabled || !item.text.trim()) {
+    if (!this.isAgentEnabled(item.serverId, item.agentId) || !item.text.trim()) {
       return;
     }
     const key = fingerprint(item.serverId, item.text);
@@ -223,7 +310,7 @@ class AutoSpeechQueue {
   /**
    * One utterance at a time, forever. `draining` is the serialization: every
    * mutation calls this, and all but the first return immediately, so the loop
-   * that is already awaiting a `speak` picks the new work up when it comes back
+   * that is already awaiting a `speak` picks up new work when it comes back
    * around.
    */
   private async drain(): Promise<void> {
@@ -232,7 +319,7 @@ class AutoSpeechQueue {
     }
     this.draining = true;
     try {
-      while (this.enabled && this.manualToken === null) {
+      while (this.enabledAgents.size > 0 && this.manualToken === null) {
         const next = this.queue[0];
         if (!next) {
           break;
@@ -276,7 +363,7 @@ class AutoSpeechQueue {
 
   /** Test seam — the singleton is global by design. */
   resetForTests(): void {
-    this.enabled = false;
+    this.enabledAgents.clear();
     this.queue = [];
     this.active = null;
     this.manualToken = null;
@@ -299,13 +386,4 @@ export function useIsAutoSpeechSpeaking(groupId: string | undefined): boolean {
     autoSpeechQueue.getSpeakingGroupId,
   );
   return groupId !== undefined && speaking === groupId;
-}
-
-/** Whether the auto-speech mode is on. */
-export function useAutoSpeechActive(): boolean {
-  return useSyncExternalStore(
-    autoSpeechQueue.subscribe,
-    autoSpeechQueue.isEnabled,
-    autoSpeechQueue.isEnabled,
-  );
 }

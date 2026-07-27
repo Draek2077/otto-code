@@ -143,6 +143,27 @@ shared thing between them is the transport, and that is already shared.
 The HTML `<img>` half stays off in chat for a separate reason: chat renders with
 `enableHtmlish={false}`, so the translation pass never runs at all.
 
+### Preview attachments must be pinned, or the GC eats them
+
+Both resolvers end in `persistAttachmentFromBytes`, which writes a **preview attachment** — a local
+copy of a daemon-side image, ided by `createPreviewAttachmentId` so re-reading one file reuses one
+stored copy. The attachment store's garbage collector owns everything in that store and treats
+anything it cannot trace back to a live reference as garbage. It walks drafts, queued messages,
+pending creates, the live stream and the workspace attachment store — **none of which a preview
+attachment hangs off**. It also runs on every draft save, so a keystroke was enough to delete the
+screenshot the chat had just rendered, leaving "Unable to load image preview."
+
+`attachments/preview-pins.ts` is the fix and the rule: minting a preview id pins it for the session,
+and `runAttachmentGc` counts pinned ids as referenced. Pinning happens inside
+`createPreviewAttachmentId`, before the bytes are written, so no file ever exists unpinned. The pin
+set is capped so a long session cannot grow the attachment directory without bound; an evicted id
+becomes collectable again, and React Query will have dropped its metadata by then, so a re-rendered
+image that far back refetches and re-pins.
+
+The general rule, for the next feature that persists an attachment nobody sends: if it does not hang
+off a draft, a queued message or the workspace attachment store, it needs a reference in
+`runAttachmentGc` or it will be deleted, quickly and silently.
+
 ## Fences: one dispatch point
 
 A fence info string that means something other than "highlight this as code" is resolved in exactly

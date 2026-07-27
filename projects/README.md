@@ -254,6 +254,22 @@ follows is everything that charter had left._
   contrast is written up in
   [docs/markdown-rendering.md](../docs/markdown-rendering.md#two-resolvers-on-purpose--do-not-unify-them).
   Chat's HTML `<img>` half remains off for an unrelated reason: `enableHtmlish={false}`.
+- 🟡 **Tool-call cards render MCP results as raw JSON — they should show the result content.** The
+  tool-detail parser (`deriveClaudeToolDetail`, `providers/claude/tool-call-detail-parser.ts`) types
+  only the core CLI tools (shell / read / write / edit / search / fetch / sub-agent / skill); every
+  **MCP** tool — all of Otto's own `mcp__otto__*` (browser\_\*, preview\_\*, terminal) plus any
+  third-party server — falls into `unknown` and is `JSON.stringify`'d in the card
+  (`components/tool-call-details.tsx` `buildUnknownSections`). The visible casualty is
+  `browser_screenshot`: its card shows `[image]{…json…}` while the picture only appears in the
+  separate assistant-image preview (whose **0×0 collapse was fixed 2026-07-26, uncommitted** —
+  `message.tsx` `AssistantMarkdownResolvedImage` now measures its laid-out width via `onLayout` and
+  sets an explicit height instead of relying on `aspectRatio` against an indefinite `width:"100%"`).
+  **The fix is the widgets pattern, not a new `ToolCallDetail` variant:** a tool attaches a typed
+  result-preview (an image ref first; structured summaries later) to the tool call's `metadata`
+  (`z.record`, so old clients pass it through untouched — see `protocol/src/widgets/types.ts` for why
+  a discriminated-union variant would break parsing of the whole timeline). Start with screenshots
+  (image ref → reuse `AssistantMarkdownImage`), provider-neutral so Codex/Pi tool-result images ride
+  the same channel.
 
 ### Git, changes & comments
 
@@ -518,6 +534,19 @@ follows is everything that charter had left._
   (a) product — should a pinned-but-incapable provider warn rather than silently re-route spend?
   (b) test harness — the mock provider has no `generateBareCompletion`, so **no E2E can pin metadata
   generation deterministically**, which makes the auto-title spec non-hermetic.
+- 🟡 **The Preview workflow doctrine only reaches one provider.** `buildPreviewWorkflowPrompt`
+  (`openai-compat-agent.ts`) injects the rules that make Preview work — start dev servers with
+  `preview_start` and never a shell, verify only against the returned `browserId`, show proof instead
+  of asking the user to look — but it is emitted by the openai-compat provider alone. Claude Code,
+  Codex and the rest get the guardrail-bearing tool descriptions and none of the doctrine, which is a
+  provider-parity gap of exactly the kind this fork exists to close. **Confirmed live:** a Claude Code
+  agent asked to verify a UI change reached for `browser_new_tab` against a running Metro URL rather
+  than `preview_start`, producing the detached unbound tab the tab-binding rule exists to prevent —
+  and `findPreviewServerForUrl` did not catch it, because the server was never declared in
+  `launch.json` and so was not in the guarded set. Descriptions alone do not steer; that was the
+  finding that motivated `buildPreviewWorkflowPrompt` in the first place. Docs now cover the trap
+  ([docs/preview.md § Servers Otto did not start](../docs/preview.md)), but docs are opt-in reading
+  and the prompt is not.
 - 🔵 **Should a schedule firing into a busy chat queue, fail, or skip?** The one part of
   system-injected delivery left open. It never interrupted — `executeSchedule` fails the run with
   "already has an active run" — and it cannot be flipped with a flag, because it uses the blocking

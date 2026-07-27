@@ -218,13 +218,12 @@ export interface AppSettings {
   // the app is deliberately quieter out of the box than the raw synthesis was.
   // 0 is silence. Device-local.
   voicePlaybackVolume: number;
-  // Auto-speech: read every incoming assistant message aloud, queued so playback
-  // never talks over itself. Flipped from the composer's speaker toggle, which is
-  // its only UI — this is the mode, not a preference about one chat. Device-local
-  // for the same reason the cue settings are: it gates what THIS device's speaker
-  // does. Off by default; a device that started talking on its own after an
-  // update would be a bad surprise. See docs/message-playback.md.
-  autoSpeech: boolean;
+  // Auto-speech: read incoming assistant messages aloud, queued so playback
+  // never talks over itself. Sparse map keyed by `${serverId}:${agentId}` — each
+  // chat toggles independently from the composer's speaker icon. Device-local for
+  // the same reason the cue settings are: it gates what THIS device's speaker
+  // does. Off by default (missing key = off). See docs/message-playback.md.
+  agentAutoSpeechEnabled: Record<string, boolean>;
   previewServerCloseBehavior: PreviewServerCloseBehavior;
   previewAutoStartOnRestore: boolean;
   compactSidebarTopSpacing: boolean;
@@ -516,7 +515,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   agentVoiceCuesVolume: 50,
   agentVoiceCuesMuted: false,
   voicePlaybackVolume: 50,
-  autoSpeech: false,
+  agentAutoSpeechEnabled: {},
   previewServerCloseBehavior: "keep-running",
   previewAutoStartOnRestore: false,
   compactSidebarTopSpacing: false,
@@ -835,7 +834,6 @@ function pickFontSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
 const WORKSPACE_LAYOUT_BOOLEAN_KEYS = [
   "autoExpandReasoning",
   "voiceThinkingTone",
-  "autoSpeech",
   "compactSidebarTopSpacing",
   "blackTabBackground",
   "groupConsecutiveActions",
@@ -897,6 +895,29 @@ function pickVoicePlaybackSettings(stored: Partial<AppSettings>): Partial<AppSet
     return {};
   }
   return { voicePlaybackVolume: Math.max(0, Math.min(100, Math.round(volume))) };
+}
+
+// Per-agent auto-speech enabled flags, keyed by `buildAgentAutoSpeechKey`.
+// Sparse record — a missing key means off, and turning a chat off deletes its
+// key rather than storing `false`. Validates that every stored value is a
+// boolean, dropping anything else.
+function pickAgentAutoSpeechSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
+  const raw = stored.agentAutoSpeechEnabled;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const result: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (typeof value === "boolean") {
+        result[key] = value;
+      }
+    }
+    return { agentAutoSpeechEnabled: result };
+  }
+  // COMPAT(autoSpeech): added in v0.7.1, drop after 2027-01-26. The mode used to
+  // be one global boolean; a stored `autoSpeech: true` lands here as a non-object
+  // and is discarded rather than migrated, because there is no honest per-chat
+  // answer to "which chats did the global flag mean" — silently arming every
+  // open chat is the worse guess. The user re-toggles the chats they want.
+  return {};
 }
 
 function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
@@ -1206,6 +1227,7 @@ function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
     ...pickVisualizerSettings(stored),
     ...pickAgentVoiceCueSettings(stored),
     ...pickVoicePlaybackSettings(stored),
+    ...pickAgentAutoSpeechSettings(stored),
     ...pickFeatureFlagSettings(stored),
   };
 }
@@ -1269,6 +1291,11 @@ export function parseClampedFontSize(
     return null;
   }
   return Math.min(bounds.max, Math.max(bounds.min, Math.floor(numericValue)));
+}
+
+/** Build a per-agent auto-speech key for the settings record. */
+export function buildAgentAutoSpeechKey(serverId: string, agentId: string): string {
+  return `${serverId}:${agentId}`;
 }
 
 export function sanitizeFontFamily(value: unknown): string | null {

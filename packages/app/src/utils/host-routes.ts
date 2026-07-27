@@ -522,6 +522,7 @@ export const HOST_SECTION_SLUGS = [
   "workspaces",
   "providers",
   "usage",
+  "storage",
   "terminals",
   "host",
 ] as const;

@@ -62,7 +62,7 @@ The tree root is **"Sent before you type"**. Context files are one branch of six
 | --------------- | ------------------------------------------------------ | ---------------------------------------- |
 | `context_files` | the CLAUDE.md / AGENTS.md graph plus imports           | convention scan                          |
 | `memory_index`  | `MEMORY.md` (entries are recalled, **not** fixed)      | convention scan                          |
-| `skills_roster` | name + description per installed skill                 | filesystem scan                          |
+| `skills_roster` | name + description per skill **and per subagent**      | filesystem scan                          |
 | `mcp_tools`     | tool JSON schemas per connected server                 | daemon-known                             |
 | `otto_injected` | personality prompt, team snapshot, injected Otto tools | daemon-owned, exact                      |
 | `system_prompt` | provider preset                                        | opaque for CLIs; exact for openai-compat |
@@ -71,6 +71,38 @@ Measuring only markdown was the failure mode this inventory exists to prevent. T
 token-cost audit measured ~9.7–14.9K tok/request for this repo against ~6K `CLAUDE.md` + ~5K
 `MEMORY.md` — context files were roughly half, on a workspace with no heavy MCP load. A tool that
 trims 3K and barely moves the bill loses the user's trust on its first use.
+
+### An unmeasurable category is a row, not a gap
+
+Zero tokens means two different things — _there is none_ and _Otto cannot see it here_ — and the
+first version of this tab rendered both as nothing at all: `categoryTotals` filtered out anything
+weighing zero, so the categories no producer ever populated (`system_prompt`, `mcp_tools`) were
+indistinguishable from categories that genuinely did not apply. Three of the six advertised
+categories were structurally incapable of reporting a number, and the UI said so by staying silent.
+
+Each total therefore carries a `visibility` (`ContextCategoryVisibility`: the three confidence
+levels plus `not_visible`), and a `not_visible` category is emitted **even at zero tokens** — that
+row is the disclosure. It renders the reason in the slot where every other row puts a figure,
+because "0" is a measurement Otto never made and blank reads as "nothing here", which is the one
+wrong conclusion available.
+
+The rows still cannot inflate the headline: `not_visible` carries zero by construction, so
+`fixedTotal` remains a sum of what was actually measured. `visibility` is optional on the wire
+(`COMPAT(contextCategoryVisibility)`) — an older client ignores it and still gets correct totals.
+
+**Roster weight includes plugins.** `resolveSkillRoots` originally covered only the user's and the
+project's own skill directories, which on a host with plugins enabled is a small fraction of the
+real roster — measured on this machine, 7 entries against a true 13. `plugin-roots.ts` reads
+`enabledPlugins` from the provider's settings (local file overriding global), resolves each to its
+install directory, and discovers the version segment rather than assuming one: the cache uses the
+literal string `unknown` for unversioned plugins. Subagent definitions ride the same category —
+they are advertised to the model as a name plus a description exactly as skills are. Both stay on
+`skills_roster` deliberately: `ContextCategory` is a `z.enum` travelling daemon→client, so a new
+member would make a new daemon's report unparseable by an older client.
+
+The roster remains a **floor**, not an exact figure: skills bundled with the provider's own
+application do not live under its config directory, so a convention scan cannot see them. Say that
+on screen; do not model around it.
 
 ### Per-provider resolution, confidence-tagged
 
@@ -193,6 +225,30 @@ root to open to. The pane opens to the highest-impact **project-scoped** file.
 "Set up your project context" — generate a starter file from the repo through the draft → review →
 save path, never an auto-write. Zero → written → trimmed is what makes this a management surface
 rather than a nag.
+
+## The assembled prompt — reading, never editing
+
+The graph answers _what is loaded_ and _what it costs_. It cannot answer the question users ask
+first — **"so what is the model actually reading?"** — because a tree of filenames and token counts
+never shows the thing itself. `prompt-preview.ts` concatenates the real content in load order:
+provider preset → Otto's injected prompt → context files → memory index → roster → MCP schemas.
+
+Four rules, all load-bearing:
+
+- **Derived, never authoritative.** Sections are re-read from the files the scan resolved, and
+  `context.prompt.preview.get` has **no matching write RPC**. Editing stays per file in the existing
+  pane, against the real file rather than a concatenation of several — so a stale preview can only
+  be stale, never wrong in a way that lands on disk.
+- **Built on `getReport`, not beside it.** The preview shows exactly the files the graph counted,
+  under the same provider/window/personality what-ifs. Two independent resolutions of "what is
+  loaded" would eventually disagree, on screen, about the same request.
+- **A section Otto cannot see ships empty and says so** — same `not_visible` rule as the category
+  rows. An omitted section reads as "the provider sends nothing before your files", which is false
+  for every CLI-backed provider.
+- **Fixed weight only, and the roster shows frontmatter only.** Conditional and referenced files are
+  not in the request; a skill's body is not either. Rendering either would contradict the token
+  figure sitting next to it — which is precisely the misconception this view exists to end.
+  `extractFrontmatter` is shared with the scanner so the two can never drift.
 
 ## Operations
 
@@ -360,7 +416,8 @@ room, and the aggregate severity.
   invalidates explicitly and pushes a fresh report; everything else re-reads on the short TTL.
 - **MCP tool weight is openai-compat only.** Claude, Codex and OpenCode hand `mcpServers` to a
   subprocess and never expose tool schemas in-process, so that row is exact where Otto owns the
-  payload and **absent** elsewhere. Honest beats guessed.
+  payload. Honest beats guessed — but honest is not the same as silent, which is why it is
+  disclosed rather than dropped (below).
 - **Token counts are chars/4.** The differential-measurement calibration (diff a stripped agent's
   turn-one input tokens against a normal agent's; the difference is the real fixed tax) has not
   been run, so the scanner ships convention-first and calibration multiplies in without structural
