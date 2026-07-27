@@ -700,6 +700,11 @@ test("config actions delegate to existing daemon config RPCs", async () => {
       },
       autoArchiveAfterMerge: false,
       hideMergeIntoBaseAction: false,
+      // Attachment retention (docs/attachment-lifecycle.md) defaults to the
+      // constants the daemon shipped with, so a client parsing an old daemon's
+      // config sees the policy actually in force rather than zeros.
+      attachmentImageMaxAgeDays: 30,
+      attachmentImageMaxTotalMb: 512,
       enableTerminalAgentHooks: false,
       agentPersonalities: { personalities: [] },
       agentTeams: { teams: [] },
@@ -777,6 +782,8 @@ test("config actions delegate to existing daemon config RPCs", async () => {
       },
       autoArchiveAfterMerge: false,
       hideMergeIntoBaseAction: false,
+      attachmentImageMaxAgeDays: 30,
+      attachmentImageMaxTotalMb: 512,
       enableTerminalAgentHooks: false,
       agentPersonalities: { personalities: [] },
       agentTeams: { teams: [] },
