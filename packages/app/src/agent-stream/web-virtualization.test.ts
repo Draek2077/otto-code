@@ -96,6 +96,65 @@ describe("findMountedWindowStart", () => {
       }),
     ).toBe(39);
   });
+
+  it("holds the window open at a pin so a streaming turn cannot virtualize it", () => {
+    const items: StreamItem[] = [];
+    for (let index = 0; index < 30; index += 1) {
+      const seed = index * 3;
+      items.push(userMessage(`u${index}`, seed + 1));
+      items.push(toolCall(`t${index}`, seed + 2));
+      items.push(assistantMessage(`a${index}`, seed + 3));
+    }
+
+    // u10 sits at index 30, well above the natural boundary of 39. Pinning it
+    // keeps everything from there on mounted: nothing the reader is looking at
+    // gets swapped for a height estimate mid-turn.
+    expect(
+      findMountedWindowStart({
+        items,
+        minMountedCount: 50,
+        pinnedStartItemId: "u10",
+      }),
+    ).toBe(30);
+  });
+
+  it("never lets a pin virtualize more than the natural window would", () => {
+    const items: StreamItem[] = [];
+    for (let index = 0; index < 30; index += 1) {
+      const seed = index * 3;
+      items.push(userMessage(`u${index}`, seed + 1));
+      items.push(toolCall(`t${index}`, seed + 2));
+      items.push(assistantMessage(`a${index}`, seed + 3));
+    }
+
+    // u20 sits at index 60, below the natural boundary. Honoring it would drop
+    // mounted rows instead of holding them, so the natural boundary wins.
+    expect(
+      findMountedWindowStart({
+        items,
+        minMountedCount: 50,
+        pinnedStartItemId: "u20",
+      }),
+    ).toBe(39);
+  });
+
+  it("ignores a pin that has fallen out of the tail", () => {
+    const items: StreamItem[] = [];
+    for (let index = 0; index < 30; index += 1) {
+      const seed = index * 3;
+      items.push(userMessage(`u${index}`, seed + 1));
+      items.push(toolCall(`t${index}`, seed + 2));
+      items.push(assistantMessage(`a${index}`, seed + 3));
+    }
+
+    expect(
+      findMountedWindowStart({
+        items,
+        minMountedCount: 50,
+        pinnedStartItemId: "evicted",
+      }),
+    ).toBe(39);
+  });
 });
 
 describe("splitWebVirtualizedHistory", () => {

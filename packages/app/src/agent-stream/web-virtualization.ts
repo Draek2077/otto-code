@@ -65,11 +65,30 @@ export function estimateStreamItemHeight(item: StreamItem): number {
   }
 }
 
+/**
+ * Where the mounted (real-DOM) window begins. Everything before it is handed to
+ * the virtualizer, which renders it from *estimates* until each row is measured.
+ *
+ * That handoff is destructive to scroll position: a turn worth of measured
+ * height is swapped for `estimateStreamItemHeight` in a single frame, the
+ * document shrinks by however much the estimates undershoot, and the browser
+ * clamps `scrollTop` — dumping a reader who was scrolled up somewhere near the
+ * top. The window naturally advances *while the agent streams* (the walk-back
+ * anchor jumps from one user message to the next as the tail grows), so this hit
+ * lands exactly when someone is reading back through a live turn.
+ *
+ * `pinnedStartItemId` is the guard: while the reader is scrolled away from the
+ * bottom, the caller pins the current boundary and the window only ever holds
+ * OPEN (a smaller start mounts more). Nothing already on screen is yanked into
+ * the virtualizer under them. The pin releases when they return to the bottom,
+ * where the collapse happens above the viewport and is invisible.
+ */
 export function findMountedWindowStart(input: {
   items: StreamItem[];
   minMountedCount: number;
+  pinnedStartItemId?: string | null;
 }): number {
-  const { items, minMountedCount } = input;
+  const { items, minMountedCount, pinnedStartItemId } = input;
   if (items.length <= minMountedCount) {
     return 0;
   }
@@ -78,16 +97,24 @@ export function findMountedWindowStart(input: {
   while (startIndex > 0 && items[startIndex]?.kind !== "user_message") {
     startIndex -= 1;
   }
-  return startIndex;
+  if (!pinnedStartItemId) {
+    return startIndex;
+  }
+  // A pin that has fallen out of the tail entirely is stale — ignore it rather
+  // than mounting the whole history.
+  const pinnedIndex = items.findIndex((item) => item.id === pinnedStartItemId);
+  return pinnedIndex >= 0 ? Math.min(pinnedIndex, startIndex) : startIndex;
 }
 
 export function splitWebVirtualizedHistory(input: {
   entries: IndexedStreamItem[];
   minMountedCount: number;
+  pinnedStartItemId?: string | null;
 }): WebVirtualizedHistoryWindow {
   const startIndex = findMountedWindowStart({
     items: input.entries.map((entry) => entry.item),
     minMountedCount: input.minMountedCount,
+    ...(input.pinnedStartItemId ? { pinnedStartItemId: input.pinnedStartItemId } : {}),
   });
   return {
     virtualizedEntries: input.entries.slice(0, startIndex),

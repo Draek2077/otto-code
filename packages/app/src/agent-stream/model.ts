@@ -42,6 +42,12 @@ export interface BuildAgentStreamRenderModelInput {
   platform: "web" | "native";
   isMobileBreakpoint: boolean;
   groupConsecutiveActions?: boolean;
+  /**
+   * Item id of the mounted-window boundary to hold while the reader is scrolled
+   * away from the bottom, so a streaming turn can't virtualize the content under
+   * them. See findMountedWindowStart.
+   */
+  pinnedMountedWindowStartId?: string | null;
 }
 
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
@@ -89,13 +95,14 @@ function splitOrderedTail(params: {
   orderedTail: StreamItem[];
   platform: "web" | "native";
   isMobileBreakpoint: boolean;
+  pinnedMountedWindowStartId?: string | null;
 }): Pick<AgentStreamRenderModel, "history" | "segments"> {
-  const { orderedTail, platform, isMobileBreakpoint } = params;
+  const { orderedTail, platform, isMobileBreakpoint, pinnedMountedWindowStartId } = params;
   const shouldSplitHistory =
     platform === "web" &&
     !isMobileBreakpoint &&
     orderedTail.length > getWebPartialVirtualizationThreshold();
-  const cacheKey = `${platform}:${isMobileBreakpoint}:${getWebMountedRecentStreamItems()}:${shouldSplitHistory}`;
+  const cacheKey = `${platform}:${isMobileBreakpoint}:${getWebMountedRecentStreamItems()}:${shouldSplitHistory}:${pinnedMountedWindowStartId ?? ""}`;
   let cachedByKey = splitHistoryCache.get(orderedTail);
   if (!cachedByKey) {
     cachedByKey = new Map();
@@ -122,6 +129,7 @@ function splitOrderedTail(params: {
   const mountedWindowStart = findMountedWindowStart({
     items: orderedTail,
     minMountedCount: getWebMountedRecentStreamItems(),
+    ...(pinnedMountedWindowStartId ? { pinnedStartItemId: pinnedMountedWindowStartId } : {}),
   });
   const split = {
     history: orderedTail,
@@ -204,6 +212,9 @@ export function buildAgentStreamRenderModel(
     orderedTail,
     platform: input.platform,
     isMobileBreakpoint: input.isMobileBreakpoint,
+    ...(input.pinnedMountedWindowStartId
+      ? { pinnedMountedWindowStartId: input.pinnedMountedWindowStartId }
+      : {}),
   });
   const turnTiming = getTurnTiming({
     agentStatus: input.agentStatus,

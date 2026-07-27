@@ -2035,21 +2035,38 @@ function isClaudeWorkflowTaskType(taskType: string | undefined): boolean {
   return taskType === "local_workflow" || taskType === "workflow";
 }
 
-// Background-tasks track membership, decided by the SDK's task_type discriminant
-// ('shell' | 'subagent' | 'monitor' | 'workflow' | a raw string for unknown
-// types). Subagents and workflows have their own richer observed-subagent rows,
-// so the background track takes everything else the CLI backgrounds — shell
-// (Bash run_in_background), monitors, and any future/unknown background type.
-// Previously only the Bash tool name was recognized, so monitors and other
-// non-shell background tasks were silently dropped. Returns false for an absent
-// task_type (later task_progress omits it); those events fall back to the
-// remembered classification, so this only decides first-sighting (task_started /
+// An AI run that belongs in the observed-subagent track, by task_type. The CLI's
+// real discriminant values are local_bash / local_agent / remote_agent /
+// in_process_teammate / local_workflow / monitor_mcp / monitor_ws / mcp_task /
+// dream / auto_mode_scan — there is no "subagent". Otto excluded only that
+// never-emitted string, so every Agent/Task run (task_type "local_agent") also
+// matched isClaudeBackgroundTaskType and the background_tasks_changed level
+// signal — which the SDK documents as arriving BEFORE the task_started edge —
+// filed it as a background task too. The result was one sub-agent showing up
+// twice: once in each track, same title, seconds apart. "subagent" is kept as an
+// accepted alias so an older or renaming CLI still routes correctly.
+function isClaudeSubagentTaskType(taskType: string | undefined): boolean {
+  return (
+    taskType === "local_agent" ||
+    taskType === "remote_agent" ||
+    taskType === "in_process_teammate" ||
+    taskType === "subagent"
+  );
+}
+
+// Background-tasks track membership, decided by the SDK's task_type discriminant.
+// Sub-agents and workflows have their own richer observed-subagent rows, so the
+// background track takes everything else the CLI backgrounds — local_bash,
+// monitor_mcp/monitor_ws, mcp_task, dream, auto_mode_scan, and any future or
+// unknown background type. Returns false for an absent task_type (later
+// task_progress omits it); those events fall back to the remembered
+// classification, so this only decides first-sighting (task_started /
 // level-signal) routing.
 function isClaudeBackgroundTaskType(taskType: string | undefined): boolean {
   if (!taskType) {
     return false;
   }
-  return taskType !== "subagent" && !isClaudeWorkflowTaskType(taskType);
+  return !isClaudeSubagentTaskType(taskType) && !isClaudeWorkflowTaskType(taskType);
 }
 
 // Frozen row label for an observed workflow run. workflow_name is meta.name from
@@ -4718,7 +4735,7 @@ class ClaudeAgentSession implements AgentSession {
     const isSubagentStart =
       isClaudeSubagentToolName(cachedTool?.name) ||
       readObservedSubagentText(message.subagent_type) !== undefined ||
-      message.task_type === "subagent";
+      isClaudeSubagentTaskType(message.task_type);
     // Route to the background-tasks track anything the CLI backgrounds that is
     // not an observable AI run: an already-known background task, a Bash
     // run_in_background, a monitor, or any other non-subagent, non-workflow
@@ -4749,6 +4766,7 @@ class ClaudeAgentSession implements AgentSession {
         : message.subagent_type,
       description: message.description,
       status: "running",
+      classifiedAsSubagent: isWorkflowStart || isSubagentStart,
     });
   }
 
@@ -4909,6 +4927,35 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   /**
+   * Whether a task_* message describes an observable AI run rather than a
+   * shell/monitor background task. `classifiedAsSubagent` is the caller's own
+   * verdict (task_started reads task_type); the rest re-derive membership for
+   * the later edges, which carry neither task_type nor subagent_type.
+   */
+  private isObservableSubagentTask(input: {
+    taskId: string;
+    toolUseId: string | undefined;
+    subAgentType?: string | undefined;
+    classifiedAsSubagent?: boolean;
+  }): boolean {
+    if (input.classifiedAsSubagent === true) {
+      return true;
+    }
+    if (readObservedSubagentText(input.subAgentType) !== undefined) {
+      return true;
+    }
+    const cachedTool = input.toolUseId ? this.toolUseCache.get(input.toolUseId) : undefined;
+    // A Workflow orchestration run is observable too — recognize it directly by
+    // its cached tool so a task_progress/task_notification seen before (or
+    // without) task_started still routes to the observed row.
+    return (
+      isClaudeSubagentToolName(cachedTool?.name) ||
+      isClaudeWorkflowToolName(cachedTool?.name) ||
+      this.observedKeyByTaskId.has(input.taskId)
+    );
+  }
+
+  /**
    * Map a task_* system message onto the observed subagent's lifecycle. Only
    * subagent tasks qualify — shell/monitor/workflow background tasks are
    * ignored. See projects/observed-subagents/observed-subagents.md.
@@ -4926,19 +4973,18 @@ class ClaudeAgentSession implements AgentSession {
       cumulativeTokens?: number | undefined;
       toolUseCount?: number | undefined;
       currentTool?: string | undefined;
+      /**
+       * Set by a caller that has already classified the task (e.g. task_started
+       * reading task_type "local_agent"). Without it the gate below re-derives
+       * membership from the tool cache alone, and a backgrounded Agent whose
+       * tool_result ack already evicted its cache entry would be dropped by both
+       * tracks instead of landing on this one.
+       */
+      classifiedAsSubagent?: boolean;
     },
   ): void {
     void message;
-    const cachedTool = input.toolUseId ? this.toolUseCache.get(input.toolUseId) : undefined;
-    const isSubagentTask =
-      readObservedSubagentText(input.subAgentType) !== undefined ||
-      isClaudeSubagentToolName(cachedTool?.name) ||
-      // A Workflow orchestration run is observable too — recognize it directly by
-      // its cached tool so a task_progress/task_notification seen before (or
-      // without) task_started still routes to the observed row.
-      isClaudeWorkflowToolName(cachedTool?.name) ||
-      this.observedKeyByTaskId.has(input.taskId);
-    if (!isSubagentTask) {
+    if (!this.isObservableSubagentTask(input)) {
       return;
     }
     const key =
