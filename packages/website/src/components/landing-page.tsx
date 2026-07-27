@@ -40,6 +40,7 @@ import {
 } from "~/downloads";
 import { useRelease } from "~/routes/__root";
 import { HeroMockup } from "~/components/hero-mockup";
+import { FeatureShot, ShotRow } from "~/components/feature-shot";
 import { ClaudeIcon } from "~/components/mockup";
 import { FAQItem } from "~/components/faq-item";
 import { SiteFooter } from "~/components/site-footer";
@@ -70,7 +71,7 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
           className="relative px-6 md:px-8 pb-8 md:pb-16"
         >
           <div className="max-w-7xl mx-auto">
-            <HeroMockup />
+            <HeroVisual />
           </div>
         </motion.div>
       </div>
@@ -78,23 +79,22 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
       {/* Phone showcase */}
       <PhoneShowcase />
 
-      {/* Content section */}
+      {/* Content section — order and grouping: see
+          projects/marketing-strategy/website-showcase.md */}
       <div className="bg-background">
         <main className="p-6 md:p-20 md:pt-40 max-w-5xl mx-auto">
           <div className="space-y-24">
-            <BuiltOnOpenSourceSection />
-            <RedesignSection />
-            <MultiProviderSection />
-            <OpenAICompatibleSection />
-            <PersonalitiesSection />
-            <SelfHostedSection />
-            <WorkflowSection />
+            <VisualizerSection />
             <PreviewVerificationSection />
-            <SplitPanelsSection />
-            <ServiceProxySection />
-            <ShortcutsSection />
-            <LocalVoiceSection />
-            <CLISection />
+            <AgentTeamSection />
+            <AutonomousWorkSection />
+            <CodeIdeSection />
+            <InterfaceSection />
+            <CostSection />
+            <ShipSection />
+            <BringAnyModelSection />
+            <VoiceSection />
+            <BuiltOnPaseoSection />
             <FAQ />
             <PaseoCreditCTA />
           </div>
@@ -102,6 +102,29 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
         <SiteFooter />
       </div>
     </CursorFieldProvider>
+  );
+}
+
+/**
+ * The hero is a looping capture of the real app mid-turn — spinner spinning,
+ * tokens streaming — not a still. Until `hero-desktop` is captured, the old
+ * hand-built replica keeps rendering. Flip this to false the moment the asset
+ * lands, then delete hero-mockup.tsx.
+ */
+const HERO_USE_MOCKUP = true;
+
+function HeroVisual() {
+  if (HERO_USE_MOCKUP) return <HeroMockup />;
+  return (
+    <FeatureShot
+      id="hero-desktop"
+      kind="loop"
+      ratio="16/9"
+      chrome
+      scenario="00-website-hero"
+      alt="Otto running an agent across a chat pane and a live diff"
+      spec="The whole app mid-turn: both staged repos in the sidebar, a real streaming reply with a named personality, and a second pane showing colour — the diff or the browser."
+    />
   );
 }
 
@@ -223,7 +246,7 @@ const UPSTREAM_PILLARS = [
   },
 ] as const;
 
-function BuiltOnOpenSourceSection() {
+function BuiltOnPaseoSection() {
   return (
     <motion.section
       initial={FADE_IN_UP}
@@ -232,8 +255,8 @@ function BuiltOnOpenSourceSection() {
       transition={EASE_OUT_05}
     >
       <SectionTitle
-        title="Proudly built on other people's good work"
-        description="Otto is an open-source fork of Paseo with Agent Flow's render layer inside it — two projects I like enough to build on rather than reinvent."
+        title="Built on Paseo"
+        description="Everything above stands on a foundation someone else got right first. Multi-provider agent orchestration, a self-hosted daemon, real clients on every platform, split panes, worktrees, the CLI — that is Paseo, and Otto keeps all of it intact."
       />
 
       <div className="space-y-4">
@@ -319,8 +342,56 @@ function BuiltOnOpenSourceSection() {
             </div>
           ))}
         </div>
+
+        <div className="space-y-12 pt-6">
+          <SplitPanesBlock />
+          <MultiProviderBlock />
+          <SelfHostedBlock />
+          <ServiceProxyBlock />
+          <ShortcutsBlock />
+          <CLIBlock />
+        </div>
       </div>
     </motion.section>
+  );
+}
+
+/** A named block inside a section, one level below SectionTitle. */
+function SubFeature({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-5">
+      <div className="space-y-1.5">
+        <h3 className="text-xl font-medium text-white/90">{title}</h3>
+        <p className="max-w-lg text-sm text-muted-foreground">{description}</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SplitPanesBlock() {
+  return (
+    <SubFeature
+      title="Split panels"
+      description="Open agents, browsers, terminals, diffs, and logs in the same workspace. Split them side by side or group them in tabs."
+    >
+      <FeatureShot
+        id="paseo-panes"
+        kind="focus"
+        ratio="16/9"
+        scenario="15-workspace-layouts"
+        alt="One Otto workspace split into an agent chat, a browser pane, a terminal and a diff"
+        spec="A real four-pane workspace — agent, browser, terminal, diff — each pane with genuine content, tab rows visible."
+      />
+    </SubFeature>
   );
 }
 
@@ -357,12 +428,20 @@ function ThemeChip({ name, dark }: { name: string; dark: boolean }) {
   );
 }
 
-function RedesignSection() {
+function ThemesBlock() {
   return (
-    <FeatureSection
-      title="A new look, made yours"
-      description="Otto brings a refreshed look and feel on top of Paseo — cleaner surfaces, refined spacing, and a UI that stays familiar to anyone who has used a modern coding tool. Then it hands you the dials: pick from a full set of light and dark themes and tune the details until it feels like your environment."
+    <SubFeature
+      title="Made yours"
+      description="Cleaner surfaces and refined spacing on top of Paseo, then the dials: a full set of light and dark themes, and the details tuned until it feels like your environment."
     >
+      <FeatureShot
+        id="ui-themes"
+        kind="focus"
+        ratio="16/9"
+        scenario="12-themes"
+        alt="The same Otto workspace rendered in three different themes"
+        spec="Triptych — one identical workspace in three themes (Twilight, Daylight, Neotokyo), same scroll position in each so the comparison reads instantly."
+      />
       <div className="space-y-6 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
         <div className="space-y-3">
           <p className="text-sm font-medium text-white/80">Themes</p>
@@ -387,11 +466,11 @@ function RedesignSection() {
           </div>
         </div>
       </div>
-    </FeatureSection>
+    </SubFeature>
   );
 }
 
-function MultiProviderSection() {
+function MultiProviderBlock() {
   const providers = [
     { name: "Claude Code", icon: <ClaudeIcon size={28} /> },
     { name: "Codex", icon: <CodexIcon className="w-7 h-7" /> },
@@ -401,9 +480,9 @@ function MultiProviderSection() {
   ];
 
   return (
-    <FeatureSection
+    <SubFeature
       title="Works with your tools"
-      description="Run your agents from one interface. Otto uses each provider's native harness, so your subscriptions, skills, config, and MCP servers keep working — and any OpenAI-compatible endpoint can join them."
+      description="Run your agents from one interface. Otto uses each provider's native harness, so your subscriptions, skills, config, and MCP servers keep working."
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {providers.map((p) => (
@@ -422,7 +501,7 @@ function MultiProviderSection() {
           <span className="font-medium">+{ADDITIONAL_AGENT_COUNT} more</span>
         </a>
       </div>
-    </FeatureSection>
+    </SubFeature>
   );
 }
 
@@ -435,21 +514,40 @@ const OPENAI_COMPATIBLE_ENDPOINTS = [
   "Any OpenAI-compatible API",
 ] as const;
 
-function OpenAICompatibleSection() {
+function BringAnyModelSection() {
   return (
     <FeatureSection
       title="Bring any model"
       description="Point Otto at any OpenAI-compatible endpoint and it becomes a first-class agent provider — with the same frontier-level tooling as the built-in ones: coding tools, browser-verified previews, MCP servers, context compaction, and rich permission modes. Run models locally or on your own server; your prompts never have to leave your network."
     >
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {OPENAI_COMPATIBLE_ENDPOINTS.map((name) => (
-          <div
-            key={name}
-            className="flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4"
-          >
-            <span className="font-medium">{name}</span>
-          </div>
-        ))}
+      <div className="space-y-4">
+        <FeatureShot
+          id="model-local-verify"
+          kind="loop"
+          ratio="16/9"
+          chrome
+          scenario="02-preview-verify, DEMO_PROVIDER=local-ai"
+          alt="A local model running Otto's browser verification loop end to end"
+          spec="The same verification loop as the Preview section, driven by a model served from LM Studio — the model badge must be legible. This is the proof that none of it is Claude-only."
+        />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {OPENAI_COMPATIBLE_ENDPOINTS.map((name) => (
+            <div
+              key={name}
+              className="flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4"
+            >
+              <span className="font-medium">{name}</span>
+            </div>
+          ))}
+        </div>
+        <FeatureShot
+          id="model-local"
+          kind="focus"
+          ratio="16/10"
+          scenario="17-multi-provider"
+          alt="Otto's provider settings with a local endpoint configured"
+          spec="Provider settings with a local endpoint filled in and its model list loaded — Connection and Models tabs visible, no empty fields."
+        />
       </div>
     </FeatureSection>
   );
@@ -532,22 +630,59 @@ function PersonalityCard({
   );
 }
 
-function PersonalitiesSection() {
+function AgentTeamSection() {
   return (
     <FeatureSection
       title="A team of agents, by name"
-      description="Save a provider, model, effort, permission mode, and prompt as a named personality with one or more roles. Pick one at the top of any model picker, or let an orchestrator spawn a whole team by role — a Worker to build, a Judger to review, an Advisor for a second opinion. Each gets its own color and voice, on a frontier API or a local model alike."
+      description="Save a provider, model, effort, permission mode, and prompt as a named personality with one or more roles. Pick one at the top of any model picker, or let an orchestrator spawn a whole team by role — a Worker to build, a Judger to review, an Advisor for a second opinion. Each gets its own color and voice, on a frontier API or a local model alike. They remember what they learn, and you can read, edit and transfer those lessons."
     >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {PERSONALITY_TEAM.map((p) => (
-          <PersonalityCard
-            key={p.name}
-            name={p.name}
-            model={p.model}
-            roles={p.roles}
-            orbStyle={p.orbStyle}
+      <div className="space-y-4">
+        <FeatureShot
+          id="team-runs"
+          kind="focus"
+          ratio="16/9"
+          chrome
+          scenario="23-orchestration-runs"
+          alt="The Runs view following a multi-phase orchestration across several agents"
+          spec="A multi-phase run in flight — phases listed, one active, several named personalities working under it with their own colours."
+        />
+        <ShotRow cols={3}>
+          <FeatureShot
+            id="team-roster"
+            kind="focus"
+            ratio="4/3"
+            scenario="04-personalities"
+            alt="The personality roster with roles and colors"
+            spec="The roster, fully populated, each row showing role chips and its spinner colour."
           />
-        ))}
+          <FeatureShot
+            id="team-switcher"
+            kind="focus"
+            ratio="4/3"
+            scenario="05-agent-teams"
+            alt="Switching the active agent team from the sidebar"
+            spec="The team switcher open in the sidebar, two teams present, one active."
+          />
+          <FeatureShot
+            id="team-memory"
+            kind="focus"
+            ratio="4/3"
+            scenario="23-orchestration-runs"
+            alt="A personality's accrued lessons"
+            spec="The personality memory panel with several real accrued lessons — the sci-fi-sounding feature that actually works."
+          />
+        </ShotRow>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {PERSONALITY_TEAM.map((p) => (
+            <PersonalityCard
+              key={p.name}
+              name={p.name}
+              model={p.model}
+              roles={p.roles}
+              orbStyle={p.orbStyle}
+            />
+          ))}
+        </div>
       </div>
     </FeatureSection>
   );
@@ -579,8 +714,6 @@ const SERVER_PATH =
   "M286.88-717q-20.88 0-35.38 14.62-14.5 14.62-14.5 35.5 0 20.88 14.62 35.38 14.62 14.5 35.5 14.5 20.88 0 35.38-14.62 14.5-14.62 14.5-35.5 0-20.88-14.62-35.38-14.62-14.5-35.5-14.5Zm0 414q-20.88 0-35.38 14.62-14.5 14.62-14.5 35.5 0 20.88 14.62 35.38 14.62 14.5 35.5 14.5 20.88 0 35.38-14.62 14.5-14.62 14.5-35.5 0-20.88-14.62-35.38-14.62-14.5-35.5-14.5ZM154-839h651q16 0 25.5 9.5t9.5 25.81V-535q0 17.42-9.5 29.21T805-494H154q-15 0-24.5-11.79T120-535v-268.69q0-16.31 9.5-25.81T154-839Zm26 60v225h600v-225H180Zm-26 353h647q15 0 27 12.5t12 28.53V-121q0 20-12 30.5T801-80H159q-16 0-27.5-10.5T120-121v-263.97q0-16.03 9.5-28.53T154-426Zm26 60v226h600v-226H180Zm0-413v225-225Zm0 413v226-226Z";
 const FOLDER_PATH =
   "M140-160q-24 0-42-18.5T80-220v-520q0-23 18-41.5t42-18.5h281l60 60h339q23 0 41.5 18.5T880-680v460q0 23-18.5 41.5T820-160H140Zm0-60h680v-460H456l-60-60H140v520Zm0 0v-520 520Z";
-const MIC_PATH =
-  "M408-453.92q-29-30.91-29-75.08v-251q0-41.67 29.44-70.83Q437.88-880 479.94-880t71.56 29.17Q581-821.67 581-780v251q0 44.17-29 75.08Q523-423 480-423t-72-30.92ZM480-651Zm-30 531v-136q-106-11-178-89t-72-184h60q0 91 64.29 153t155.5 62q91.21 0 155.71-62Q700-438 700-529h60q0 106-72 184t-178 89v136h-60Zm59.5-376.5Q521-510 521-529v-251q0-17-11.79-28.5T480-820q-17.42 0-29.21 11.5T439-780v251q0 19 11.5 32.5T480-483q18 0 29.5-13.5Z";
 const ARROW_DOWN_PATH = "M450-800v526L202-522l-42 42 320 320 320-320-42-42-248 248v-526h-60Z";
 const ARROW_FORWARD_PATH = "M686-450H160v-60h526L438-758l42-42 320 320-320 320-42-42 248-248Z";
 const COPY_PATH =
@@ -770,190 +903,210 @@ function SelfHostedDiagram() {
   );
 }
 
-function SelfHostedSection() {
+function SelfHostedBlock() {
   return (
-    <FeatureSection
+    <SubFeature
       title="Runs where you work"
       description="Start agents on your laptop, a VM, or a dev server. Use them from any device over a direct connection or the end-to-end encrypted relay."
     >
       <SelfHostedDiagram />
-    </FeatureSection>
+    </SubFeature>
   );
 }
 
-const WORKFLOW_STEPS = ["Worktree", "Preview", "Review", "Commit", "PR", "Merge"] as const;
-
-const REVIEW_FILES = [
-  { path: "src/auth/session.ts", delta: "+42" },
-  { path: "src/auth/middleware.ts", delta: "+18 -9" },
-  { path: "tests/auth.test.ts", delta: "+31" },
-] as const;
-
-function WorkflowSection() {
+function ShipSection() {
   return (
     <FeatureSection
       title="Review, preview, ship"
-      description="Create branches, preview the app in the browser, review the diff inline, then commit, open a PR, and merge without leaving Otto."
+      description="Review the diff against the right base, commit the files you choose with a message written by a Writer personality, then open a PR and merge — without leaving Otto. Investigate any file through git while you are at it: what changed, when, and who wrote each line."
     >
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
-        <WorkflowHeader />
-        <div className="grid gap-4 p-4 md:grid-cols-[1.1fr_0.9fr]">
-          <WorkflowPreview />
-          <WorkflowReviewAndShip />
-        </div>
+      <div className="space-y-4">
+        <FeatureShot
+          id="ship-diff"
+          kind="focus"
+          ratio="16/9"
+          chrome
+          scenario="03-diff-review"
+          alt="The Changes view showing a real diff across several files"
+          spec="Changes view with the staged repo's uncommitted work — several files, real additions and deletions, the file list and the diff body both in frame."
+        />
+        <ShotRow cols={3}>
+          <FeatureShot
+            id="ship-commit"
+            kind="focus"
+            ratio="4/3"
+            scenario="10-diff-ai-review"
+            alt="Committing selected files with an AI-written message"
+            spec="The commit sheet with files checked and a generated message filled in — never an empty form."
+          />
+          <FeatureShot
+            id="ship-blame"
+            kind="focus"
+            ratio="4/3"
+            scenario="25-git-history"
+            alt="Blame gutter showing who last wrote each line"
+            spec="A file open with the blame gutter populated — plausible authors and dates from the staged history."
+          />
+          <FeatureShot
+            id="ship-worktree"
+            kind="focus"
+            ratio="4/3"
+            scenario="18-worktrees"
+            alt="Archiving a worktree with its branch cleanup prompt"
+            spec="The archive prompt stating whether the branch is fully merged and how many commits deleting would discard."
+          />
+        </ShotRow>
       </div>
     </FeatureSection>
   );
 }
 
-function WorkflowHeader() {
+function AutonomousWorkSection() {
   return (
-    <div className="flex flex-col gap-3 border-b border-white/10 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-2.5">
-        <div className="h-2 w-2 rounded-full bg-emerald-400" />
-        <span className="text-sm text-white/80">fix-auth</span>
-        <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/40">worktree</span>
+    <FeatureSection
+      title="Work that runs without you"
+      description="Agents generate shareable artifacts, run on a cron schedule, take on background tasks you can monitor or stop from the chat, and offer follow-up work as chips you start in a new chat, a sub-agent, or a fresh worktree. Unattended runs are deny-by-default — nothing pre-approved, nothing surprising."
+    >
+      <div className="space-y-4">
+        <ShotRow>
+          <FeatureShot
+            id="auto-artifacts"
+            kind="focus"
+            ratio="4/3"
+            scenario="13-artifacts"
+            alt="The Artifacts screen with generated documents"
+            spec="A populated Artifacts grid — several real generated documents, each card showing the personality that made it."
+          />
+          <FeatureShot
+            id="auto-artifact-tab"
+            kind="focus"
+            ratio="4/3"
+            scenario="13-artifacts"
+            alt="An artifact open as a workspace tab"
+            spec="One artifact open and rendered as a tab, with its regenerate control visible."
+          />
+        </ShotRow>
+        <ShotRow>
+          <FeatureShot
+            id="auto-schedules"
+            kind="focus"
+            ratio="4/3"
+            scenario="14-schedules"
+            alt="Scheduled agent runs"
+            spec="The Schedules cards with several schedules, each showing its cadence and the personality that last ran it. Fill the form completely if it is in frame."
+          />
+          <FeatureShot
+            id="auto-suggested"
+            kind="focus"
+            ratio="4/3"
+            scenario="09-composer-intelligence"
+            alt="Suggested follow-up tasks above the composer"
+            spec="Suggested task chips above the message box, with the start-mode picker open on one of them."
+          />
+        </ShotRow>
       </div>
-      <div className="flex flex-wrap items-center gap-2 text-xs text-white/40">
-        {WORKFLOW_STEPS.map((step) => (
-          <span key={step} className="rounded-full border border-white/10 px-2 py-1">
-            {step}
-          </span>
-        ))}
-      </div>
-    </div>
+    </FeatureSection>
   );
 }
 
-function WorkflowPreview() {
+function CodeIdeSection() {
   return (
-    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20">
-      <BrowserChrome />
-      <div className="space-y-5 p-5">
-        <PreviewHeader />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <PreviewFormCard titleWidth="w-16" ctaClassName="bg-white/[0.06]" />
-          <PreviewFormCard titleWidth="w-20" ctaClassName="bg-emerald-400/20" />
-        </div>
+    <FeatureSection
+      title="An IDE, not a chat box"
+      description="Jump to a symbol's definition, see its type on hover, find every reference, and rename it across a project. Problems from your language server and your linter land in the gutter and in a diagnostics panel. Create, rename, delete and move files. The Solution lens shows a .NET solution the way the build system sees it."
+    >
+      <div className="space-y-4">
+        <FeatureShot
+          id="ide-rename"
+          kind="loop"
+          ratio="16/9"
+          chrome
+          scenario="24-code-intelligence"
+          alt="Renaming a symbol across a whole project"
+          spec="A rename running across several files — the preview of affected sites, then the applied result. The single clearest proof this is a real IDE."
+        />
+        <ShotRow cols={3}>
+          <FeatureShot
+            id="ide-definition"
+            kind="focus"
+            ratio="4/3"
+            scenario="19-editor-ide"
+            alt="Go to definition in the editor"
+            spec="The editor with a go-to-definition result open, status bar showing language and cursor position."
+          />
+          <FeatureShot
+            id="ide-diagnostics"
+            kind="focus"
+            ratio="4/3"
+            scenario="24-code-intelligence"
+            alt="Language server and linter problems in the gutter"
+            spec="Diagnostics in the gutter right of the line numbers, plus the panel listing them. Real problems from the staged repo, not invented ones."
+          />
+          <FeatureShot
+            id="ide-solution"
+            kind="focus"
+            ratio="4/3"
+            scenario="24-code-intelligence"
+            alt="The Solution lens over a .NET solution"
+            spec="The Solution tree with projects expanded and their real file sets."
+          />
+        </ShotRow>
       </div>
-    </div>
+    </FeatureSection>
   );
 }
 
-function BrowserChrome() {
+function VisualizerSection() {
   return (
-    <div className="flex items-center gap-2 border-b border-white/10 bg-white/[0.03] px-3 py-2">
-      <div className="flex gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-red-400/60" />
-        <span className="h-2.5 w-2.5 rounded-full bg-amber-300/60" />
-        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/60" />
-      </div>
-      <div className="min-w-0 flex-1 rounded-md bg-black/30 px-2 py-1 text-center font-mono text-[10px] text-white/35">
-        web.fix-auth.my-app.localhost
-      </div>
-    </div>
-  );
-}
-
-function PreviewHeader() {
-  return (
-    <div className="space-y-2">
-      <div className="h-3 w-28 rounded-full bg-white/25" />
-      <div className="h-2 w-44 rounded-full bg-white/10" />
-    </div>
-  );
-}
-
-function PreviewFormCard({
-  titleWidth,
-  ctaClassName,
-}: {
-  titleWidth: string;
-  ctaClassName: string;
-}) {
-  return (
-    <div className="space-y-3 rounded-lg border border-white/10 bg-white/[0.03] p-4">
-      <div className={`h-2 rounded-full bg-white/15 ${titleWidth}`} />
-      <div className="h-8 rounded-md bg-white/10" />
-      <div className={`h-8 rounded-md ${ctaClassName}`} />
-    </div>
-  );
-}
-
-function WorkflowReviewAndShip() {
-  return (
-    <div className="space-y-4">
-      <InlineReviewPanel />
-      <ShipPanel />
-    </div>
-  );
-}
-
-function InlineReviewPanel() {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <span className="text-sm text-white/80">Inline review</span>
-        <span className="text-xs text-white/35">3 files changed</span>
-      </div>
-      <div className="space-y-2">
-        {REVIEW_FILES.map((file) => (
-          <ReviewFileRow key={file.path} path={file.path} delta={file.delta} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ReviewFileRow({ path, delta }: { path: string; delta: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 text-xs">
-      <span className="truncate font-mono text-white/50">{path}</span>
-      <span className="flex gap-1 font-mono">
-        {delta.split(" ").map((part) => (
-          <span
-            key={part}
-            className={part.startsWith("-") ? "text-red-300/70" : "text-emerald-300/70"}
+    <FeatureSection
+      title="See what your agents are doing"
+      description="A live, interactive map of the work in progress — agents, subagents, tool calls, messages, and a file-attention heatmap — that works for every provider and opens from any chat or scoped to a single run. Scrub the timeline, pin it as a picture-in-picture over your workspace, or let it read the room out loud."
+    >
+      <div className="space-y-4">
+        <FeatureShot
+          id="viz-graph"
+          kind="loop"
+          ratio="16/9"
+          chrome
+          scenario="08-visualizer"
+          alt="The Visualizer graph animating while agents work"
+          spec="The graph mid-run with a parent agent fanning out to subagents — nodes settling, tool calls firing, the heatmap warming. Motion is the whole point."
+        />
+        <ShotRow>
+          <FeatureShot
+            id="viz-node"
+            kind="focus"
+            ratio="4/3"
+            scenario="08-visualizer"
+            alt="A single agent node with its context readout and tool cards"
+            spec="One node close up — personality colour, context ring, and the tool cards with their token costs."
+          />
+          <FeatureShot
+            id="viz-pip"
+            kind="focus"
+            ratio="4/3"
+            scenario="08-visualizer"
+            alt="The Visualizer pinned as a picture-in-picture over a workspace"
+            spec="The PIP viewport floating over a working workspace, so the graph stays glanceable while you work."
+          />
+        </ShotRow>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          The render layer is{" "}
+          <a
+            href="https://github.com/patoles/agent-flow"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-white/80"
           >
-            {part}
-          </span>
-        ))}
-      </span>
-    </div>
+            Agent Flow
+          </a>{" "}
+          by Simon Patole, fed by Otto&apos;s own provider-neutral event stream — which is why it
+          lights up for every provider, not just one. Go star it.
+        </p>
+      </div>
+    </FeatureSection>
   );
 }
-
-function ShipPanel() {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <span className="text-sm text-white/80">Ready to ship</span>
-        <span className="rounded-full bg-emerald-400/10 px-2 py-1 text-xs text-emerald-300">
-          checks passed
-        </span>
-      </div>
-      <div className="grid grid-cols-3 gap-2 text-center text-xs">
-        <div className="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-white/70">
-          Commit
-        </div>
-        <div className="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-white/70">
-          Open PR
-        </div>
-        <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/15 px-3 py-2 text-emerald-200">
-          Merge
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const PREVIEW_CHECKS = [
-  { label: "Dev server started from launch config", status: "web.fix-auth.my-app.localhost" },
-  { label: "Accessibility snapshot matches expected content", status: "passed" },
-  { label: "Console and network clean", status: "0 errors" },
-  { label: "Clicked through the login flow", status: "passed" },
-  { label: "Screenshot attached as proof", status: "1 capture" },
-] as const;
 
 function PreviewVerificationSection() {
   return (
@@ -961,60 +1114,40 @@ function PreviewVerificationSection() {
       title="Agents that prove their work"
       description="Otto ships a rebuilt, more functional preview server system. Agents start your dev server from a launch config, open the app in a browser pane, and verify their own changes — reading accessibility snapshots, inspecting the DOM, checking the console and network, clicking and filling forms, resizing the viewport, and capturing screenshots. You get proof, not 'should work now, can you check?'"
     >
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
-        <BrowserChrome />
-        <div className="space-y-2 p-5">
-          {PREVIEW_CHECKS.map((check) => (
-            <div
-              key={check.label}
-              className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs"
-            >
-              <span className="flex items-center gap-2.5 text-white/70">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
-                {check.label}
-              </span>
-              <span className="shrink-0 font-mono text-white/35">{check.status}</span>
-            </div>
-          ))}
-        </div>
+      <div className="space-y-4">
+        <FeatureShot
+          id="preview-verify"
+          kind="loop"
+          ratio="16/9"
+          chrome
+          scenario="02-preview-verify"
+          alt="An agent verifying its own change in a live browser pane"
+          spec="Chat left, the real running app right. The agent edits, the page updates, the agent clicks through and confirms. One continuous take."
+        />
+        <ShotRow>
+          <FeatureShot
+            id="preview-proof"
+            kind="focus"
+            ratio="4/3"
+            scenario="02-preview-verify"
+            alt="A screenshot attached to the conversation as proof"
+            spec="The message bubble where the agent attaches its own screenshot and states what it verified."
+          />
+          <FeatureShot
+            id="preview-console"
+            kind="focus"
+            ratio="4/3"
+            scenario="02-preview-verify"
+            alt="Console and network output captured from the preview"
+            spec="Captured console and network output from the running dev server, in the agent's own tool output."
+          />
+        </ShotRow>
       </div>
     </FeatureSection>
   );
 }
 
-function SplitPanelsSection() {
-  return (
-    <FeatureSection
-      title="Split panels"
-      description="Open agents, browsers, terminals, diffs, and logs in the same workspace. Split them side by side or group them in tabs."
-    >
-      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3">
-        <div className="grid gap-3 md:h-[360px] md:grid-cols-[1.05fr_0.95fr]">
-          <PanelTile label="Agent" className="min-h-48 md:min-h-0" />
-          <div className="grid gap-3 md:grid-rows-[1fr_0.75fr]">
-            <PanelTile label="Browser" className="min-h-36" />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <PanelTile label="Terminal" className="min-h-28" />
-              <PanelTile label="Diff" className="min-h-28" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </FeatureSection>
-  );
-}
-
-function PanelTile({ label, className }: { label: string; className: string }) {
-  return (
-    <div
-      className={`flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-sm text-white/70 ${className}`}
-    >
-      {label}
-    </div>
-  );
-}
-
-function ServiceProxySection() {
+function ServiceProxyBlock() {
   const workspaces = [
     { name: "fix-auth", url: "web.fix-auth.my-app.localhost" },
     { name: "add-search", url: "web.add-search.my-app.localhost" },
@@ -1022,7 +1155,7 @@ function ServiceProxySection() {
   ];
 
   return (
-    <FeatureSection
+    <SubFeature
       title="Forget about ports"
       description="When agents work in parallel, they all run dev servers. Otto gives each one a URL based on the branch name, no port conflicts, no guessing."
     >
@@ -1049,11 +1182,11 @@ function ServiceProxySection() {
           </div>
         </div>
       </div>
-    </FeatureSection>
+    </SubFeature>
   );
 }
 
-function ShortcutsSection() {
+function ShortcutsBlock() {
   const shortcuts = [
     { keys: ["⌘", "1-9"], action: "Switch panels" },
     { keys: ["⌘", "D"], action: "Split vertical" },
@@ -1064,7 +1197,7 @@ function ShortcutsSection() {
   ];
 
   return (
-    <FeatureSection
+    <SubFeature
       title="Keyboard-first"
       description="Every action has a shortcut. Panels, splits, agents - all from the keyboard."
     >
@@ -1088,248 +1221,115 @@ function ShortcutsSection() {
           </div>
         ))}
       </div>
+    </SubFeature>
+  );
+}
+
+function VoiceSection() {
+  return (
+    <FeatureSection
+      title="Voice control, fully local"
+      description="Speech-to-text and text-to-speech run entirely on your machine by default — nothing leaves your network. Replies queue up and play in order, with pauses where a voice would take them, and every personality can speak its own lines when it joins, starts thinking, and finishes."
+    >
+      <div className="space-y-4">
+        <FeatureShot
+          id="voice-mode"
+          kind="loop"
+          ratio="16/9"
+          chrome
+          scenario="21-voice"
+          alt="Voice mode driving an agent conversation hands-free"
+          spec="Voice mode live — the listening indicator, dictated text landing in the composer, then the reply being spoken back with its playback state visible."
+        />
+        <FeatureShot
+          id="voice-playback"
+          kind="focus"
+          ratio="16/10"
+          scenario="21-voice"
+          alt="Per-message playback controls and speech settings"
+          spec="A chat with the per-bubble play button showing, and the speech settings panel with its Dictation and Voice sections filled in."
+        />
+      </div>
     </FeatureSection>
   );
 }
 
-interface VoiceBarProps {
-  index: number;
-  barCount: number;
-}
-
-function VoiceBar({ index, barCount }: VoiceBarProps) {
-  const style = React.useMemo(() => {
-    const center = barCount / 2;
-    const dist = Math.abs(index - center) / center;
-    const envelope = 1 - dist * dist;
-    const minH = 4;
-    const maxH = 56;
-    const baseH = minH + (maxH - minH) * envelope;
-    const jitter = Math.sin(index * 2.3) * 0.3 + Math.cos(index * 1.7) * 0.2;
-    const h = Math.max(minH, baseH * (0.5 + 0.5 * Math.abs(jitter + Math.sin(index * 0.8))));
-    return {
-      height: h,
-      animationName: "voice-bar",
-      animationDuration: `${800 + (index % 5) * 200}ms`,
-      animationTimingFunction: "ease-in-out",
-      animationIterationCount: "infinite",
-      animationDirection: "alternate" as const,
-      animationDelay: `${(index % 7) * 80}ms`,
-    };
-  }, [index, barCount]);
-  return <div className="w-[3px] rounded-full bg-white/30" style={style} />;
-}
-
-const VOICE_BAR_COUNT = 48;
-const VOICE_BAR_INDICES = Array.from({ length: VOICE_BAR_COUNT }, (_, i) => i);
-
-function VoiceWaveform() {
-  return (
-    <div className="flex items-center justify-center gap-[3px] h-16">
-      {VOICE_BAR_INDICES.map((i) => (
-        <VoiceBar key={`voice-bar-${i}`} index={i} barCount={VOICE_BAR_COUNT} />
-      ))}
-    </div>
-  );
-}
-
-const USER_WORDS =
-  "Refactor the auth middleware to use the new session store, then run the test suite".split(" ");
-const RESPONSE_WORDS =
-  "I'll update the auth middleware to use SessionStore instead of the legacy cookie-based approach. Let me refactor the middleware and update the tests.".split(
-    " ",
-  );
-const DICTATION_LAG = 2;
-const RESPONSE_LAG = 3;
-const WORD_APPEAR_MS = 150;
-const RESPONSE_WORD_MS = 60;
-const PHASE_GAP_MS = 800;
-const LOOP_PAUSE_MS = 3000;
-
-type VoicePhase =
-  | "dictation"
-  | "dictation-flush"
-  | "pause"
-  | "response"
-  | "response-flush"
-  | "done";
-
-function useVoiceConversation() {
-  const [phase, setPhase] = React.useState<VoicePhase>("dictation");
-  const [wordIndex, setWordIndex] = React.useState(0);
-
-  React.useEffect(() => {
-    if (phase === "dictation") {
-      if (wordIndex < USER_WORDS.length) {
-        const t = setTimeout(() => setWordIndex((w) => w + 1), WORD_APPEAR_MS);
-        return () => clearTimeout(t);
-      }
-      setPhase("dictation-flush");
-      setWordIndex(0);
-      return;
-    }
-    if (phase === "dictation-flush") {
-      if (wordIndex < DICTATION_LAG) {
-        const t = setTimeout(() => setWordIndex((w) => w + 1), WORD_APPEAR_MS);
-        return () => clearTimeout(t);
-      }
-      const t = setTimeout(() => {
-        setPhase("pause");
-      }, PHASE_GAP_MS);
-      return () => clearTimeout(t);
-    }
-    if (phase === "pause") {
-      const t = setTimeout(() => {
-        setPhase("response");
-        setWordIndex(0);
-      }, PHASE_GAP_MS);
-      return () => clearTimeout(t);
-    }
-    if (phase === "response") {
-      if (wordIndex < RESPONSE_WORDS.length) {
-        const t = setTimeout(() => setWordIndex((w) => w + 1), RESPONSE_WORD_MS);
-        return () => clearTimeout(t);
-      }
-      setPhase("response-flush");
-      setWordIndex(0);
-      return;
-    }
-    if (phase === "response-flush") {
-      if (wordIndex < RESPONSE_LAG) {
-        const t = setTimeout(() => setWordIndex((w) => w + 1), RESPONSE_WORD_MS);
-        return () => clearTimeout(t);
-      }
-      const t = setTimeout(() => {
-        setPhase("done");
-      }, LOOP_PAUSE_MS);
-      return () => clearTimeout(t);
-    }
-    if (phase === "done") {
-      const t = setTimeout(() => {
-        setPhase("dictation");
-        setWordIndex(0);
-      }, 0);
-      return () => clearTimeout(t);
-    }
-  }, [phase, wordIndex]);
-
-  // Compute effective word indices for rendering
-  let dictationWordIndex: number;
-  if (phase === "dictation") {
-    dictationWordIndex = wordIndex;
-  } else if (phase === "dictation-flush") {
-    dictationWordIndex = USER_WORDS.length + wordIndex;
-  } else {
-    dictationWordIndex = USER_WORDS.length + DICTATION_LAG;
-  }
-
-  let responseWordIndex: number;
-  if (phase === "response") {
-    responseWordIndex = wordIndex;
-  } else if (phase === "response-flush") {
-    responseWordIndex = RESPONSE_WORDS.length + wordIndex;
-  } else if (phase === "done") {
-    responseWordIndex = RESPONSE_WORDS.length + RESPONSE_LAG;
-  } else {
-    responseWordIndex = 0;
-  }
-
-  const showResponse = phase === "response" || phase === "response-flush" || phase === "done";
-
-  return { dictationWordIndex, responseWordIndex, showResponse };
-}
-
-function makeWordKey(words: string[], i: number): string {
-  const word = words[i];
-  let occurrence = 0;
-  for (let j = 0; j < i; j++) {
-    if (words[j] === word) occurrence++;
-  }
-  return `${word}#${occurrence}`;
-}
-
-function WordSpan({ word, confirmed }: { word: string; confirmed: boolean }) {
-  return (
-    <span
-      className={`transition-colors duration-300 ${confirmed ? "text-white/90" : "text-white/40"}`}
-    >
-      {word}{" "}
-    </span>
-  );
-}
-
-function StreamingWords({
-  words,
-  wordIndex,
-  confirmLag = 2,
-}: {
-  words: string[];
-  wordIndex: number;
-  confirmLag?: number;
-}) {
-  return (
-    <div className="relative">
-      {/* Invisible full text to reserve height at any viewport width */}
-      <p className="text-sm leading-relaxed invisible" aria-hidden>
-        {words.join(" ")}
-      </p>
-      {/* Visible streaming text overlaid */}
-      <p className="text-sm leading-relaxed absolute inset-0">
-        {words.map((word, i) => {
-          if (i >= wordIndex) return null;
-          const confirmed = i < wordIndex - confirmLag;
-          return <WordSpan key={makeWordKey(words, i)} word={word} confirmed={confirmed} />;
-        })}
-      </p>
-    </div>
-  );
-}
-
-function LocalVoiceSection() {
-  const { dictationWordIndex, responseWordIndex, showResponse } = useVoiceConversation();
-
+function InterfaceSection() {
   return (
     <FeatureSection
-      title="Voice control, fully local"
-      description="Fully local voice stack. Speech-to-text and text-to-speech run entirely on your machine, nothing leaves your network."
+      title="The interface you live in"
+      description="Agents put small interactive widgets straight into the conversation. The task list is an open checklist you can pin above the chat. Messages you send mid-turn queue up and arrive together. Mermaid diagrams, AsciiDoc and embedded HTML all render properly, on every platform."
     >
-      <div className="relative w-full rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
-        <div className="px-6 pt-8 pb-6 space-y-3">
-          {/* Waveform area */}
-          <div className="relative">
-            <VoiceWaveform />
-          </div>
-
-          {/* User dictation */}
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
-              <MaterialGlyph path={MIC_PATH} width={16} height={16} className="text-white/60" />
-            </div>
-            <div className="pt-1">
-              <StreamingWords
-                words={USER_WORDS}
-                wordIndex={dictationWordIndex}
-                confirmLag={DICTATION_LAG}
-              />
-            </div>
-          </div>
-
-          {/* Agent response — always rendered to reserve space */}
-          <div
-            className={`flex items-start gap-3 transition-opacity duration-300 ${showResponse ? "opacity-100" : "opacity-0"}`}
-          >
-            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
-              <ClaudeIcon size={16} className="text-white/60" />
-            </div>
-            <div className="pt-1">
-              <StreamingWords
-                words={RESPONSE_WORDS}
-                wordIndex={responseWordIndex}
-                confirmLag={RESPONSE_LAG}
-              />
-            </div>
-          </div>
+      <div className="space-y-12">
+        <div className="space-y-4">
+          <FeatureShot
+            id="ui-widget"
+            kind="focus"
+            ratio="16/9"
+            chrome
+            scenario="22-widgets"
+            alt="An agent-built interactive widget inside the conversation"
+            spec="A real widget rendered inline in the chat — something interactive the agent built, not a static card. The best five seconds in this section."
+          />
+          <ShotRow>
+            <FeatureShot
+              id="ui-tasklist"
+              kind="focus"
+              ratio="4/3"
+              scenario="01-agent-live"
+              alt="The agent's live task checklist pinned above the chat"
+              spec="The task list pinned, with items done, one in progress, and the rest pending."
+            />
+            <FeatureShot
+              id="ui-mermaid"
+              kind="focus"
+              ratio="4/3"
+              scenario="22-widgets"
+              alt="A Mermaid diagram rendered in chat"
+              spec="A Mermaid diagram rendered in a reply — legible at reading size, not a wall of nodes."
+            />
+          </ShotRow>
         </div>
+        <ThemesBlock />
+      </div>
+    </FeatureSection>
+  );
+}
+
+function CostSection() {
+  return (
+    <FeatureSection
+      title="Know what it costs"
+      description="A Context Management tab accounts for everything filling an agent's window before you type — context files, memory, skills, MCP tools, Otto's own prompt — read as a share of the model window rather than a bare token count. Usage is itemized per agent and per sub-agent at any nesting depth, with cost reported by the provider or left blank, never estimated from a rate table."
+    >
+      <div className="space-y-4">
+        <FeatureShot
+          id="cost-context"
+          kind="focus"
+          ratio="16/9"
+          chrome
+          scenario="20-context-cost"
+          alt="The Context Management tab accounting for a full context window"
+          spec="The three-pane Context tab with a real inventory — every category present, percentages of the window shown, and a finding selected so its assembled text is visible."
+        />
+        <ShotRow>
+          <FeatureShot
+            id="cost-ledger"
+            kind="focus"
+            ratio="4/3"
+            scenario="20-context-cost"
+            alt="The itemized usage log grouped by chat turn"
+            spec="The Usage Log tab — several turns, sub-agents nested under the turn that spawned them, real token and cost columns."
+          />
+          <FeatureShot
+            id="cost-metrics"
+            kind="focus"
+            ratio="4/3"
+            scenario="20-context-cost"
+            alt="The metrics bar above the chat"
+            spec="The metrics bar showing what the conversation has cost so far, with the context ring beside it."
+          />
+        </ShotRow>
       </div>
     </FeatureSection>
   );
@@ -1864,12 +1864,12 @@ function CLITabButton({
   );
 }
 
-function CLISection() {
+function CLIBlock() {
   const [activeIndex, setActiveIndex] = React.useState(0);
   const active = cliExamples[activeIndex];
 
   return (
-    <FeatureSection
+    <SubFeature
       title="Fully scriptable"
       description="Everything you can do in the app, you can do from the terminal."
     >
@@ -1896,7 +1896,7 @@ function CLISection() {
         Full CLI reference
         <MaterialGlyph path={ARROW_FORWARD_PATH} width={12} height={12} />
       </a>
-    </FeatureSection>
+    </SubFeature>
   );
 }
 
