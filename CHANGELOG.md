@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.7.1 - 2026-07-27
+
+### Added
+
+- Images an agent produces are kept under a retention policy and swept automatically once they age out or the store grows too large
+- A Storage section in Settings reports what stored images and the preview cache are using, and can clear either
+- The file pane has a real image viewer, with fit-to-window, zoom and actual size
+- Binary and image files show a facts row in the file pane instead of an empty pane
+- Selecting a row in Context Management shows the assembled text that section will actually send
+- A section Otto cannot read because the provider composes it internally now says so rather than reading as empty
+- Preview attaches to a dev server already running on a configured port instead of reporting it as an error
+
+### Changed
+
+- Auto-speech keeps reading a reply after you switch to another chat
+- Spoken replies keep playing at full speed while the app sits in the background
+- The workspace tab row attaches to a preview server that is already up rather than asking for a new one
+- Quitting the desktop app stops its daemon on new installs, and the previous behaviour is one toggle away
+- Importing an existing agent session from a chat lands in that workspace instead of one guessed from its directory
+- The editor's code area sits on the same surface as code quoted in chat
+
+### Fixed
+
+- Images in chat no longer render at zero size
+- The browser pane draws the same auto-hiding scrollbar as the rest of the app, instead of a permanent one that shifted the page it was previewing
+- Naming a new chat falls back to that chat's own model, so a host with a single provider configured gets titles
+
 ## 0.7.0 - 2026-07-25
 
 ### Added
