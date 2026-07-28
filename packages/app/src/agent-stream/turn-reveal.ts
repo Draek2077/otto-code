@@ -163,6 +163,7 @@ export class TurnRevealTicker {
   private revealed: number;
   private target: number;
   private turnKey: string;
+  private wasVisible = true;
   private readonly isOnScreen: () => boolean;
   private readonly listeners = new Set<() => void>();
 
@@ -179,14 +180,29 @@ export class TurnRevealTicker {
    * Render-phase reconcile (targetRef pattern): keeps the target current and
    * handles turn boundaries. Deliberately does NOT notify listeners — it runs
    * while the owner is already rendering the subscribers with fresh props.
+   *
+   * `visible` is the per-pane axis, separate from the app-level check in
+   * `tick`. A hidden chat pane freezes its stream data (see the stream view),
+   * so the target the reveal converged on while you were away is stale, and
+   * coming back re-reads the live buffers and jumps the target by everything
+   * the agent produced meanwhile, in the SAME render. That is why `tick` can
+   * never see it. Left paced, the whole backlog types itself out on re-entry:
+   * the chat visibly rushes for a couple of seconds before settling on where
+   * the turn actually is. Stay caught up while hidden and snap on the first
+   * render back, so re-entry shows the settled state and only text arriving
+   * after you return types out.
    */
-  update(params: { turnKey: string; target: number; enabled: boolean }): void {
+  update(params: { turnKey: string; target: number; enabled: boolean; visible?: boolean }): void {
+    // A caller with no panel context (transcript dialog, tests) is always on.
+    const visible = params.visible ?? true;
     if (params.turnKey !== this.turnKey) {
       this.turnKey = params.turnKey;
       this.revealed = params.target <= NEW_TURN_SNAP_THRESHOLD_CHARS ? 0 : params.target;
     }
     this.target = params.target;
-    if (!params.enabled || this.revealed > params.target) {
+    const returnedToScreen = visible && !this.wasVisible;
+    this.wasVisible = visible;
+    if (!params.enabled || !visible || returnedToScreen || this.revealed > params.target) {
       this.revealed = params.target;
     }
   }
@@ -222,19 +238,24 @@ export function useTurnRevealTicker(params: {
   turnKey: string;
   target: number;
   enabled: boolean;
+  visible?: boolean;
 }): TurnRevealTicker {
   const [ticker] = useState(
     () => new TurnRevealTicker({ ...params, isOnScreen: getIsAppInForeground }),
   );
   ticker.update(params);
+  // Hidden panes hold no timer at all: `update` keeps them caught up, so a
+  // 31Hz interval per backgrounded chat would only ever bail. Every running
+  // agent whose pane sits behind another tab was paying for one.
+  const paced = params.enabled && (params.visible ?? true);
   useEffect(() => {
-    if (!params.enabled) {
+    if (!paced) {
       return;
     }
     // Runs for the whole live phase; caught-up ticks bail before notifying,
     // so idle cost is negligible.
     const handle = setInterval(ticker.tick, REVEAL_TICK_MS);
     return () => clearInterval(handle);
-  }, [params.enabled, ticker]);
+  }, [paced, ticker]);
   return ticker;
 }

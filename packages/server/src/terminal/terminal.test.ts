@@ -17,6 +17,7 @@ import {
   existsSync,
   mkdtempSync,
   mkdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   statSync,
@@ -430,6 +431,35 @@ describe("createTerminal", () => {
 
     expect(exitInfo.lastOutputLines.length).toBeGreaterThan(0);
     expect(exitInfo.lastOutputLines[exitInfo.lastOutputLines.length - 1]).toBe("line-2999");
+  });
+
+  // Runs on every platform on purpose: CRLF sources are authored on Windows but only
+  // break zsh on POSIX, so the check has to fire on the machine that creates them.
+  it("strips CRLF endings from zsh shell integration sources", () => {
+    const integrationSourceDir = mkdtempSync(join(tmpdir(), "otto-zsh-crlf-source-"));
+    const homeDir = mkdtempSync(join(tmpdir(), "otto-zsh-crlf-home-"));
+    temporaryDirs.push(integrationSourceDir, homeDir);
+    cpSync(resolveZshShellIntegrationDir(), integrationSourceDir, { recursive: true });
+    const scriptNames = [".zshenv", "otto-integration.zsh"];
+    for (const name of scriptNames) {
+      const sourcePath = join(integrationSourceDir, name);
+      writeFileSync(sourcePath, readFileSync(sourcePath, "utf8").replace(/\n/g, "\r\n"));
+    }
+
+    const env = buildTerminalEnvironment({
+      shell: "/bin/zsh",
+      env: { HOME: homeDir },
+      zshShellIntegrationDir: integrationSourceDir,
+    });
+
+    for (const name of scriptNames) {
+      const runtimePath = join(env.ZDOTDIR, name);
+      // A stray \r makes zsh run `^M` as a command and never close its `if` blocks.
+      expect(readFileSync(runtimePath, "utf8")).not.toContain("\r");
+      if (hasZsh) {
+        expect(spawnSync("/bin/zsh", ["-n", runtimePath]).status).toBe(0);
+      }
+    }
   });
 });
 
