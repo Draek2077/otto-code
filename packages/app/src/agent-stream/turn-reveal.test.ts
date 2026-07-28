@@ -258,6 +258,36 @@ describe("TurnRevealTicker", () => {
     assert.ok(ticker.getRevealed() > 0 && ticker.getRevealed() < 400);
   });
 
+  it("stays caught up while the pane is hidden", () => {
+    const ticker = new TurnRevealTicker({ turnKey: "u1", target: 0 });
+    ticker.update({ turnKey: "u1", target: 5000, enabled: true, visible: false });
+    assert.equal(ticker.getRevealed(), 5000);
+  });
+
+  it("snaps on the first render back instead of replaying the away backlog", () => {
+    // The pane freezes its stream data while hidden, so re-entry raises the
+    // target by the whole away period in one render. Pacing that is the
+    // "mad rush" the chat used to show on return.
+    const ticker = new TurnRevealTicker({ turnKey: "u1", target: 1000 });
+    ticker.update({ turnKey: "u1", target: 1000, enabled: true, visible: false });
+    ticker.update({ turnKey: "u1", target: 40_000, enabled: true, visible: true });
+    assert.equal(ticker.getRevealed(), 40_000);
+
+    // Text that arrives after the return still types.
+    ticker.update({ turnKey: "u1", target: 40_400, enabled: true, visible: true });
+    ticker.tick();
+    assert.ok(ticker.getRevealed() > 40_000 && ticker.getRevealed() < 40_400);
+  });
+
+  it("does not type out a new turn that started while the pane was hidden", () => {
+    const ticker = new TurnRevealTicker({ turnKey: "u1", target: 1000 });
+    ticker.update({ turnKey: "u1", target: 1000, enabled: true, visible: false });
+    // A short new turn would normally reset the position to zero and type from
+    // its first character; on re-entry the snap wins.
+    ticker.update({ turnKey: "u2", target: 300, enabled: true, visible: true });
+    assert.equal(ticker.getRevealed(), 300);
+  });
+
   it("notifies subscribers only when a tick moves the position", () => {
     const ticker = new TurnRevealTicker({ turnKey: "u1", target: 0 });
     let notified = 0;

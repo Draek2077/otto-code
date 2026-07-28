@@ -36,6 +36,11 @@ async function readWizardFlag(page: Page): Promise<boolean | null> {
 }
 
 test.describe("First-time setup wizard", () => {
+  // The wizard is the subject here, so keep this context in the genuine
+  // fresh-install state. Every other spec seeds the flag complete so the wizard
+  // can never intercept it; see fixtures.ts.
+  test.use({ seedSetupWizardComplete: false });
+
   test("walks Welcome to Home and does not re-show after completion", async ({ page }) => {
     test.setTimeout(240_000);
 

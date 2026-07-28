@@ -25,7 +25,25 @@ const test = base.extend<{
   ottoE2ESetup: void;
   projectPickerFixture: TrackedProjectPickerFixture;
   withWorkspace: WithWorkspace;
+  /**
+   * Seed `hasCompletedSetupWizard: true` so the first-run wizard can never
+   * intercept a spec that just wants the app.
+   *
+   * A fresh browser context has no settings blob, so the app writes the
+   * fresh-install defaults with the flag `false`, and the index route redirects
+   * "/" -> "/setup" when a host is online at decision time. Specs used to pass
+   * only because they won a race: "/" usually resolved before the seeded host's
+   * WebSocket finished connecting, so the gate saw no host and fell through. On
+   * a loaded CI runner that race flips and every spec that touches the app shell
+   * dies on a "Welcome to Otto" screen — which reads as a broken sidebar or a
+   * missing locator, not as the wizard.
+   *
+   * Opt out with `test.use({ seedSetupWizardComplete: false })` when the wizard
+   * itself is the subject.
+   */
+  seedSetupWizardComplete: boolean;
 }>({
+  seedSetupWizardComplete: [true, { option: true }],
   baseURL: async ({}, provide) => {
     const metroPort = process.env.E2E_METRO_PORT;
     if (!metroPort) {
@@ -34,7 +52,7 @@ const test = base.extend<{
     await provide(`http://localhost:${metroPort}`);
   },
   ottoE2ESetup: [
-    async ({ page }, provide, testInfo) => {
+    async ({ page, seedSetupWizardComplete }, provide, testInfo) => {
       const daemonPort = getE2EDaemonPort();
       const metroPort = process.env.E2E_METRO_PORT;
       if (!metroPort) {
@@ -74,7 +92,7 @@ const test = base.extend<{
       const createAgentPreferences = buildCreateAgentPreferences(testDaemon.serverId);
 
       await page.addInitScript(
-        ({ daemon, preferences, seedNonce: nonce, extraHostsKey }) => {
+        ({ daemon, preferences, seedNonce: nonce, extraHostsKey, seedWizardComplete }) => {
           // `addInitScript` runs on every navigation (including reloads). Some tests intentionally
           // override storage and reload; they can opt out of seeding for the *next* navigation by
           // setting this flag before the reload.
@@ -97,12 +115,30 @@ const test = base.extend<{
           localStorage.setItem("@otto:daemon-registry", JSON.stringify([daemon, ...extraHosts]));
           localStorage.removeItem("@otto:settings");
           localStorage.setItem("@otto:create-agent-preferences", JSON.stringify(preferences));
+
+          // Merged, never replaced: a spec may have seeded its own appearance
+          // preferences, and clobbering the blob here would drop them.
+          if (seedWizardComplete) {
+            const settingsKey = "@otto:app-settings";
+            let settings: Record<string, unknown> = {};
+            try {
+              const raw = localStorage.getItem(settingsKey);
+              if (raw) {
+                settings = JSON.parse(raw) as Record<string, unknown>;
+              }
+            } catch {
+              settings = {};
+            }
+            settings.hasCompletedSetupWizard = true;
+            localStorage.setItem(settingsKey, JSON.stringify(settings));
+          }
         },
         {
           daemon: testDaemon,
           preferences: createAgentPreferences,
           seedNonce,
           extraHostsKey: EXTRA_HOSTS_KEY,
+          seedWizardComplete: seedSetupWizardComplete,
         },
       );
 

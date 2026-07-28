@@ -390,6 +390,17 @@ function resolveZshShellIntegrationRuntimeDir(): string {
   return join(tmpdir(), `${username}-otto-zsh`);
 }
 
+/**
+ * zsh refuses to parse scripts with CRLF endings: the trailing `\r` becomes part of
+ * the token, so a blank line runs `^M` as a command and `fi\r` never closes its `if`.
+ * The shipped sources can pick up CRLF anywhere along the way (a Windows checkout with
+ * `core.autocrlf=true` publishes them straight into the tarball), so normalize at the
+ * point of use rather than trusting whatever bytes reached disk.
+ */
+function readZshShellIntegrationScript(filePath: string): string {
+  return readFileSync(filePath, "utf8").replace(/\r\n/g, "\n");
+}
+
 function prepareZshShellIntegrationRuntimeDir(sourceDir = resolveZshShellIntegrationDir()): string {
   const readableSourceDir = resolveExternalProcessPath(sourceDir);
   const runtimeDir = resolveZshShellIntegrationRuntimeDir();
@@ -397,11 +408,11 @@ function prepareZshShellIntegrationRuntimeDir(sourceDir = resolveZshShellIntegra
   chmodSync(runtimeDir, 0o700);
   writePrivateFileAtomicSync(
     join(runtimeDir, ".zshenv"),
-    readFileSync(join(readableSourceDir, ".zshenv")),
+    readZshShellIntegrationScript(join(readableSourceDir, ".zshenv")),
   );
   writePrivateFileAtomicSync(
     join(runtimeDir, "otto-integration.zsh"),
-    readFileSync(join(readableSourceDir, "otto-integration.zsh")),
+    readZshShellIntegrationScript(join(readableSourceDir, "otto-integration.zsh")),
   );
   return runtimeDir;
 }

@@ -747,6 +747,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       turnKey: liveTurnReveal.turnKey,
       target: liveTurnReveal.totalChars,
       enabled: agent.status === "running",
+      // While this pane is frozen the reveal stays caught up with the frozen
+      // target and snaps to the live one on the way back in. Without that,
+      // every return to a busy chat replays the away-period backlog as a
+      // typing rush. See TurnRevealTicker.update.
+      visible: isActive,
     });
 
     // The growing end of the live turn: the last assistant item the reveal spans

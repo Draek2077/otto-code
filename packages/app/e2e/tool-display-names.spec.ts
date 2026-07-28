@@ -3,17 +3,15 @@ import { awaitToolCall } from "./helpers/agent-stream";
 import { expectComposerVisible, submitMessage } from "./helpers/composer";
 import { openAgentRoute, seedMockAgentWorkspace } from "./helpers/mock-agent";
 import { buildNamedToolCallScenarioPrompt } from "./helpers/mock-scenarios";
+import { seedAppSettings } from "./helpers/settings";
 
 // Action grouping (default on) reabsorbs completed tool calls into one
 // collapsed row; these tests assert per-tool labels, so render every action as
 // its own row (same seed as agent-stream-ui.spec.ts).
 async function disableActionGrouping(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    window.localStorage.setItem(
-      "@otto:app-settings",
-      JSON.stringify({ groupConsecutiveActions: false }),
-    );
-  });
+  // Merge rather than replace, so the fixture's `hasCompletedSetupWizard` seed
+  // survives and the spec can't land in the first-run wizard.
+  await seedAppSettings(page, { groupConsecutiveActions: false });
 }
 
 test.describe("Tool display names", () => {

@@ -3,6 +3,7 @@ import { expectComposerVisible } from "./helpers/composer";
 import { openAgentRoute, seedMockAgentWorkspace } from "./helpers/mock-agent";
 import { buildRateLimitScenarioPrompt } from "./helpers/mock-scenarios";
 import { MOCK_PROVIDER_LABEL } from "./helpers/personalities";
+import { seedAppSettings } from "./helpers/settings";
 
 const WARNING_STRIP = "composer-rate-limit-warning";
 
@@ -49,12 +50,9 @@ test.describe("Rate limit warning strip", () => {
 
   test("stays hidden when the rateLimitWarningsEnabled setting is off", async ({ page }) => {
     test.setTimeout(120_000);
-    await page.addInitScript(() => {
-      window.localStorage.setItem(
-        "@otto:app-settings",
-        JSON.stringify({ rateLimitWarningsEnabled: false }),
-      );
-    });
+    // Merge rather than replace, so the fixture's `hasCompletedSetupWizard`
+    // seed survives and the spec can't land in the first-run wizard.
+    await seedAppSettings(page, { rateLimitWarningsEnabled: false });
     const agent = await seedMockAgentWorkspace({
       repoPrefix: "rate-limit-strip-off-",
       title: "Rate limit warnings disabled",

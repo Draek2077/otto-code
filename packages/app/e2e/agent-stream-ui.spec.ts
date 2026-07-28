@@ -16,6 +16,7 @@ import {
 } from "./helpers/agent-bottom-anchor";
 import { delayCreatedAgentInitialTailResponse } from "./helpers/agent-timeline-gate";
 import { selectModel } from "./helpers/app";
+import { seedAppSettings } from "./helpers/settings";
 import { clickNewChat } from "./helpers/launcher";
 import { expectComposerVisible, startRunningMockAgent } from "./helpers/composer";
 import { openAgentRoute, seedMockAgentWorkspace } from "./helpers/mock-agent";
@@ -28,12 +29,9 @@ const SCROLL_AWAY_MIN_SCROLLABLE_DISTANCE = 360;
 // distance. These tests assert scroll anchoring, not grouping — seed the
 // setting off so every action renders as its own row again.
 async function disableActionGrouping(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    window.localStorage.setItem(
-      "@otto:app-settings",
-      JSON.stringify({ groupConsecutiveActions: false }),
-    );
-  });
+  // Merge rather than replace: writing a bare blob here used to drop
+  // `hasCompletedSetupWizard`, dropping the whole spec into the first-run wizard.
+  await seedAppSettings(page, { groupConsecutiveActions: false });
 }
 
 test.describe("Agent stream UI", () => {
