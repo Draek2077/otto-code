@@ -134,6 +134,13 @@ export function buildMockPersonality(input: {
     name: input.name,
     provider: MOCK_PROVIDER_ID,
     model: MOCK_MODEL_ID,
+    // Declare the mock mode rather than leaving it to whatever the form had.
+    // A personality with no modeId applies as "no mode", and the surface
+    // default can apply it before the provider's own default mode has landed,
+    // so the created agent came out with currentModeId null. A personality
+    // bound to the mock provider should say which mode it runs in; the specs
+    // assert exactly that mode on the created agent.
+    modeId: MOCK_MODE_ID,
     respectGlobalAppendPrompt: true,
     // Default to every role so the personality shows in any role-filtered
     // picker (draft composer = chatter, artifacts = artificer, ...).
@@ -447,6 +454,35 @@ export async function selectPersonalityInPicker(page: Page, personalityId: strin
   await expect(row).not.toHaveAttribute("aria-disabled", "true", { timeout: 30_000 });
   await row.click();
   await expect(row).not.toBeVisible({ timeout: 10_000 });
+}
+
+/**
+ * Pick a personality and make sure it stuck, reopening the picker to try again
+ * if it did not. A row is clickable a moment before the picker's own resolution
+ * settles, and a press in that window closes the popup without selecting
+ * anything — which read as "selecting a personality silently does nothing"
+ * only on slower CI machines.
+ */
+export async function selectPersonalityUntilBound(
+  page: Page,
+  personality: { id: string; name: string },
+): Promise<void> {
+  const trigger = modelPickerTrigger(page);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt > 0) {
+      await openModelPersonalityPicker(page);
+    }
+    await selectPersonalityInPicker(page, personality.id);
+    const bound = await trigger
+      .filter({ hasText: personality.name })
+      .first()
+      .isVisible({ timeout: 10_000 })
+      .catch(() => false);
+    if (bound) {
+      return;
+    }
+  }
+  await expectModelTriggerShowsPersonality(page, personality.name);
 }
 
 export async function expectModelTriggerShowsPersonality(page: Page, name: string): Promise<void> {
