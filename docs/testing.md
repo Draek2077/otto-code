@@ -140,6 +140,17 @@ skip inside a spec:
 The default project ignores the `*.local.spec.ts` and `*.real.spec.ts` suffixes, so CI needs no
 credentials.
 
+**The E2E host starts with an empty personality roster.** A fresh `OTTO_HOME` is seeded with the
+shipped starter team, and every apply-now form surface then auto-binds its role's first available
+personality: the ladder in `useFormRolePersonality` puts a team or personality above the device's
+last-used model on purpose. Those builtins are all Claude-bound, so on the E2E host the composer,
+the schedule form and the daemon's Writer-role mini-tasks (chat auto-title) would all leave the
+deterministic mock provider behind and land on one with no credentials. `global-setup.ts` therefore
+writes empty `agentPersonalities` / `agentTeams` sections into the forked config before the daemon
+boots, which is the same "user cleared the roster" state the daemon honours instead of re-seeding.
+Specs that exercise personalities or teams seed their own through `helpers/personalities.ts`, so if
+a spec needs one, seed it; never assume a builtin is there.
+
 **Why T2 exists.** The mock agent proves the UI and daemon plumbing but scripts every agent event,
 so it can never prove the loop itself: that a prompt actually becomes tool calls, that tool results
 feed back correctly, that compaction leaves a usable session, that a permission denial actually

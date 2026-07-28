@@ -556,6 +556,37 @@ async function preflightLocalAi(config: LocalAiConfig): Promise<void> {
 }
 
 /**
+ * Starts the E2E host with an EMPTY personality roster and no teams.
+ *
+ * A fresh OTTO_HOME is seeded with the shipped starter team (Atlas, Sage, Dash,
+ * …), and every apply-now form surface then auto-binds its role's first
+ * available personality: see `useFormRolePersonality`'s precedence ladder,
+ * where tiers 1-3 outrank the device's last-used model on purpose. Those
+ * builtins are all bound to Claude, which the E2E host has no credentials for,
+ * so the whole suite would open its composers, schedule forms and artifact
+ * sheets on an unusable provider instead of the deterministic mock one. The
+ * daemon's Writer-role mini-tasks (chat auto-title) route the same way.
+ *
+ * The daemon only seeds when the persisted config has never carried the
+ * section, so writing empty sections here is exactly the "user cleared the
+ * roster" state — no seeding, no auto-bind. Specs that exercise personalities
+ * and teams seed their own through `helpers/personalities.ts`, which is also
+ * what makes their assertions deterministic.
+ */
+async function clearStarterPersonalities(targetHome: string): Promise<void> {
+  const configPath = path.join(targetHome, "config.json");
+  let existing: Record<string, unknown> = { version: 1 };
+  if (existsSync(configPath)) {
+    existing = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
+  }
+  const agents = (existing.agents ??= {}) as Record<string, unknown>;
+  agents.agentPersonalities = { personalities: [] };
+  agents.agentTeams = { teams: [], activeTeamId: null };
+  await writeFile(configPath, `${JSON.stringify(existing, null, 2)}\n`);
+  console.log(`[e2e] Cleared the starter personality roster in ${configPath}`);
+}
+
+/**
  * Writes the openai-compatible provider block pointed at LM Studio into the
  * E2E daemon's isolated OTTO_HOME config so *.local.spec.ts specs can create
  * live agents through the daemon's native tool loop. Merges over any forked
@@ -924,6 +955,7 @@ export default async function globalSetup() {
   const daemonLineBuffer = createLineBuffer();
 
   await applyOttoHomeFork(ottoHome);
+  await clearStarterPersonalities(ottoHome);
 
   const localAiConfig = readLocalAiEnv();
   if (localAiConfig) {
