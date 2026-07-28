@@ -26,11 +26,26 @@ export async function readScrollMetrics(page: Page): Promise<ScrollMetrics> {
           element.getAttribute("contenteditable") === "true";
         return !isEditable && element.scrollHeight - element.clientHeight > 1;
       });
+    // Prefer the scrollable box that actually holds the transcript, identified
+    // by containing chat messages. Ranking purely by scrollable distance let a
+    // small nested scroller impersonate the chat: a ~64px task/tool card
+    // holding ~800px of content out-scores a transcript that has not overflowed
+    // yet. Worse, the winner could CHANGE mid-test once the transcript grew, so
+    // consecutive samples described different elements and "the scroll position
+    // stayed fixed" compared two unrelated boxes.
+    const holdsMessages = (element: HTMLElement): boolean =>
+      element.querySelector('[data-testid="assistant-message"], [data-testid="user-message"]') !==
+      null;
+    const byScrollableDistance = (left: HTMLElement, right: HTMLElement): number =>
+      right.scrollHeight - right.clientHeight - (left.scrollHeight - left.clientHeight);
+    // No fallback to "any scrollable box": before the first message renders,
+    // falling back would measure the impostor card and satisfy
+    // waitForScrollableChat against it, so the baseline was captured from the
+    // wrong element and every later sample silently switched. Measuring the
+    // root instead reports ~0 scrollable distance until the transcript itself
+    // overflows, which is exactly what these specs mean to wait for.
     const scrollElement =
-      candidates.sort(
-        (left, right) =>
-          right.scrollHeight - right.clientHeight - (left.scrollHeight - left.clientHeight),
-      )[0] ?? (root as HTMLElement);
+      candidates.filter(holdsMessages).sort(byScrollableDistance)[0] ?? (root as HTMLElement);
 
     const offsetY = Math.max(0, scrollElement.scrollTop);
     const contentHeight = Math.max(0, scrollElement.scrollHeight);
