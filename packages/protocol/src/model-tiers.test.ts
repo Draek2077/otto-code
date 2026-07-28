@@ -4,19 +4,34 @@ import { catalogTier, inferModelTier, resolveModelTier } from "./model-tiers.js"
 describe("model-tiers", () => {
   it("classifies known catalog models, case-insensitively", () => {
     expect(catalogTier("claude-opus-4-8[1m]")).toBe("deep");
-    expect(catalogTier("claude-opus-4-8")).toBe("standard");
+    expect(catalogTier("claude-opus-4-8")).toBe("deep");
     expect(catalogTier("claude-fable-5")).toBe("deep");
     expect(catalogTier("GPT-4o")).toBe("standard");
     expect(catalogTier("deepseek-chat")).toBe("standard");
   });
 
-  it("tiers 1M-context Opus as deep and non-1M Opus as standard", () => {
+  // Opus 4.7/4.8/5 are natively 1M, so their plain ids are deep and the
+  // decorated ones are only kept as aliases. Opus 4.6 is the last Opus where
+  // the 1M variant is a genuinely different model from the 200K one.
+  it("tiers natively-1M Opus as deep whether or not the id carries [1m]", () => {
+    expect(catalogTier("claude-opus-5")).toBe("deep");
+    expect(catalogTier("claude-opus-5[1m]")).toBe("deep");
+    expect(catalogTier("claude-opus-4-7")).toBe("deep");
     expect(catalogTier("claude-opus-4-7[1m]")).toBe("deep");
-    expect(catalogTier("claude-opus-4-7")).toBe("standard");
+  });
+
+  it("keeps 200K Opus 4.6/4.5 standard, with only its [1m] variant deep", () => {
     expect(catalogTier("claude-opus-4-6[1m]")).toBe("deep");
     expect(catalogTier("claude-opus-4-6")).toBe("standard");
+    expect(catalogTier("claude-opus-4-5")).toBe("standard");
+  });
+
+  it("tiers every Sonnet standard, 1M or not", () => {
+    expect(catalogTier("claude-sonnet-5")).toBe("standard");
     expect(catalogTier("claude-sonnet-4-6")).toBe("standard");
     expect(catalogTier("claude-sonnet-4-6[1m]")).toBe("standard");
+    expect(catalogTier("claude-sonnet-4-5")).toBe("standard");
+    expect(catalogTier("claude-sonnet-4-5[1m]")).toBe("standard");
   });
 
   it("leaves models we don't ship an id for as Unknown (undefined)", () => {
