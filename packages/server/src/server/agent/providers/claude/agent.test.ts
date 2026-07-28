@@ -2476,6 +2476,127 @@ describe("ClaudeAgentSession context window usage", () => {
     expect(started.filter((event) => event.type === "observed_subagent_updated")).toEqual([]);
   });
 
+  test("a slow tool's heartbeat tool_progress does not announce an observed sub-agent", async () => {
+    const session = await createSessionForTest();
+
+    session.translateMessageToEvents({
+      type: "stream_event",
+      event: {
+        type: "content_block_start",
+        index: 0,
+        content_block: {
+          type: "tool_use",
+          id: "toolu-shell-1",
+          name: "PowerShell",
+          input: {
+            command: "npx playwright test e2e/agent-stream-ui.spec.ts",
+            description: "Run the agent-stream-ui spec locally",
+          },
+        },
+      },
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+
+    // ~30s into ANY slow tool the CLI emits a heartbeat tool_progress whose
+    // tool_use_id is synthetic and whose parent_tool_use_id is the real tool.
+    // A non-null parent_tool_use_id is not by itself a sub-agent signal.
+    const heartbeat = session.translateMessageToEvents({
+      type: "tool_progress",
+      tool_use_id: "toolu-shell-1-heartbeat-0",
+      tool_name: "PowerShell",
+      parent_tool_use_id: "toolu-shell-1",
+      elapsed_time_seconds: 30,
+      uuid: "tool-progress-1",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+
+    expect(heartbeat.filter((event) => event.type === "observed_subagent_updated")).toEqual([]);
+    expect(heartbeat.filter((event) => event.type === "observed_subagent_timeline")).toEqual([]);
+  });
+
+  test("a heartbeat under a real Task parent still feeds the observed sub-agent", async () => {
+    const session = await createSessionForTest();
+
+    session.translateMessageToEvents({
+      type: "stream_event",
+      event: {
+        type: "content_block_start",
+        index: 0,
+        content_block: {
+          type: "tool_use",
+          id: "toolu-task-1",
+          name: "Task",
+          input: { description: "Check something in a subagent", prompt: "Return an answer" },
+        },
+      },
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+
+    const sidechain = session.translateMessageToEvents({
+      type: "tool_progress",
+      tool_use_id: "toolu-task-1-heartbeat-0",
+      tool_name: "Bash",
+      parent_tool_use_id: "toolu-task-1",
+      elapsed_time_seconds: 30,
+      uuid: "tool-progress-2",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+
+    expect(sidechain).toContainEqual(
+      expect.objectContaining({
+        type: "observed_subagent_updated",
+        update: expect.objectContaining({ key: "toolu-task-1", status: "running" }),
+      }),
+    );
+  });
+
+  test("recognizes a background shell task by its Windows PowerShell tool name", async () => {
+    const session = await createSessionForTest();
+
+    // Claude's shell tool is named "PowerShell" on Windows hosts and "Bash" on
+    // POSIX ones. Seed the cache the way a real turn does.
+    session.translateMessageToEvents({
+      type: "stream_event",
+      event: {
+        type: "content_block_start",
+        index: 0,
+        content_block: {
+          type: "tool_use",
+          id: "toolu-ps-1",
+          name: "PowerShell",
+          input: {
+            command: "npx playwright test e2e/agent-stream-ui.spec.ts",
+            description: "Run the agent-stream-ui spec locally",
+          },
+        },
+      },
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+
+    // Only task_started carries task_type; task_notification does not. The
+    // cached tool name is therefore the sole signal that this is a shell task,
+    // and matching just "Bash" dropped the settle on Windows.
+    const settled = session.translateMessageToEvents({
+      type: "system",
+      subtype: "task_notification",
+      task_id: "ps-task-1",
+      tool_use_id: "toolu-ps-1",
+      status: "completed",
+      uuid: "task-notif-ps-1",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+
+    expect(settled).toContainEqual(
+      expect.objectContaining({
+        type: "background_shell_task_updated",
+        update: expect.objectContaining({ taskId: "ps-task-1", status: "idle" }),
+      }),
+    );
+    // A shell task is not an observable AI run, so it must never land on the
+    // observed sub-agent track.
+    expect(settled.filter((event) => event.type === "observed_subagent_updated")).toEqual([]);
+  });
+
   test("level signal creates and settles a background row the edge stream missed", async () => {
     const session = await createSessionForTest();
 
