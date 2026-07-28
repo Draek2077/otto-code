@@ -57,9 +57,26 @@ async function closeTopSheet(page: Page) {
   await page.mouse.up();
 }
 
+// A sheet is visible as soon as its enter animation starts, so the very first
+// Close press can land before the sheet is interactive and get swallowed. That
+// showed up as an intermittent "Expected: not visible / Received: visible" that
+// passed on retry. Press again while it is still up rather than waiting out a
+// single press that never registered.
 async function closeSheetByHeaderButton(page: Page, testId: string) {
   const sheet = page.getByTestId(testId);
-  await sheet.getByLabel("Close", { exact: true }).click({ force: true });
+  const closeButton = sheet.getByLabel("Close", { exact: true });
+  await expect
+    .poll(
+      async () => {
+        if (!(await sheet.isVisible().catch(() => false))) {
+          return false;
+        }
+        await closeButton.click({ force: true }).catch(() => undefined);
+        return sheet.isVisible().catch(() => false);
+      },
+      { timeout: 10_000, intervals: [500, 1_000, 1_000, 2_000] },
+    )
+    .toBe(false);
   await expect(sheet).not.toBeVisible({ timeout: 10_000 });
 }
 
