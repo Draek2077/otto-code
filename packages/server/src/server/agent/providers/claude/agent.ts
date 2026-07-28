@@ -2006,12 +2006,19 @@ function isClaudeSubagentToolName(name: string | undefined): boolean {
   return name === "Task" || name === "Agent";
 }
 
-// Claude's Bash tool used with run_in_background: true reports its lifecycle
+// Claude's shell tool used with run_in_background: true reports its lifecycle
 // through the same task_started/task_progress/task_notification stream as
 // subagents. See projects/observed-subagents/observed-subagents.md's note
 // that Otto today ignores shell/monitor/workflow task events.
+//
+// The tool is named "Bash" on POSIX hosts and "PowerShell" on Windows ones, so
+// both names have to be recognized. Matching only "Bash" left every Windows
+// background shell task failing this test everywhere it is used: routing
+// survived on task_type ("local_bash") and the remembered task id, but the
+// interrupt teardown in flushPendingToolCalls has no such fallback, so an
+// in-flight background PowerShell row was never closed and stuck "running".
 function isClaudeBackgroundShellToolName(name: string | undefined): boolean {
-  return name === "Bash";
+  return name === "Bash" || name === "PowerShell";
 }
 
 // Claude's Workflow tool (deterministic multi-agent orchestration —
@@ -4380,7 +4387,7 @@ class ClaudeAgentSession implements AgentSession {
       suppressReasoning?: boolean;
     },
   ): AgentStreamEvent[] {
-    const parentToolUseId = readClaudeParentToolUseId(message);
+    const parentToolUseId = this.readObservedSubagentSidechainParent(message);
     if (parentToolUseId) {
       const sidechainEvents = this.sidechainTracker.handleMessage(message, parentToolUseId);
       this.appendObservedSubagentSidechainEvents(message, parentToolUseId, sidechainEvents);
@@ -4457,6 +4464,48 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     return events;
+  }
+
+  /**
+   * True when a message's `parent_tool_use_id` names an observable AI run
+   * (a Task/Agent sub-agent or a Workflow) rather than an ordinary tool.
+   *
+   * A non-null parent_tool_use_id is NOT by itself a sub-agent signal. Roughly
+   * 30s into ANY slow tool the CLI emits a heartbeat `tool_progress` whose
+   * tool_use_id is a synthetic "<id>-heartbeat-N" and whose parent_tool_use_id
+   * is the real tool's id:
+   *
+   *   {"type":"tool_progress","tool_use_id":"toolu_01EB…-heartbeat-0",
+   *    "parent_tool_use_id":"toolu_01EB…"}
+   *
+   * Treating that as a sidechain announced an observed sub-agent keyed by the
+   * shell tool, titled with its `description`. The row then had no timeline (a
+   * tool_progress is neither an assistant nor a user message) and no way to
+   * settle (every settle path is gated on a Task/Agent/Workflow tool name), so
+   * every Bash/PowerShell call that ran longer than the heartbeat left a
+   * permanently "running" row with an empty pane.
+   *
+   * An unknown parent stays accepted: a backgrounded Agent whose tool_result
+   * ack already evicted its cache entry still has to reach its observed row.
+   */
+  private readObservedSubagentSidechainParent(message: SDKMessage): string | null {
+    const parentToolUseId = readClaudeParentToolUseId(message);
+    if (!parentToolUseId) {
+      return null;
+    }
+    if (
+      this.announcedObservedSubagents.has(parentToolUseId) ||
+      this.workflowObservedKeys.has(parentToolUseId)
+    ) {
+      return parentToolUseId;
+    }
+    const cachedTool = this.toolUseCache.get(parentToolUseId);
+    if (!cachedTool) {
+      return parentToolUseId;
+    }
+    const isObservable =
+      isClaudeSubagentToolName(cachedTool.name) || isClaudeWorkflowToolName(cachedTool.name);
+    return isObservable ? parentToolUseId : null;
   }
 
   /**
