@@ -28,8 +28,17 @@ export async function expectTurnCopyButton(page: Page): Promise<void> {
   });
 }
 
+// The mock stream spends long stretches feeding content that does NOT grow the
+// transcript: reasoning lands in a collapsed card that scrolls internally (804px
+// of text inside a 64px box), and tool cards do the same with their output. So
+// the scroll container can sit at exactly its own client height for far longer
+// than the default 10s expect window while the stream is perfectly healthy. Wait
+// long enough to reach the next burst of assistant text instead; the spec's own
+// budget is 120s, and a failure now names the box it measured.
+const CONTENT_GROWTH_TIMEOUT_MS = 45_000;
+
 export async function expectScrollFollowsNewContent(page: Page): Promise<void> {
   const { contentHeight } = await readScrollMetrics(page);
-  await waitForContentGrowth(page, contentHeight);
+  await waitForContentGrowth(page, contentHeight, { timeout: CONTENT_GROWTH_TIMEOUT_MS });
   await expectNearBottom(page);
 }

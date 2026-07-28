@@ -89,16 +89,63 @@ export async function scrollAgentChatToBottom(page: Page): Promise<void> {
     .toBeLessThanOrEqual(NEAR_BOTTOM_THRESHOLD_PX);
 }
 
+/**
+ * Which box `readScrollMetrics` measured, and what it passed over. "the
+ * transcript never grew" is unactionable on its own: the same symptom comes
+ * from a stalled stream, from measuring the non-scrollable root fallback, and
+ * from a nested scroller winning the pick. Every wait below attaches this to
+ * its failure so the message says which one it was.
+ */
+async function readScrollDiagnostics(page: Page): Promise<string> {
+  const diagnostics = await getVisibleChatScroll(page).evaluate((root: Element) => {
+    const describe = (element: HTMLElement, isRoot: boolean) => ({
+      tag: element.tagName.toLowerCase(),
+      id: element.id || undefined,
+      testId: element.getAttribute("data-testid") ?? undefined,
+      isRoot,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      holdsMessages:
+        element.querySelector('[data-testid="assistant-message"], [data-testid="user-message"]') !==
+        null,
+    });
+    const all = [root, ...Array.from(root.querySelectorAll("*"))].filter(
+      (element): element is HTMLElement => element instanceof HTMLElement,
+    );
+    return {
+      root: describe(root as HTMLElement, true),
+      scrollableCandidates: all
+        .filter((element) => element.scrollHeight - element.clientHeight > 1)
+        .slice(0, 8)
+        .map((element) => describe(element, element === root)),
+      assistantMessages: root.querySelectorAll('[data-testid="assistant-message"]').length,
+      userMessages: root.querySelectorAll('[data-testid="user-message"]').length,
+    };
+  });
+  return JSON.stringify(diagnostics);
+}
+
 export async function waitForContentGrowth(
   page: Page,
   previousContentHeight: number,
+  input?: { timeout?: number },
 ): Promise<ScrollMetrics> {
-  await expect
-    .poll(async () => {
-      const metrics = await readScrollMetrics(page);
-      return metrics.contentHeight;
-    })
-    .toBeGreaterThan(previousContentHeight);
+  try {
+    await expect
+      .poll(
+        async () => {
+          const metrics = await readScrollMetrics(page);
+          return metrics.contentHeight;
+        },
+        { timeout: input?.timeout },
+      )
+      .toBeGreaterThan(previousContentHeight);
+  } catch (error) {
+    throw new Error(
+      `Transcript never grew past ${previousContentHeight}px. ${await readScrollDiagnostics(page)}`,
+      { cause: error },
+    );
+  }
   return readScrollMetrics(page);
 }
 
