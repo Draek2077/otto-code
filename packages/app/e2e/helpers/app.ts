@@ -355,8 +355,52 @@ export const selectModel = async (page: Page, model: string) => {
     }
   }
 
-  // Wait for the model dropdown to open
-  const searchInput = page.getByRole("textbox", { name: /search model/i });
+  // Wait for the model dropdown to open. Match the search box by its testID
+  // first: the accessible name is derived from a placeholder ("Search
+  // models...") that role+name matching does not reliably expose here, so the
+  // name-only lookup could miss a search box that was on screen. Other helpers
+  // (schedules) already key off the testID.
+  const searchInput = page
+    .getByTestId("model-search-input")
+    .or(page.getByRole("textbox", { name: /search model/i }))
+    .first();
+
+  // The picker opens on the ALL-PROVIDERS list, which has no search box — that
+  // only exists once a provider is opened (see combined-model-selector's
+  // per-provider header). Waiting for the search box straight away therefore
+  // timed out against a dialog that was open and healthy. Drill into providers
+  // until the requested model is on screen.
+  if (!(await searchInput.isVisible({ timeout: 5000 }).catch(() => false))) {
+    const openDialog = page.getByRole("dialog").first();
+    // The pressable row is two levels above the "N models" count text
+    // (row > trailing group > count), and only the row carries the handler.
+    const providerCounts = openDialog.getByText(/^\d+ models?$/);
+    const providerCount = await providerCounts.count();
+    for (let index = 0; index < providerCount; index += 1) {
+      await providerCounts
+        .nth(index)
+        .locator("xpath=../..")
+        .click({ force: true })
+        .catch(() => undefined);
+      if (!(await searchInput.isVisible({ timeout: 5000 }).catch(() => false))) {
+        continue;
+      }
+      await searchInput.fill(normalizedModel);
+      const candidate = openDialog
+        .getByText(new RegExp(`^${escapeRegex(normalizedModel)}$`, "i"))
+        .first();
+      if (await candidate.isVisible({ timeout: 3000 }).catch(() => false)) {
+        break;
+      }
+      // Wrong provider — step back out and try the next one.
+      await page
+        .getByRole("button", { name: /back/i })
+        .first()
+        .click()
+        .catch(() => undefined);
+    }
+  }
+
   await expect(searchInput).toBeVisible({ timeout: 10000 });
 
   // Type to search/filter models
