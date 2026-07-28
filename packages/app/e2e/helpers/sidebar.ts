@@ -40,10 +40,21 @@ export async function clickArchiveWorkspaceMenuItem(
 }
 
 export async function archiveWorkspaceFromSidebar(page: Page, workspaceId: string): Promise<void> {
-  // A clean workspace archives with no prompt. Managed worktree backing may raise
-  // a browser confirm for unsynced work, so accept it when present.
+  // A clean workspace archives with no prompt. A worktree-backed one raises the
+  // branch-aware archive sheet ("Archive <name>?" plus an "Also delete branch"
+  // checkbox), which is the in-app ConfirmDialogHost — NOT a native
+  // window.confirm. Accepting only the native dialog left the confirmation
+  // unanswered, so the daemon saw the archive preflight and never the archive
+  // itself, and the row stayed in the sidebar looking like a broken archive.
+  // The native handler stays for any surface that still uses one.
   page.once("dialog", (dialog) => void dialog.accept());
   await clickArchiveWorkspaceMenuItem(page, workspaceId);
+
+  const confirmButton = page.getByTestId("confirm-dialog-confirm");
+  await confirmButton.waitFor({ state: "visible", timeout: 5_000 }).catch(() => undefined);
+  if (await confirmButton.isVisible().catch(() => false)) {
+    await confirmButton.click();
+  }
 }
 
 export async function expectWorkspaceAbsentFromSidebar(
