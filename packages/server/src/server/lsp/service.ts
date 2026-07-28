@@ -85,6 +85,14 @@ export interface LspLanguageState {
   running: boolean;
   /** Which discovery rung supplied it, or null when nothing did. */
   rung: string | null;
+  /**
+   * Every rung this row can ever be supplied from. A row whose only rung is `workspaceBin`
+   * comes from the project it runs in, so `installed: false` from a host-wide check means
+   * the project brings it, not that anything is missing.
+   */
+  discovery: string[];
+  /** Absolute path to the resolved executable, or null when nothing resolved. */
+  path: string | null;
   bin: string;
   extensions: string[];
   indexCost: string;
@@ -463,8 +471,16 @@ export class LspService {
     }
   }
 
-  /** Per-language state for the settings screen, resolved against a real workspace. */
-  async languageStates(rootPath: string): Promise<LspLanguageState[]> {
+  /**
+   * Per-language state for the settings screen.
+   *
+   * `rootPath` null is the host-wide answer the screen actually wants: every row this
+   * daemon knows, resolved against the rungs a host has. Settings is a host screen, so it
+   * must be able to state the machine's capabilities without a workspace open. Passing a
+   * root additionally probes that project's `node_modules/.bin`, the one rung that is
+   * genuinely per-project, and narrows "running" to servers rooted there.
+   */
+  async languageStates(rootPath: string | null): Promise<LspLanguageState[]> {
     return Promise.all(
       this.pool.rows().map(async (row): Promise<LspLanguageState> => {
         const resolved = await resolveServerCommand(row, rootPath);
@@ -472,8 +488,13 @@ export class LspService {
           id: row.id,
           enabled: this.isRowEnabled(row),
           installed: resolved !== null,
-          running: this.pool.peek(rootPath, row.id) !== null,
+          running:
+            rootPath === null
+              ? this.pool.running().some((entry) => entry.serverId === row.id)
+              : this.pool.peek(rootPath, row.id) !== null,
           rung: resolved?.rung ?? null,
+          discovery: [...row.discovery],
+          path: resolved?.command ?? null,
           bin: row.bin,
           extensions: [...row.extensions],
           indexCost: row.indexCost,

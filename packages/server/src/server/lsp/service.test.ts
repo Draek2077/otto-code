@@ -549,6 +549,44 @@ describe("honouring the host's settings", () => {
 
     expect(languages[0]).toEqual(expect.objectContaining({ id: "stub", running: true }));
   });
+
+  it("reports every language host-wide, with no workspace in hand", async () => {
+    const projectOnly: LspServerRow = { ...stubRow("project-only"), discovery: ["workspaceBin"] };
+    const service = createService([stubRow("on-path"), projectOnly]);
+
+    const languages = await service.languageStates(null);
+
+    expect(languages).toEqual([
+      expect.objectContaining({
+        id: "on-path",
+        installed: true,
+        rung: "path",
+        discovery: ["path"],
+      }),
+      // The host cannot supply it and never could: the row says so instead of the screen
+      // asking for a workspace before it will speak.
+      expect.objectContaining({
+        id: "project-only",
+        installed: false,
+        rung: null,
+        path: null,
+        discovery: ["workspaceBin"],
+      }),
+    ]);
+    expect(languages[0]?.path).toContain("node");
+  });
+
+  it("counts a host-wide language as running wherever its server is rooted", async () => {
+    const rootPath = await createRoot();
+    const service = createService([stubRow("stub")]);
+    const filePath = path.join(rootPath, "a.ts");
+    await service.syncDocument({ rootPath, filePath, text: DRAFT });
+    await service.definition({ rootPath, filePath, line: 2, column: 7 });
+
+    const languages = await service.languageStates(null);
+
+    expect(languages[0]).toEqual(expect.objectContaining({ id: "stub", running: true }));
+  });
 });
 
 describe("reporting activity so a cold start is visible", () => {

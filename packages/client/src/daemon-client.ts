@@ -5318,10 +5318,14 @@ export class DaemonClient {
 
   /**
    * Live language-server state for the Daemon → Code screen: what this host can
-   * supply, and what is running now. `cwd` scopes availability, since a server can
-   * be present in one workspace's `node_modules` and absent in another's.
+   * supply, and what is running now.
+   *
+   * Omit `cwd` for the host-wide answer the settings screen wants: every row the daemon
+   * knows, resolved against the rungs a host has. Pass one only to additionally probe that
+   * project's `node_modules/.bin`, the single rung that is genuinely per-project.
+   * Requires features.lspHostServers when omitted.
    */
-  async listLspServers(cwd: string, requestId?: string): Promise<LspServersSnapshot> {
+  async listLspServers(cwd?: string, requestId?: string): Promise<LspServersSnapshot> {
     const payload = await this.sendCorrelatedSessionRequest({
       requestId,
       message: { type: "lsp.servers.list.request", cwd },

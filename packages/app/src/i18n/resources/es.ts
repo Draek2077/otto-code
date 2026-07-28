@@ -3328,15 +3328,21 @@ export const es: TranslationResources = {
         solutionHint:
           "Añade una vista Solución a la pestaña de archivos, que muestra tu .sln o .slnx tal y como lo ve el sistema de compilación. Es independiente de la inteligencia de código de arriba. Desactivada por defecto: ejecuta un proceso auxiliar de .NET y evalúa MSBuild, y necesita el SDK de .NET en este host.",
         languages: "Lenguajes",
-        installed: "{{bin}} — encontrado ({{rung}})",
-        notInstalled: "{{bin}} — no está instalado en este host",
-        needsWorkspace:
-          "Abre un Workspace para ver qué servidores de lenguaje puede ejecutar este host.",
+        installed: "{{bin}} encontrado en {{rung}}",
+        notInstalled: "{{bin}} no está instalado en este host",
+        projectSupplied: "{{bin}} lo aporta el proyecto que lo usa",
+        rung: {
+          workspaceBin: "el proyecto",
+          bundled: "la copia incluida con Otto",
+          path: "PATH",
+        },
+        needsHostUpdate:
+          "Actualiza el host para ver los servidores de lenguaje que puede ejecutar.",
         noLanguages: "No hay servidores de lenguaje configurados.",
         running: "Servidores en ejecución",
         noneRunning: "No hay servidores de lenguaje en ejecución.",
         columnServer: "Servidor",
-        columnWorkspace: "Workspace",
+        columnRoot: "Ruta raíz",
         columnUptime: "Tiempo activo",
         stop: "Detener",
       },

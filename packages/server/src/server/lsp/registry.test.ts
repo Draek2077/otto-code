@@ -77,6 +77,22 @@ describe("server discovery", () => {
     expect(resolved).toBeNull();
   });
 
+  it("answers host-wide without a root, skipping the workspace rung", async () => {
+    const resolved = await resolveServerCommand(
+      row({ bin: "typescript-language-server", discovery: ["workspaceBin", "bundled"] }),
+      null,
+    );
+
+    expect(resolved?.rung).toBe("bundled");
+  });
+
+  it("has nothing to say host-wide about a row only a project can supply", async () => {
+    const rootPath = await createRoot();
+    await installWorkspaceBin(rootPath, "otto-nonexistent-language-server");
+
+    expect(await resolveServerCommand(row({ discovery: ["workspaceBin"] }), null)).toBeNull();
+  });
+
   it("finds our bundled copy when the workspace has none", async () => {
     const rootPath = await createRoot();
 

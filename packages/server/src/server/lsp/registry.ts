@@ -182,14 +182,23 @@ export function rowsForPath(filePath: string): readonly LspServerRow[] {
   return rowsForExtension(path.extname(filePath));
 }
 
+/**
+ * `rootPath` null asks the host-wide question: can this machine supply the server at all?
+ * That is what the settings screen asks, since it is a host screen with no workspace in
+ * hand. The `workspaceBin` rung is skipped rather than faked, because a project's
+ * `node_modules` is the one thing a host-wide answer genuinely cannot know.
+ */
 export async function resolveServerCommand(
   row: LspServerRow,
-  rootPath: string,
+  rootPath: string | null,
 ): Promise<ResolvedLspServer | null> {
   for (const rung of row.discovery) {
-    const command = await resolveRung(rung, row.bin, rootPath);
+    if (rung === "workspaceBin" && rootPath === null) {
+      continue;
+    }
+    const command = await resolveRung(rung, row.bin, rootPath ?? "");
     if (command !== null) {
-      return { command, args: substituteRoot(row.args, rootPath), rung };
+      return { command, args: substituteRoot(row.args, rootPath ?? ""), rung };
     }
   }
   return null;

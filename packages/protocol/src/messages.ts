@@ -4574,12 +4574,18 @@ export const CodeRenameUndoRequestSchema = z.object({
  * config RPCs because none of it is configuration: which servers this machine can
  * actually supply, and which are running right now.
  *
- * `cwd` scopes the availability check — a server can be present in one workspace's
- * `node_modules` and absent in another's.
+ * Omit `cwd` for the host-wide answer, which is what the settings screen asks for: every
+ * row this daemon knows, resolved against the rungs a host has (bundled, PATH). Passing a
+ * `cwd` additionally probes that workspace's `node_modules/.bin`, since a server can be
+ * present in one project and absent from another. Optional rather than removed because
+ * older clients still send it.
+ *
+ * COMPAT(lspHostServers): `cwd` became optional in v0.7.3; gate lives in
+ * features.lspHostServers.
  */
 export const LspServersListRequestSchema = z.object({
   type: z.literal("lsp.servers.list.request"),
-  cwd: z.string(),
+  cwd: z.string().optional(),
   requestId: z.string(),
 });
 
@@ -5338,6 +5344,13 @@ export const ServerInfoStatusPayloadSchema = z
         // the outline/fuzzy-finder source and the no-server fallback.
         // COMPAT(lsp): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
         lsp: z.boolean().optional(),
+        // The daemon answers `lsp.servers.list` host-wide, with no `cwd`. The settings
+        // screen is a host screen: it lists every language server this machine knows how
+        // to run and whether it can supply the binary, and it must not need a workspace
+        // open to say so. An older daemon rejects a request with no `cwd`, so without the
+        // flag the client says to update the host rather than showing an empty screen.
+        // COMPAT(lspHostServers): added in v0.7.3, drop the gate when daemon floor >= v0.7.3.
+        lspHostServers: z.boolean().optional(),
         // The Solution view — the daemon can discover solutions and serve
         // `code.solution.*`. Deliberately NOT implied by `lsp`: there is no
         // project-structure request in LSP, so this subsystem is independent of
@@ -8218,6 +8231,14 @@ export const LspLanguageStateSchema = z.object({
   /** Which discovery rung supplied it (`workspaceBin` / `bundled` / `path`), or null. */
   rung: z.string().nullable(),
   bin: z.string(),
+  /**
+   * Every rung this row can ever be supplied from, in resolution order. A row whose only
+   * rung is `workspaceBin` is supplied by the project it runs in and by nothing else, so
+   * `installed: false` from a host-wide check means "the project brings it", not "missing".
+   */
+  discovery: z.array(z.string()).optional(),
+  /** Absolute path to the resolved executable, so the toolchain behind a row is nameable. */
+  path: z.string().nullable().optional(),
   extensions: z.array(z.string()),
   /** Plain-words index cost, so the toggle states its own price. */
   indexCost: z.string(),
