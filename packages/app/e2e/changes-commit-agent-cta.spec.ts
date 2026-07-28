@@ -48,13 +48,22 @@ test("commit CTA confirms the writer agent before an AI commit", async ({ page }
     model: "ten-second-stream",
     roles: ["writer"],
   };
+  // preferWriterPersonalities defaults false, which puts the built-in cheap
+  // ladder ahead of any role-matched Writer — so the seeded writer only ever
+  // won when a builtin happened to be bound to the same provider/model the
+  // ladder picked. Opt in so the personality this spec seeds is genuinely the
+  // one the CTA resolves, which is what the assertion below claims.
   await configClient.patchDaemonConfig({
     agentPersonalities: { personalities: [...originalPersonalities, writerPersonality] },
+    metadataGeneration: { preferWriterPersonalities: true },
   });
   cleanupTasks.push({
     run: async () => {
       await configClient
-        .patchDaemonConfig({ agentPersonalities: { personalities: originalPersonalities } })
+        .patchDaemonConfig({
+          agentPersonalities: { personalities: originalPersonalities },
+          metadataGeneration: { preferWriterPersonalities: false },
+        })
         .catch(() => undefined);
     },
   });
@@ -81,11 +90,10 @@ test("commit CTA confirms the writer agent before an AI commit", async ({ page }
   const dialog = page.getByTestId("confirm-dialog");
   await expect(dialog).toBeVisible({ timeout: 30_000 });
   await expect(dialog).toContainText("Commit with AI");
-  // The dialog names whichever writer the daemon roster ranks first — the
-  // seeded mock writer or a built-in default personality on a fresh daemon.
-  // Either way the confirm step names a personality that will author the
-  // message; we assert the structural claim, not a specific roster winner.
-  await expect(dialog).toContainText(/personality \(.+\)/);
+  // With preferWriterPersonalities on, the seeded mock writer is the resolved
+  // author, so name it rather than accepting any roster winner. The dialog
+  // reads "<name> personality (<provider> · <model>) will write …".
+  await expect(dialog).toContainText(`${WRITER_PERSONALITY_NAME} personality`);
   await expect(dialog).toContainText("will write your commit message");
 
   // Cancel instead of committing (see header comment for why).

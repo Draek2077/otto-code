@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Logger } from "pino";
 import type {
+  AgentBareCompletionOptions,
+  AgentBareCompletionResult,
   AgentCapabilityFlags,
   AgentClient,
   AgentFeature,
@@ -658,6 +660,27 @@ export class MockLoadTestAgentClient implements AgentClient {
       context,
       resumeSession: this.resumeSession.bind(this),
     });
+  }
+
+  /**
+   * Tool-less metadata generation (chat titles, branch names). The mock already
+   * answers these contracts deterministically through a normal turn, but the
+   * structured-generation ladder calls generateBareCompletion first and skips
+   * any provider that lacks it — so pinning metadataGeneration at the mock
+   * provider silently fell through to a real CLI, which is exactly what the
+   * pin exists to avoid. Same parsers as the turn path, answered directly.
+   */
+  async generateBareCompletion(
+    options: AgentBareCompletionOptions,
+  ): Promise<AgentBareCompletionResult> {
+    const structured =
+      parseStructuredBranchNamePrompt(options.prompt) ?? parseStructuredTitlePrompt(options.prompt);
+    if (!structured) {
+      throw new Error(
+        "Mock load-test provider only generates the structured title/branch metadata contracts.",
+      );
+    }
+    return { text: JSON.stringify(structured) };
   }
 
   async isAvailable(): Promise<boolean> {

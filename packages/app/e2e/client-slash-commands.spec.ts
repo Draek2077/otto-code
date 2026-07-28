@@ -69,7 +69,9 @@ async function expectReplacementDraftMatchesPreviousSetup(page: Page): Promise<v
   await expect(
     page.getByRole("button", { name: "Select model (Ten second stream)" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Select agent mode (Load test)" })).toBeVisible();
+  // The control's accessible name is "Select chat mode (…)" (agentControls.mode
+  // .selectWithValue); "agent mode" was the older wording and matched nothing.
+  await expect(page.getByRole("button", { name: "Select chat mode (Load test)" })).toBeVisible();
 }
 
 async function createAgentFromReplacementDraft(page: Page): Promise<void> {

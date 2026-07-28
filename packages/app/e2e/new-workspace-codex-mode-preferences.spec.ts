@@ -87,6 +87,12 @@ async function readCodexModePreference(page: Page): Promise<unknown> {
   }, CREATE_AGENT_PREFERENCES_KEY);
 }
 
+// The manifest labels these "Default Permissions" / "Full Access", but the
+// composer's mode control sentence-cases every label it renders
+// (formatAgentModeLabel), so what is actually on screen is "Default
+// permissions" / "Full access". Per docs/glossary.md the UI label wins, and
+// toContainText is case-sensitive, so the assertions below match the rendered
+// text. selectMode stays case-insensitive and takes the manifest spelling.
 async function selectMode(page: Page, label: string): Promise<void> {
   const modeControl = page.getByTestId("mode-control").first();
   await expect(modeControl).toBeVisible({ timeout: 30_000 });
@@ -167,12 +173,12 @@ test.describe("New workspace Codex mode preferences", () => {
         projectDisplayName: seeded.projectDisplayName,
       });
 
-      await expect(page.getByTestId("mode-control").first()).toContainText("Default Permissions", {
+      await expect(page.getByTestId("mode-control").first()).toContainText("Default permissions", {
         timeout: 30_000,
       });
       await expectThinkingOptionsFit(page);
       await selectMode(page, "Full Access");
-      await expect(page.getByTestId("mode-control").first()).toContainText("Full Access");
+      await expect(page.getByTestId("mode-control").first()).toContainText("Full access");
 
       await submitNewWorkspacePrompt(page, "Keep Codex full access selected globally.");
       const createAgentRequest = await createAgentRecorder.waitForCreateAgentRequest();
@@ -208,12 +214,12 @@ test.describe("New workspace Codex mode preferences", () => {
         workspaceId: seeded.workspaceId,
         agentId: agent.id,
       });
-      await expect(page.getByTestId("mode-control").first()).toContainText("Default Permissions", {
+      await expect(page.getByTestId("mode-control").first()).toContainText("Default permissions", {
         timeout: 30_000,
       });
 
       await selectMode(page, "Full Access");
-      await expect(page.getByTestId("mode-control").first()).toContainText("Full Access", {
+      await expect(page.getByTestId("mode-control").first()).toContainText("Full access", {
         timeout: 30_000,
       });
 
@@ -223,7 +229,7 @@ test.describe("New workspace Codex mode preferences", () => {
         projectDisplayName: seeded.projectDisplayName,
       });
 
-      await expect(page.getByTestId("mode-control").first()).toContainText("Full Access", {
+      await expect(page.getByTestId("mode-control").first()).toContainText("Full access", {
         timeout: 30_000,
       });
     } finally {

@@ -12,7 +12,7 @@ import {
   openModelPersonalityPicker,
   removePersonalitiesById,
   seedPersonalities,
-  selectPersonalityInPicker,
+  selectPersonalityUntilBound,
   uniquePersonalityName,
   waitForAgentInWorkspace,
   waitForAgentSnapshot,
@@ -51,8 +51,7 @@ test.describe("Personality on new chat", () => {
       // Pick the personality from the combined model/personality picker; the
       // trigger label switches from the model label to the personality name.
       await openModelPersonalityPicker(page);
-      await selectPersonalityInPicker(page, personality.id);
-      await expectModelTriggerShowsPersonality(page, personality.name);
+      await selectPersonalityUntilBound(page, personality);
 
       await submitMessage(page, "Personality apply e2e");
 

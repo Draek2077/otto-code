@@ -15,13 +15,12 @@ import {
 import {
   buildMockPersonality,
   connectPersonalitiesClient,
-  expectModelTriggerShowsPersonality,
   MOCK_MODEL_ID,
   MOCK_PROVIDER_ID,
   openModelPersonalityPicker,
   removePersonalitiesById,
   seedPersonalities,
-  selectPersonalityInPicker,
+  selectPersonalityUntilBound,
   uniquePersonalityName,
   waitForAgentInWorkspace,
   waitForAgentSnapshot,
@@ -82,8 +81,7 @@ test.describe("Personality survives new-workspace auto-submit", () => {
       // Pick the personality in the ORIGINATING composer, then Create with a
       // prompt so the created workspace's draft tab auto-submits.
       await openModelPersonalityPicker(page);
-      await selectPersonalityInPicker(page, personality.id);
-      await expectModelTriggerShowsPersonality(page, personality.name);
+      await selectPersonalityUntilBound(page, personality);
 
       await submitNewWorkspacePrompt(page, "Personality autosubmit e2e");
 
