@@ -3306,15 +3306,21 @@ export const ru: TranslationResources = {
         solutionHint:
           "Добавляет представление решения на вкладку файлов и показывает ваш .sln или .slnx так, как его видит система сборки. Не зависит от интеллекта кода выше. По умолчанию выключено: запускается вспомогательный процесс .NET и вычисляется MSBuild, а на этом хосте требуется .NET SDK.",
         languages: "Языки",
-        installed: "{{bin}} — найден ({{rung}})",
-        notInstalled: "{{bin}} — не установлен на этом хосте",
-        needsWorkspace:
-          "Откройте Workspace, чтобы увидеть, какие языковые серверы может запускать этот хост.",
+        installed: "{{bin}} найден: {{rung}}",
+        notInstalled: "{{bin}} не установлен на этом хосте",
+        projectSupplied: "{{bin}} поставляется проектом, который его использует",
+        rung: {
+          workspaceBin: "проект",
+          bundled: "копия, входящая в Otto",
+          path: "PATH",
+        },
+        needsHostUpdate:
+          "Обновите хост, чтобы увидеть языковые серверы, которые он может запускать.",
         noLanguages: "Языковые серверы не настроены.",
         running: "Работающие серверы",
         noneRunning: "Нет работающих языковых серверов.",
         columnServer: "Сервер",
-        columnWorkspace: "Workspace",
+        columnRoot: "Корневой путь",
         columnUptime: "Время работы",
         stop: "Остановить",
       },

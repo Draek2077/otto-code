@@ -1507,6 +1507,10 @@ export class VoiceAssistantWebSocketServer {
         codeIndex: true,
         // COMPAT(lsp): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
         lsp: true,
+        // COMPAT(lspHostServers): added in v0.7.3, drop the gate when daemon floor >= v0.7.3.
+        // `lsp.servers.list` answers host-wide with no `cwd`, so the settings screen can
+        // list what this machine can run without a workspace open.
+        lspHostServers: true,
         // COMPAT(solutionView): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
         // Serving the RPCs, not the feature being on: the switch lives in the daemon
         // config and the client reads it there. A flag that folded in the setting would

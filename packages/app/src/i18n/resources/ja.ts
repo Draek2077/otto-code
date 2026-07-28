@@ -3300,15 +3300,21 @@ export const ja: TranslationResources = {
         solutionHint:
           "ファイルタブにソリューションビューを追加し、.sln または .slnx をビルドシステムが見るとおりに表示します。上のコードインテリジェンスとは独立しています。既定ではオフです。有効にすると .NET ヘルパープロセスを起動して MSBuild を評価するため、このホストに .NET SDK が必要です。",
         languages: "言語",
-        installed: "{{bin}} — 検出済み（{{rung}}）",
-        notInstalled: "{{bin}} — このホストにはインストールされていません",
-        needsWorkspace:
-          "このホストで実行できる言語サーバーを確認するには、ワークスペースを開いてください。",
+        installed: "{{bin}} を{{rung}}から検出しました",
+        notInstalled: "{{bin}} はこのホストにインストールされていません",
+        projectSupplied: "{{bin}} は使用するプロジェクトから提供されます",
+        rung: {
+          workspaceBin: "プロジェクト",
+          bundled: "Otto 同梱のコピー",
+          path: "PATH",
+        },
+        needsHostUpdate:
+          "このホストが実行できる言語サーバーを一覧表示するには、ホストを更新してください。",
         noLanguages: "言語サーバーは設定されていません。",
         running: "実行中のサーバー",
         noneRunning: "実行中の言語サーバーはありません。",
         columnServer: "サーバー",
-        columnWorkspace: "ワークスペース",
+        columnRoot: "ルートパス",
         columnUptime: "稼働時間",
         stop: "停止",
       },

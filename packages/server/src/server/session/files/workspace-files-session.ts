@@ -978,17 +978,23 @@ export class WorkspaceFilesSession {
   }
 
   async handleLspServersListRequest(request: LspServersListRequest): Promise<void> {
-    const cwd = request.cwd.trim();
+    // No cwd is the host-wide question the settings screen asks: what can this machine
+    // run, and what is up right now. There is no path to authorize in that case, since the
+    // workspace check guards reading a directory and host-wide discovery reads none.
+    const cwd = request.cwd?.trim() ?? "";
+    const scope = cwd.length > 0 ? cwd : null;
     try {
-      await this.assertCwdWithinKnownWorkspace(cwd);
+      if (scope !== null) {
+        await this.assertCwdWithinKnownWorkspace(scope);
+      }
       const [languages, running] = await Promise.all([
-        this.lspService.languageStates(cwd),
+        this.lspService.languageStates(scope),
         Promise.resolve(this.lspService.running()),
       ]);
       this.host.emit({
         type: "lsp.servers.list.response",
         payload: {
-          cwd: request.cwd,
+          cwd,
           languages,
           running: running.map((entry) => ({
             rootPath: entry.rootPath,
@@ -1004,7 +1010,7 @@ export class WorkspaceFilesSession {
       this.host.emit({
         type: "lsp.servers.list.response",
         payload: {
-          cwd: request.cwd,
+          cwd,
           languages: [],
           running: [],
           error: getErrorMessage(error),

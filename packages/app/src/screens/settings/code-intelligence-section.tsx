@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFetchQuery } from "@/data/query";
@@ -16,9 +17,8 @@ import { settingsStyles } from "@/styles/settings";
 import { useToast } from "@/contexts/toast-context";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
-import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useSolutionViewFeature } from "@/solution/use-solution-view-feature";
-import { useWorkspace } from "@/stores/session-store-hooks";
+import { useLspHostServersFeature } from "./use-lsp-host-servers-feature";
 
 /**
  * Daemon → Code. These are processes on the daemon's machine, so the settings follow
@@ -29,12 +29,22 @@ import { useWorkspace } from "@/stores/session-store-hooks";
  * table lets someone who suspects the daemon of hogging memory see exactly what is up
  * and stop it rather than guess.
  *
- * Availability is scoped to a workspace because it genuinely varies by one: a server
- * can sit in one project's `node_modules` and be absent from another's.
+ * The list is host-wide and unconditional: every language server this daemon knows how to
+ * run, the toolchain behind it, and whether this machine can supply it. Settings has no
+ * workspace in hand and should not need one to state a machine's capabilities. The one
+ * genuinely per-project fact, a server living in a project's own `node_modules/.bin`, is
+ * reported as such on the row instead of gating the whole screen behind an open workspace.
  */
 
 const EMPTY_LANGUAGES: readonly LspLanguageState[] = [];
 const EMPTY_RUNNING: readonly LspRunningServer[] = [];
+
+/**
+ * The discovery rung a server can only ever come from the open project. The daemon sends
+ * raw rung names, and this is the one the screen has to reason about: a row with no other
+ * rung is not missing from the host, it is supplied by whatever project uses it.
+ */
+const PROJECT_RUNG = "workspaceBin";
 
 function formatUptime(uptimeMs: number): string {
   const totalSeconds = Math.max(0, Math.floor(uptimeMs / 1000));
@@ -58,28 +68,25 @@ export function CodeIntelligenceSection({ serverId }: { serverId: string }) {
   // The row is absent, not disabled, on a host that cannot serve the feature — there is nothing
   // for a switch to turn on.
   const solutionViewSupported = useSolutionViewFeature(serverId);
+  // The host-wide listing is the only listing. An older daemon demands a cwd, and probing
+  // another machine's PATH from here is not a thing a client can do, so the screen says so
+  // rather than showing rows it cannot fill.
+  const hostServersSupported = useLspHostServersFeature(serverId);
 
-  const selection = useActiveWorkspaceSelection();
-  const workspaceId = selection?.serverId === serverId ? selection.workspaceId : null;
-  const workspace = useWorkspace(serverId, workspaceId ?? "");
-  // The workspace root a language server is scoped to: its own directory for a
-  // worktree/checkout, the project root for a plain directory workspace.
-  const cwd = workspace?.workspaceDirectory ?? workspace?.projectRootPath ?? null;
-
-  const serversQueryKey = useMemo(() => ["lsp", "servers", serverId, cwd], [serverId, cwd]);
+  const serversQueryKey = useMemo(() => ["lsp", "servers", serverId], [serverId]);
 
   const servers = useFetchQuery<LspServersSnapshot>({
     queryKey: serversQueryKey,
-    enabled: client !== null && cwd !== null,
+    enabled: client !== null && hostServersSupported,
     // A value, not a list, and short-lived: uptime and running state go stale the
     // moment you look away, and the screen refetches on every mutation anyway.
     dataShape: "value",
     staleTimeMs: 5000,
     queryFn: async () => {
-      if (!client || cwd === null) {
+      if (!client) {
         return { languages: [], running: [] };
       }
-      return client.listLspServers(cwd);
+      return client.listLspServers();
     },
   });
 
@@ -149,13 +156,13 @@ export function CodeIntelligenceSection({ serverId }: { serverId: string }) {
             enabled={solutionManagementEnabled}
             onValueChange={setSolutionManagementEnabled}
           />
-          {cwd === null ? (
-            <Text style={EMPTY_WITH_BORDER}>{t("settings.host.code.needsWorkspace")}</Text>
-          ) : null}
+          {hostServersSupported ? null : (
+            <Text style={EMPTY_WITH_BORDER}>{t("settings.host.code.needsHostUpdate")}</Text>
+          )}
         </View>
       </SettingsSection>
 
-      {cwd === null ? null : (
+      {hostServersSupported ? (
         <>
           <LanguageRows
             serverId={serverId}
@@ -165,7 +172,7 @@ export function CodeIntelligenceSection({ serverId }: { serverId: string }) {
           />
           <RunningServersTable running={running} onStopped={refresh} stop={stopServer} />
         </>
-      )}
+      ) : null}
     </>
   );
 }
@@ -270,14 +277,14 @@ function LanguageRow(props: {
     >
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{language.id}</Text>
-        <Text style={settingsStyles.rowHint}>
-          {language.installed
-            ? t("settings.host.code.installed", {
-                bin: language.bin,
-                rung: language.rung ?? "",
-              })
-            : t("settings.host.code.notInstalled", { bin: language.bin })}
-        </Text>
+        <Text style={settingsStyles.rowHint}>{describeAvailability(language, t)}</Text>
+        {/* The resolved binary, so "found" names the toolchain it found rather than
+            asserting it. Absent when nothing resolved, since there is no path to show. */}
+        {language.path ? (
+          <Text style={styles.path} numberOfLines={1} ellipsizeMode="head">
+            {language.path}
+          </Text>
+        ) : null}
         <Text style={styles.cost}>{language.indexCost}</Text>
       </View>
       <Switch
@@ -289,6 +296,30 @@ function LanguageRow(props: {
       />
     </View>
   );
+}
+
+/**
+ * Three answers, not two. "Not installed" is a lie for a row whose only source is the
+ * project's own `node_modules/.bin`: the host is never going to have it, and nothing is
+ * wrong. Older daemons send no `discovery`, in which case the two-state answer is all
+ * there is to say.
+ */
+function describeAvailability(language: LspLanguageState, t: TFunction): string {
+  if (language.installed) {
+    return t("settings.host.code.installed", {
+      bin: language.bin,
+      rung: t(`settings.host.code.rung.${language.rung ?? "unknown"}`, {
+        defaultValue: language.rung ?? "",
+      }),
+    });
+  }
+  const projectOnly =
+    language.discovery !== undefined &&
+    language.discovery.length > 0 &&
+    language.discovery.every((rung) => rung === PROJECT_RUNG);
+  return projectOnly
+    ? t("settings.host.code.projectSupplied", { bin: language.bin })
+    : t("settings.host.code.notInstalled", { bin: language.bin });
 }
 
 function RunningServersTable(props: {
@@ -308,7 +339,9 @@ function RunningServersTable(props: {
           <View testID="lsp-running-table">
             <View style={styles.tableRow}>
               <Text style={HEADER_SERVER}>{t("settings.host.code.columnServer")}</Text>
-              <Text style={HEADER_WORKSPACE}>{t("settings.host.code.columnWorkspace")}</Text>
+              {/* The directory a running server was started against, which is a fact about
+                  the process, not a workspace this screen knows or needs. */}
+              <Text style={HEADER_ROOT}>{t("settings.host.code.columnRoot")}</Text>
               <Text style={HEADER_UPTIME}>{t("settings.host.code.columnUptime")}</Text>
               <View style={styles.cellAction} />
             </View>
@@ -341,7 +374,7 @@ function RunningServerRow(props: {
   return (
     <View style={TABLE_ROW_WITH_BORDER}>
       <Text style={CELL_SERVER}>{entry.serverId}</Text>
-      <Text style={CELL_WORKSPACE} numberOfLines={1} ellipsizeMode="head">
+      <Text style={CELL_ROOT} numberOfLines={1} ellipsizeMode="head">
         {entry.rootPath}
       </Text>
       <Text style={CELL_UPTIME}>{formatUptime(entry.uptimeMs)}</Text>
@@ -362,6 +395,13 @@ function RunningServerRow(props: {
 const ROW_WITH_BORDER = [settingsStyles.row, settingsStyles.rowBorder];
 
 const styles = StyleSheet.create((theme) => ({
+  // A resolved executable is a code surface, so it takes the Code font and its size
+  // setting rather than a body size that ignores both.
+  path: {
+    color: theme.colors.foregroundMuted,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.code,
+  },
   cost: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
@@ -404,7 +444,7 @@ const styles = StyleSheet.create((theme) => ({
   cellServer: {
     width: 110,
   },
-  cellWorkspace: {
+  cellRoot: {
     flex: 1,
   },
   cellUptime: {
@@ -420,8 +460,8 @@ const styles = StyleSheet.create((theme) => ({
 const TABLE_ROW_WITH_BORDER = [styles.tableRow, styles.tableRowBorder];
 const EMPTY_WITH_BORDER = [styles.emptyRow, settingsStyles.rowBorder];
 const HEADER_SERVER = [styles.headerCell, styles.cellServer];
-const HEADER_WORKSPACE = [styles.headerCell, styles.cellWorkspace];
+const HEADER_ROOT = [styles.headerCell, styles.cellRoot];
 const HEADER_UPTIME = [styles.headerCell, styles.cellUptime];
 const CELL_SERVER = [styles.cell, styles.cellServer];
-const CELL_WORKSPACE = [styles.cell, styles.cellWorkspace];
+const CELL_ROOT = [styles.cell, styles.cellRoot];
 const CELL_UPTIME = [styles.cell, styles.cellUptime];

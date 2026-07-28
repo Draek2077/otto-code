@@ -37,8 +37,10 @@ The cost is inverted, and being honest about that is part of the feature:
 | `service.ts`    | Query fan-out, merge/dedupe by (path, line, column), the three-valued status                                                  |
 
 RPCs live in `workspace-files-session.ts` beside the ctags `code.symbols` handler, behind the same
-workspace guard. Capability flag: `server_info.features.lsp`. The feature contract applies — **no
-fallback path**; an old daemon shows "Update the host to use this."
+workspace guard. The one exception is `lsp.servers.list` with no `cwd`: the guard authorizes reading
+a directory, and a host-wide capability listing reads none. Capability flag:
+`server_info.features.lsp`. The feature contract applies — **no fallback path**; an old daemon shows
+"Update the host to use this."
 
 ## Invariants
 
@@ -206,11 +208,22 @@ have a server without a grammar and vice versa.
 - **The master switch defaults on, and that is safe** because spawning is lazy. What the switch
   guarantees is that off means off _now_ — `applySettings` stops what is running rather than waiting
   for an idle timeout, or the switch is decoration.
-- **Availability is scoped to a workspace**, because it genuinely varies by one: a server can sit in
-  one project's `node_modules` and be absent from another's. With no workspace open the screen says
-  so instead of guessing.
-- The running-servers table is a real table (server / workspace / uptime / Stop), per the repo's
-  "data needs a table, not a card" rule.
+- **The listing is host-wide and unconditional.** Settings is a host screen and has no workspace in
+  hand, so `lsp.servers.list` is sent with **no `cwd`**: every row this daemon knows, the toolchain
+  behind it (resolved path plus the rung it came from), and whether this machine can supply it. A
+  screen that asked the user to open a workspace before it would name a machine's capabilities was
+  gating a host fact behind a client one.
+- **Per-project availability lives on the row, not on the screen.** The `workspaceBin` rung is the one
+  thing a host-wide answer cannot know, so `resolveServerCommand(row, null)` skips it and rows whose
+  only rung is `workspaceBin` (oxlint, Angular) report "comes from the project that uses it" rather
+  than "not installed". Passing a `cwd` still probes that project's `node_modules/.bin`; nothing on
+  this screen does.
+- COMPAT(lspHostServers): the no-`cwd` form arrived in v0.7.3 behind `features.lspHostServers`. Older
+  daemons reject it, and probing another machine's PATH is not something a client can do, so the
+  screen says to update the host. No fallback path.
+- The running-servers table is a real table (server / root path / uptime / Stop), per the repo's
+  "data needs a table, not a card" rule. The root path is a fact about a running process, not a
+  workspace the screen knows about.
 
 ## Rename is a reversible job
 
