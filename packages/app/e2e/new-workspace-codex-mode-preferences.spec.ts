@@ -3,6 +3,8 @@ import { gotoAppShell } from "./helpers/app";
 import { daemonWsRoutePattern } from "./helpers/daemon-port";
 import { openAgentRoute } from "./helpers/mock-agent";
 import {
+  addProjectViaDaemon,
+  connectNewWorkspaceDaemonClient,
   openGlobalNewWorkspaceComposer,
   selectNewWorkspaceProject,
   submitNewWorkspacePrompt,
@@ -11,6 +13,7 @@ import { expectNoTruncation } from "./helpers/no-truncation";
 import { escapeRegex } from "./helpers/regex";
 import { seedWorkspace } from "./helpers/seed-client";
 import { getServerId } from "./helpers/server-id";
+import { createTempGitRepo } from "./helpers/workspace";
 import { waitForSidebarHydration } from "./helpers/workspace-ui";
 
 const CREATE_AGENT_PREFERENCES_KEY = "@otto:create-agent-preferences";
@@ -161,6 +164,14 @@ test.describe("New workspace Codex mode preferences", () => {
   }) => {
     const serverId = getServerId();
     const seeded = await seedWorkspace({ repoPrefix: "codex-mode-preferences-" });
+    // Create must target a project that no workspace backs yet: seedWorkspace
+    // already backs its own repo, and the composer refuses a second workspace
+    // on the same directory ("This directory already backs the workspace …").
+    // Picking the seeded project left Create spinning on a rejected
+    // workspace.create for the whole 240s budget.
+    const newWorkspaceClient = await connectNewWorkspaceDaemonClient();
+    const targetRepo = await createTempGitRepo("codex-mode-preferences-target-");
+    const targetProject = await addProjectViaDaemon(newWorkspaceClient, targetRepo.path);
     const createAgentRecorder = await recordAndBlockCreateAgentRequests(page);
     await seedCodexDefaultPermissionPreferences(page, serverId);
 
@@ -168,10 +179,7 @@ test.describe("New workspace Codex mode preferences", () => {
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
       await openGlobalNewWorkspaceComposer(page);
-      await selectNewWorkspaceProject(page, {
-        projectKey: seeded.projectId,
-        projectDisplayName: seeded.projectDisplayName,
-      });
+      await selectNewWorkspaceProject(page, targetProject);
 
       await expect(page.getByTestId("mode-control").first()).toContainText("Default permissions", {
         timeout: 30_000,
@@ -192,6 +200,8 @@ test.describe("New workspace Codex mode preferences", () => {
         .toBe("full-access");
     } finally {
       await seeded.cleanup();
+      await newWorkspaceClient.close().catch(() => undefined);
+      await targetRepo.cleanup().catch(() => undefined);
     }
   });
 
