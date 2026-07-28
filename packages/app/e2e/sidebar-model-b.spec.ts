@@ -2,6 +2,7 @@ import { test, expect, type Page } from "./fixtures";
 import { gotoAppShell } from "./helpers/app";
 import { gotoWorkspace, clickNewTerminal } from "./helpers/launcher";
 import { seedWorkspace, type SeededWorkspace } from "./helpers/seed-client";
+import { createTempDirectory, createTempGitRepo } from "./helpers/workspace";
 import { seedMockAgentWorkspace } from "./helpers/mock-agent";
 import { getServerId } from "./helpers/server-id";
 import { waitForSidebarHydration } from "./helpers/workspace-ui";
@@ -24,15 +25,43 @@ function projectNewWorktreeIcon(page: Page, projectKey: string) {
   return page.getByTestId(`sidebar-project-new-worktree-${projectKey}`);
 }
 
-async function seedSecondWorkspace(seeded: SeededWorkspace, title: string): Promise<string> {
-  const created = await seeded.client.createWorkspace({
-    source: { kind: "directory", path: seeded.repoPath, projectId: seeded.projectId },
-    title,
-  });
-  if (!created.workspace) {
-    throw new Error(created.error ?? `Failed to create second workspace for ${seeded.projectId}`);
+interface SecondWorkspace {
+  workspaceId: string;
+  cleanup: () => Promise<void>;
+}
+
+/**
+ * Attach a second workspace to an existing project.
+ *
+ * It gets its **own** directory on purpose. One directory backs exactly one
+ * visible workspace (WorkspaceDirectoryOccupiedError / wire
+ * `workspace_directory_occupied`): a directory is one physical checkout, so two
+ * workspaces sharing it could never be independent — branch, diff and status
+ * all fan out across them. Re-using `seeded.repoPath` here used to be accepted
+ * and now fails the create outright, which read as a sidebar bug rather than a
+ * rejected fixture.
+ */
+async function seedSecondWorkspace(
+  seeded: SeededWorkspace,
+  title: string,
+  options: { git: boolean },
+): Promise<SecondWorkspace> {
+  const directory = options.git
+    ? await createTempGitRepo("model-b-second-")
+    : await createTempDirectory("model-b-second-");
+  try {
+    const created = await seeded.client.createWorkspace({
+      source: { kind: "directory", path: directory.path, projectId: seeded.projectId },
+      title,
+    });
+    if (!created.workspace) {
+      throw new Error(created.error ?? `Failed to create second workspace for ${seeded.projectId}`);
+    }
+    return { workspaceId: created.workspace.id, cleanup: directory.cleanup };
+  } catch (error) {
+    await directory.cleanup().catch(() => undefined);
+    throw error;
   }
-  return created.workspace.id;
 }
 
 test.describe("Model B sidebar shape", () => {
@@ -44,9 +73,13 @@ test.describe("Model B sidebar shape", () => {
     const gitProject = await seedWorkspace({ repoPrefix: "model-b-git-" });
     const nonGitProject = await seedWorkspace({ repoPrefix: "model-b-nongit-", git: false });
 
+    let gitSecond: SecondWorkspace | null = null;
+    let nonGitSecond: SecondWorkspace | null = null;
     try {
-      const gitSecondId = await seedSecondWorkspace(gitProject, "Git second");
-      const nonGitSecondId = await seedSecondWorkspace(nonGitProject, "Non-git second");
+      gitSecond = await seedSecondWorkspace(gitProject, "Git second", { git: true });
+      nonGitSecond = await seedSecondWorkspace(nonGitProject, "Non-git second", { git: false });
+      const gitSecondId = gitSecond.workspaceId;
+      const nonGitSecondId = nonGitSecond.workspaceId;
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -80,6 +113,8 @@ test.describe("Model B sidebar shape", () => {
         timeout: 30_000,
       });
     } finally {
+      await gitSecond?.cleanup().catch(() => undefined);
+      await nonGitSecond?.cleanup().catch(() => undefined);
       await gitProject.cleanup();
       await nonGitProject.cleanup();
     }
