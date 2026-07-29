@@ -20,8 +20,15 @@ on:
         default: false
         type: boolean
 
+# Shared with desktop-release.yml and android-apk-release.yml so the three
+# workflows that can create this release queue instead of racing. See the note
+# on desktop-release.yml's create-release job for why a race here is invisible
+# at creation time and only surfaces later as a 422 on update. This workflow
+# reaches the create path only on a tag push (--create-if-missing below), but it
+# shares the group anyway so its update also lands after any pending create.
+# Must stay byte-identical in all three.
 concurrency:
-  group: release-notes-sync-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+  group: otto-release-ensure-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
