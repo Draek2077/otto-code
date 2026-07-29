@@ -94,6 +94,7 @@ import {
 import type { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { LspService } from "./lsp/service.js";
 import { SolutionService } from "./solution-model/service.js";
+import { killAllSharedDotnetProcesses } from "./dotnet-process-registry.js";
 
 const WS_CLOSE_DAEMON_AUTH_FAILED = 4401;
 
@@ -186,6 +187,7 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     onSnapshotUpdated: () => ({
       unsubscribe: () => {},
     }),
+    setActiveWorkspace: () => {},
     peekSnapshot: () => null,
     getCheckout: async (cwd: string) => ({
       cwd,
@@ -1075,6 +1077,10 @@ export class VoiceAssistantWebSocketServer {
     await this.solutionService.stopAll().catch((err: unknown) => {
       this.logger.warn({ err }, "Failed to stop solution sidecars during shutdown");
     });
+    // Backstop after both pools have had their turn: anything .NET still tracked is a
+    // process whose owner lost its handle, and it would otherwise outlive the daemon.
+    // Kills by tree, so MSBuild workers go with their parent.
+    killAllSharedDotnetProcesses();
     this.providerSnapshotManager.destroy();
     this.checkoutDiffManager.dispose();
     this.workspaceGitService.dispose();
