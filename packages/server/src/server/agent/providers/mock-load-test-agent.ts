@@ -33,6 +33,7 @@ import type {
   ToolCallTimelineItem,
 } from "../agent-sdk-types.js";
 import { importSessionFromPersistence } from "../provider-session-import.js";
+import { generateSyntheticConversation } from "../synthetic-conversation.js";
 import { getAgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
 
 export const MOCK_LOAD_TEST_PROVIDER_ID = "mock";
@@ -97,6 +98,17 @@ const MODELS: AgentModelDefinition[] = [
       intervalMs: 5,
     },
   },
+  {
+    provider: MOCK_LOAD_TEST_PROVIDER_ID,
+    id: "synthetic-history",
+    label: "Synthetic history (count-bounded)",
+    description:
+      "Emits a deterministic corpus of synthetic conversation items in one turn then finishes. Used to seed performance-test corpora — all content flows through generateSyntheticConversation so blocks are combinatorially unique.",
+    metadata: {
+      itemCount: 300,
+      intervalMs: 0,
+    },
+  },
 ];
 
 interface ActiveTurn {
@@ -107,6 +119,8 @@ interface ActiveTurn {
   cycle: number;
   durationMs: number;
   intervalMs: number;
+  /** Non-null when this is a count-bounded synthetic-history turn. */
+  itemCount: number | null;
   timer: ReturnType<typeof setTimeout> | null;
   resolve: (result: AgentRunResult) => void;
   completed: Promise<AgentRunResult>;
@@ -231,6 +245,8 @@ function resolveModelProfile(modelId: string | null | undefined): {
   modelId: string;
   durationMs: number;
   intervalMs: number;
+  /** Non-null when this model is count-bounded (emits exactly itemCount items then finishes). */
+  itemCount: number | null;
 } {
   const model = MODELS.find((entry) => entry.id === modelId) ?? MODELS[0];
   const metadata = model.metadata ?? {};
@@ -240,6 +256,8 @@ function resolveModelProfile(modelId: string | null | undefined): {
       typeof metadata.durationMs === "number" ? metadata.durationMs : MOCK_LOAD_TEST_DURATION_MS,
     intervalMs:
       typeof metadata.intervalMs === "number" ? metadata.intervalMs : MOCK_LOAD_TEST_INTERVAL_MS,
+    itemCount:
+      typeof metadata.itemCount === "number" && metadata.itemCount > 0 ? metadata.itemCount : null,
   };
 }
 
@@ -591,6 +609,68 @@ function buildCycleQueue(turnId: string, cycle: number): CycleEvent[] {
   return queue;
 }
 
+// Build a single-shot queue from the deterministic synthetic conversation
+// generator. Unlike buildCycleQueue this is never refilled — the turn finishes
+// when the queue drains, so it exercises rendering paths with combinatorially
+// unique markdown blocks (avoiding the app's height cache).
+function buildSyntheticHistoryQueue(
+  _turnId: string,
+  seed: number,
+  itemCount: number,
+): CycleEvent[] {
+  const conversation = generateSyntheticConversation({ seed, itemCount });
+  const queue: CycleEvent[] = [];
+
+  for (const item of conversation) {
+    switch (item.type) {
+      case "assistant_message":
+        // Tokenize so the app sees incremental streaming.
+        for (const tok of tokenize(item.text)) {
+          queue.push({ kind: "assistant_token", text: tok });
+        }
+        break;
+      case "reasoning":
+        for (const tok of tokenize(item.text)) {
+          queue.push({ kind: "reasoning_token", text: tok });
+        }
+        break;
+      case "tool_call":
+        // Emit running then completed to exercise both timeline states.
+        queue.push({
+          kind: "tool_running",
+          callId: item.callId,
+          name: item.name,
+          detail: item.detail,
+        });
+        queue.push({
+          kind: "tool_completed",
+          callId: item.callId,
+          name: item.name,
+          detail: item.detail,
+        });
+        break;
+      case "user_message":
+        // Skip — the user prompt is the turn itself, not a timeline event.
+        break;
+      default:
+        // We don't emit todo/error/compaction from synthetic history (the corpus generator doesn't produce them).
+        break;
+    }
+  }
+
+  queue.push({ kind: "usage" });
+  return queue;
+}
+
+// Simple string hash for deriving a deterministic seed from a turn UUID.
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return h >>> 0; // force unsigned
+}
+
 function createToolCall(input: {
   callId: string;
   name: string;
@@ -743,6 +823,15 @@ export class MockLoadTestAgentSession implements AgentSession {
     const completed = new Promise<AgentRunResult>((promiseResolve) => {
       resolve = promiseResolve;
     });
+
+    // For count-bounded synthetic-history model, pre-build the entire queue from
+    // a deterministic seed derived from turnId so each run is reproducible.
+    let initialQueue: CycleEvent[] = [];
+    if (profile.itemCount != null) {
+      const seed = hashString(turnId);
+      initialQueue = buildSyntheticHistoryQueue(turnId, seed, profile.itemCount);
+    }
+
     const turn: ActiveTurn = {
       turnId,
       assistantMessageId,
@@ -751,10 +840,11 @@ export class MockLoadTestAgentSession implements AgentSession {
       cycle: 0,
       durationMs: profile.durationMs,
       intervalMs: profile.intervalMs,
+      itemCount: profile.itemCount,
       timer: null,
       resolve,
       completed,
-      queue: [],
+      queue: initialQueue,
       emittedTokens: 0,
       turnStarted: false,
     };
@@ -1428,13 +1518,23 @@ export class MockLoadTestAgentSession implements AgentSession {
       });
     }
 
-    const elapsedMs = Date.now() - turn.startedAt;
-    if (elapsedMs >= turn.durationMs) {
-      this.finishTurn(turn);
-      return;
+    // Time-bounded turns: stop when the duration expires. Count-bounded turns
+    // (synthetic-history) skip this check entirely — they finish on queue drain.
+    if (turn.itemCount == null) {
+      const elapsedMs = Date.now() - turn.startedAt;
+      if (elapsedMs >= turn.durationMs) {
+        this.finishTurn(turn);
+        return;
+      }
     }
 
+    // Empty queue: refill for time-bounded turns, finish for count-bounded ones.
     if (turn.queue.length === 0) {
+      if (turn.itemCount != null) {
+        // Count-bounded turn has drained its pre-built queue — wrap up.
+        this.finishTurn(turn);
+        return;
+      }
       turn.cycle += 1;
       turn.queue = buildCycleQueue(turn.turnId, turn.cycle);
     }
