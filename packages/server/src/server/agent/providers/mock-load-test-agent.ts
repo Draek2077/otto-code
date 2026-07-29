@@ -312,6 +312,24 @@ function parseAgentStreamStressPrompt(prompt: AgentPromptInput): AgentStreamStre
   };
 }
 
+// Allow the caller to override itemCount per-turn via a prompt directive like
+// "synthetic-history: 30". This lets the seeder drive many small turns rather
+// than one giant one — important because findMountedWindowStart walks back from
+// the tail until it hits a user message, and a single huge turn with no user
+// messages in its timeline mounts the entire history.
+function parseSyntheticHistoryCountPrompt(prompt: AgentPromptInput): number | null {
+  const text = promptToText(prompt);
+  const match = /synthetic-history\s*:\s*(\d+)/i.exec(text);
+  if (!match) {
+    return null;
+  }
+  const count = Number(match[1]);
+  if (!Number.isFinite(count) || count <= 0) {
+    return null;
+  }
+  return Math.min(count, 5_000);
+}
+
 function parseStructuredBranchNamePrompt(
   prompt: AgentPromptInput,
 ): { title: string; branch: string } | null {
@@ -824,12 +842,18 @@ export class MockLoadTestAgentSession implements AgentSession {
       resolve = promiseResolve;
     });
 
-    // For count-bounded synthetic-history model, pre-build the entire queue from
-    // a deterministic seed derived from turnId so each run is reproducible.
+    // For a count-bounded turn, pre-build the whole queue from a seed derived from
+    // turnId, so the same turn always replays the same conversation.
+    //
+    // The prompt directive wins over the model's own metadata, which means it can also
+    // make a normally time-bounded model count-bounded for one turn. That is deliberate
+    // and opt-in: a seeder asking for `synthetic-history: 30` wants exactly that, and no
+    // model behaves differently unless a caller writes the directive.
     let initialQueue: CycleEvent[] = [];
-    if (profile.itemCount != null) {
+    const resolvedItemCount = parseSyntheticHistoryCountPrompt(prompt) ?? profile.itemCount;
+    if (resolvedItemCount != null) {
       const seed = hashString(turnId);
-      initialQueue = buildSyntheticHistoryQueue(turnId, seed, profile.itemCount);
+      initialQueue = buildSyntheticHistoryQueue(turnId, seed, resolvedItemCount);
     }
 
     const turn: ActiveTurn = {
@@ -840,7 +864,7 @@ export class MockLoadTestAgentSession implements AgentSession {
       cycle: 0,
       durationMs: profile.durationMs,
       intervalMs: profile.intervalMs,
-      itemCount: profile.itemCount,
+      itemCount: resolvedItemCount,
       timer: null,
       resolve,
       completed,
