@@ -1,9 +1,5 @@
 # CLAUDE.md
 
-Otto is a mobile app for monitoring and controlling your local AI coding agents from anywhere. Your dev environment, in your pocket. Connects directly to your actual development environment — your code stays on your machine.
-
-**Supported agents:** Claude Code, Codex, GitHub Copilot, OpenCode, and Pi.
-
 ## Why this fork exists
 
 This repo (otto-code) is a fork with one mission: extend Otto into a **fully featured agentic coding assistant** — an IDE-grade environment with a rich feature set, familiar enough that you never feel constrained, that brings **frontier-model tooling to every provider equally, cloud and local alike**. The tooling a frontier harness gives its own model — browser-verified previews, artifacts, subagent visibility, context compaction, permission modes, MCP — should be just as available to a local model served from LM Studio as to a hosted frontier API. A capability isn't done when one provider has it; it's done when they all do.
@@ -13,15 +9,6 @@ The founding proof was the **Preview subsystem** — a rebuild of the Claude Cod
 The same leveling-up pattern has since shipped artifacts, the natively-tooled OpenAI-compatible provider (daemon-owned tool loop, MCP client, compaction, rewind), observed subagents for Claude, a provider-neutral git-hosting layer (GitHub + Bitbucket Cloud, see [docs/git-providers.md](docs/git-providers.md)), and agent personalities (named per-host templates with roles, spawnable by orchestrating agents, see [docs/agent-personalities.md](docs/agent-personalities.md)) — with the remaining per-provider gaps tracked as initiatives in `projects/`. When adding a capability, design it provider-agnostic first and treat single-provider support as the proof, not the finish line.
 
 ## Repository map
-
-This is an npm workspace monorepo:
-
-- `packages/server` — Daemon: agent lifecycle, WebSocket API, MCP server
-- `packages/app` — Mobile + web client (Expo)
-- `packages/cli` — Docker-style CLI (`otto run/ls/logs/wait`)
-- `packages/relay` — E2E encrypted relay for remote access
-- `packages/desktop` — Electron desktop wrapper
-- `packages/website` — Marketing site (otto-code.me)
 
 `test-documents/` (repo root) holds hand-authored, self-contained fixtures for the file viewer — one per supported format, covering syntax highlighting and rendered previews. See [test-documents/README.md](test-documents/README.md). It is excluded from oxlint and oxfmt: the varied formatting is the point.
 
@@ -93,17 +80,11 @@ delete it rather than archiving it.
 
 ## Quick start
 
+Scripts live in the root `package.json`. The two whose invocation is not guessable:
+
 ```bash
-npm run dev                          # Start the dev daemon
-npm run dev:win                      # Windows: dev daemon (localhost:6788) + Expo together via scripts/dev.ps1
-npm run dev:app                      # Start Expo against the dev daemon
-npm run dev:desktop                  # Start Electron desktop dev
 npm run cli -- ls -a -g              # List all agents
 npm run cli -- daemon status         # Check daemon status
-npm run typecheck                    # Always run after changes
-npm run lint                         # Always run after changes
-npm run format                       # Auto-format with oxfmt
-npm run format:check                 # Check formatting without writing
 ```
 
 **Dev and the installed app are fully isolated, and are meant to run at the same time.** Every repo dev command resolves through `scripts/dev-home.{sh,ps1}` to the dev daemon on port `6788` and the checkout-local `OTTO_HOME` at `packages/desktop/.dev/otto-home` — including `npm run cli -- ...`. The installed desktop app and its daemon keep `~/.otto` on port `6868` and are never touched. Never hardcode `6868` into a dev script or a launch config; that is the installed app's port, and landing on it either crash-loops the dev daemon or silently points dev clients at production agents.
@@ -151,51 +132,7 @@ See [docs/development.md](docs/development.md) for full setup, build sync requir
 
 ## Platform gating
 
-The app runs on iOS, Android, web (browser), and web (Electron desktop). Code is cross-platform by default. Gate only when you must. Import gates from `@/constants/platform`.
-
-### The four gates
-
-| Gate                       | Type      | When to use                                                                                                                 |
-| -------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `isWeb`                    | constant  | DOM APIs — `document`, `window`, `<div>`, `addEventListener`, `ResizeObserver`. This is the **exception**, not the default. |
-| `isNative`                 | constant  | Native-only APIs — Haptics, `StatusBar.currentHeight`, push tokens, camera/scanner, `expo-av`.                              |
-| `getIsElectron()`          | cached fn | Desktop wrapper features — file dialogs, titlebar drag region, daemon management, app updates, dock badges.                 |
-| `useIsCompactFormFactor()` | hook      | Layout decisions — sidebar overlay vs pinned, modal vs full screen, single-panel vs split. From `@/constants/layout`.       |
-
-### Decision matrix
-
-| I need to...                                                   | Use                                                                       |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Access DOM (`document`, `window`, `<div>`, `addEventListener`) | `if (isWeb)`                                                              |
-| Use a native-only API (Haptics, push tokens, camera)           | `if (isNative)`                                                           |
-| Use an Electron bridge (file dialog, titlebar, updates)        | `if (getIsElectron())`                                                    |
-| Switch layout between phone and tablet/desktop                 | `useIsCompactFormFactor()`                                                |
-| Show something on hover, always-visible on native              | `isHovered` OR `isNative` OR `isCompact` (hover only works on web)        |
-| Gate to iOS or Android specifically                            | `Platform.OS === "ios"` / `Platform.OS === "android"` (rare, keep inline) |
-
-### Rules
-
-- **Default is cross-platform.** Don't gate unless you have a specific reason.
-- **Prefer Metro file extensions over `if` statements.** When a module has fundamentally different implementations per platform, use `.web.ts` / `.native.ts` file extensions instead of runtime `if (isWeb)` branches. Metro resolves the correct file at build time — the unused platform code is never bundled. Reserve `if (isWeb)` for small, inline checks (a single line or a few props). If you find yourself writing a large `if (isWeb) { ... } else { ... }` block, split into separate files instead.
-  ```
-  hooks/
-    use-audio-recorder.web.ts    ← uses Web Audio API
-    use-audio-recorder.native.ts ← uses expo-audio
-  ```
-  Import as `@/hooks/use-audio-recorder` — Metro picks the right file automatically.
-- **Use `.electron.ts` / `.electron.tsx` for Electron-only web modules.** Electron is still the Metro `web` platform, but desktop dev/build sets `OTTO_WEB_PLATFORM=electron`, so Metro first looks for `.electron.*` files and falls back to normal `.web.*` files. Use this when the implementation depends on Electron-only behavior such as `webviewTag`, desktop preload APIs, or the Electron bridge. Keep plain browser web in `.web.*`, and keep native fallbacks in the base file or `.native.*`.
-  ```
-  components/
-    browser-pane.electron.tsx ← Electron <webview> implementation
-    browser-pane.web.tsx      ← plain web fallback
-    browser-pane.tsx          ← native fallback
-  ```
-  Import as `@/components/browser-pane` — Electron desktop gets the `.electron.tsx` file, browser web gets `.web.tsx`, and native gets the native/base implementation.
-- **NEVER use raw DOM APIs without `isWeb` guard.** DOM APIs crash native. Casting a RN ref to `HTMLElement` is a red flag — ensure the block is web-only.
-- **NEVER use `onPointerEnter`/`onPointerLeave`.** They don't fire on native iOS.
-- **Hover only works on web.** React Native's `onHoverIn`/`onHoverOut` on `Pressable` does NOT fire on native iOS/iPad — the underlying W3C pointer events are behind disabled experimental flags. For hover-to-show UI (kebab menus, action buttons), use `isHovered || isNative || isCompact` so the controls are always visible on native and hover-to-show on web.
-- **Don't use Platform.OS as a proxy for layout capabilities.** Use breakpoints for layout decisions, not platform checks.
-- **Import `isWeb`/`isNative` from `@/constants/platform`.** Never write `const isWeb = Platform.OS === "web"` locally.
+See [packages/app/CLAUDE.md](packages/app/CLAUDE.md). It loads automatically when you work under `packages/app`, and covers the four gates (`isWeb`, `isNative`, `getIsElectron()`, `useIsCompactFormFactor()`), Metro `.web`/`.native`/`.electron` file resolution, and why hover does not fire on native.
 
 ## Debugging
 
