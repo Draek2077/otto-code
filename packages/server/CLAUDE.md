@@ -2,54 +2,17 @@
 
 For AI coding agents working in `packages/server`. Supplements at the repo root.
 
-## Project Overview
-
-Otto is a mobile + CLI app for monitoring and controlling local AI coding agents (Claude Code, Codex, GitHub Copilot, OpenCode, Pi). The daemon runs on your machine, manages agent processes, and streams their output over WebSocket to clients.
-
----
-
 ## Build / Lint / Test Commands
 
-### Root (monorepo)
+Script names live in the root and package `package.json`. **Read the root CLAUDE.md rule on test suites before running any of them: never run a full suite locally, and never `npm run test` for a whole workspace unless explicitly asked.** The invocations that are not guessable from a script name:
 
 ```bash
-npm run dev                          # Start daemon + Expo in Tmux
-npm run build:server                 # Build: highlight + relay + protocol + client + server + cli
-npm run typecheck                    # Typecheck all packages
-npm run test                         # Test all packages
-npm run format                       # Format with oxfmt (in-place)
-```
-
-### Server package (`packages/server`)
-
-```bash
-npm run dev                          # Start dev daemon (tsx watch)
-npm run build                        # Build lib + scripts to dist/
-npm run start                        # Run production daemon from dist/
-npm run typecheck                    # Typecheck server source
-
 # Run a SINGLE test file
 npx vitest run src/server/agent/agent-manager.test.ts --reporter=verbose
 
 # Run a SINGLE test by name
 npx vitest run -t "returns timeout error when provider times out"
 
-# Test categories
-npm run test:unit                    # Unit tests only (excludes e2e)
-npm run test:integration             # Integration tests
-npm run test:integration:all         # All integration tests
-npm run test:integration:real       # Real API integration tests
-npm run test:integration:local       # Local integration tests
-npm run test:e2e                     # End-to-end tests (excludes real/local)
-npm run test:e2e:all                # All e2e tests
-npm run test:watch                  # Watch mode
-npm run test:ui                     # Vitest UI at localhost:51204
-```
-
-### Other useful commands
-
-```bash
-npm run build:server                         # Rebuild server stack
 npm run db:query -- "SELECT ..."             # Run arbitrary SQL
 npm run cli -- ls -a -g                      # List agents
 npm run cli -- daemon status                 # Check daemon status
@@ -59,18 +22,7 @@ npm run cli -- daemon status                 # Check daemon status
 
 ## Code Style
 
-### oxfmt (formatting; oxlint for linting)
-
-```json
-{
-  "indentStyle": "space",
-  "indentWidth": 2,
-  "lineWidth": 100,
-  "quoteStyle": "double",
-  "trailingCommas": "all",
-  "semicolons": "always"
-}
-```
+Formatting is oxfmt, linting is oxlint; both read config from the repo root. Do not hand-fix formatting.
 
 ### TypeScript
 
@@ -145,40 +97,24 @@ Tests prove behavior, not structure. Every test should answer: "what user-visibl
 
 ## Critical Rules
 
-1. **NEVER restart the daemon on port 6868** — that is the installed app's daemon over `~/.otto`, and restarting it kills your own process. Dev runs on `6788` over `packages/desktop/.dev/otto-home`; see .
+1. **NEVER restart the daemon on port 6868** — that is the installed app's daemon over `~/.otto`, and restarting it kills your own process. Dev runs on `6788` over `packages/desktop/.dev/otto-home`; see [docs/development.md](../../docs/development.md).
 2. **NEVER assume timeouts need a restart** — they can be transient
 3. **Always run `npm run typecheck` after changes**
 4. **NEVER add auth checks to tests** — agent providers handle their own auth
-5. **NEVER make breaking WebSocket/message schema changes** — always backward-compatible
+5. **NEVER make breaking WebSocket/message schema changes.** The protocol contract is always backward-compatible; the per-feature contract is not. The root CLAUDE.md carries the full rule, including capability gating via `server_info.features.*` and the `COMPAT(name)` tagging convention.
 
 ---
 
-## Architecture Quick Reference
+## Where things live
 
-```
-packages/server/src/
-├── server/
-│   ├── index.ts              # Entry point
-│   ├── bootstrap.ts           # Daemon initialization
-│   ├── websocket-server.ts   # WS connection management
-│   ├── session.ts             # Per-client session state
-│   └── agent/
-│       ├── agent-manager.ts  # Agent lifecycle state machine
-│       └── agent-storage.ts  # File-backed JSON persistence
-├── providers/                 # Claude, Codex, Copilot, OpenCode, Pi adapters
-├── relay-transport.ts        # Outbound relay connection
-```
-
-Agent state persists to `$OTTO_HOME/agents/{cwd-with-dashes}/{agent-id}.json`  
-Daemon logs: `$OTTO_HOME/daemon.log`
+Agent state persists to `$OTTO_HOME/agents/{cwd-with-dashes}/{agent-id}.json`.
+Daemon logs: `$OTTO_HOME/daemon.log`.
 
 ---
 
 ## Debugging
 
 ```bash
-tail -f $OTTO_HOME/daemon.log      # Daemon logs
-npm run test:ui                     # Vitest browser UI at localhost:51204
 npm run cli -- inspect <agent-id>   # Detailed agent info
 npm run db:query -- "SELECT * FROM agent_timeline_rows..."
 ```
@@ -187,10 +123,9 @@ npm run db:query -- "SELECT * FROM agent_timeline_rows..."
 
 ## Relevant Docs
 
-| File | What it covers                                   |
-| ---- | ------------------------------------------------ |
-|      | Repository overview, critical rules, quick start |
-|      | System design, WebSocket protocol, data flow     |
-|      | Type hygiene, error handling, React patterns     |
-|      | TDD workflow, determinism, real deps over mocks  |
-|      | Relay threat model, E2E encryption               |
+| File                                                       | What it covers                                   |
+| ---------------------------------------------------------- | ------------------------------------------------ |
+| [../../CLAUDE.md](../../CLAUDE.md)                         | Repository overview, critical rules, quick start |
+| [docs/architecture.md](../../docs/architecture.md)         | System design, WebSocket protocol, data flow     |
+| [docs/coding-standards.md](../../docs/coding-standards.md) | Type hygiene, error handling, React patterns     |
+| [docs/testing.md](../../docs/testing.md)                   | TDD workflow, determinism, real deps over mocks  |
