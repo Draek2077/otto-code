@@ -179,6 +179,42 @@ describe("splitWebVirtualizedHistory", () => {
   });
 });
 
+describe("mounted window size at the shipped default", () => {
+  // The rest of this file passes minMountedCount explicitly, so nothing here pins what a
+  // real chat actually mounts. This does: the always-mounted tail is the floor cost of
+  // scrolling a long chat, because those rows are fully rendered markdown no matter how
+  // far up the reader has gone. At the old default of 50 this chat mounted 54 rows and 12
+  // assistant bubbles; the walk-back to a user boundary means the real number is always a
+  // little above the setting, so the setting has to be read against a realistic turn shape.
+  it("mounts roughly one recent turn of a long chat, not a fixed slab of it", () => {
+    const items: StreamItem[] = [];
+    for (let turn = 0; turn < 60; turn += 1) {
+      const seed = turn % 60;
+      items.push(userMessage(`u${turn}`, seed));
+      for (let step = 0; step < 6; step += 1) {
+        items.push(toolCall(`t${turn}-${step}`, seed));
+      }
+      items.push(assistantMessage(`a${turn}-0`, seed));
+      items.push(assistantMessage(`a${turn}-1`, seed));
+    }
+    expect(items).toHaveLength(540);
+
+    const window = splitWebVirtualizedHistory({
+      entries: indexEntries(items),
+      minMountedCount: getWebMountedRecentStreamItems(),
+    });
+
+    expect(window.mountedEntries).toHaveLength(18);
+    expect(window.virtualizedEntries).toHaveLength(522);
+    expect(
+      window.mountedEntries.filter((entry) => entry.item.kind === "assistant_message"),
+    ).toHaveLength(4);
+    // The window always starts at a user message, so a turn is never split across the
+    // virtualizer boundary mid-read.
+    expect(window.mountedEntries[0]?.item.kind).toBe("user_message");
+  });
+});
+
 describe("estimateStreamItemHeight", () => {
   it("uses compact estimates for collapsed tool sequence rows", () => {
     expect(estimateStreamItemHeight(toolCall("tool", 1))).toBe(40);

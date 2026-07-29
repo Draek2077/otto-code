@@ -1,8 +1,17 @@
 import type { StreamItem } from "@/types/stream";
 import { estimateAssistantMessageHeightFromCache } from "@/utils/assistant-message-height-estimate";
 
-export const DEFAULT_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD = 100;
-export const DEFAULT_WEB_MOUNTED_RECENT_STREAM_ITEMS = 50;
+// Below this many items the whole stream stays mounted: virtualizing a short chat costs
+// more in measurement churn than it saves.
+export const DEFAULT_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD = 40;
+// The tail that is never virtualized, so the live turn and the messages around it keep
+// their exact heights and the bottom anchor cannot drift.
+//
+// Was 50, which made the floor cost of *any* long chat 50 fully rendered markdown bubbles
+// no matter how far up the user scrolled — the reason scrolling a long chat was heavy.
+// 12 comfortably covers the visible viewport plus the live turn, which is all the tail has
+// to do; everything above it goes through the virtualizer like the rest of history.
+export const DEFAULT_WEB_MOUNTED_RECENT_STREAM_ITEMS = 12;
 const COLLAPSED_TOOL_SEQUENCE_ROW_HEIGHT_ESTIMATE = 40;
 
 type BottomAnchorE2ETestGlobals = typeof globalThis & {
