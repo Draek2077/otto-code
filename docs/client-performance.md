@@ -147,6 +147,78 @@ being navigated _away from_ — it under-reported cold switches by 40%. Wait on 
 its visibility is unambiguous. Note that even this measures **painted**, not **usable** — a cold
 mount paints before its timeline refetch lands.
 
+### The conversation corpus (for the "a lot is open" case)
+
+The soak above drives **empty** workspaces with **idle** agents. That makes it a good retention
+detector and a poor model of the reported symptom: nobody complains about Otto with four empty chats
+open. The corpus fills that gap — a synthetic install with several projects, worktree workspaces
+under each, a dozen chats per workspace, hundreds of messages per chat.
+
+```bash
+node scripts/seed-perf-corpus.mjs                        # into the dev daemon; open it by hand
+node scripts/seed-perf-corpus.mjs --smoke                # 1x1x1, to check the wiring
+node scripts/seed-perf-corpus.mjs --clean                # drop the previous corpus first
+OTTO_CORPUS_SOAK_E2E=1 npx playwright test perf-corpus-soak   # the measured version
+```
+
+The headline test is **`switching between loaded workspaces with both panels open`**, because that
+is where the slowdown is actually reported: clicking workspace to workspace in the sidebar, with the
+left panel and the explorer both open, so each switch pays for a git status and a diff on top of
+mounting the tree. It reports `switch ms` (to painted) and `diff ms` (to a usable Changes list)
+separately, then their sum as "switch to usable" -- the panel paints before its diff lands, so
+folding them together credits the switch with work the user is still waiting on.
+
+The seeding logic is one module (`scripts/perf-corpus.mjs`) with two callers, the same arrangement
+as the boilerplate-project corpus: a number the soak reports has to describe the state a human can
+click through, or it stops being evidence about the app they are complaining about. Scale knobs are
+`OTTO_CORPUS_PROJECTS` / `_WORKSPACES` / `_CHATS` / `_TURNS` / `_ITEMS`, shared by both callers.
+The default is 6 x 4 x 12 x (10 x 30) = 288 chats and ~86k timeline items, which seeds in about
+**four minutes** at `OTTO_CORPUS_CONCURRENCY=24` on a developer machine.
+
+Four properties of the corpus are load-bearing. Each exists because the obvious simpler version
+produces a corpus that measures the wrong thing:
+
+- **Content is composed, never picked from a fixture list.** The app caches rendered markdown block
+  heights keyed by the block's own text. A corpus drawn from a handful of fixed strings hits that
+  cache on nearly every block and reports the app as far faster than it is on real conversations.
+  `synthetic-conversation.ts` assembles paragraphs from fragments and pins the property with a test
+  (distinct assistant texts must exceed 90% of assistant messages).
+- **Many small turns, not one big one.** The app decides how much history to keep mounted by walking
+  back from the tail to the nearest user message (`findMountedWindowStart`). The mock provider emits
+  no user event of its own, so a single 300-item turn contains no user message, the walk runs to
+  index 0, and the whole transcript mounts. A corpus built that way defeats the windowing it exists
+  to exercise. Each prompt contributes a real user message, so ten 30-item turns give a 300-item chat
+  with ten window boundaries in it.
+- **Seeds are pinned.** `synthetic-seed: N` in the prompt fixes the generator seed for that turn.
+  Without it the seed comes from a per-turn UUID, so two seeding runs build statistically similar but
+  byte-different corpora, and an A/B measurement across them attributes a corpus difference to the
+  code change under test.
+- **Every workspace tree is left dirty.** Eight modified and untracked files per workspace, seeded
+  deterministically. The Changes view is not a bystander in the reported case: switching workspaces
+  with the explorer open loads a git status and a diff per switch, and a clean corpus makes that free.
+  Seeding chats against pristine repos leaves that cost out of every number.
+- **Seeding is additive and idempotent.** Existing corpus workspaces and chats are adopted rather
+  than duplicated, so raising a scale knob and re-running tops the corpus up instead of doubling it.
+  The result reports `chats` (corpus size) separately from `chatsCreated` (what this run paid for);
+  collapsing them is how a seeder starts reporting turns it never drove. Only `--clean` resets, and
+  it clears the daemon records as well as the repos, because orphaned records get adopted next run.
+
+Beware one asymmetry when reading results: workspaces above the deck cap are evicted and re-mounted
+cold, while chats above the stream-buffer cap of 12 lose their tail buffer and re-fetch. A corpus
+dimensioned below either cap measures neither.
+
+Two things about the surface itself, both of which make a naive reading wrong:
+
+- **The transcript is virtualized** (`agent-chat-scroll-web-dom-virtualized`), so a chat renders only
+  its visible window. One loaded corpus chat measured **5,332 DOM nodes** — a number set by viewport
+  size, not by the 300 messages behind it. Read `dom.nodes` as cost per mounted chat; a flat series
+  is virtualization working, not history being free.
+- **Chats are tabs, and the strip overflows.** Past a handful, the rest are reachable only through
+  `workspace-tab-overflow-trigger`, so a harness that walks only the visible strip measures the same
+  four chats repeatedly while appearing to cover twelve. Wait on the target tab's `aria-selected`
+  rather than on `agent-chat-scroll`: that container belongs to whichever chat is showing and stays
+  visible across a switch, so waiting on it returns instantly and reports every switch as free.
+
 **In production** — Settings › Diagnostics › Run app diagnostic, and copy. The `Client resources`,
 `Client frame drift`, `Client growth ranking`, `Daemon traffic` and `Query cache hotspots` sections
 are all in the same paste as the daemon's.

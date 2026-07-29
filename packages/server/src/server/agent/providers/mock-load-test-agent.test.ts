@@ -25,9 +25,73 @@ function expectSinglePermissionRequest(events: AgentStreamEvent[]): PermissionRe
   return permission;
 }
 
+// Runs one count-bounded synthetic-history turn and returns the *generated* text
+// it emitted, in order.
+//
+// Two exclusions, both load-bearing. Ids are per-turn UUIDs, so comparing them
+// would report every turn as different and prove nothing. The user_message item
+// is the prompt echoed back, so including it would make this assert that the two
+// prompts were equal rather than that the two conversations were.
+async function runSyntheticTurnText(prompt: string): Promise<string> {
+  const client = new MockLoadTestAgentClient();
+  const session = await client.createSession({
+    provider: "mock",
+    cwd: process.cwd(),
+    model: "synthetic-history",
+  });
+  const events: AgentStreamEvent[] = [];
+  const unsubscribe = session.subscribe((event) => events.push(event));
+  const completed = session.run(prompt);
+  await vi.advanceTimersByTimeAsync(60_000);
+  await completed;
+  unsubscribe();
+
+  return events
+    .filter((event): event is Extract<AgentStreamEvent, { type: "timeline" }> => {
+      return event.type === "timeline";
+    })
+    .map((event) => event.item as AgentTimelineItem & { text?: string; name?: string })
+    .filter((item) => item.type !== "user_message")
+    .map((item) => item.text ?? item.name ?? item.type)
+    .join("");
+}
+
 describe("MockLoadTestAgentClient", () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  // The corpus seeder pins this so a re-seed rebuilds the same conversations.
+  // Without it the seed is derived from a per-turn UUID, and two seeding runs
+  // produce different corpora — which would let an A/B measurement attribute a
+  // corpus difference to the code change under test.
+  test("a pinned synthetic-seed reproduces the same conversation", async () => {
+    vi.useFakeTimers();
+
+    const first = await runSyntheticTurnText(
+      "build history\nsynthetic-history: 40\nsynthetic-seed: 12345",
+    );
+    const second = await runSyntheticTurnText(
+      "different wording entirely\nsynthetic-history: 40\nsynthetic-seed: 12345",
+    );
+    const other = await runSyntheticTurnText(
+      "build history\nsynthetic-history: 40\nsynthetic-seed: 999",
+    );
+
+    expect(first.length).toBeGreaterThan(0);
+    // Same seed and count: identical generated content, even though the prompt
+    // text differs. The prompt selects the corpus slice; it is not the content.
+    expect(second).toBe(first);
+    expect(other).not.toBe(first);
+  });
+
+  test("an unpinned synthetic-history turn still varies between turns", async () => {
+    vi.useFakeTimers();
+
+    const first = await runSyntheticTurnText("build history\nsynthetic-history: 40");
+    const second = await runSyntheticTurnText("build history\nsynthetic-history: 40");
+
+    expect(first).not.toBe(second);
   });
 
   test("default model is a five minute foreground stream with token-rate intervals", async () => {

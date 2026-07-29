@@ -4159,7 +4159,10 @@ export const WorkspaceCreateRequestSchema = z.object({
       cwd: z.string().optional(),
       projectId: z.string().optional(),
       action: z.enum(["branch-off", "checkout"]).optional(),
-      // Target branch name for checkout, or new branch name for branch-off.
+      // Branch to check out for "checkout". For "branch-off" this is the BASE to
+      // cut from, not the branch being created -- the new branch name comes from
+      // worktreeSlug (see resolveWorktreeCreationIntent). Omit it to branch off
+      // the repository default.
       refName: z.string().min(1).optional(),
       baseBranch: z.string().optional(),
       githubPrNumber: z.number().int().positive().optional(),

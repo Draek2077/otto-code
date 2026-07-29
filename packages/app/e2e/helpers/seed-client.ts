@@ -94,7 +94,10 @@ export interface SeedDaemonClient {
     initialPrompt?: string;
     labels?: Record<string, string>;
   }): Promise<{ id: string; status: string }>;
-  fetchAgents(options?: { scope?: "active" }): Promise<{
+  // `page.limit` is capped at 200 by the protocol, so any caller that can exceed
+  // that (the perf corpus does) must follow `pageInfo.nextCursor` rather than
+  // trust one call to return everything.
+  fetchAgents(options?: { scope?: "active"; page?: { limit: number; cursor?: string } }): Promise<{
     entries: Array<{
       agent: {
         id: string;
@@ -107,6 +110,7 @@ export interface SeedDaemonClient {
         title?: string | null;
       };
     }>;
+    pageInfo?: { nextCursor: string | null; prevCursor: string | null; hasMore: boolean };
   }>;
   fetchRecentProviderSessions(options: {
     cwd: string;
