@@ -332,6 +332,7 @@ export class LspServerPool {
           args: resolved.args,
           rootPath,
           initializationOptions: row.initializationOptions,
+          ...(row.runtime === undefined ? {} : { runtime: row.runtime }),
         },
         logger: this.logger,
         initializeTimeoutMs: this.limits.initializeTimeoutMs,

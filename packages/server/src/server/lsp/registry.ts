@@ -35,6 +35,13 @@ export interface LspServerRow {
   defaultEnabled: boolean;
   /** Plain-words index cost, shown next to the toggle so the trade is honest. */
   indexCost: string;
+  /**
+   * Which runtime this server is, when that changes how Otto must manage the process.
+   * `"dotnet"` routes the spawn through the shared .NET process registry, so a C# server
+   * counts against the same machine-wide cap as the solution sidecar and is swept with it.
+   * Omitted means an ordinary process the LSP pool's own cap is sufficient for.
+   */
+  runtime?: "dotnet";
 }
 
 export interface ResolvedLspServer {
@@ -82,6 +89,9 @@ export const LSP_SERVER_ROWS: readonly LspServerRow[] = [
     args: [],
     discovery: ["path"],
     defaultEnabled: true,
+    // A .NET global tool: the process is a `dotnet` host, and it loads projects through
+    // MSBuild, which is where the worker nodes come from. Counted and swept accordingly.
+    runtime: "dotnet",
     indexCost:
       "Loads the solution on first use; seconds on a small project, longer on a large one.",
   },
