@@ -57,6 +57,20 @@ env:
 jobs:
   create-release:
     if: ${{ (github.event_name == 'push' && !startsWith(github.ref_name, 'desktop-macos-v') && !startsWith(github.ref_name, 'desktop-linux-v') && !startsWith(github.ref_name, 'desktop-windows-v')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.platform == 'all' && github.event.inputs.publish != 'false') }}
+    # Shared with android-apk-release.yml and release-notes-sync.yml. All three
+    # ensure this release exists, and a `v*` tag starts all three at once.
+    # GitHub does NOT enforce tag_name uniqueness on create, so two concurrent
+    # `gh release create` calls both succeed and leave two releases on one tag;
+    # from then on every PATCH fails with 422 already_exists, which is how a
+    # duplicate created here surfaces as a Release Notes Sync failure two
+    # workflows later (0.7.3, two creates 82ms apart). Uniqueness IS enforced on
+    # update, so the damage is only visible after the fact. Concurrency group
+    # names are repo-wide, not workflow-scoped, so an identical string across
+    # workflows serializes these jobs and the loser then takes its existing
+    # "already exists, skipping" path. Must stay byte-identical in all three.
+    concurrency:
+      group: otto-release-ensure-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+      cancel-in-progress: false
     permissions:
       contents: write
     runs-on: ubuntu-latest
