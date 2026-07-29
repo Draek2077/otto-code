@@ -1,6 +1,10 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import type { Logger } from "pino";
 import { z } from "zod";
+import {
+  sharedDotnetProcessRegistry,
+  type TrackedDotnetProcess,
+} from "../../dotnet-process-registry.js";
 import { SUPPORTED_PROTOCOL_VERSION, type DotnetRuntimeInfo } from "./bootstrap.js";
 
 /**
@@ -74,6 +78,8 @@ export class DotnetProbe {
   private handshake: ProbeHandshake | null = null;
   /** Settled by the first line the process writes, which must be the handshake. */
   private handshakeWaiter: ((error: Error | null) => void) | null = null;
+  /** Set by `start` immediately after construction; owns the registry slot and the kill. */
+  private tracked: TrackedDotnetProcess | null = null;
 
   private constructor(child: ChildProcessWithoutNullStreams, options: DotnetProbeOptions) {
     this.child = child;
@@ -108,21 +114,35 @@ export class DotnetProbe {
    * is what keeps a stale `dist/` from producing garbled trees rather than a clear failure.
    */
   static async start(options: DotnetProbeOptions): Promise<DotnetProbe> {
-    const child = spawn(options.runtime.dotnetCommand, [options.runtime.entryPath], {
-      cwd: options.cwd,
-      stdio: ["pipe", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        // MSBuild colours and progress would corrupt the NDJSON stream if anything ever wrote
-        // them to stdout, and neither is readable by a machine anyway.
-        DOTNET_NOLOGO: "1",
-        DOTNET_CLI_TELEMETRY_OPTOUT: "1",
-        NO_COLOR: "1",
+    // Through the registry, never `spawn` directly: it is what enforces the machine-wide
+    // .NET process cap and what guarantees this process is swept on shutdown even if the
+    // pool loses track of it. `MSBUILD_ENV` is applied there, for every caller at once.
+    const tracked = sharedDotnetProcessRegistry(options.logger).spawnTracked({
+      command: options.runtime.dotnetCommand,
+      args: [options.runtime.entryPath],
+      options: {
+        cwd: options.cwd,
+        stdio: ["pipe", "pipe", "pipe"],
+        env: {
+          ...process.env,
+          // MSBuild colours and progress would corrupt the NDJSON stream if anything ever
+          // wrote them to stdout, and neither is readable by a machine anyway.
+          NO_COLOR: "1",
+        },
       },
+      kind: "solution-sidecar",
+      label: options.cwd,
     });
 
-    const probe = new DotnetProbe(child, options);
-    await probe.awaitHandshake(options.handshakeTimeoutMs);
+    const probe = new DotnetProbe(tracked.child as ChildProcessWithoutNullStreams, options);
+    probe.tracked = tracked;
+    try {
+      await probe.awaitHandshake(options.handshakeTimeoutMs);
+    } catch (error) {
+      // A sidecar that never reports ready still holds a slot and a live process tree.
+      tracked.release();
+      throw error;
+    }
     return probe;
   }
 
@@ -169,7 +189,9 @@ export class DotnetProbe {
     }
     this.exited = true;
     this.child.stdin.end();
-    this.child.kill();
+    // Release, not kill: the registry owns the tree kill and the slot, so going around it
+    // would free the process without freeing the capacity it was holding.
+    this.tracked?.release();
     this.rejectAll(new ProbeUnavailableError("Solution sidecar stopped"));
   }
 

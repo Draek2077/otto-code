@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import path from "node:path";
 import type { Logger } from "pino";
 import {
@@ -9,6 +9,11 @@ import {
   type MessageConnection,
 } from "vscode-jsonrpc/node.js";
 import { z } from "zod";
+import {
+  sharedDotnetProcessRegistry,
+  type TrackedDotnetProcess,
+} from "../dotnet-process-registry.js";
+import { killProcessTree, MSBUILD_ENV } from "../process-tree.js";
 import { toFileUri } from "./uri.js";
 
 /**
@@ -100,6 +105,8 @@ export interface LspServerSpec {
   rootPath: string;
   env?: Readonly<Record<string, string>>;
   initializationOptions?: unknown;
+  /** Mirrors the registry row; `"dotnet"` routes the spawn through the .NET process cap. */
+  runtime?: "dotnet";
 }
 
 export interface LspExitInfo {
@@ -233,6 +240,8 @@ export class LspConnection {
   private exitInfo: LspExitInfo | null = null;
   private initializeResult: InitializeResult | null = null;
   private readonly progressTokens = new Set<string>();
+  /** Non-null for `runtime: "dotnet"` rows; owns the registry slot and the tree kill. */
+  private tracked: TrackedDotnetProcess | null = null;
   private readonly reportActivity: () => void;
   private readonly reportDiagnostics: (published: LspPublishedDiagnostics) => void;
 
@@ -274,19 +283,42 @@ export class LspConnection {
   static async start(options: LspConnectionOptions): Promise<LspConnection> {
     const { spec, logger } = options;
     const plan = planLanguageServerSpawn(spec.command, spec.args);
-    const proc = spawn(plan.command, [...plan.args], {
+    const spawnOptions: SpawnOptions = {
       cwd: spec.rootPath,
-      env: spec.env ? { ...process.env, ...spec.env } : process.env,
+      // MSBUILD_ENV applies to every server, not just the .NET ones: a server that has
+      // never heard of MSBuild ignores the variables, and gating on the registry id
+      // would mean remembering to add each future MSBuild-backed row to a list. See
+      // process-tree.ts for why node reuse is the thing being switched off.
+      env: { ...process.env, ...MSBUILD_ENV, ...spec.env },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       windowsVerbatimArguments: plan.windowsVerbatimArguments,
-    });
+    };
+
+    // A .NET server counts against the machine-wide .NET cap alongside the solution
+    // sidecar, because they load the same MSBuild machinery on the same machine and a
+    // per-subsystem cap can only bound its own half of the total.
+    let tracked: TrackedDotnetProcess | null = null;
+    let proc: ChildProcess;
+    if (spec.runtime === "dotnet") {
+      tracked = sharedDotnetProcessRegistry(logger).spawnTracked({
+        command: plan.command,
+        args: plan.args,
+        options: spawnOptions,
+        kind: "language-server",
+        label: `${spec.id} @ ${spec.rootPath}`,
+      });
+      proc = tracked.child;
+    } else {
+      proc = spawn(plan.command, [...plan.args], spawnOptions);
+    }
 
     const spawnFailure = new Promise<never>((_resolve, reject) => {
       proc.once("error", (error) => reject(new LspSpawnError(spec.id, spec.command, error)));
     });
 
     const connection = new LspConnection(options, proc);
+    connection.tracked = tracked;
     connection.pipeStderr();
 
     try {
@@ -393,7 +425,14 @@ export class LspConnection {
     ]);
 
     if (!exited) {
-      this.proc.kill("SIGKILL");
+      // The tree, not the process: a `.cmd` shim makes `this.proc` the shell rather
+      // than the server, and an MSBuild-backed server can have workers of its own. A
+      // tracked (.NET) server goes back through the registry so its slot is freed too.
+      if (this.tracked) {
+        this.tracked.release();
+      } else {
+        killProcessTree(this.proc);
+      }
       await this.whenExited;
     }
   }
