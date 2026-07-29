@@ -112,21 +112,17 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
           : {}),
       }));
 
-      if (!normalizedWorkspaceRoot) {
+      // Neither of these is a failure, so neither writes `lastError`. The pane mounts
+      // before the workspace root and the session client have resolved, so the first
+      // request of every visit lands here and the effect re-fires a tick later with
+      // both in hand. Recording an error meant the Files tab painted a red banner for
+      // a frame on every single visit. The genuinely-unavailable cases already have
+      // their own surfaces: the pane renders "unavailable" from `hasWorkspaceScope`,
+      // and a dropped host is shown by the connection status, not by the explorer.
+      if (!normalizedWorkspaceRoot || !client) {
         updateExplorerState((state) => ({
           ...state,
           isLoading: false,
-          lastError: t("workspace.fileExplorer.states.unavailable"),
-          pendingRequest: null,
-        }));
-        return false;
-      }
-
-      if (!client) {
-        updateExplorerState((state) => ({
-          ...state,
-          isLoading: false,
-          lastError: t("workspace.terminal.hostDisconnected"),
           pendingRequest: null,
         }));
         return false;
@@ -180,21 +176,11 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
         pendingRequest: { path: normalizedPath, mode: "file" },
       }));
 
-      if (!normalizedWorkspaceRoot) {
+      // Same not-ready-yet reasoning as requestDirectoryListing above: no error.
+      if (!normalizedWorkspaceRoot || !client) {
         updateExplorerState((state) => ({
           ...state,
           isLoading: false,
-          lastError: t("workspace.fileExplorer.states.unavailable"),
-          pendingRequest: null,
-        }));
-        return;
-      }
-
-      if (!client) {
-        updateExplorerState((state) => ({
-          ...state,
-          isLoading: false,
-          lastError: t("workspace.terminal.hostDisconnected"),
           pendingRequest: null,
         }));
         return;

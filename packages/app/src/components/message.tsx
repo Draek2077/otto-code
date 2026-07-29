@@ -45,7 +45,7 @@ import {
   FileSymlink,
 } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { Theme } from "@/styles/theme";
+import { SPACING, type Theme } from "@/styles/theme";
 import { useIsCompactFormFactor, MAX_CONTENT_WIDTH } from "@/constants/layout";
 import Animated, {
   Easing,
@@ -110,7 +110,10 @@ import {
   setAssistantImageMetadata,
   type AssistantImageLoadState,
 } from "@/utils/assistant-image-metadata";
-import { setAssistantMarkdownBlockHeight } from "@/utils/assistant-message-height-estimate";
+import {
+  hasAssistantMarkdownBlockHeight,
+  setAssistantMarkdownBlockHeight,
+} from "@/utils/assistant-message-height-estimate";
 import {
   reportBubbleSegmentHeight,
   useBubbleGroupOffset,
@@ -832,6 +835,10 @@ const ASSISTANT_IMAGE_MAX_HEIGHT = 400;
 // exactly like text. `null` until the first layout; images fall back to the content-width constant.
 const AssistantImageWidthContext = createContext<number | null>(null);
 const ASSISTANT_IMAGE_MEASURE_STYLE: ViewStyle = { alignSelf: "stretch" };
+// Mirrors assistantMessageStylesheet.bubble's `paddingHorizontal: theme.spacing[3]`, both sides.
+// The image width is measured on the container outside the bubble (see handleContentLayout), so
+// the padding has to come off by hand; keep these two in step.
+const ASSISTANT_BUBBLE_HORIZONTAL_INSET = SPACING[3] * 2;
 
 const AssistantMarkdownResolvedImage = memo(function AssistantMarkdownResolvedImage({
   uri,
@@ -1574,14 +1581,38 @@ interface AssistantMessageBlockContainerProps {
 // creates. This keeps split rendering identical to rendering the same
 // markdown unsplit.
 function AssistantMessageBlockContainer({ block, children }: AssistantMessageBlockContainerProps) {
+  // Measure once per (block, column width), then drop the observer.
+  //
+  // On web `onLayout` is a ResizeObserver, so leaving it attached meant every mounted
+  // message kept one live observer per markdown block, firing through every scroll-driven
+  // layout pass to write a height the cache already had. The measurement exists only to
+  // feed the virtualizer's size estimate, and that number does not change until either the
+  // text or the column width does — both of which re-arm this below.
+  const contentWidth = useContext(AssistantImageWidthContext);
+  const columnWidth = contentWidth === null ? null : Math.round(contentWidth);
+  const [measured, setMeasured] = useState<{ block: string; columnWidth: number | null } | null>(
+    null,
+  );
+
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const { width, height } = event.nativeEvent.layout;
       setAssistantMarkdownBlockHeight({ block, width, height });
+      setMeasured({ block, columnWidth: Math.round(width) });
     },
     [block],
   );
-  return <View onLayout={isWeb ? handleLayout : undefined}>{children}</View>;
+
+  // `columnWidth` is the bubble's content width and the block stretches to fill it, so the
+  // two agree; comparing against what we recorded (rather than assuming equality) is what
+  // makes a window resize re-arm the measurement.
+  const alreadyMeasured =
+    measured !== null &&
+    measured.block === block &&
+    (measured.columnWidth === columnWidth ||
+      (columnWidth !== null && hasAssistantMarkdownBlockHeight({ block, width: columnWidth })));
+
+  return <View onLayout={isWeb && !alreadyMeasured ? handleLayout : undefined}>{children}</View>;
 }
 
 interface MemoizedMarkdownBlockProps {
@@ -2031,12 +2062,19 @@ export const AssistantMessage = memo(function AssistantMessage({
   // group's top edge, shifted up by the measured height of the segments above
   // it (agent-stream/bubble-group-offsets.ts).
   const bubbleRef = useRef<View>(null);
-  // The real content width of the bubble, fed to block images so they never exceed the message
-  // view. Measured on a stretch wrapper (a direct bubble child), which fills the bubble content box
-  // regardless of the image-only column collapse below it.
+  // The width available to block images, so they never exceed the message view.
+  //
+  // Measured on the *outer* container, not inside the bubble. The bubble is content-sized
+  // (`alignSelf: "flex-start"`), so its width is whatever its widest child is — and a block
+  // image sets an explicit pixel width from this number. Measuring inside the bubble therefore
+  // closed a loop: image width fed the bubble, the bubble fed the measurement, and the
+  // measurement fed the image, ratcheting a screenshot down a little on every layout pass until
+  // it was invisible. The outer container is laid out by the chat column and cannot be widened
+  // or narrowed by its own content, which is what makes the number stable.
   const [contentWidth, setContentWidth] = useState<number | null>(null);
   const handleContentLayout = useCallback((event: LayoutChangeEvent) => {
-    const width = event.nativeEvent.layout.width;
+    // The container is outside the bubble's padding box, so take the padding off here.
+    const width = event.nativeEvent.layout.width - ASSISTANT_BUBBLE_HORIZONTAL_INSET;
     setContentWidth((prev) =>
       width > 0 && (prev === null || Math.abs(width - prev) > 0.5) ? width : prev,
     );
@@ -2120,6 +2158,7 @@ export const AssistantMessage = memo(function AssistantMessage({
     <View
       testID="assistant-message"
       style={assistantContainerStyle}
+      onLayout={handleContentLayout}
       onPointerEnter={isWeb ? handlePointerEnter : undefined}
       onPointerLeave={isWeb ? handlePointerLeave : undefined}
     >
@@ -2131,7 +2170,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         >
           {sheen}
           <AssistantImageWidthContext.Provider value={contentWidth}>
-            <View style={ASSISTANT_IMAGE_MEASURE_STYLE} onLayout={handleContentLayout}>
+            <View style={ASSISTANT_IMAGE_MEASURE_STYLE}>
               {keyedBlocks.map(({ key, block }) => (
                 <AssistantMessageBlockContainer key={key} block={block}>
                   <MemoizedMarkdownBlock
