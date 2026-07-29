@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.7.3 - 2026-07-29
+
+### Added
+
+- Code Intelligence settings lists every language server this machine can run, whether or not a workspace is open
+
+### Changed
+
+- The bundled agent catalog picks up current versions of Gemini CLI, Qwen Code, Cline, Droid and others
+- C# language support and the solution sidecar share a single cap on how many .NET processes Otto will start
+- MSBuild workers started for a C# project exit with the work that started them instead of lingering for fifteen minutes
+
+### Fixed
+
+- Otto no longer gets steadily slower as you add workspaces, because background git work now follows the workspace you are looking at
+- Switching branches in a terminal reaches the Changes sidebar instead of going unnoticed
+- A long chat keeps far fewer messages rendered once you have scrolled away from them
+- A screenshot in a message no longer shrinks on every layout pass until it disappears
+- The Files tab no longer flashes an error when it opens before the folder listing arrives
+- A slow Bash or PowerShell command no longer appears as a sub-agent that never finishes
+- An interrupted background shell command on Windows no longer stays listed as running
+- Detaching a sub-agent clears it from the parent's sub-agents track right away instead of only after a reload
+- Releases include an Android APK again, after several shipped without one
+
 ## 0.7.2 - 2026-07-27
 
 ### Added
