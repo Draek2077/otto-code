@@ -203,6 +203,15 @@ Legend: 🔴 bug · 🟡 feature/enhancement · 🔵 investigation or decision �
   per row (`lsp/registry.ts`), with no mechanism for per-workspace dynamic arguments.
 - ⚪ **Solution view: solution filters (`.slnf`).** Explicitly out of scope for Phase 1. Listed so
   nobody assumes they work.
+- ⚪ **Text editor: the four deferrals left when the charter drained.** (a) The **word-under-cursor
+  bridge and picker are not wired**, so go-to-definition's daemon and client halves ship without an
+  editor entry point. (b) **Gutter touch line-range selection**, which the charter called a hard
+  mobile requirement. (c) **Direct auto-spawn** from the refactor dialog, withheld in Phase 5 in
+  favour of a pre-filled draft. (d) **Completion to diff.** Architecture:
+  [docs/text-editor.md](../docs/text-editor.md).
+- ⚪ **Gated multi-root: Phase 3.** Phases 0, 1, 2 and 4 shipped in v0.5.8, reworked to
+  preview-any-file plus an edit gate. Phase 3 (defence in depth) was deferred; the current posture
+  is OS-permissions-as-boundary for single-file operations.
 
 ### File rendering
 
@@ -346,6 +355,22 @@ follows is everything that charter had left._
   and `SessionMessage` now carries `parent_agent_id`. They are poll-style reads, not a push stream,
   so they do not replace the watcher outright — but they would retire its JSONL parsing and its
   inferred parentage. Keep the watcher's shape for any provider without session-store APIs.
+- ⚪ **Safe unattended: Phase 4, the openai-compat responder.** Phases 0 to 3 shipped in
+  `e9dc9c34b` (`dontAsk` posture, per-model Auto eligibility). Phase 4 is the openai-compat
+  responder over read/interact/execute, plus the other providers. Architecture:
+  [docs/safe-unattended.md](../docs/safe-unattended.md).
+- 🔵 **Safe unattended: internal-vs-listed agent visibility.** Phase 3 accepted internal and
+  ephemeral schedule runs as they are: run rows are not re-openable, and the agents are gone after a
+  restart. Marked for review rather than decided.
+- 🔵 **The subagents-cleanup pass never got its formal live verify.** All six charter items shipped
+  2026-07-13 in `7f9b179e2`, but step 6 (a full live end-to-end run over the track: status-aware
+  actions, frozen names, per-row cost, the Completed group and "Clear all") was never formally
+  executed. The track has been reworked since (liveness signals, auto-clear), so the gap may be
+  stale rather than real. Rules are in
+  [docs/chat-lifecycle.md § Row actions, names, and cost](../docs/chat-lifecycle.md#row-actions-names-and-cost).
+- 🟡 **Suggested Tasks: the wire and i18n tails.** `started` and `dismissed` states are not on the
+  wire (pending-only today), the settings row and card are hardcoded English, and a dedicated tool
+  group was deferred. Card persistence across restart is covered under Onboarding & UX above.
 
 ### Visualizer
 
@@ -507,6 +532,11 @@ follows is everything that charter had left._
   rewrite fixed reachability; the open question is the unprompted call _rate_ in real use. If it is
   still low, the next lever is prompt-level guidance rather than more description text. Card
   persistence across daemon restart is separately deferred — in-memory by design.
+- 🟡 **First-time wizard: Phase 3, the friendly half.** Phase 1 (storage plus gate) shipped
+  2026-07-12; step order is Mode, Providers, Agents, Teams, Done. Phase 3 is design-led and each
+  piece is its own decision: composer personality-first, chat-stream forced defaults, and the
+  open-project / new-agent User-mode copy. **i18n extraction of all wizard, team, tier and gating
+  strings is still owed**; they shipped as inline English.
 
 ### Providers & accounting
 
@@ -610,9 +640,33 @@ follows is everything that charter had left._
   forgotten.** The flyout's mute-with-key mirrors the client store's proven
   `rateLimitDismissKey` / `mutedUntil` shape, scoped per workspace. Server-side sync needs a new
   persisted daemon store; for a multi-device product it is the eventual answer.
+- 🟡 **Token-cost audit: the remediation menu was never actioned.** The measured audit
+  (2026-07-18) found that the Otto tool catalog costs about 9.7K tokens per request at 48 tools and
+  about 14.9K at 74 with the browser on, on every request of every provider when
+  `mcp.injectIntoAgents` is on; that all generations (title, branch, commit, PR, voice cues, run
+  summary) are full agent spawns with no internal-agent exemption; and that
+  `workspace-auto-name.ts:111-133` re-runs the whole ladder when the rename path yields null.
+  Ranked fix #1 is an **internal-agent exemption from tool injection**: one gate, roughly 10K to 25K
+  tokens saved per generation. The report itself belongs in [`findings/`](../findings/README.md),
+  not in this tree.
+- ⚪ **Token-cost fixes: per-category USD tiles and the aux category.** Captured but not rendered.
+  The WP-G taxonomy was revised after review because the original grid mixed two partitions of the
+  same tokens.
 
 ### Testing & tooling
 
+- 🔴 **`send_agent_prompt` reports success for prompts that are silently dropped, and nothing tests
+  agent-to-agent flows end to end.** A prompt sent to a busy agent lands in the steer queue; if that
+  agent is archived or closed before the queue drains, the entry is discarded with no error, no
+  notification and no dead letter, while the tool has already returned
+  `{"success":true,"status":"running"}` at enqueue time. Three or four orphans accumulated in one
+  session on 2026-07-28 with the sender reporting the work as in flight throughout. The drain lives
+  in `agent-manager.ts` run finalization and is provider-agnostic, but it was only ever observed
+  against a local `openai-compatible` agent, and that was also the first session driving
+  agent-to-agent sends that way — **two variables changed at once, so establish which before
+  fixing.** Charter, the three-part fix and the harness design:
+  [agent-to-agent-flow-tests](./agent-to-agent-flow-tests/agent-to-agent-flow-tests.md). Every hop is
+  covered today; the seam between hops is not, which is where this lived.
 - 🔴 **`main` CI has not been green since 2026-07-12, and two releases were cut over it.** The last
   successful `CI` run on `main` is 2026-07-12; every run since is `failure` or `cancelled`, so both
   0.7.0 and 0.7.1 shipped over a red suite. The strict-deep-equal drift in
@@ -1101,7 +1155,8 @@ rediscovered as new work. Folder: `archive/projects/duplicate-base-workspaces/`.
 Shipped work whose durable facts have **not yet** reached `docs/`. Each is a debt against rule 4 —
 until it is paid, the project folder cannot leave.
 
-**None outstanding.** The six debts standing at the start of the 0.7.0 run were paid on 2026-07-25,
+**None outstanding.** The one debt found 2026-07-28 was paid the same day (below the table). The six
+debts standing at the start of the 0.7.0 run were paid on 2026-07-25,
 and **file-rendering was drained the same day** — mermaid, AsciiDoc and relative image resolution all
 folded into [docs/markdown-rendering.md](../docs/markdown-rendering.md), its unbuilt tail moved to
 [File rendering](#file-rendering) above, its two code citations (`task-lists.ts`,
@@ -1115,6 +1170,21 @@ folded into [docs/markdown-rendering.md](../docs/markdown-rendering.md), its unb
 | workflow-decomposition   | [docs/subagent-accounting.md](../docs/subagent-accounting.md#workflow-decomposition-a-synthetic-event-source) | drained           |
 | visualizer-node-richness | [docs/visualizer.md](../docs/visualizer.md) — "Discovery cards", beside the already-folded "Context ring"     | drained           |
 | e2e-qa-coverage          | [docs/testing.md § App end-to-end tiers](../docs/testing.md#app-end-to-end-tiers-playwright)                  | **stays** — below |
+
+**One debt found and paid 2026-07-28.** `projects/subagents-cleanup/` was retired 2026-07-14 on the
+stated claim that its rules were folded into `docs/agent-lifecycle.md`. That page never existed, so
+for two weeks no `docs/` page carried its load-bearing gotcha. Now paid into
+[docs/chat-lifecycle.md § Row actions, names, and cost](../docs/chat-lifecycle.md#row-actions-names-and-cost):
+observed-subagent ids (`parent::sub::key`, an ephemeral registry projection with no `ManagedAgent`)
+must be special-cased at **every** lifecycle verb, fetch and stop and archive. Archive was the one
+originally missed, which broke the terminal-row Archive and "Clear all" for observed rows. The
+native-idle-is-not-terminal rule and the stop-pin went to the same section.
+
+**A dangling pointer was found in the same pass.** `docs/chat-lifecycle.md` linked to
+`projects/total-token-accounting/`, drained during Wave 4, and now points at
+[docs/subagent-accounting.md § Chat totals](../docs/subagent-accounting.md#chat-totals-one-honest-number-per-chat)
+instead. This is exactly the failure the note below the table warns about; a sweep of every
+`../projects/<name>/` link in `docs/` found no others.
 
 **Why e2e-qa-coverage keeps its folder even though its debt is paid.** Its
 [coverage-matrix.md](e2e-qa-coverage/coverage-matrix.md) is not a plan — it is **live tooling**.
