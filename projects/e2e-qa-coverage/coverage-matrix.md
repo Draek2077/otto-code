@@ -245,9 +245,10 @@ run skips it and it appears as ⊘ in the run report. Read the numbers with the 
 alongside the instrument — a soak series is easy to misread, and has produced two wrong
 diagnoses already.
 
-| Instrument                                                         | Status | Specs / plan                                                                                                  | Tier | Pri |
-| ------------------------------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------- | ---- | --- |
-| Client resource retention across repeated chat + navigation cycles | 📊     | `client-resource-soak.spec.ts` — `OTTO_RESOURCE_SOAK_E2E=1`; method and traps in `docs/client-performance.md` | T1   | —   |
+| Instrument                                                          | Status | Specs / plan                                                                                                                                          | Tier | Pri |
+| ------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --- |
+| Client resource retention across repeated chat + navigation cycles  | 📊     | `client-resource-soak.spec.ts` — `OTTO_RESOURCE_SOAK_E2E=1`; method and traps in `docs/client-performance.md`                                         | T1   | —   |
+| Cost of moving around a heavy install (long chats, many workspaces) | 📊     | `perf-corpus-soak.spec.ts` — `OTTO_CORPUS_SOAK_E2E=1`; seeds a synthetic conversation corpus, then times chat opens and workspace switches against it | T1   | —   |
 
 **Known inconsistency, left as a separate call:** the two terminal perf specs in §8
 (terminal-performance, terminal-keystroke-stress) are the same shape — opt-in instruments behind

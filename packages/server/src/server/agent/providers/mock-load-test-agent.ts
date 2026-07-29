@@ -330,6 +330,29 @@ function parseSyntheticHistoryCountPrompt(prompt: AgentPromptInput): number | nu
   return Math.min(count, 5_000);
 }
 
+// Pin the generator seed for this turn via a directive like "synthetic-seed: 41".
+//
+// Without this the seed is hashString(turnId), and turnId is a fresh randomUUID
+// per turn — so the generator is deterministic but a *corpus* is not. Two seeding
+// runs would produce statistically similar, byte-different conversations, and any
+// before/after measurement taken across them would be comparing two different
+// corpora while reporting the difference as a code change. A seeder that pins the
+// seed gets the same corpus back every time.
+function parseSyntheticSeedPrompt(prompt: AgentPromptInput): number | null {
+  const text = promptToText(prompt);
+  const match = /synthetic-seed\s*:\s*(\d+)/i.exec(text);
+  if (!match) {
+    return null;
+  }
+  const seed = Number(match[1]);
+  if (!Number.isFinite(seed)) {
+    return null;
+  }
+  // The generator forces the seed unsigned anyway; keep it in range here so the
+  // directive and the PRNG agree on what "seed 4294967297" means.
+  return seed >>> 0;
+}
+
 function parseStructuredBranchNamePrompt(
   prompt: AgentPromptInput,
 ): { title: string; branch: string } | null {
@@ -852,7 +875,9 @@ export class MockLoadTestAgentSession implements AgentSession {
     let initialQueue: CycleEvent[] = [];
     const resolvedItemCount = parseSyntheticHistoryCountPrompt(prompt) ?? profile.itemCount;
     if (resolvedItemCount != null) {
-      const seed = hashString(turnId);
+      // turnId is the default seed so an unpinned turn still varies; a caller
+      // building a corpus it wants to rebuild identically pins it instead.
+      const seed = parseSyntheticSeedPrompt(prompt) ?? hashString(turnId);
       initialQueue = buildSyntheticHistoryQueue(turnId, seed, resolvedItemCount);
     }
 

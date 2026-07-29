@@ -460,6 +460,29 @@ follows is everything that charter had left._
   Storage layer (`AppSettings` field, clamp, `parseMountedWorkspaceLimit`, and the 5/2/12 bounds)
   came from a concurrent session and was consumed unmodified; that session has since corrected its
   doc comment to match the measurement.
+- ✅ **A conversation corpus to measure "a lot is open" against.** Built 2026-07-28. Every existing
+  performance instrument drives empty workspaces with idle agents, which is why none of them has ever
+  reproduced the reported symptom. The corpus is a synthetic heavy install: **6 projects x 4
+  workspaces x 12 chats x (10 turns x 30 items) = 288 chats, ~86k timeline items, seeded in 4m10s**
+  at concurrency 24. Seeding logic is one module (`scripts/perf-corpus.mjs`) with two callers —
+  `scripts/seed-perf-corpus.mjs` puts it in the dev daemon to be opened by hand, and
+  `packages/app/e2e/perf-corpus-soak.spec.ts` (`OTTO_CORPUS_SOAK_E2E=1`) measures against it. The
+  sharing is the point, the same as the boilerplate-project corpus: a soak number has to describe the
+  state a human just clicked through. Method and the four load-bearing corpus properties are in
+  [docs/client-performance.md](../docs/client-performance.md#the-conversation-corpus-for-the-a-lot-is-open-case).
+  **Two defects found and fixed while building it, both of which would have quietly invalidated
+  results:** the provider seeded its generator from a per-turn UUID, so no corpus was reproducible
+  across runs and an A/B measurement would have compared two different corpora (fixed with a
+  `synthetic-seed:` directive, pinned by test); and `refName` on a `branch-off` worktree is the
+  **base** branch, not the new branch name, while the protocol comment said the opposite (comment
+  corrected). **Not yet run at scale** — the soak is written and typechecks, but the numbers it
+  produces are the next row, not this one.
+- 🔵 **Run the corpus soak and read the numbers.** The instrument exists; nothing has been measured
+  with it yet. The two questions it was built to answer: what a chat open costs when the transcript
+  is 300 messages rather than 3, and what a workspace switch costs when the target holds a dozen such
+  chats. It also finally exercises the two caps that were previously argued from unit tests only —
+  the stream-buffer cap of 12 (the "is 12 right?" row below) and the deck cap under a rotation wider
+  than it. Expect to have to separate seeding cost from measurement cost when reading a run.
 - 🟡 **Instrument render cost per inbound daemon message.** The one gap keeping "daemon volume is the
   bottleneck" alive: `traffic.handlerMs` covers decode, validate and dispatch, **not** the React
   re-render each store write triggers. Cost is plausibly `push rate × mounted subscriber count`.
