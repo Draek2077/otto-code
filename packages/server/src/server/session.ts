@@ -5521,6 +5521,30 @@ export class Session {
     if (msg.appVisible && focusedTerminalId) {
       void this.clearFocusedTerminalAttention(focusedTerminalId);
     }
+    this.syncActiveWorkspaceFromActivity();
+  }
+
+  /**
+   * Tell the workspace-scoped subsystems which workspace the client is actually in, so their
+   * periodic work follows the user instead of the whole catalogue.
+   *
+   * Derived from the focused agent's cwd rather than sent explicitly, which keeps this off
+   * the wire entirely. Deliberately **sticky**: focus goes null whenever the user moves to a
+   * tab that is not a chat (files, terminal, browser), and treating that as "no active
+   * workspace" would stop observing the very workspace they are sitting in. Only focusing an
+   * agent in a *different* workspace moves it.
+   */
+  private syncActiveWorkspaceFromActivity(): void {
+    const focusedAgentId = this.clientActivity?.focusedAgentId;
+    if (!focusedAgentId) {
+      return;
+    }
+    const cwd = this.agentManager.getAgent(focusedAgentId)?.cwd;
+    if (!cwd) {
+      return;
+    }
+    this.workspaceGitService.setActiveWorkspace(cwd);
+    this.lspService.setActiveWorkspace(cwd);
   }
 
   private async clearFocusedTerminalAttention(terminalId: string): Promise<void> {

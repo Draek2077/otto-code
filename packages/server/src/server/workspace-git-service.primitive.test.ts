@@ -22,6 +22,7 @@ import {
 } from "../utils/checkout-git.js";
 import { runGitCommand as runGitCommandReal } from "../utils/run-git-command.js";
 import {
+  WORKSPACE_GIT_SELF_HEAL_INTERVAL_MS,
   WorkspaceGitServiceImpl,
   type WorkspaceGitRuntimeSnapshot,
 } from "./workspace-git-service.js";
@@ -59,6 +60,11 @@ async function flushPromises(): Promise<void> {
   for (let i = 0; i < 5; i += 1) {
     await Promise.resolve();
   }
+}
+
+/** How many git reads a given workspace has cost so far. */
+function callsForCwd(spy: { mock: { calls: unknown[][] } }, cwd: string): number {
+  return spy.mock.calls.filter((call) => call[0] === cwd).length;
 }
 
 function createCheckoutFacts(
@@ -719,6 +725,10 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
       getPullRequestStatus,
       now: () => new Date(nowMs),
     });
+    // Periodic refresh follows the active workspace, so a test about self-heal has to say
+    // which workspace the user is in. Set before registering, so the timer starts with the
+    // subscription rather than through a become-active catch-up.
+    service.setActiveWorkspace(REPO_CWD);
     const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
     await flushPromises();
 
@@ -746,6 +756,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
       now: () => new Date(nowMs),
     });
 
+    service.setActiveWorkspace(REPO_CWD);
     const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
     await flushPromises();
 
@@ -1055,6 +1066,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
       getCheckoutStatus,
       now: () => new Date(nowMs),
     });
+    service.setActiveWorkspace(REPO_CWD);
     const first = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
     const second = service.registerWorkspace({ cwd: join(REPO_CWD, ".") }, vi.fn());
     await flushPromises();
@@ -1117,6 +1129,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
       getCheckoutStatus,
       now: () => new Date(nowMs),
     });
+    service.setActiveWorkspace(REPO_CWD);
     const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
     await flushPromises();
 
@@ -1748,6 +1761,152 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
       }
     },
   );
+
+  // The cost of Otto used to grow with the size of the workspace catalogue rather than with
+  // what the user was doing: every listed workspace got a 60s self-heal refresh of its own,
+  // and one refresh is around nine `git` invocations. These lock the scoping that fixed it.
+  test("only the active workspace pays the periodic refresh cost", async () => {
+    const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
+    let clockMs = Date.parse("2026-04-12T00:00:00.000Z");
+    const advance = async (ms: number): Promise<void> => {
+      clockMs += ms;
+      await vi.advanceTimersByTimeAsync(ms);
+      await flushPromises();
+    };
+
+    const service = createService({
+      getCheckoutStatus: getCheckoutStatus as never,
+      now: () => new Date(clockMs),
+    });
+
+    const active = REPO_CWD;
+    const background = resolvePath("/tmp/other-repo");
+
+    try {
+      service.registerWorkspace({ cwd: active }, vi.fn());
+      service.registerWorkspace({ cwd: background }, vi.fn());
+      service.setActiveWorkspace(active);
+      await advance(1_000);
+
+      const baseline = new Map<string, number>();
+      for (const cwd of [active, background]) {
+        baseline.set(cwd, callsForCwd(getCheckoutStatus, cwd));
+      }
+
+      // Two self-heal windows. The active workspace refreshes; the dormant one must not
+      // spend a single git invocation.
+      await advance(WORKSPACE_GIT_SELF_HEAL_INTERVAL_MS * 2 + 5_000);
+
+      expect(callsForCwd(getCheckoutStatus, active)).toBeGreaterThan(baseline.get(active) ?? 0);
+      expect(callsForCwd(getCheckoutStatus, background)).toBe(baseline.get(background) ?? 0);
+    } finally {
+      service.dispose();
+    }
+  });
+
+  test("switching the active workspace moves the periodic cost with it", async () => {
+    const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
+    let clockMs = Date.parse("2026-04-12T00:00:00.000Z");
+    const advance = async (ms: number): Promise<void> => {
+      clockMs += ms;
+      await vi.advanceTimersByTimeAsync(ms);
+      await flushPromises();
+    };
+
+    const service = createService({
+      getCheckoutStatus: getCheckoutStatus as never,
+      now: () => new Date(clockMs),
+    });
+
+    const first = REPO_CWD;
+    const second = resolvePath("/tmp/other-repo");
+
+    try {
+      service.registerWorkspace({ cwd: first }, vi.fn());
+      service.registerWorkspace({ cwd: second }, vi.fn());
+      service.setActiveWorkspace(first);
+      await advance(WORKSPACE_GIT_SELF_HEAL_INTERVAL_MS + 5_000);
+
+      // Becoming active earns one immediate catch-up refresh, since the workspace may have
+      // gone stale while dormant and the user is looking at it now.
+      const beforeSwitch = callsForCwd(getCheckoutStatus, second);
+      service.setActiveWorkspace(second);
+      await advance(5_000);
+      expect(callsForCwd(getCheckoutStatus, second)).toBeGreaterThan(beforeSwitch);
+
+      // And the one left behind goes quiet.
+      const firstAfterSwitch = callsForCwd(getCheckoutStatus, first);
+      await advance(WORKSPACE_GIT_SELF_HEAL_INTERVAL_MS * 2 + 5_000);
+      expect(callsForCwd(getCheckoutStatus, first)).toBe(firstAfterSwitch);
+    } finally {
+      service.dispose();
+    }
+  });
+
+  // Regression: `.git/HEAD` used to be watched as a file. Git never edits HEAD in place —
+  // `git checkout` writes `HEAD.lock` and renames it over HEAD — and a file watch binds to
+  // the inode, so after the first checkout the watcher held an unlinked file and went deaf.
+  // Switching branches in a terminal then never reached the Changes sidebar.
+  test("watches the git directory for HEAD changes, not the HEAD file", async () => {
+    const watched: { path: string; listener: (event: string, filename: string | null) => void }[] =
+      [];
+    const watchSpy = (
+      path: string,
+      _options: unknown,
+      listener: (event: string, filename: string | null) => void,
+    ) => {
+      watched.push({ path, listener });
+      return { close: vi.fn(), on: vi.fn().mockReturnThis() };
+    };
+    // Status is re-measured by every refresh, so it is the honest probe for "the watcher
+    // reached the workspace"; the facts read behind it is cached and answers once.
+    const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
+
+    // The shared deps freeze `now`, which makes the min-gap that coalesces non-forced
+    // refreshes suppress everything and would leave both assertions below vacuous. Drive a
+    // real clock alongside the fake timers instead.
+    let clockMs = Date.parse("2026-04-12T00:00:00.000Z");
+    const advance = async (ms: number): Promise<void> => {
+      clockMs += ms;
+      await vi.advanceTimersByTimeAsync(ms);
+      await flushPromises();
+    };
+
+    const service = createService({
+      watch: watchSpy as never,
+      getCheckoutStatus: getCheckoutStatus as never,
+      now: () => new Date(clockMs),
+    });
+
+    try {
+      service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
+      await advance(100);
+
+      const watchedPaths = watched.map((entry) => entry.path);
+      expect(watchedPaths).toContain(join(REPO_CWD, ".git"));
+      expect(watchedPaths).toContain(join(REPO_CWD, ".git", "refs", "heads"));
+      expect(watchedPaths).not.toContain(join(REPO_CWD, ".git", "HEAD"));
+
+      const gitDirWatch = watched.find((entry) => entry.path === join(REPO_CWD, ".git"));
+      expect(gitDirWatch).toBeDefined();
+
+      // The rest of `.git`'s churn must not schedule a refresh, or every git command in
+      // the workspace would cost a snapshot.
+      const baseline = getCheckoutStatus.mock.calls.length;
+      gitDirWatch?.listener("change", "index.lock");
+      // Comfortably past both the watch debounce and the internal min-gap that coalesces
+      // non-forced refreshes, and well short of the 60s self-heal that would refresh anyway.
+      await advance(5_000);
+      expect(getCheckoutStatus.mock.calls.length).toBe(baseline);
+
+      // A HEAD rename is the branch switch, and it must land.
+      gitDirWatch?.listener("rename", "HEAD");
+      await advance(5_000);
+      expect(getCheckoutStatus.mock.calls.length).toBeGreaterThan(baseline);
+    } finally {
+      service.dispose();
+    }
+  });
 
   test("onWorkspaceStateMayHaveChanged invalidates github cache and schedules a forced github-inclusive refresh", async () => {
     const github = createGitHubServiceStub();

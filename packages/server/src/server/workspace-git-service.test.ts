@@ -503,6 +503,9 @@ describe("WorkspaceGitServiceImpl", () => {
       runGitFetch,
     });
 
+    // The background fetch is the most expensive periodic thing in this service, so it runs
+    // only for the repo holding the workspace the user is actually in.
+    service.setActiveWorkspace(REPO_CWD);
     const first = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
     const second = service.registerWorkspace(
       { cwd: join(REPO_CWD, "packages", "server") },

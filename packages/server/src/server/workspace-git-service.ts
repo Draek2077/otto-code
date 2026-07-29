@@ -183,6 +183,12 @@ export interface WorkspaceGitService {
   ): Promise<{ repoRoot: string | null; unsubscribe: () => void }>;
   scheduleRefreshForCwd(cwd: string): void;
   onWorkspaceStateMayHaveChanged(cwd: string): void;
+  /**
+   * The workspace the client is currently in. Periodic refresh and background fetch run
+   * only for this one; everything else stays observed through its filesystem watchers but
+   * costs nothing while idle.
+   */
+  setActiveWorkspace(cwd: string | null): void;
   dispose(): void;
 }
 
@@ -405,6 +411,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   private readonly snapshotUpdatedListeners = new Set<WorkspaceGitSnapshotUpdatedListener>();
   private readonly workspaceTargets = new Map<string, WorkspaceGitTarget>();
   private readonly repoTargets = new Map<string, RepoGitTarget>();
+  /** Resolved cwd of the workspace the client is in; see `setActiveWorkspace`. */
+  private activeWorkspaceCwd: string | null = null;
   private readonly workingTreeWatchTargets = new Map<string, WorkingTreeWatchTarget>();
   private readonly workingTreeWatchSetups = new Map<string, Promise<WorkingTreeWatchTarget>>();
   private readonly linuxIgnoredDirsCache = new Map<string, { ignored: Set<string>; ts: number }>();
@@ -1102,10 +1110,29 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     gitDir: string,
     repoGitRoot: string,
   ): void {
-    for (const watchPath of new Set([join(gitDir, "HEAD"), join(repoGitRoot, "refs", "heads")])) {
+    // Watch the *directories*, never `HEAD` itself.
+    //
+    // Git does not edit HEAD in place: `git checkout` writes `HEAD.lock` and renames it
+    // over HEAD. A watch on the file path binds to the inode, so after the first
+    // checkout the watcher was holding an unlinked file and went permanently deaf —
+    // which is why switching branches in a terminal never reached the Changes sidebar.
+    // A directory watch sees the rename, because the rename is an event *in* the
+    // directory. `filename` is filtered so the rest of `.git`'s churn (index.lock,
+    // COMMIT_EDITMSG, ORIG_HEAD) does not schedule a refresh; a null filename is rare
+    // and refreshes anyway, since a missed branch switch costs more than a debounced
+    // extra snapshot.
+    const watchTargets: { path: string; matches: (filename: string | null) => boolean }[] = [
+      { path: gitDir, matches: (filename) => filename === null || filename === "HEAD" },
+      { path: join(repoGitRoot, "refs", "heads"), matches: () => true },
+    ];
+
+    for (const { path: watchPath, matches } of watchTargets) {
       let watcher: FSWatcher | null = null;
       try {
-        watcher = this.deps.watch(watchPath, { recursive: false }, () => {
+        watcher = this.deps.watch(watchPath, { recursive: false }, (_event, filename) => {
+          if (!matches(typeof filename === "string" ? filename : null)) {
+            return;
+          }
           this.scheduleWorkspaceRefresh(target);
         });
       } catch (error) {
@@ -1160,13 +1187,34 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       repoGitRoot,
       cwd: workspaceTarget.cwd,
       workspaceKeys: new Set([workspaceTarget.cwd]),
-      intervalId: setInterval(() => {
-        void this.runRepoFetch(repoTarget);
-      }, BACKGROUND_GIT_FETCH_INTERVAL_MS),
+      intervalId: null,
       fetchInFlight: false,
     };
     this.repoTargets.set(repoGitRoot, repoTarget);
-    void this.runRepoFetch(repoTarget);
+    // A background `git fetch` is the most expensive periodic thing here — it is network
+    // I/O, not just process spawning — so it is the last thing that should run for a repo
+    // the user is not in. Both the timer and the immediate first fetch are gated.
+    if (this.isActiveWorkspaceTarget(workspaceTarget)) {
+      this.startRepoFetchTimer(repoTarget);
+      void this.runRepoFetch(repoTarget);
+    }
+  }
+
+  private startRepoFetchTimer(target: RepoGitTarget): void {
+    if (target.intervalId) {
+      return;
+    }
+    target.intervalId = setInterval(() => {
+      void this.runRepoFetch(target);
+    }, BACKGROUND_GIT_FETCH_INTERVAL_MS);
+  }
+
+  private stopRepoFetchTimer(target: RepoGitTarget): void {
+    if (!target.intervalId) {
+      return;
+    }
+    clearInterval(target.intervalId);
+    target.intervalId = null;
   }
 
   private scheduleWorkspaceRefresh(
@@ -1204,7 +1252,77 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     }, WORKSPACE_GIT_WATCH_DEBOUNCE_MS);
   }
 
+  /**
+   * Which workspace the client is actually in, or null when that is not known.
+   *
+   * This is the whole answer to "why does Otto get slower the more projects I have". Every
+   * workspace the client has ever listed gets an observer, and each observer used to run a
+   * 60s self-heal refresh and a 180s `git fetch` of its own. One snapshot is around nine
+   * `git` invocations, measured at roughly half a second of process time on Windows, so the
+   * steady-state cost was half a second per workspace per minute *of catalogue*, whether or
+   * not any of it was on screen. Twenty workspaces meant ten seconds of git per minute,
+   * forever, for a user looking at one of them.
+   *
+   * Periodic work now follows the active workspace and nothing else. What deliberately does
+   * *not* follow it are the `.git` filesystem watchers: those are event-driven, cost nothing
+   * while nothing happens, and are how a background workspace with an agent committing in it
+   * still refreshes its card. Dropping the poll is only safe because that watcher is
+   * reliable, which it became when it stopped watching the `HEAD` file's inode.
+   */
+  setActiveWorkspace(cwd: string | null): void {
+    const next = cwd === null ? null : resolve(cwd);
+    if (next === this.activeWorkspaceCwd) {
+      return;
+    }
+    this.activeWorkspaceCwd = next;
+    this.applyActiveWorkspacePolicy();
+  }
+
+  private isActiveWorkspaceTarget(target: WorkspaceGitTarget): boolean {
+    return this.activeWorkspaceCwd !== null && target.cwd === this.activeWorkspaceCwd;
+  }
+
+  /**
+   * Start periodic work on whatever is now active and stop it everywhere else. The newly
+   * active workspace also gets one refresh, because it may have gone stale while dormant
+   * and the user is looking at it right now.
+   */
+  private applyActiveWorkspacePolicy(): void {
+    for (const target of this.workspaceTargets.values()) {
+      if (this.isActiveWorkspaceTarget(target)) {
+        this.startWorkspaceSubscriptionTimers(target);
+        this.scheduleWorkspaceRefresh(target, { reason: "became-active" });
+      } else {
+        this.stopWorkspacePeriodicWork(target);
+      }
+    }
+
+    for (const repoTarget of this.repoTargets.values()) {
+      const holdsActive = [...repoTarget.workspaceKeys].some(
+        (key) => key === this.activeWorkspaceCwd,
+      );
+      if (holdsActive) {
+        this.startRepoFetchTimer(repoTarget);
+      } else {
+        this.stopRepoFetchTimer(repoTarget);
+      }
+    }
+  }
+
+  private stopWorkspacePeriodicWork(target: WorkspaceGitTarget): void {
+    if (target.selfHealTimer) {
+      clearInterval(target.selfHealTimer);
+      target.selfHealTimer = null;
+    }
+    this.stopGitHubPollForTarget(target);
+  }
+
   private startWorkspaceSubscriptionTimers(target: WorkspaceGitTarget): void {
+    // A workspace nobody is looking at does not poll. `applyActiveWorkspacePolicy` starts
+    // this the moment it becomes active, so nothing is lost, only deferred.
+    if (!this.isActiveWorkspaceTarget(target)) {
+      return;
+    }
     if (!target.selfHealTimer) {
       target.selfHealTimer = setInterval(() => {
         this.scheduleWorkspaceObservationSetup(target);
