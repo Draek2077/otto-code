@@ -24,6 +24,16 @@ function survivors(overrides: Partial<CompactHeaderActionsInput> = {}) {
   ].filter((name): name is string => name !== null);
 }
 
+function menuFallbacks(overrides: Partial<CompactHeaderActionsInput> = {}) {
+  const fit = resolveCompactHeaderActions({ ...DEVELOPER_MOBILE, ...overrides });
+  return [
+    fit.menuPlay ? "play" : null,
+    fit.menuVisualizer ? "visualizer" : null,
+    fit.menuExplorer ? "explorer" : null,
+    fit.menuVoiceCues ? "voiceCues" : null,
+  ].filter((name): name is string => name !== null);
+}
+
 describe("resolveCompactHeaderActions", () => {
   it("renders everything before the row has been measured", () => {
     expect(survivors({ rowWidth: 0 })).toEqual(["play", "visualizer", "explorer", "voiceCues"]);
@@ -92,6 +102,40 @@ describe("resolveCompactHeaderActions", () => {
     expect(fit.showPlainExplorer).toBe(true);
     expect(fit.showPlay).toBe(false);
     expect(fit.showVisualizer).toBe(false);
+  });
+
+  it("moves every dropped button into the menu instead of losing it", () => {
+    expect(menuFallbacks({ rowWidth: 420 })).toEqual(["voiceCues"]);
+    expect(menuFallbacks({ rowWidth: 380 })).toEqual(["visualizer", "voiceCues"]);
+    expect(menuFallbacks({ rowWidth: 320 })).toEqual(["visualizer", "explorer", "voiceCues"]);
+    expect(menuFallbacks({ rowWidth: 260 })).toEqual([
+      "play",
+      "visualizer",
+      "explorer",
+      "voiceCues",
+    ]);
+  });
+
+  it("offers no menu fallback while every button still fits", () => {
+    expect(menuFallbacks()).toEqual([]);
+    expect(menuFallbacks({ rowWidth: 0 })).toEqual([]);
+  });
+
+  it("offers no menu fallback on desktop, however narrow the measurement", () => {
+    expect(menuFallbacks({ isCompact: false, rowWidth: 100 })).toEqual([]);
+  });
+
+  it("offers no menu fallback for an action the workspace did not request", () => {
+    expect(menuFallbacks({ rowWidth: 260, hasWorkspaceScripts: false })).toEqual([
+      "visualizer",
+      "explorer",
+      "voiceCues",
+    ]);
+    expect(menuFallbacks({ rowWidth: 260, visualizerEnabled: false })).toEqual([
+      "play",
+      "explorer",
+      "voiceCues",
+    ]);
   });
 
   it("hides the user-mode explorer when there is no workspace directory", () => {

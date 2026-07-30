@@ -40,6 +40,7 @@ import {
   Globe,
   Import as ImportIcon,
   Pencil,
+  Play,
   RotateCw,
   Settings,
   SquarePen,
@@ -79,10 +80,14 @@ import { RetainedPanel } from "@/components/retained-panel";
 import { WorkspaceActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/screens/workspace/workspace-open-in-editor-button";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
-import { WorkspaceVisualizerButton } from "@/visualizer/workspace-visualizer-button";
+import {
+  WorkspaceVisualizerButton,
+  WorkspaceVisualizerMenuItem,
+} from "@/visualizer/workspace-visualizer-button";
 import {
   useVoiceCuesAvailable,
   WorkspaceVoiceCuesButton,
+  WorkspaceVoiceCuesMenuItem,
 } from "@/voice/workspace-voice-cues-button";
 import { openContextManagementTab } from "@/context-management/open-context-management-tab";
 import { useCloseDisabledFeatureTabs } from "@/features/use-close-disabled-feature-tabs";
@@ -318,6 +323,7 @@ const ThemedImport = withUnistyles(ImportIcon);
 const ThemedSettings = withUnistyles(Settings);
 const ThemedBookOpen = withUnistyles(BookOpen);
 const ThemedExplore = withUnistyles(Explore);
+const ThemedPlay = withUnistyles(Play);
 
 interface DynamicProviderIconProps {
   iconKey: string;
@@ -366,6 +372,10 @@ const MENU_SETTINGS_ICON = <ThemedSettings uniProps={mutedMdMapping} />;
 // Matches the Context Management tab's own icon and the sidebar row's item —
 // one thing, one glyph, wherever you meet it.
 const MENU_CONTEXT_ICON = <ThemedBookOpen uniProps={mutedMdMapping} />;
+// Leading icons for the compact-fit fallback items (see
+// resolveCompactHeaderActions): same glyphs as the header buttons they replace.
+const MENU_EXPLORER_ICON = <ThemedExplore uniProps={mutedMdMapping} />;
+const MENU_PLAY_ICON = <ThemedPlay uniProps={mutedMdMapping} />;
 const GATED_WORKSPACE_HEADER_LEFT = <SidebarMenuToggle />;
 
 interface WorkspaceScreenProps {
@@ -1100,6 +1110,19 @@ interface WorkspaceHeaderMenuProps {
   showWorkspaceSetup: boolean;
   showCreateBrowserTab: boolean;
   isMobile: boolean;
+  // Fallback items for header buttons the compact width fit dropped (see
+  // `resolveCompactHeaderActions`); all false while every button still fits.
+  showVisualizerMenuItem: boolean;
+  showVoiceCuesMenuItem: boolean;
+  showExplorerMenuItem: boolean;
+  showScriptsMenuItem: boolean;
+  // Scripts data for the collapsed Play fallback's hidden dropdown anchor.
+  workspaceScripts: WorkspaceDescriptor["scripts"];
+  liveTerminalIds: string[];
+  onToggleExplorer: () => void;
+  onScriptTerminalStarted: (terminalId: string) => void;
+  onViewScriptTerminal: (terminalId: string) => void;
+  onOpenUrlInBrowserTab: (url: string) => void;
   createTerminalDisabled: boolean;
   importAgentDisabled: boolean;
   copyPathDisabled: boolean;
@@ -1366,6 +1389,16 @@ function WorkspaceHeaderMenu({
   showWorkspaceSetup,
   showCreateBrowserTab,
   isMobile,
+  showVisualizerMenuItem,
+  showVoiceCuesMenuItem,
+  showExplorerMenuItem,
+  showScriptsMenuItem,
+  workspaceScripts,
+  liveTerminalIds,
+  onToggleExplorer,
+  onScriptTerminalStarted,
+  onViewScriptTerminal,
+  onOpenUrlInBrowserTab,
   createTerminalDisabled,
   importAgentDisabled,
   copyPathDisabled,
@@ -1401,6 +1434,11 @@ function WorkspaceHeaderMenu({
   // "Add artifact" item below flips it open after this menu dismisses.
   const [artifactsOpen, setArtifactsOpen] = useState(false);
   const handleOpenArtifacts = useCallback(() => setArtifactsOpen(true), []);
+  // The collapsed Play fallback works the same way: its dropdown is anchored to
+  // a hidden zero-size WorkspaceScriptsButton below, opened after this menu
+  // dismisses.
+  const [scriptsOpen, setScriptsOpen] = useState(false);
+  const handleOpenScripts = useCallback(() => setScriptsOpen(true), []);
 
   const handleEditProfiles = useCallback(() => {
     router.push(buildSettingsHostSectionRoute(normalizedServerId, "terminals") as Href);
@@ -1496,6 +1534,35 @@ function WorkspaceHeaderMenu({
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuSeparator />
+          {/* Fallbacks for header buttons the compact width fit dropped (see
+              resolveCompactHeaderActions): narrowing the window moves each
+              control in here instead of removing it, in the buttons' own
+              left-to-right order. Wide rows render none of these. */}
+          {showVoiceCuesMenuItem ? <WorkspaceVoiceCuesMenuItem /> : null}
+          {showVisualizerMenuItem ? (
+            <WorkspaceVisualizerMenuItem
+              serverId={normalizedServerId}
+              workspaceId={normalizedWorkspaceId}
+            />
+          ) : null}
+          {showScriptsMenuItem ? (
+            <DropdownMenuItem
+              testID="workspace-header-run-scripts"
+              leading={MENU_PLAY_ICON}
+              onSelect={handleOpenScripts}
+            >
+              {t("workspace.scripts.title")}
+            </DropdownMenuItem>
+          ) : null}
+          {showExplorerMenuItem ? (
+            <DropdownMenuItem
+              testID="workspace-header-explorer"
+              leading={MENU_EXPLORER_ICON}
+              onSelect={onToggleExplorer}
+            >
+              {t("workspace.tabs.explorer.toggle")}
+            </DropdownMenuItem>
+          ) : null}
           {showWorkspaceSetup ? (
             <DropdownMenuItem
               testID="workspace-header-show-setup"
@@ -1576,6 +1643,23 @@ function WorkspaceHeaderMenu({
           hideTrigger
         />
       ) : null}
+      {/* Hidden anchor for the collapsed Play fallback, same pattern as the
+          artifacts host above: the "Run scripts" item flips `scriptsOpen` on
+          after this menu dismisses, and the scripts dropdown opens here. */}
+      {showScriptsMenuItem ? (
+        <WorkspaceScriptsButton
+          serverId={normalizedServerId}
+          workspaceId={normalizedWorkspaceId}
+          scripts={workspaceScripts}
+          liveTerminalIds={liveTerminalIds}
+          onScriptTerminalStarted={onScriptTerminalStarted}
+          onViewTerminal={onViewScriptTerminal}
+          onOpenUrlInBrowserTab={onOpenUrlInBrowserTab}
+          open={scriptsOpen}
+          onOpenChange={setScriptsOpen}
+          hideTrigger
+        />
+      ) : null}
     </>
   );
 }
@@ -1597,6 +1681,12 @@ interface WorkspaceHeaderTitleBarProps {
   showVisualizerAction: boolean;
   showVoiceCuesAction: boolean;
   showPlayAction: boolean;
+  // The dropped actions' "..." menu fallbacks; always false on desktop.
+  showVisualizerMenuItem: boolean;
+  showVoiceCuesMenuItem: boolean;
+  showExplorerMenuItem: boolean;
+  showScriptsMenuItem: boolean;
+  onToggleExplorer: () => void;
   createTerminalDisabled: boolean;
   importAgentDisabled: boolean;
   copyPathDisabled: boolean;
@@ -1647,6 +1737,11 @@ function WorkspaceHeaderTitleBar({
   showVisualizerAction,
   showVoiceCuesAction,
   showPlayAction,
+  showVisualizerMenuItem,
+  showVoiceCuesMenuItem,
+  showExplorerMenuItem,
+  showScriptsMenuItem,
+  onToggleExplorer,
   createTerminalDisabled,
   importAgentDisabled,
   copyPathDisabled,
@@ -1701,6 +1796,16 @@ function WorkspaceHeaderTitleBar({
           showWorkspaceSetup={showWorkspaceSetup}
           showCreateBrowserTab={showCreateBrowserTab}
           isMobile={isMobile}
+          showVisualizerMenuItem={showVisualizerMenuItem}
+          showVoiceCuesMenuItem={showVoiceCuesMenuItem}
+          showExplorerMenuItem={showExplorerMenuItem}
+          showScriptsMenuItem={showScriptsMenuItem}
+          workspaceScripts={workspaceScripts}
+          liveTerminalIds={liveTerminalIds}
+          onToggleExplorer={onToggleExplorer}
+          onScriptTerminalStarted={onScriptTerminalStarted}
+          onViewScriptTerminal={onViewScriptTerminal}
+          onOpenUrlInBrowserTab={onOpenUrlInBrowserTab}
           createTerminalDisabled={createTerminalDisabled}
           importAgentDisabled={importAgentDisabled}
           copyPathDisabled={copyPathDisabled}
@@ -4484,6 +4589,11 @@ function WorkspaceScreenContent({
                 showVisualizerAction={headerActionFit.showVisualizer}
                 showVoiceCuesAction={headerActionFit.showVoiceCues}
                 showPlayAction={headerActionFit.showPlay}
+                showVisualizerMenuItem={headerActionFit.menuVisualizer}
+                showVoiceCuesMenuItem={headerActionFit.menuVoiceCues}
+                showExplorerMenuItem={headerActionFit.menuExplorer}
+                showScriptsMenuItem={headerActionFit.menuPlay}
+                onToggleExplorer={handleToggleExplorer}
                 createTerminalDisabled={createTerminalDisabled}
                 importAgentDisabled={!canOpenImportSheet}
                 copyPathDisabled={!workspaceDirectory}

@@ -3,6 +3,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { Waypoints } from "@/components/icons/material-icons";
 import { headerIconSlotStyle } from "@/components/headers/header-toggle-button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useIconSize, type Theme } from "@/styles/theme";
@@ -83,6 +84,37 @@ export function WorkspaceVisualizerButton({
         <Text style={styles.tooltipText}>{label}</Text>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+// Matches the workspace "..." menu's leading-icon convention (muted, md).
+const mutedMenuMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+  size: theme.iconSize.md,
+});
+const MENU_VISUALIZER_ICON = <ThemedWaypoints uniProps={mutedMenuMapping} />;
+
+/** "..." menu fallback for when the compact header fit drops the button (see
+ * `resolveCompactHeaderActions`): the same surface toggle, one tap deeper. */
+export function WorkspaceVisualizerMenuItem({
+  serverId,
+  workspaceId,
+}: WorkspaceVisualizerButtonProps) {
+  const { t } = useTranslation();
+  const { showing, toggle } = useVisualizerSurface(serverId, workspaceId);
+
+  if (!workspaceId) {
+    return null;
+  }
+
+  return (
+    <DropdownMenuItem
+      testID="workspace-header-visualizer"
+      leading={MENU_VISUALIZER_ICON}
+      onSelect={toggle}
+    >
+      {showing ? t("workspace.visualizer.closeAction") : t("workspace.visualizer.openAction")}
+    </DropdownMenuItem>
   );
 }
 
