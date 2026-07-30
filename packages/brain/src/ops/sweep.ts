@@ -1,0 +1,243 @@
+import { request } from "node:http";
+
+import { Supervisor } from "../service/supervisor.js";
+
+import type { Model, Runtime } from "../types.js";
+import type { Profile } from "../config/schema.js";
+
+/**
+ * Find the reasoning budget that delivers the most useful output for a model.
+ *
+ * Thinking models default to an unrestricted budget (-1) and will happily burn
+ * an entire token allowance reasoning, returning no content at all. The right
+ * cap is model-specific, so measure it: run one long-horizon task per candidate
+ * budget and score by delivered content per second.
+ */
+
+export const DEFAULT_BUDGETS = [0, 512, 1536, 3072, -1];
+
+export const LONG_TASK =
+  "Write a complete Python implementation of a thread-safe LRU cache with TTL " +
+  "expiry. Produce FOUR separate complete files, each fully implemented with no " +
+  "placeholders or elisions:\n" +
+  "1. lru.py - the cache with get/put/delete/clear, OrderedDict-based, RLock, " +
+  "per-entry TTL, and a background sweeper thread\n" +
+  "2. metrics.py - hit/miss/eviction counters with a snapshot() method\n" +
+  "3. test_lru.py - at least 12 unittest cases covering eviction order, TTL " +
+  "expiry, concurrent access, and edge cases\n" +
+  "4. README.md - full usage documentation with examples\n" +
+  "Write every file out in full. Do not abbreviate anything.";
+
+export const EXPECTED_FILES = ["lru.py", "metrics.py", "test_lru.py", "README.md"];
+
+/** Shape of the chat-completion response we read timings and content out of. */
+interface ChatCompletionResponse {
+  choices?: Array<{
+    finish_reason?: string | null;
+    message?: { content?: string; reasoning_content?: string };
+  }>;
+  usage?: { completion_tokens?: number };
+  timings?: { predicted_per_second?: number };
+}
+
+interface PostJsonOptions {
+  host: string;
+  port: number;
+  path: string;
+  payload: unknown;
+  timeoutMs?: number;
+}
+
+function postJson({
+  host,
+  port,
+  path: urlPath,
+  payload,
+  timeoutMs = 900_000,
+}: PostJsonOptions): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify(payload);
+    const req = request(
+      {
+        host,
+        port,
+        path: urlPath,
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        let text = "";
+        res.on("data", (c) => (text += c));
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(text));
+          } catch (error) {
+            reject(error);
+          }
+        });
+      },
+    );
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("request timed out"));
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
+}
+
+/** The measured outcome of a single generation trial. */
+export interface Trial {
+  finishReason: string | null;
+  outputTokens: number | null;
+  contentChars: number;
+  reasoningChars: number;
+  filesDelivered: number;
+  elapsedSeconds: number;
+  tokensPerSecond: number | null;
+  contentPerSecond: number;
+}
+
+interface RunTrialOptions {
+  supervisor: Supervisor;
+  maxTokens: number;
+  temperature: number;
+}
+
+export async function runTrial({
+  supervisor,
+  maxTokens,
+  temperature,
+}: RunTrialOptions): Promise<Trial> {
+  const started = Date.now();
+  const result = (await postJson({
+    host: supervisor.host,
+    port: supervisor.internalPort,
+    path: "/v1/chat/completions",
+    payload: {
+      messages: [{ role: "user", content: LONG_TASK }],
+      max_tokens: maxTokens,
+      temperature,
+      top_k: 20,
+      top_p: 0.95,
+    },
+  })) as ChatCompletionResponse;
+
+  const elapsedSeconds = (Date.now() - started) / 1000;
+  const choice = result.choices?.[0];
+  const message = choice?.message;
+  const content = message?.content || "";
+  const reasoning = message?.reasoning_content || "";
+
+  return {
+    finishReason: choice?.finish_reason ?? null,
+    outputTokens: result.usage?.completion_tokens ?? null,
+    contentChars: content.length,
+    reasoningChars: reasoning.length,
+    filesDelivered: EXPECTED_FILES.filter((name) => content.includes(name)).length,
+    elapsedSeconds,
+    tokensPerSecond: result.timings?.predicted_per_second ?? null,
+    // The metric that matters: useful output per unit of wall time.
+    contentPerSecond: elapsedSeconds > 0 ? content.length / elapsedSeconds : 0,
+  };
+}
+
+/** Progress event emitted while sweeping reasoning budgets. */
+export interface SweepProgress {
+  phase: "loading" | "generating" | "done" | "failed";
+  budget: number;
+  error?: string;
+  finishReason?: string | null;
+  outputTokens?: number | null;
+  contentChars?: number;
+  reasoningChars?: number;
+  filesDelivered?: number;
+  elapsedSeconds?: number;
+  tokensPerSecond?: number | null;
+  contentPerSecond?: number;
+}
+
+/** A single budget's trial, plus its error (null on success). */
+export interface SweepResult {
+  budget: number;
+  error: string | null;
+  finishReason?: string | null;
+  outputTokens?: number | null;
+  contentChars: number;
+  reasoningChars?: number;
+  filesDelivered: number;
+  elapsedSeconds?: number;
+  tokensPerSecond?: number | null;
+  contentPerSecond: number;
+}
+
+export interface SweepReport {
+  results: SweepResult[];
+  recommended: number | null;
+  ranked: SweepResult[];
+  sweptAt: string;
+}
+
+export interface SweepOptions {
+  runtime: Runtime;
+  model: Model;
+  profile: Profile;
+  budgets?: number[];
+  maxTokens?: number;
+  temperature?: number;
+  internalPort?: number;
+  onProgress?: (event: SweepProgress) => void;
+}
+
+export async function sweep({
+  runtime,
+  model,
+  profile,
+  budgets = DEFAULT_BUDGETS,
+  maxTokens = 8192,
+  temperature = 0.7,
+  internalPort = 8083,
+  onProgress = () => {},
+}: SweepOptions): Promise<SweepReport> {
+  const results: SweepResult[] = [];
+
+  for (const budget of budgets) {
+    const supervisor = new Supervisor({ runtime, internalPort });
+    onProgress({ phase: "loading", budget });
+    try {
+      await supervisor.start(model, { ...profile, reasoningBudget: budget });
+      onProgress({ phase: "generating", budget });
+      const trial = await runTrial({ supervisor, maxTokens, temperature });
+      results.push({ budget, ...trial, error: null });
+      onProgress({ phase: "done", budget, ...trial });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      results.push({
+        budget,
+        error: message,
+        contentChars: 0,
+        contentPerSecond: 0,
+        filesDelivered: 0,
+      });
+      onProgress({ phase: "failed", budget, error: message });
+    } finally {
+      await supervisor.stop();
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+    }
+  }
+
+  // Prefer runs that delivered every file; break ties on content per second.
+  const viable = results.filter((r) => !r.error && r.contentChars > 0);
+  const ranked = [...viable].sort((a, b) => {
+    if (b.filesDelivered !== a.filesDelivered) return b.filesDelivered - a.filesDelivered;
+    return b.contentPerSecond - a.contentPerSecond;
+  });
+
+  return {
+    results,
+    recommended: ranked.length ? ranked[0].budget : null,
+    ranked,
+    sweptAt: new Date().toISOString(),
+  };
+}

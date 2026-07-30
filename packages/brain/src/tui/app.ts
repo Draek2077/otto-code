@@ -1,0 +1,1585 @@
+import { Screen, box, meter, style, pad, truncate, width, onKeys } from "./screen.js";
+
+import { scanModels } from "../models/index.js";
+import * as profiles from "../config/profiles.js";
+import { loadBrainConfig, loadProfilesStore, saveProfilesStore } from "../config/index.js";
+import * as vram from "../vram.js";
+import * as gpu from "../gpu.js";
+import { calibrate } from "../ops/calibrate.js";
+import { sweep } from "../ops/sweep.js";
+import * as results from "../ops/results.js";
+import * as archive from "../ops/archive.js";
+import { Supervisor } from "../service/supervisor.js";
+import { createRouter, Telemetry } from "../service/router.js";
+import * as sysmon from "../sysmon.js";
+
+import http from "node:http";
+
+import type { GpuInfo, Model, ModelMetadata, Runtime } from "../types.js";
+import type { Budget } from "../vram.js";
+import type { Calibration, Profile, ProfilesStore } from "../config/schema.js";
+import type { BenchReport, RankedModel, RunRecord, SystemHealth } from "../ops/results.js";
+import type { SweepReport } from "../ops/sweep.js";
+import type { CpuSampler, SystemSample } from "../sysmon.js";
+
+// The config panel holds short fields, so keep it compact and give the rest of
+// the width to the model list (long model names need the room).
+const CONFIG_MIN_WIDTH = 28;
+const CONFIG_MAX_WIDTH = 46;
+const MODEL_MIN_WIDTH = 24;
+const CACHE_CYCLE = ["q4_0", "q5_1", "q8_0", "f16"];
+const REASONING_CYCLE = [0, 512, 1024, 1536, 3072, -1];
+
+type Tone = "info" | "good" | "warn" | "bad";
+type Focus = "models" | "config";
+type ViewMode = "standard" | "logs" | "help" | "bench";
+
+/** The model a field's callbacks are rendered against. */
+interface FieldContext {
+  model: Model | null;
+}
+
+/** One editable configuration field. */
+interface Field {
+  key: keyof Profile;
+  label: string;
+  kind: "number" | "cycle" | "toggle";
+  format: (profile: Profile, ctx: FieldContext) => string;
+  step?: number;
+  min?: number;
+  max?: number | ((ctx: FieldContext) => number);
+  values?: Array<number | string>;
+  note?: (profile: Profile) => string | null;
+  enabled?: (ctx: FieldContext) => boolean;
+}
+
+/** The number field currently being typed into. */
+interface EditingState {
+  field: Field;
+  buffer: string;
+}
+
+/** The current status line and its tone. */
+interface StatusState {
+  text: string;
+  tone: Tone;
+}
+
+/** Constructor options for the interactive app. */
+interface AppOptions {
+  runtime: Runtime;
+  listenPort: number;
+  listenHost: string;
+}
+
+// The benchmark suite has no TypeScript port yet, so it is loaded lazily and
+// described by these local interfaces (see runBenchmarkOnSelected).
+interface BenchProgressEvent {
+  phase: string;
+  title: string;
+  score: number;
+  summary: string;
+}
+
+interface BenchRunOptions {
+  host: string;
+  port: number;
+  concurrency: number;
+  archiveId: string;
+  onProgress: (event: BenchProgressEvent) => void;
+}
+
+interface BenchModule {
+  runSuite(options: BenchRunOptions): Promise<BenchReport>;
+}
+
+interface HealthSampler {
+  stop(): SystemHealth;
+}
+
+interface HealthModule {
+  start(): HealthSampler;
+}
+
+/** A concurrency task's measured throughput detail. */
+interface ConcurrencyDetail {
+  concurrency?: number;
+  genPerSecond?: number;
+  promptPerSecond?: number;
+}
+
+/** Editable configuration fields, in display order. */
+export const FIELDS: Field[] = [
+  {
+    key: "contextSize",
+    label: "Context",
+    kind: "number",
+    format: (p, ctx) => {
+      const native = ctx.model?.metadata?.contextLength;
+      return `${p.contextSize.toLocaleString()}${native ? style.grey + " / " + native.toLocaleString() + style.reset : ""}`;
+    },
+    step: 8192,
+    min: 1024,
+    max: (ctx) => ctx.model?.metadata?.contextLength || 1_000_000,
+  },
+  {
+    key: "cacheTypeK",
+    label: "KV cache K",
+    kind: "cycle",
+    values: CACHE_CYCLE,
+    format: (p) => p.cacheTypeK,
+  },
+  {
+    key: "cacheTypeV",
+    label: "KV cache V",
+    kind: "cycle",
+    values: CACHE_CYCLE,
+    format: (p) => p.cacheTypeV,
+  },
+  {
+    key: "flashAttention",
+    label: "Flash attention",
+    kind: "toggle",
+    format: (p) =>
+      p.flashAttention
+        ? `${style.brightGreen}on${style.reset}`
+        : `${style.yellow}off${style.reset}`,
+    note: (p) =>
+      !p.flashAttention && p.cacheTypeV !== "f16"
+        ? "quantised V cache requires flash attention"
+        : null,
+  },
+  {
+    key: "vision",
+    label: "Vision",
+    kind: "toggle",
+    format: (p, ctx) => {
+      if (!ctx.model?.mmprojPath) return `${style.grey}no projector${style.reset}`;
+      return p.vision ? `${style.brightGreen}on${style.reset}` : "off";
+    },
+    enabled: (ctx) => Boolean(ctx.model?.mmprojPath),
+  },
+  {
+    key: "reasoningBudget",
+    label: "Reasoning budget",
+    kind: "cycle",
+    values: REASONING_CYCLE,
+    format: (p) => {
+      if (p.reasoningBudget === -1) return `${style.red}unrestricted${style.reset}`;
+      if (p.reasoningBudget === 0) return `${style.cyan}thinking off${style.reset}`;
+      return `${p.reasoningBudget} tokens`;
+    },
+    note: (p) =>
+      p.reasoningBudget === -1 ? "unrestricted budget can consume every token on thinking" : null,
+  },
+  {
+    key: "gpuLayers",
+    label: "GPU layers",
+    kind: "number",
+    step: 1,
+    min: 0,
+    max: () => 999,
+    format: (p) =>
+      p.gpuLayers >= 999 ? `all ${style.grey}(999)${style.reset}` : String(p.gpuLayers),
+  },
+  {
+    key: "parallelSlots",
+    label: "Parallel slots",
+    kind: "number",
+    step: 1,
+    min: 1,
+    max: () => 16,
+    format: (p) => String(p.parallelSlots),
+    note: (p) =>
+      p.parallelSlots > 1 ? `${p.parallelSlots} concurrent requests, sharing one KV pool` : null,
+  },
+];
+
+export class App {
+  runtime: Runtime;
+  listenPort: number;
+  listenHost: string;
+
+  screen: Screen;
+  store: ProfilesStore;
+  catalog: Model[];
+  filter: string;
+  selected: number;
+  scrollTop: number;
+  focus: Focus;
+  fieldIndex: number;
+  editing: EditingState | null;
+  busy: boolean;
+  status: StatusState;
+  gpuInfo: GpuInfo | null;
+  profile: Profile | null;
+  sweepResult: SweepReport | null;
+  cpuSampler: CpuSampler;
+  sys: SystemSample | null;
+  viewMode: ViewMode;
+  benchRunning: boolean;
+  benchProgress: string[];
+  benchResults: RunRecord[];
+  benchModelId: string | null;
+  rankings: Map<string, RankedModel>;
+  rankedModels: RankedModel[];
+  telemetry: Telemetry;
+  supervisor: Supervisor;
+  routerServer: http.Server | null;
+
+  filterMode = false;
+  detach?: () => void;
+  ticker?: NodeJS.Timeout;
+  done?: () => void;
+
+  constructor({ runtime, listenPort, listenHost }: AppOptions) {
+    this.runtime = runtime;
+    this.listenPort = listenPort;
+    this.listenHost = listenHost;
+
+    this.screen = new Screen();
+    this.store = loadProfilesStore();
+    this.catalog = [];
+    this.filter = "";
+    this.selected = 0;
+    this.scrollTop = 0;
+    this.focus = "models";
+    this.fieldIndex = 0;
+    this.editing = null;
+    this.busy = false;
+    this.status = { text: "loading model catalog…", tone: "info" };
+    this.gpuInfo = null;
+    this.profile = null;
+    this.sweepResult = null;
+    this.cpuSampler = sysmon.createCpuSampler();
+    this.sys = null;
+    this.viewMode = "standard"; // standard | logs | help | bench
+    this.benchRunning = false; // a suite is executing right now
+    this.benchProgress = []; // live per-task lines during a run
+    this.benchResults = []; // cached leaderboard (results.latestPerConfig, ranked)
+    this.benchModelId = null; // model id of the most recent / active run
+    this.rankings = new Map(); // model id/name -> averaged benchmark rank + score
+    this.rankedModels = []; // ranked list (mean of runs), best first | help
+    this.telemetry = new Telemetry();
+    this.supervisor = new Supervisor({ runtime });
+    this.routerServer = null;
+
+    this.supervisor.on("state", () => this.draw());
+    this.supervisor.on("log", () => {
+      if (this.viewMode === "logs") this.draw();
+    });
+    this.supervisor.on("ready", (payload: { loadSeconds: number; deltaBytes: number }) => {
+      this.setStatus(
+        `loaded in ${payload.loadSeconds.toFixed(1)}s, using ${vram.formatGiB(payload.deltaBytes)} VRAM`,
+        "good",
+      );
+    });
+    this.supervisor.on("crashed", (why: string) => this.setStatus(`server crashed: ${why}`, "bad"));
+  }
+
+  // ---------------------------------------------------------------- lifecycle
+
+  async run(): Promise<void> {
+    this.screen.enter();
+    this.detach = onKeys((key) => this.onKey(key));
+    process.stdout.on("resize", () => {
+      this.screen.invalidate();
+      this.draw();
+    });
+
+    this.gpuInfo = await gpu.query();
+    this.reload();
+    await this.startRouter();
+    this.draw();
+
+    this.ticker = setInterval(async () => {
+      // One combined reading; only poll /slots while a server is actually up.
+      this.sys = await sysmon.sample(
+        this.cpuSampler,
+        this.supervisor.state === "ready"
+          ? { host: this.supervisor.host, port: this.supervisor.internalPort }
+          : {},
+      );
+      if (this.sys.gpu) this.gpuInfo = this.sys.gpu;
+      this.draw();
+    }, 2000);
+
+    await new Promise<void>((resolve) => {
+      this.done = () => resolve();
+    });
+  }
+
+  async shutdown(): Promise<void> {
+    clearInterval(this.ticker);
+    this.detach?.();
+    this.screen.leave();
+    await this.supervisor.stop();
+    const server = this.routerServer;
+    if (server)
+      await new Promise<void>((r) => {
+        server.close(() => r());
+      });
+    this.done?.();
+  }
+
+  /** Fit a model to the live VRAM budget and (re)start the server on it. */
+  async loadModelFitted(target: Model): Promise<void> {
+    const info = this.gpuInfo || (await gpu.query());
+    let profile = profiles.forModel(this.store, target);
+    if (info) {
+      const fit = vram.fitToBudget({
+        model: target,
+        profile,
+        calibration: profiles.getCalibration(this.store, target, profile),
+        totalVramBytes: info.totalBytes,
+      });
+      if (!fit.adjusted && !fit.budget.fits) throw new Error(fit.reason ?? undefined);
+      profile = fit.profile;
+    }
+    this.setStatus(`switching to ${target.displayName}…`, "info");
+    await this.supervisor.start(target, profile);
+  }
+
+  async startRouter(): Promise<void> {
+    const handler = createRouter({
+      supervisor: this.supervisor,
+      telemetry: this.telemetry,
+      logger: { warn: (m: string) => this.setStatus(m, "warn") },
+      getCatalog: () => this.catalog,
+      loadModel: (m: Model) => this.loadModelFitted(m),
+    });
+    const server = http.createServer(handler);
+    this.routerServer = server;
+    server.keepAliveTimeout = 75_000;
+    server.requestTimeout = 0;
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(this.listenPort, this.listenHost, () => resolve());
+    }).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.setStatus(`could not bind ${this.listenHost}:${this.listenPort} - ${message}`, "bad");
+      this.routerServer = null;
+    });
+  }
+
+  // -------------------------------------------------------------------- state
+
+  reload(): void {
+    const config = loadBrainConfig();
+    this.catalog = scanModels(config);
+    this.loadRankings();
+    this.selected = Math.min(this.selected, Math.max(0, this.visible.length - 1));
+    this.syncProfile();
+    this.setStatus(`${this.catalog.length} models found`, "info");
+  }
+
+  /** Mean-of-runs rank + score per model, for ordering and badging the list. */
+  loadRankings(): void {
+    let ranked: RankedModel[] = [];
+    try {
+      ranked = results.rankModels();
+    } catch {
+      /* no results yet */
+    }
+    const map = new Map<string, RankedModel>();
+    for (const m of ranked) {
+      if (m.id) map.set(m.id, m);
+      map.set(m.displayName, m);
+    }
+    this.rankings = map;
+    this.rankedModels = ranked;
+  }
+
+  rankOf(model: Model | null): RankedModel | null {
+    if (!model) return null;
+    return (
+      (model.id && this.rankings.get(model.id)) || this.rankings.get(model.displayName) || null
+    );
+  }
+
+  get visible(): Model[] {
+    let list = this.catalog;
+    if (this.filter) {
+      const needle = this.filter.toLowerCase();
+      list = list.filter((m) => m.displayName.toLowerCase().includes(needle));
+    }
+    // Offer the models in the order they rank: best known benchmark first, then
+    // any not-yet-benchmarked models by name.
+    return [...list].sort((a, b) => {
+      const ra = this.rankOf(a);
+      const rb = this.rankOf(b);
+      if (ra && rb) return rb.overall - ra.overall;
+      if (ra) return -1;
+      if (rb) return 1;
+      return a.displayName.localeCompare(b.displayName);
+    });
+  }
+
+  get model(): Model | null {
+    return this.visible[this.selected] || null;
+  }
+
+  syncProfile(): void {
+    this.profile = this.model ? profiles.forModel(this.store, this.model) : null;
+    this.sweepResult = null;
+  }
+
+  get calibration(): Calibration | null {
+    const model = this.model;
+    const profile = this.profile;
+    if (!model || !profile) return null;
+    return profiles.getCalibration(this.store, model, profile);
+  }
+
+  get budget(): Budget | null {
+    const model = this.model;
+    const profile = this.profile;
+    const info = this.gpuInfo;
+    if (!model || !profile || !info) return null;
+    return vram.budget({
+      model,
+      profile,
+      calibration: this.calibration,
+      totalVramBytes: info.totalBytes,
+    });
+  }
+
+  persist(): void {
+    const model = this.model;
+    const profile = this.profile;
+    if (model && profile) {
+      profiles.put(this.store, model, profile);
+      this.store.lastModelId = model.id;
+      saveProfilesStore(this.store);
+    }
+  }
+
+  setStatus(text: string, tone: Tone = "info"): void {
+    this.status = { text, tone };
+    this.draw();
+  }
+
+  // -------------------------------------------------------------------- input
+
+  onKey(key: string): void {
+    if (this.editing) return this.onEditKey(key);
+    if (this.filterMode) return this.onFilterKey(key);
+
+    // Esc always returns to the standard view from logs / help / bench.
+    if (key === "escape" && this.viewMode !== "standard") {
+      this.viewMode = "standard";
+      this.draw();
+      return;
+    }
+
+    // Benchmark mode is a full second workspace with its own keys.
+    if (this.viewMode === "bench") return this.onBenchKey(key);
+
+    switch (key) {
+      case "ctrl-c":
+      case "q":
+        this.shutdown();
+        return;
+      case "tab":
+      case "shifttab":
+        this.focus = this.focus === "models" ? "config" : "models";
+        break;
+      case "up":
+        this.move(-1);
+        break;
+      case "down":
+        this.move(1);
+        break;
+      case "pageup":
+        this.move(-8);
+        break;
+      case "pagedown":
+        this.move(8);
+        break;
+      case "left":
+        this.adjust(-1);
+        break;
+      case "right":
+        this.adjust(1);
+        break;
+      case "-":
+      case "_":
+        this.adjust(-1);
+        break;
+      case "+":
+      case "=":
+        this.adjust(1);
+        break;
+      case "enter":
+      case "space":
+        if (this.focus === "config") this.activateField();
+        else this.focus = "config";
+        break;
+      case "/":
+        this.filterMode = true;
+        break;
+      case "s":
+        this.startModel();
+        break;
+      case "x":
+        this.stopModel();
+        break;
+      case "c":
+        this.runCalibration();
+        break;
+      case "w":
+        this.runSweep();
+        break;
+      case "m":
+        this.applyMaxContext();
+        break;
+      case "r":
+        this.reload();
+        break;
+      case "b":
+        this.enterBench();
+        break;
+      case "l":
+        this.viewMode = this.viewMode === "logs" ? "standard" : "logs";
+        break;
+      case "?":
+        this.viewMode = this.viewMode === "help" ? "standard" : "help";
+        break;
+      default:
+        return;
+    }
+    this.draw();
+  }
+
+  onFilterKey(key: string): void {
+    if (key === "enter" || key === "escape") {
+      this.filterMode = false;
+      if (key === "escape") this.filter = "";
+    } else if (key === "backspace") {
+      this.filter = this.filter.slice(0, -1);
+    } else if (key === "space") {
+      // decodeKey names the space bar 'space'; a model name can contain one.
+      this.filter += " ";
+    } else if (key.length === 1 && key >= " ") {
+      this.filter += key;
+    }
+    this.selected = 0;
+    this.scrollTop = 0;
+    this.syncProfile();
+    this.draw();
+  }
+
+  onEditKey(key: string): void {
+    const active = this.editing;
+    if (!active) return;
+    const { field } = active;
+    if (key === "escape") {
+      this.editing = null;
+    } else if (key === "enter") {
+      const value = Number.parseInt(active.buffer, 10);
+      if (Number.isFinite(value)) {
+        const rawMax = field.max;
+        const max =
+          typeof rawMax === "function"
+            ? rawMax({ model: this.model })
+            : (rawMax ?? Number.MAX_SAFE_INTEGER);
+        this.writeField(field.key, Math.max(field.min ?? 0, Math.min(max, value)));
+        this.persist();
+      }
+      this.editing = null;
+    } else if (key === "backspace") {
+      active.buffer = active.buffer.slice(0, -1);
+    } else if (/^[0-9-]$/.test(key)) {
+      active.buffer += key;
+    }
+    this.draw();
+  }
+
+  move(delta: number): void {
+    if (this.focus === "models") {
+      const list = this.visible;
+      if (!list.length) return;
+      this.selected = Math.max(0, Math.min(list.length - 1, this.selected + delta));
+      this.syncProfile();
+    } else {
+      const usable = this.usableFields();
+      if (!usable.length) return;
+      const current = usable.indexOf(this.fieldIndex);
+      const next = Math.max(0, Math.min(usable.length - 1, (current < 0 ? 0 : current) + delta));
+      this.fieldIndex = usable[next];
+    }
+  }
+
+  usableFields(): number[] {
+    return FIELDS.map((f, i) => ({ f, i }))
+      .filter(({ f }) => !f.enabled || f.enabled({ model: this.model }))
+      .map(({ i }) => i);
+  }
+
+  /** Read a profile field by key, without narrowing to a single value type. */
+  readField(key: keyof Profile): unknown {
+    return this.profile ? (this.profile as unknown as Record<string, unknown>)[key] : undefined;
+  }
+
+  /** Write a profile field by key; a no-op when no model is selected. */
+  writeField(key: keyof Profile, value: number | string | boolean): void {
+    if (!this.profile) return;
+    (this.profile as unknown as Record<string, unknown>)[key] = value;
+  }
+
+  adjust(direction: number): void {
+    if (this.focus !== "config" || !this.profile) return;
+    const field = FIELDS[this.fieldIndex];
+    if (!field) return;
+
+    if (field.kind === "toggle") {
+      this.writeField(field.key, !this.readField(field.key));
+    } else if (field.kind === "cycle") {
+      const values = field.values ?? [];
+      const at = values.indexOf(this.readField(field.key) as number | string);
+      const next = (at < 0 ? 0 : at + direction + values.length) % values.length;
+      this.writeField(field.key, values[next]);
+    } else {
+      const rawMax = field.max;
+      const max =
+        typeof rawMax === "function"
+          ? rawMax({ model: this.model })
+          : (rawMax ?? Number.MAX_SAFE_INTEGER);
+      const value = (this.readField(field.key) as number) + direction * (field.step ?? 0);
+      this.writeField(field.key, Math.max(field.min ?? 0, Math.min(max, value)));
+    }
+    this.persist();
+  }
+
+  activateField(): void {
+    const field = FIELDS[this.fieldIndex];
+    if (!field || !this.profile) return;
+    if (field.kind === "number") {
+      this.editing = { field, buffer: "" };
+    } else {
+      this.adjust(1);
+    }
+  }
+
+  applyMaxContext(): void {
+    const model = this.model;
+    const profile = this.profile;
+    const info = this.gpuInfo;
+    if (!model || !profile || !info) return;
+    const max = vram.maxContextThatFits({
+      model,
+      profile,
+      calibration: this.calibration,
+      totalVramBytes: info.totalBytes,
+    });
+    if (!max) {
+      this.setStatus("cannot determine a fitting context - run calibration (c)", "warn");
+      return;
+    }
+    profile.contextSize = max;
+    this.persist();
+    const how = this.calibration ? "measured" : "theoretical (calibrate for accuracy)";
+    this.setStatus(`context set to ${max.toLocaleString()} from ${how} budget`, "good");
+  }
+
+  // ------------------------------------------------------------------ actions
+
+  async guard(label: string, fn: () => Promise<void>): Promise<void> {
+    if (this.busy) {
+      this.setStatus("another operation is already running", "warn");
+      return;
+    }
+    this.busy = true;
+    try {
+      await fn();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.setStatus(`${label} failed: ${message}`, "bad");
+    } finally {
+      this.busy = false;
+      this.draw();
+    }
+  }
+
+  startModel(): Promise<void> | void {
+    const model = this.model;
+    if (!model) return;
+    const profile = this.profile;
+    if (!profile) return;
+    const budget = this.budget;
+    if (budget && !budget.fits) {
+      this.setStatus(
+        `refusing to load: needs ${vram.formatGiB(budget.totalBytes)} but only ${vram.formatGiB(budget.usableBytes)} usable - press m to fit`,
+        "bad",
+      );
+      return;
+    }
+    if (!profile.flashAttention && profile.cacheTypeV !== "f16") {
+      this.setStatus("quantised V cache needs flash attention on", "bad");
+      return;
+    }
+    return this.guard("start", async () => {
+      this.setStatus(`loading ${model.displayName}…`, "info");
+      await this.supervisor.start(model, profile);
+    });
+  }
+
+  stopModel(): Promise<void> {
+    return this.guard("stop", async () => {
+      await this.supervisor.stop();
+      this.setStatus("server stopped", "info");
+    });
+  }
+
+  runCalibration(): Promise<void> | void {
+    const model = this.model;
+    const profile = this.profile;
+    if (!model || !profile) return;
+    return this.guard("calibration", async () => {
+      await this.supervisor.stop();
+      const measurement = await calibrate({
+        runtime: this.runtime,
+        model,
+        profile,
+        onProgress: (p) => {
+          if (p.phase === "loading")
+            this.setStatus(
+              `calibrating: loading at ${p.contextSize.toLocaleString()} ctx…`,
+              "info",
+            );
+          if (p.phase === "measured")
+            this.setStatus(
+              `calibrating: ${p.contextSize.toLocaleString()} ctx used ${vram.formatGiB(p.deltaBytes ?? 0)}`,
+              "info",
+            );
+        },
+      });
+      profiles.putCalibration(this.store, model, profile, measurement);
+      saveProfilesStore(this.store);
+      const ratio = measurement.theoreticalRatio;
+      this.setStatus(
+        `measured ${(measurement.kvBytesPerToken / 1024).toFixed(1)} KB/token` +
+          (ratio ? ` (formula overestimated ${ratio.toFixed(1)}x)` : ""),
+        "good",
+      );
+    });
+  }
+
+  runSweep(): Promise<void> | void {
+    const model = this.model;
+    const profile = this.profile;
+    if (!model || !profile) return;
+    return this.guard("sweep", async () => {
+      await this.supervisor.stop();
+      const result = await sweep({
+        runtime: this.runtime,
+        model,
+        profile,
+        onProgress: (p) => {
+          if (p.phase === "loading")
+            this.setStatus(`sweep: loading with budget ${p.budget}…`, "info");
+          if (p.phase === "generating")
+            this.setStatus(`sweep: generating with budget ${p.budget}…`, "info");
+          if (p.phase === "done") {
+            this.setStatus(
+              `sweep: budget ${p.budget} -> ${((p.contentChars ?? 0) / 1024).toFixed(1)}KB content, ${p.filesDelivered}/4 files, ${(p.elapsedSeconds ?? 0).toFixed(0)}s`,
+              "info",
+            );
+          }
+        },
+      });
+      this.sweepResult = result;
+      if (result.recommended !== null) {
+        profile.reasoningBudget = result.recommended;
+        this.persist();
+        this.setStatus(`sweep complete - reasoning budget set to ${result.recommended}`, "good");
+      } else {
+        this.setStatus("sweep produced no usable result", "warn");
+      }
+    });
+  }
+
+  // --------------------------------------------------------------- benchmarks
+
+  enterBench(): void {
+    this.viewMode = "bench";
+    this.focus = "models";
+    this.loadBenchResults();
+    this.loadRankings();
+  }
+
+  loadBenchResults(): void {
+    try {
+      this.benchResults = results.latestPerConfig();
+    } catch {
+      this.benchResults = [];
+    }
+  }
+
+  onBenchKey(key: string): void {
+    switch (key) {
+      case "ctrl-c":
+      case "q":
+        this.shutdown();
+        return;
+      case "b":
+        this.viewMode = "standard";
+        break;
+      case "up":
+        this.move(-1);
+        break;
+      case "down":
+        this.move(1);
+        break;
+      case "pageup":
+        this.move(-8);
+        break;
+      case "pagedown":
+        this.move(8);
+        break;
+      case "r":
+      case "enter":
+        this.runBenchmarkOnSelected();
+        break;
+      case "x":
+        this.stopModel();
+        break;
+      default:
+        return;
+    }
+    this.draw();
+  }
+
+  /** Load the selected model if needed, run the suite, and store the result. */
+  runBenchmarkOnSelected(): Promise<void> | void {
+    const model = this.model;
+    if (!model || this.benchRunning) return;
+    return this.guard("benchmark", async () => {
+      this.benchRunning = true;
+      this.benchModelId = model.id;
+      this.benchProgress = [`preparing ${model.displayName}…`];
+      this.draw();
+      try {
+        if (this.supervisor.model?.id !== model.id || this.supervisor.state !== "ready") {
+          this.benchProgress.push("loading model…");
+          this.draw();
+          await this.loadModelFitted(model);
+        }
+        // The benchmark suite has no TypeScript port yet, so it is loaded lazily
+        // and described by the local Bench/Health interfaces declared above.
+        const benchModule = await import("../bench/index.js");
+        const healthModule = await import("../bench/health.js");
+        const bench = benchModule as unknown as BenchModule;
+        const health = healthModule as unknown as HealthModule;
+        const profile = this.supervisor.profile;
+        const archiveId = archive.runId(model);
+
+        const healthSampler = health.start();
+        const report = await bench.runSuite({
+          host: this.supervisor.host,
+          port: this.supervisor.internalPort,
+          concurrency: Math.max(1, profile?.parallelSlots || 3),
+          archiveId,
+          onProgress: (p) => {
+            if (p.phase === "start") this.benchProgress.push(`${p.title}…`);
+            else if (p.phase === "done") {
+              this.benchProgress[this.benchProgress.length - 1] =
+                `${p.title}: ${(p.score * 100).toFixed(0)}%  ${p.summary}`;
+            } else if (p.phase === "failed")
+              this.benchProgress.push(`${p.title}: failed — ${p.summary}`);
+            this.draw();
+          },
+        });
+        report.system = healthSampler.stop();
+        report.vramBytes = this.supervisor.vramAtReadyBytes;
+        report.loadSeconds = this.supervisor.loadSeconds;
+        results.save({
+          model,
+          profile,
+          report,
+          gpu: this.gpuInfo,
+          runtime: `${this.runtime.label} v${this.runtime.version}`,
+          system: report.system,
+          archiveId,
+        });
+        this.loadBenchResults();
+        this.loadRankings();
+        this.benchProgress.push(
+          `done — overall ${(report.overall * 100).toFixed(0)}% (${report.grade})`,
+        );
+        this.setStatus(
+          `benchmark complete: ${model.displayName} ${(report.overall * 100).toFixed(0)}% (${report.grade})`,
+          "good",
+        );
+      } finally {
+        this.benchRunning = false;
+      }
+    });
+  }
+
+  scoreColour(score: number): string {
+    if (score >= 0.75) return style.brightGreen;
+    if (score >= 0.55) return style.brightYellow;
+    if (score >= 0.35) return style.yellow;
+    return style.red;
+  }
+
+  // ------------------------------------------------------------------ drawing
+
+  /**
+   * Render, but never let the footer scroll off. The renderer only paints
+   * rows-1 lines; if the layout is taller than the terminal, drop rows from
+   * just above the footer so the keybindings hint is always on screen.
+   */
+  renderFitted(lines: string[]): void {
+    const cap = Math.max(1, this.screen.rows - 1);
+    const fitted =
+      lines.length > cap ? [...lines.slice(0, cap - 1), lines[lines.length - 1]] : lines;
+    this.screen.render(fitted);
+  }
+
+  draw(): void {
+    if (!this.screen.entered) return;
+    const cols = this.screen.columns;
+
+    if (this.viewMode === "logs") {
+      this.drawLogs(cols);
+      return;
+    }
+    if (this.viewMode === "help") {
+      this.drawHelp(cols);
+      return;
+    }
+    if (this.viewMode === "bench") {
+      this.drawBench(cols);
+      return;
+    }
+
+    // Give the model list the width; keep config compact. Hold the combined
+    // panel row to cols-2 so nothing spills into the terminal's last column
+    // (writing there scrolls the view, which read as "config goes off screen").
+    const rightWidth = Math.max(
+      CONFIG_MIN_WIDTH,
+      Math.min(CONFIG_MAX_WIDTH, Math.round(cols * 0.38)),
+    );
+    const leftWidth = Math.max(MODEL_MIN_WIDTH, cols - rightWidth - 7);
+
+    // Render the fixed-height chrome first and measure it, then hand the panels
+    // exactly the rows that are left. The status panel grows once CPU/GPU and
+    // telemetry lines appear, so a static guess pushes the footer off-screen.
+    const header = this.header(cols);
+    const budget = this.budgetPanel(cols - 2);
+    const status = this.statusPanel(cols - 2);
+    const footer = this.keybindings(cols - 1);
+
+    // Lines around the panels: header + blank + [panels] + blank + budget +
+    // blank + status + blank + footer. The panel box adds 3 rows of its own
+    // chrome (title, its footer, bottom border) on top of listRows.
+    const overhead = 1 + 1 + 3 + 1 + budget.length + 1 + status.length + 1 + footer.length;
+    const listRows = Math.max(1, this.screen.rows - 1 - overhead);
+
+    const lines = [header, ""];
+    const left = this.modelPanel(leftWidth, listRows);
+    const right = this.configPanel(rightWidth, listRows);
+    const height = Math.max(left.length, right.length);
+    for (let i = 0; i < height; i += 1) {
+      const l = left[i] ?? " ".repeat(leftWidth + 2);
+      const r = right[i] ?? "";
+      lines.push(`${l} ${r}`);
+    }
+
+    lines.push("");
+    lines.push(...budget);
+    lines.push("");
+    lines.push(...status);
+    lines.push("");
+    lines.push(...footer);
+
+    this.renderFitted(lines);
+  }
+
+  /**
+   * Benchmark workspace: the model list on the left, the selected model's
+   * scorecard where Configuration sits in serve mode, and the ranked leaderboard
+   * (or live run progress) where the Status panel sits.
+   */
+  drawBench(cols: number): void {
+    const rightWidth = Math.max(
+      CONFIG_MIN_WIDTH,
+      Math.min(CONFIG_MAX_WIDTH + 4, Math.round(cols * 0.42)),
+    );
+    const leftWidth = Math.max(MODEL_MIN_WIDTH, cols - rightWidth - 7);
+
+    const header = this.header(cols);
+    const bottom = this.benchBottom(cols - 2);
+    const footer = this.keybindings(cols - 1);
+    const overhead = 1 + 1 + 3 + 1 + bottom.length + 1 + footer.length;
+    const listRows = Math.max(1, this.screen.rows - 1 - overhead);
+
+    const lines = [header, ""];
+    const left = this.modelPanel(leftWidth, listRows);
+    const right = this.benchSidebar(rightWidth, listRows);
+    const height = Math.max(left.length, right.length);
+    for (let i = 0; i < height; i += 1) {
+      const l = left[i] ?? " ".repeat(leftWidth + 2);
+      const r = right[i] ?? "";
+      lines.push(`${l} ${r}`);
+    }
+
+    lines.push("");
+    lines.push(...bottom);
+    lines.push("");
+    lines.push(...footer);
+    this.renderFitted(lines);
+  }
+
+  /** The selected model's latest scorecard, or a prompt to run one. */
+  benchSidebar(innerWidth: number, rows: number): string[] {
+    const lines: string[] = [];
+    const model = this.model;
+    if (!model) {
+      lines.push(`${style.grey}no model selected${style.reset}`);
+    } else {
+      lines.push(`${style.bold}${truncate(model.displayName, innerWidth)}${style.reset}`);
+      lines.push(
+        `${style.grey}${model.quant || "?"}  ${vram.formatGiB(model.sizeBytes)}${style.reset}`,
+      );
+      lines.push("");
+
+      const rec = this.benchResults.find((r) => r.model.displayName === model.displayName) || null;
+      const ranking = this.rankOf(model);
+
+      if (this.benchRunning && this.benchModelId === model.id) {
+        lines.push(`${style.brightYellow}benchmarking now…${style.reset}`);
+      } else if (!ranking || !rec) {
+        lines.push(`${style.yellow}not benchmarked yet${style.reset}`);
+        lines.push(`${style.grey}press r to run the suite${style.reset}`);
+      } else {
+        lines.push(
+          `${style.grey}rank${style.reset} ${style.bold}#${ranking.rank}${style.reset}${style.grey} of ${this.rankedModels.length}${style.reset}`,
+        );
+        lines.push(
+          `${style.grey}overall${style.reset} ${this.scoreColour(ranking.overall)}${(ranking.overall * 100).toFixed(0)}%  ${ranking.grade}${style.reset}`,
+        );
+        lines.push(
+          `${style.grey}mean of ${ranking.runs} run${ranking.runs === 1 ? "" : "s"}${ranking.runs > 1 ? ` · ±${(ranking.std * 100).toFixed(1)}pts` : ""}${style.reset}`,
+        );
+        lines.push("");
+        for (const t of rec.tasks) {
+          lines.push(
+            `${pad(truncate(t.category, 16), 16)} ${this.scoreColour(t.score)}${(t.score * 100).toFixed(0).padStart(3)}%${style.reset}`,
+          );
+        }
+        const conc = rec.tasks.find((t) => t.id === "concurrency");
+        if (conc && conc.detail) {
+          const detail = conc.detail as ConcurrencyDetail;
+          lines.push("");
+          lines.push(`${style.grey}throughput @${detail.concurrency}${style.reset}`);
+          lines.push(
+            `  ${style.grey}gen${style.reset} ${(detail.genPerSecond ?? 0).toFixed(0)} tok/s`,
+          );
+          lines.push(
+            `  ${style.grey}prompt${style.reset} ${(detail.promptPerSecond ?? 0).toFixed(0)} tok/s`,
+          );
+        }
+        lines.push("");
+        lines.push(`${style.grey}ran ${rec.ranAt.slice(0, 10)} · ${rec.grade}${style.reset}`);
+      }
+    }
+    while (lines.length < rows) lines.push("");
+    return box({
+      title: "Benchmark",
+      lines,
+      innerWidth,
+      footer: `${style.grey}r run · esc back${style.reset}`,
+      accent: style.brightCyan,
+    });
+  }
+
+  /** Live run progress, otherwise the ranked leaderboard. */
+  benchBottom(innerWidth: number): string[] {
+    if (this.benchRunning) {
+      const lines = this.benchProgress
+        .slice(-6)
+        .map((line) => truncate(`  ${line}`, innerWidth - 4));
+      while (lines.length < 6) lines.push("");
+      return box({
+        title: "Benchmark progress",
+        lines,
+        innerWidth: innerWidth - 2,
+        accent: style.brightYellow,
+      });
+    }
+
+    if (!this.rankedModels.length) {
+      return box({
+        title: "Leaderboard",
+        lines: [
+          `${style.grey}no benchmarks yet — select a model and press r to run one${style.reset}`,
+        ],
+        innerWidth: innerWidth - 2,
+      });
+    }
+
+    const lines: string[] = [];
+    lines.push(
+      `${style.grey}${pad("#", 3)}${pad("model", 38)}${"mean".padStart(8)}${"runs".padStart(6)}${"grade".padStart(10)}${"gen tok/s".padStart(11)}${style.reset}`,
+    );
+    for (const entry of this.rankedModels.slice(0, 8)) {
+      const latest = this.benchResults.find(
+        (r) => (entry.id && r.model.id === entry.id) || r.model.displayName === entry.displayName,
+      );
+      const conc = latest && latest.tasks.find((t) => t.id === "concurrency");
+      const tps = conc && conc.detail ? (conc.detail as ConcurrencyDetail).genPerSecond : null;
+      const selected = this.model && entry.displayName === this.model.displayName;
+      const row =
+        `${pad(String(entry.rank), 3)}${pad(truncate(entry.displayName, 37), 38)}` +
+        `${`${(entry.overall * 100).toFixed(0)}%`.padStart(8)}${String(entry.runs).padStart(6)}` +
+        `${entry.grade.padStart(10)}${(tps != null ? tps.toFixed(0) : "-").padStart(11)}`;
+      lines.push(selected ? `${style.inverse}${pad(row, innerWidth - 2)}${style.reset}` : row);
+    }
+    return box({
+      title: `Leaderboard ${style.grey}(${this.rankedModels.length} ranked, mean of runs)${style.reset}`,
+      lines,
+      innerWidth: innerWidth - 2,
+    });
+  }
+
+  drawLogs(cols: number): void {
+    const logs = this.supervisor.logLines;
+    const s = this.supervisor.status();
+    const header = this.header(cols);
+    const status = this.statusPanel(cols - 2);
+    const footer = this.keybindings(cols - 1);
+    const title = truncate(
+      `${style.brightCyan}llama-server log${style.reset}  ` +
+        `${style.grey}${s.state}${logs.length ? ` · ${logs.length} lines` : ""} · esc or l to go back${style.reset}`,
+      cols - 1,
+    );
+
+    // header + blank + title + blank + [body] + blank + status + blank + footer.
+    const overhead = 1 + 1 + 1 + 1 + 1 + status.length + 1 + footer.length;
+    const bodyRows = Math.max(1, this.screen.rows - 1 - overhead);
+
+    const body: string[] = [];
+    if (logs.length === 0) {
+      body.push(
+        `${style.grey}no logs yet — start a model with s to see llama-server output${style.reset}`,
+      );
+    } else {
+      for (const line of logs.slice(Math.max(0, logs.length - bodyRows)))
+        body.push(truncate(line, cols));
+    }
+    while (body.length < bodyRows) body.push("");
+
+    const lines = [header, "", title, "", ...body, "", ...status, "", ...footer];
+    this.renderFitted(lines);
+  }
+
+  header(cols: number): string {
+    const title = `${style.bold}${style.brightCyan}Otto Brain${style.reset}`;
+    const rt = `${style.grey}llama.cpp ${this.runtime.label} v${this.runtime.version}${style.reset}`;
+    const g = this.gpuInfo
+      ? `${style.grey}${this.gpuInfo.name} · ${vram.formatGiB(this.gpuInfo.usedBytes)}/${vram.formatGiB(this.gpuInfo.totalBytes)}${style.reset}`
+      : `${style.yellow}no NVIDIA GPU detected${style.reset}`;
+    const endpoint = this.routerServer
+      ? `${style.grey}serving ${this.listenHost}:${this.listenPort}${style.reset}`
+      : `${style.red}router not listening${style.reset}`;
+    return truncate(`${title}  ${rt}  ${g}  ${endpoint}`, cols - 1);
+  }
+
+  modelPanel(innerWidth: number, rows: number): string[] {
+    const list = this.visible;
+    if (this.selected < this.scrollTop) this.scrollTop = this.selected;
+    if (this.selected >= this.scrollTop + rows) this.scrollTop = this.selected - rows + 1;
+
+    const lines: string[] = [];
+    for (let i = this.scrollTop; i < Math.min(list.length, this.scrollTop + rows); i += 1) {
+      const m = list[i];
+      const isSelected = i === this.selected;
+      const running = this.supervisor.model?.id === m.id && this.supervisor.state === "ready";
+
+      const marker = running ? `${style.brightGreen}●${style.reset}` : " ";
+      const quant = m.quant ? m.quant.padEnd(7) : "-".padEnd(7);
+      const size = vram.formatGiB(m.sizeBytes).padStart(6);
+      const tags = [
+        m.mmprojPath ? `${style.cyan}V${style.reset}` : " ",
+        m.features.mtp ? `${style.magenta}M${style.reset}` : " ",
+      ].join("");
+
+      // Benchmark score badge: how this model ranks by our latest measurement.
+      const rank = this.rankOf(m);
+      const score = rank
+        ? `${this.scoreColour(rank.overall)}${String(Math.round(rank.overall * 100)).padStart(3)}%${style.reset}`
+        : `${style.grey}   –${style.reset}`;
+
+      const nameWidth = innerWidth - 7 - 7 - 3 - 2 - 5;
+      const name = truncate(m.displayName, nameWidth);
+      const row = `${marker}${pad(name, nameWidth)} ${score} ${quant}${size} ${tags}`;
+      lines.push(
+        isSelected
+          ? `${style.inverse}${pad(truncate(row.replace(/\x1b\[[0-9;]*m/g, ""), innerWidth), innerWidth)}${style.reset}`
+          : row,
+      );
+    }
+    while (lines.length < rows) lines.push("");
+
+    const title = this.filterMode
+      ? `Models  ${style.brightYellow}/${this.filter}${style.reset}`
+      : `Models ${style.grey}(${list.length})${style.reset}`;
+    const footer = `${style.grey}%=benchmark  V=vision  M=MTP${style.reset}`;
+    return box({
+      title,
+      lines,
+      innerWidth,
+      footer,
+      accent: this.focus === "models" ? style.brightCyan : style.grey,
+    });
+  }
+
+  configPanel(innerWidth: number, rows: number): string[] {
+    // Build the full content first, remembering which line holds the focused
+    // field, then window it to exactly `rows` so the box height always matches
+    // the model list and never runs off the bottom of the screen.
+    const content: string[] = [];
+    let focusLine = 0;
+    const model = this.model;
+    const profile = this.profile;
+    if (!model || !profile) {
+      content.push(`${style.grey}no model selected${style.reset}`);
+    } else {
+      const md: ModelMetadata = model.metadata ?? {};
+      content.push(
+        `${style.grey}arch${style.reset} ${md.arch || "?"}   ` +
+          `${style.grey}layers${style.reset} ${md.blockCount ?? "?"}   ` +
+          `${style.grey}kv heads${style.reset} ${md.headCountKv ?? "?"}`,
+      );
+      if (model.features.mtp || model.features.distilled) {
+        const flags = [
+          model.features.mtp ? "multi-token prediction" : null,
+          model.features.distilled ? "distilled" : null,
+        ]
+          .filter(Boolean)
+          .join(", ");
+        content.push(`${style.grey}${flags}${style.reset}`);
+      }
+      content.push("");
+
+      const usable = this.usableFields();
+      for (const index of usable) {
+        const field = FIELDS[index];
+        const focused = this.focus === "config" && index === this.fieldIndex;
+        const active = this.editing;
+        const value =
+          active && active.field.key === field.key
+            ? `${style.brightYellow}${active.buffer}_${style.reset}`
+            : field.format(profile, { model });
+        const arrow = focused ? `${style.brightCyan}›${style.reset}` : " ";
+        if (focused) focusLine = content.length;
+        content.push(`${arrow} ${pad(field.label, 17)} ${value}`);
+        const note = field.note?.(profile);
+        if (note) content.push(`  ${style.yellow}  ${note}${style.reset}`);
+      }
+
+      const sweepResult = this.sweepResult;
+      if (sweepResult) {
+        content.push("");
+        content.push(`${style.grey}sweep results${style.reset}`);
+        for (const r of sweepResult.results) {
+          if (r.error) {
+            content.push(
+              `  ${String(r.budget).padStart(5)}  ${style.red}${truncate(r.error, innerWidth - 10)}${style.reset}`,
+            );
+            continue;
+          }
+          const best = r.budget === sweepResult.recommended;
+          const mark = best ? `${style.brightGreen}✓${style.reset}` : " ";
+          content.push(
+            `  ${String(r.budget).padStart(5)} ${mark} ${(r.contentChars / 1024).toFixed(1).padStart(5)}KB  ` +
+              `${r.filesDelivered}/4 files  ${(r.elapsedSeconds ?? 0).toFixed(0).padStart(3)}s`,
+          );
+        }
+      }
+    }
+
+    // Window to `rows`, keeping the focused field on screen when it overflows.
+    let lines: string[];
+    if (content.length <= rows) {
+      lines = content;
+      while (lines.length < rows) lines.push("");
+    } else {
+      const start = Math.max(0, Math.min(focusLine - Math.floor(rows / 2), content.length - rows));
+      lines = content.slice(start, start + rows);
+    }
+
+    return box({
+      title: `Configuration${this.calibration ? `  ${style.brightGreen}calibrated${style.reset}` : `  ${style.yellow}not calibrated${style.reset}`}`,
+      lines,
+      innerWidth,
+      footer: `${style.grey}←→ change · enter edit${style.reset}`,
+      accent: this.focus === "config" ? style.brightCyan : style.grey,
+    });
+  }
+
+  budgetPanel(innerWidth: number): string[] {
+    const b = this.budget;
+    if (!b) {
+      return box({
+        title: "VRAM budget",
+        lines: [`${style.grey}unavailable${style.reset}`],
+        innerWidth: innerWidth - 2,
+      });
+    }
+
+    const cells = Math.max(20, Math.min(60, innerWidth - 40));
+    const bar = meter(b.utilization, cells);
+    const verdict = b.fits
+      ? `${style.brightGreen}fits entirely on GPU${style.reset}`
+      : `${style.red}EXCEEDS VRAM by ${vram.formatGiB(-b.headroomBytes)}${style.reset}`;
+
+    const breakdown =
+      `weights ${vram.formatGiB(b.weightsBytes)}` +
+      (b.mmprojBytes ? ` + projector ${vram.formatGiB(b.mmprojBytes)}` : "") +
+      ` + kv ${vram.formatGiB(b.kvBytes)}` +
+      ` + overhead ${vram.formatGiB(b.overheadBytes)}` +
+      ` = ${style.bold}${vram.formatGiB(b.totalBytes)}${style.reset}`;
+
+    const sourceNote =
+      b.source === "measured"
+        ? `${style.grey}kv ${(b.kvBytesPerToken / 1024).toFixed(1)} KB/token (measured)${style.reset}`
+        : `${style.yellow}kv ${(b.kvBytesPerToken / 1024).toFixed(1)} KB/token (theoretical - press c to measure)${style.reset}`;
+
+    return box({
+      title: "VRAM budget",
+      lines: [
+        `${bar}  ${vram.formatGiB(b.totalBytes)} / ${vram.formatGiB(b.usableBytes)} usable   ${verdict}`,
+        breakdown,
+        sourceNote,
+      ],
+      innerWidth: innerWidth - 2,
+    });
+  }
+
+  statusPanel(innerWidth: number): string[] {
+    const s = this.supervisor.status();
+    const tone = {
+      info: style.grey,
+      good: style.brightGreen,
+      warn: style.brightYellow,
+      bad: style.red,
+    }[this.status.tone];
+    const stateColour =
+      {
+        ready: style.brightGreen,
+        starting: style.brightYellow,
+        stopping: style.yellow,
+        failed: style.red,
+        stopped: style.grey,
+      }[s.state] || style.grey;
+
+    const lines = [
+      `${style.grey}server${style.reset} ${stateColour}${s.state}${style.reset}` +
+        (s.model ? `  ${truncate(s.model, 40)}` : "") +
+        (s.pid ? `  ${style.grey}pid ${s.pid}${style.reset}` : ""),
+      `${tone}${truncate(this.status.text, innerWidth - 4)}${style.reset}`,
+    ];
+
+    // Live resource line: CPU, system RAM, GPU utilisation and VRAM.
+    const sys = this.sys;
+    if (sys) {
+      const bits: string[] = [];
+      if (typeof sys.cpu === "number") {
+        bits.push(
+          `${style.grey}cpu${style.reset} ${(sys.cpu * 100).toFixed(0).padStart(3)}%` +
+            `${style.grey}/${sys.cpuCount}c${style.reset}`,
+        );
+      }
+      bits.push(
+        `${style.grey}ram${style.reset} ${vram.formatGiB(sys.ramUsedBytes)}/${vram.formatGiB(sys.ramTotalBytes)}`,
+      );
+      const gpuSample = sys.gpu;
+      if (gpuSample) {
+        const hot = gpuSample.utilization >= 90 ? style.brightGreen : style.reset;
+        bits.push(
+          `${style.grey}gpu${style.reset} ${hot}${String(gpuSample.utilization).padStart(3)}%${style.reset}`,
+        );
+        bits.push(
+          `${style.grey}vram${style.reset} ${vram.formatGiB(gpuSample.usedBytes)}/${vram.formatGiB(gpuSample.totalBytes)}`,
+        );
+        if (typeof gpuSample.temperature === "number" && gpuSample.temperature > 0) {
+          bits.push(`${style.grey}${gpuSample.temperature}C${style.reset}`);
+        }
+      }
+      lines.push(bits.join("  "));
+
+      const slotInfo = sys.slots;
+      if (slotInfo) {
+        const busyColour = slotInfo.busy > 0 ? style.brightGreen : style.grey;
+        lines.push(
+          `${style.grey}slots${style.reset} ${busyColour}${slotInfo.busy} busy${style.reset}` +
+            `${style.grey} / ${slotInfo.total} total${style.reset}` +
+            `${slotInfo.busy >= slotInfo.total ? `  ${style.brightYellow}saturated - further requests queue${style.reset}` : ""}`,
+        );
+      }
+    }
+
+    const t = this.telemetry.totals;
+    if (t.requests) {
+      lines.push(
+        `${style.grey}requests${style.reset} ${t.requests}  ` +
+          `${style.brightGreen}ok ${t.ok}${style.reset}  ` +
+          `${t.reasoningOnly ? style.red : style.grey}reasoning-only ${t.reasoningOnly}${style.reset}  ` +
+          `${t.truncated ? style.brightYellow : style.grey}truncated ${t.truncated}${style.reset}`,
+      );
+    }
+    const warning = this.telemetry.warning;
+    if (warning)
+      lines.push(`${style.brightYellow}${truncate(warning, innerWidth - 4)}${style.reset}`);
+
+    return box({ title: "Status", lines, innerWidth: innerWidth - 2 });
+  }
+
+  /** Full-screen reference so no option ever has to be guessed. */
+  drawHelp(cols: number): void {
+    const inner = Math.min(cols - 4, 76);
+    const rows: string[] = [];
+    const section = (t: string): void => {
+      rows.push("", `${style.brightCyan}${t}${style.reset}`);
+    };
+    const item = (k: string, d: string): void => {
+      rows.push(`  ${style.brightCyan}${pad(k, 12)}${style.reset}${style.grey}${d}${style.reset}`);
+    };
+
+    section("Navigate");
+    item("↑ ↓", "move within the focused panel");
+    item("PgUp PgDn", "jump by 8");
+    item("Tab", "switch between the Models and Configuration panels");
+    section("Change settings (Configuration panel)");
+    item("← →", "change the selected field (toggle / cycle / ± step)");
+    item("- +", "same as ← →");
+    item("Enter", "edit a number field — type digits, Enter saves, Esc cancels");
+    item("m", "set context to the largest size that fits in VRAM");
+    section("Run the model");
+    item("s", "start / load the selected model");
+    item("x", "stop the running model");
+    item("c", "calibrate — measure real VRAM per token");
+    item("w", "sweep — find the best reasoning budget");
+    section("Views");
+    item("b", "benchmark mode — rank models, run the coding suite");
+    item("l", "view the live llama-server log");
+    item("/", "filter the model list (Enter apply, Esc clear)");
+    item("r", "rescan the models folder");
+    item("?", "this help");
+    section("Anywhere");
+    item("Esc", "leave logs / help / the current mode");
+    item("q  Ctrl-C", "quit Otto Brain");
+
+    const lines = [this.header(cols), ""];
+    lines.push(
+      ...box({
+        title: "Help — every key and what it does",
+        lines: rows,
+        innerWidth: inner,
+        footer: `${style.grey}esc or ? to go back${style.reset}`,
+        accent: style.brightCyan,
+      }),
+    );
+    this.renderFitted(lines);
+  }
+
+  /**
+   * The key hints for the current mode, as an array of lines. Groups are
+   * deliberately broken onto separate lines — navigation first, then the
+   * actions — and each group wraps further only if the terminal is too narrow.
+   */
+  keybindings(cols: number): string[] {
+    let groups: string[][][];
+    if (this.filterMode) {
+      groups = [
+        [
+          ["type", "to filter"],
+          ["enter", "apply"],
+          ["esc", "clear & exit"],
+        ],
+      ];
+    } else if (this.editing) {
+      groups = [
+        [
+          ["0-9", "type value"],
+          ["enter", "save"],
+          ["esc", "cancel"],
+        ],
+      ];
+    } else if (this.viewMode === "logs") {
+      groups = [
+        [
+          ["esc", "back"],
+          ["l", "back"],
+          ["q", "quit"],
+        ],
+      ];
+    } else if (this.viewMode === "help") {
+      groups = [
+        [
+          ["esc", "back"],
+          ["?", "back"],
+          ["q", "quit"],
+        ],
+      ];
+    } else if (this.viewMode === "bench") {
+      groups = [
+        [
+          ["↑↓", "model"],
+          ["r", "run benchmark"],
+          ["x", "stop"],
+          ["b", "serve mode"],
+          ["q", "quit"],
+        ],
+      ];
+    } else {
+      groups = [
+        // Navigation — line one.
+        [
+          ["↑↓", "select"],
+          ["tab", "panel"],
+          ["←→", "change"],
+          ["enter", "edit"],
+        ],
+        // Actions — line two onward.
+        [
+          ["s", "start"],
+          ["x", "stop"],
+          ["m", "max ctx"],
+          ["c", "calibrate"],
+          ["w", "sweep"],
+          ["b", "benchmarks"],
+          ["l", "logs"],
+          ["/", "filter"],
+          ["r", "rescan"],
+          ["?", "help"],
+          ["q", "quit"],
+        ],
+      ];
+    }
+
+    const gap = "   ";
+    const lines: string[] = [];
+    for (const group of groups) {
+      const cells = group.map(
+        ([k, v]) => `${style.brightCyan}${k}${style.reset} ${style.grey}${v}${style.reset}`,
+      );
+      let line = "";
+      for (const cell of cells) {
+        const candidate = line ? `${line}${gap}${cell}` : cell;
+        if (line && width(candidate) > cols) {
+          lines.push(line);
+          line = cell;
+        } else {
+          line = candidate;
+        }
+      }
+      if (line) lines.push(line);
+    }
+    return lines.length ? lines : [""];
+  }
+}
