@@ -11,10 +11,43 @@ import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-
 import { useToast } from "@/contexts/toast-context";
 import { useIconSize, type Theme } from "@/styles/theme";
 import { invalidateCheckoutGitQueriesForClient } from "@/git/query-keys";
-import { useWorktreeDiffBaseFeature } from "@/git/use-worktree-diff-base-feature";
+import {
+  useCheckoutDiffBaseAnyRepoFeature,
+  useWorktreeDiffBaseFeature,
+} from "@/git/use-worktree-diff-base-feature";
+import type { CheckoutBaseSource } from "@otto-code/protocol/messages";
+
+/** A branch the base can be pointed at, and which sides of it exist. */
+interface BranchCandidate {
+  name: string;
+  hasLocal: boolean;
+  hasRemote: boolean;
+}
+
+/**
+ * Tooltip copy per base provenance.
+ *
+ * Saying *why* matters as much as saying what. A detected parent is a guess about a graph that does
+ * not record the answer, and presenting it with the same authority as an explicit pick is how a
+ * wrong guess reads as "the diff is broken" instead of "let me repoint this".
+ */
+const BASE_SOURCE_LABEL_KEYS: Record<CheckoutBaseSource, string> = {
+  inferred: "workspace.git.diff.baseChipInferred",
+  worktree: "workspace.git.diff.baseChipWorktree",
+  user: "workspace.git.diff.baseChipPinned",
+  default: "workspace.git.diff.baseChipReadOnly",
+};
 
 /** Sentinel option id for "reset to the repository default branch". */
 const DEFAULT_BASE_OPTION_ID = "\0otto:default-base";
+/**
+ * Sentinel option id for "detect this branch's parent again".
+ *
+ * Parent detection is a heuristic over a commit graph that does not record the answer, and the
+ * result is remembered so it cannot drift. That combination needs an explicit way to ask for a
+ * fresh answer, or a wrong guess is permanent.
+ */
+const REDETECT_BASE_OPTION_ID = "\0otto:redetect-base";
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
@@ -35,10 +68,15 @@ interface DiffBaseSwitcherProps {
   baseRefLabel: string;
   currentBranchName: string | null;
   /**
-   * Only Otto worktrees carry the per-worktree metadata the base is stored in, so a
-   * plain checkout gets the label without the picker.
+   * Older daemons stored the base only in per-worktree metadata, so a plain checkout had nowhere
+   * to put it and got the label without the picker. Newer daemons store it per branch and accept
+   * any checkout — see `isBaseEditable`.
    */
   isOttoOwnedWorktree: boolean;
+  /** Where the current base came from, so the chip can label a detected parent as a guess. */
+  baseSource: CheckoutBaseSource | null;
+  /** Daemon's answer to "can this checkout be repointed?"; null on daemons that predate it. */
+  isBaseEditable: boolean | null;
 }
 
 /**
@@ -57,6 +95,8 @@ export function DiffBaseSwitcher({
   baseRefLabel,
   currentBranchName,
   isOttoOwnedWorktree,
+  baseSource,
+  isBaseEditable,
 }: DiffBaseSwitcherProps) {
   const { t } = useTranslation();
   const iconSize = useIconSize();
@@ -66,16 +106,21 @@ export function DiffBaseSwitcher({
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const isSupported = useWorktreeDiffBaseFeature(serverId);
+  const supportsAnyRepo = useCheckoutDiffBaseAnyRepoFeature(serverId);
   const toast = useToast();
   const queryClient = useQueryClient();
 
+  // Capability detection happens here and nowhere else: downstream code reads one boolean.
+  // On a daemon that stores the base per branch any checkout qualifies, so worktree ownership
+  // stops being the gate; older daemons keep the worktree-only rule.
+  const checkoutQualifies = supportsAnyRepo ? isBaseEditable !== false : isOttoOwnedWorktree;
   const canEdit =
-    isSupported && isOttoOwnedWorktree && Boolean(client) && Boolean(workspaceId) && isConnected;
+    isSupported && checkoutQualifies && Boolean(client) && Boolean(workspaceId) && isConnected;
 
   const branchQuery = useFetchQuery({
     queryKey: ["diffBaseBranches", serverId, cwd],
     dataShape: "list",
-    queryFn: async (): Promise<string[]> => {
+    queryFn: async (): Promise<BranchCandidate[]> => {
       if (!client) {
         throw new Error(t("common.errors.daemonClientUnavailable"));
       }
@@ -83,7 +128,18 @@ export function DiffBaseSwitcher({
       if (payload.error) {
         throw new Error(payload.error);
       }
-      return payload.branchDetails?.map((branch) => branch.name) ?? payload.branches ?? [];
+      if (payload.branchDetails) {
+        return payload.branchDetails.map((branch) => ({
+          name: branch.name,
+          hasLocal: branch.hasLocal !== false,
+          hasRemote: branch.hasRemote === true,
+        }));
+      }
+      return (payload.branches ?? []).map((name) => ({
+        name,
+        hasLocal: true,
+        hasRemote: false,
+      }));
     },
     enabled: isOpen && canEdit,
     retry: false,
@@ -98,24 +154,51 @@ export function DiffBaseSwitcher({
         description: t("workspace.git.diff.basePickerDefaultDescription"),
       },
     ];
+    if (supportsAnyRepo) {
+      rows.push({
+        id: REDETECT_BASE_OPTION_ID,
+        label: t("workspace.git.diff.basePickerRedetect"),
+        description: t("workspace.git.diff.basePickerRedetectDescription"),
+      });
+    }
     for (const branch of branchQuery.data ?? []) {
       // Diffing a branch against itself is empty by definition; the daemon rejects
       // it too, so keep it out of the list rather than surfacing the error after.
-      if (branch === currentBranchName) continue;
-      rows.push({ id: branch, label: branch });
+      if (branch.name === currentBranchName) continue;
+      if (branch.hasLocal) {
+        rows.push({ id: branch.name, label: branch.name });
+      }
+      // A separate row for the remote-tracking side, because it is a different comparison
+      // whenever local and origin have drifted — behind, ahead, or outright diverged. Only
+      // offered on daemons that keep the qualifier; older ones strip it and the two rows would
+      // silently do the same thing.
+      if (branch.hasRemote && supportsAnyRepo) {
+        const remoteId = `origin/${branch.name}`;
+        rows.push({
+          id: remoteId,
+          label: remoteId,
+          description: t("workspace.git.diff.basePickerRemoteDescription"),
+        });
+      }
     }
     return rows;
-  }, [branchQuery.data, currentBranchName, t]);
+  }, [branchQuery.data, currentBranchName, supportsAnyRepo, t]);
 
   const handleSelect = useCallback(
     (optionId: string) => {
       setIsOpen(false);
       if (!client || !workspaceId) return;
-      const nextBaseRef = optionId === DEFAULT_BASE_OPTION_ID ? null : optionId;
+      const isRedetect = optionId === REDETECT_BASE_OPTION_ID;
+      const isSentinel = isRedetect || optionId === DEFAULT_BASE_OPTION_ID;
+      const nextBaseRef = isSentinel ? null : optionId;
       setIsSaving(true);
       void (async () => {
         try {
-          const payload = await client.setWorktreeBaseRef(workspaceId, nextBaseRef);
+          const payload = await client.setWorktreeBaseRef(
+            workspaceId,
+            nextBaseRef,
+            isRedetect ? { redetect: true } : undefined,
+          );
           if (payload.error) {
             throw new Error(payload.error);
           }
@@ -162,9 +245,12 @@ export function DiffBaseSwitcher({
   }
 
   const label = t("workspace.git.diff.baseChip", { baseRef: baseRefLabel });
+  const provenanceLabel = t(BASE_SOURCE_LABEL_KEYS[baseSource ?? "default"], {
+    baseRef: baseRefLabel,
+  });
   const accessibilityLabel = canEdit
-    ? t("workspace.git.diff.baseChipEditable", { baseRef: baseRefLabel })
-    : t("workspace.git.diff.baseChipReadOnly", { baseRef: baseRefLabel });
+    ? `${provenanceLabel} ${t("workspace.git.diff.baseChipTapToChange")}`
+    : provenanceLabel;
 
   const chip = (
     <Pressable

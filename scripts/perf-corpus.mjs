@@ -247,6 +247,22 @@ function makeToken(rng) {
   return `${pick(rng, parts)}_${Math.floor(rng() * 100000).toString(36)}`;
 }
 
+/**
+ * Whether this agent's timeline still holds anything.
+ *
+ * One row is enough to answer it, so the fetch asks for one. A missing or errored
+ * response counts as empty: treating "could not tell" as populated is how a hollow
+ * corpus gets adopted and reported as complete.
+ */
+async function agentHasMessages(client, agentId) {
+  try {
+    const page = await client.fetchAgentTimeline(agentId, { limit: 1 });
+    return (page?.entries?.length ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
 // Windows hands back mixed separators and mixed case for the same directory, so
 // two spellings of one path must not read as two projects.
 function samePath(left, right) {
@@ -392,16 +408,38 @@ export async function seedPerfCorpus({
   // Chats this corpus already has, by workspace. Without this every re-run
   // silently doubles the chat count, so "the corpus" would mean something
   // different on every invocation and no two measurements would be comparable.
-  // Adopted chats keep whatever length they already have; a run interrupted
-  // mid-chat leaves a short one behind, and only --clean reliably fixes that.
+  //
+  // **A chat only counts as adopted if it still HAS messages.** Agent timelines
+  // live in daemon memory and are not restored on restart (`seedAgentTimeline`
+  // has no production caller), so every chat in a corpus goes empty the moment
+  // the daemon is bounced, while the agent records survive on disk. Counting
+  // agents instead of content therefore adopts a corpus of empty chats and
+  // reports it as fully seeded -- which is exactly what happened once, and the
+  // resulting "86,400 items" was measured against nothing. Verifying costs one
+  // timeline fetch per agent and is the only thing standing between a re-run and
+  // a silently hollow corpus.
   const adoptedByWorkspace = new Map();
+  let emptyChatsFound = 0;
   for (const agent of await fetchAllAgents(client)) {
     if (agent?.model !== MODEL_ID || !agent.workspaceId) {
+      continue;
+    }
+    if (!(await agentHasMessages(client, agent.id))) {
+      emptyChatsFound += 1;
       continue;
     }
     const bucket = adoptedByWorkspace.get(agent.workspaceId) ?? [];
     bucket.push(agent.id);
     adoptedByWorkspace.set(agent.workspaceId, bucket);
+  }
+  if (emptyChatsFound > 0) {
+    onProgress?.({
+      phase: "chat",
+      level: "warn",
+      detail:
+        `${emptyChatsFound} existing chat(s) have no messages and were not adopted ` +
+        `(a daemon restart empties timelines). They are left in place; use --clean for a true reset.`,
+    });
   }
 
   for (const [projectIndex, project] of projects.entries()) {

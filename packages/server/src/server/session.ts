@@ -119,6 +119,7 @@ import {
   setAgentModeCommand,
   updateAgentCommand,
 } from "./agent/lifecycle-command.js";
+import { transferAgentWorkspaceCommand } from "./agent/agent-workspace-transfer.js";
 import {
   buildStoredAgentPayload,
   resolveStoredAgentPayloadUpdatedAt,
@@ -1947,6 +1948,12 @@ export class Session {
     switch (msg.type) {
       case "agent.detach.request":
         return this.handleDetachAgentRequest(msg.agentId, msg.requestId);
+      case "agent.workspace.transfer.request":
+        return this.handleAgentWorkspaceTransferRequest(
+          msg.agentId,
+          msg.workspaceId,
+          msg.requestId,
+        );
       case "agent.subagent.stop.request":
         return this.handleStopObservedSubagentRequest(msg.agentId, msg.requestId);
       case "agent.background_task.stop.request":
@@ -4045,6 +4052,92 @@ export class Session {
           accepted: false,
           error: message,
         },
+      });
+    }
+  }
+
+  private async handleAgentWorkspaceTransferRequest(
+    agentId: string,
+    workspaceId: string,
+    requestId: string,
+  ): Promise<void> {
+    this.sessionLogger.info(
+      { agentId, workspaceId, requestId },
+      "session: agent.workspace.transfer.request",
+    );
+
+    try {
+      const result = await transferAgentWorkspaceCommand(
+        {
+          getAgentWorkspaceId: async (id) => {
+            const live = this.agentManager.getAgent(id);
+            if (live) {
+              return { workspaceId: live.workspaceId };
+            }
+            const stored = await this.agentStorage.get(id);
+            return stored ? { workspaceId: stored.workspaceId } : null;
+          },
+          getWorkspace: async (id) => {
+            const record = await this.workspaceRegistry.get(id);
+            return record
+              ? {
+                  workspaceId: record.workspaceId,
+                  archivedAt: record.archivedAt,
+                  hidden: record.hidden,
+                }
+              : null;
+          },
+          transfer: (id, target) => this.agentManager.transferAgentWorkspace(id, target),
+        },
+        { agentId, workspaceId },
+      );
+
+      if (result.status === "refused") {
+        this.emit({
+          type: "agent.workspace.transfer.response",
+          payload: { requestId, agentId, workspaceId: null, accepted: false, error: result.error },
+        });
+        return;
+      }
+
+      if (result.status === "transferred") {
+        // A closed chat has no live session to broadcast from, so its updated
+        // record has to be pushed explicitly.
+        if (!result.live) {
+          await this.agentUpdates.emitStoredRecord(result.record);
+        }
+        // Both sides, always. The source workspace loses a chat and the target
+        // gains one, and a client showing either needs its counts and tab list
+        // refreshed. Emitting only the target is the bug that leaves a ghost tab
+        // behind in the workspace the chat came from.
+        const affectedWorkspaceIds = new Set<string>([result.workspaceId]);
+        if (result.previousWorkspaceId) {
+          affectedWorkspaceIds.add(result.previousWorkspaceId);
+        }
+        await this.emitWorkspaceUpdatesForWorkspaceIds(affectedWorkspaceIds, {
+          skipReconcile: true,
+        });
+      }
+
+      this.emit({
+        type: "agent.workspace.transfer.response",
+        payload: {
+          requestId,
+          agentId,
+          workspaceId: result.workspaceId,
+          accepted: true,
+          error: null,
+        },
+      });
+    } catch (error) {
+      const message = getErrorMessageOr(error, "Failed to move chat");
+      this.sessionLogger.error(
+        { err: error, agentId, workspaceId, requestId },
+        "session: agent.workspace.transfer.request error",
+      );
+      this.emit({
+        type: "agent.workspace.transfer.response",
+        payload: { requestId, agentId, workspaceId: null, accepted: false, error: message },
       });
     }
   }
@@ -7713,11 +7806,16 @@ export class Session {
         throw new Error(`Workspace not found: ${request.workspaceId}`);
       }
 
-      const result = await setCheckoutBaseRef(existing.cwd, request.baseRef, {
-        ottoHome: this.ottoHome,
-        worktreesRoot: this.worktreesRoot,
-        logger: this.sessionLogger,
-      });
+      const result = await setCheckoutBaseRef(
+        existing.cwd,
+        request.baseRef,
+        {
+          ottoHome: this.ottoHome,
+          worktreesRoot: this.worktreesRoot,
+          logger: this.sessionLogger,
+        },
+        request.redetect ? { redetect: true } : undefined,
+      );
 
       this.emit({
         type: "worktree.baseRef.set.response",
@@ -7726,6 +7824,7 @@ export class Session {
           workspaceId: request.workspaceId,
           baseRef: result.baseRef,
           isDefault: result.isDefault,
+          baseSource: result.source,
           error: null,
         },
       });

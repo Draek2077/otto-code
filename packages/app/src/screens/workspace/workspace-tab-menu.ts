@@ -10,6 +10,7 @@ export interface WorkspaceTabMenuLabels {
   copyAgentId: string;
   copyFilePath: string;
   rename: string;
+  moveToWorkspace: string;
   closeAbove: string;
   closeBelow: string;
   closeLeft: string;
@@ -25,6 +26,7 @@ export const DEFAULT_WORKSPACE_TAB_MENU_LABELS: WorkspaceTabMenuLabels = {
   copyAgentId: i18n.t("workspace.tabs.menu.copyAgentId"),
   copyFilePath: i18n.t("workspace.tabs.menu.copyFilePath"),
   rename: i18n.t("workspace.tabs.menu.rename"),
+  moveToWorkspace: i18n.t("workspace.tabs.menu.moveToWorkspace"),
   closeAbove: i18n.t("workspace.tabs.menu.closeAbove"),
   closeBelow: i18n.t("workspace.tabs.menu.closeBelow"),
   closeLeft: i18n.t("workspace.tabs.menu.closeLeft"),
@@ -47,6 +49,7 @@ export type WorkspaceTabMenuEntry =
         | "arrow-right-to-line"
         | "copy-x"
         | "pencil"
+        | "folder-open"
         | "x";
       hint?: string;
       tooltip?: string;
@@ -78,6 +81,11 @@ interface BuildWorkspaceTabMenuEntriesInput {
   onCloseTabsBefore: (tabId: string) => Promise<void> | void;
   onCloseTabsAfter: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
+  // Absent on hosts whose daemon predates agent.workspace.transfer, and false
+  // when there is nowhere to move to. Either way the entry is omitted rather
+  // than shown disabled: a dead menu row teaches the user nothing.
+  onMoveToWorkspace?: (agentId: string) => void;
+  canMoveToWorkspace?: boolean;
   labels?: WorkspaceTabMenuLabels;
 }
 
@@ -95,6 +103,8 @@ interface BuildWorkspaceDesktopTabActionsInput {
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
+  onMoveToWorkspace?: (agentId: string) => void;
+  canMoveToWorkspace?: boolean;
   labels?: WorkspaceTabMenuLabels;
 }
 
@@ -182,6 +192,8 @@ export function buildWorkspaceTabMenuEntries(
     onCloseTabsBefore,
     onCloseTabsAfter,
     onCloseOtherTabs,
+    onMoveToWorkspace,
+    canMoveToWorkspace,
   } = input;
   const labels = input.labels ?? DEFAULT_WORKSPACE_TAB_MENU_LABELS;
   const isFirstTab = index === 0;
@@ -239,6 +251,26 @@ export function buildWorkspaceTabMenuEntries(
         onRenameTab(tab);
       },
     });
+  }
+
+  // Chats only. A terminal is bound to its workspace's directory, so "move" would
+  // mean something quite different there; a chat is just a conversation that some
+  // workspace happens to show.
+  if (tab.target.kind === "agent" && onMoveToWorkspace && canMoveToWorkspace) {
+    const { agentId } = tab.target;
+    entries.push({
+      kind: "item",
+      key: "move-to-workspace",
+      label: labels.moveToWorkspace,
+      icon: "folder-open",
+      testID: `${menuTestIDBase}-move-to-workspace`,
+      onSelect: () => {
+        onMoveToWorkspace(agentId);
+      },
+    });
+  }
+
+  if (tab.target.kind === "agent" || tab.target.kind === "terminal") {
     entries.push({
       kind: "separator",
       key: "rename-separator",
@@ -328,6 +360,8 @@ export function buildWorkspaceDesktopTabActions(
       onCloseTabsBefore: input.onCloseTabsToLeft,
       onCloseTabsAfter: input.onCloseTabsToRight,
       onCloseOtherTabs: input.onCloseOtherTabs,
+      onMoveToWorkspace: input.onMoveToWorkspace,
+      canMoveToWorkspace: input.canMoveToWorkspace,
       labels: input.labels,
     }),
     closeButtonTestId: getCloseButtonTestId(input.tab),

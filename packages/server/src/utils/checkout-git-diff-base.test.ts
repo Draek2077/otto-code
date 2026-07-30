@@ -199,7 +199,7 @@ describe("per-worktree diff base", () => {
     expect(changedPaths(beforeDiff)).toEqual(["child.txt", "parent.txt"]);
 
     const result = await setCheckoutBaseRef(childWorktree, "parent", { ottoHome });
-    expect(result).toEqual({ baseRef: "parent", isDefault: false });
+    expect(result).toEqual({ baseRef: "parent", isDefault: false, source: "user" });
 
     const afterDiff = await getCheckoutDiff(
       childWorktree,
@@ -224,16 +224,30 @@ describe("per-worktree diff base", () => {
     await setCheckoutBaseRef(childWorktree, "parent", { ottoHome });
     const result = await setCheckoutBaseRef(childWorktree, null, { ottoHome });
 
-    expect(result).toEqual({ baseRef: "main", isDefault: true });
+    expect(result).toEqual({ baseRef: "main", isDefault: true, source: "user" });
     const status = await getCheckoutStatus(childWorktree, { ottoHome });
     expect(status).toMatchObject({ isGit: true, baseRef: "main" });
   });
 
-  it("accepts an origin/-prefixed base and stores the local name", async () => {
+  it("pins an origin/-prefixed base instead of collapsing it to the local name", async () => {
     const { ottoHome, childWorktree } = await createStackedWorktreeFixture();
 
+    // `main` and `origin/main` are different answers whenever the two have drifted, so an
+    // explicit remote-qualified pick has to survive the round trip.
     const result = await setCheckoutBaseRef(childWorktree, "origin/main", { ottoHome });
-    expect(result.baseRef).toBe("main");
+    expect(result.baseRef).toBe("origin/main");
+
+    const status = await getCheckoutStatus(childWorktree, { ottoHome });
+    expect(status).toMatchObject({ isGit: true, baseRef: "origin/main" });
+  });
+
+  it("keeps the local branch name in worktree metadata when a remote ref is pinned", async () => {
+    const { ottoHome, childWorktree } = await createStackedWorktreeFixture();
+
+    await setCheckoutBaseRef(childWorktree, "origin/main", { ottoHome });
+
+    // merge-into-base and PR creation read this, and neither can target a remote-tracking ref.
+    expect(readOttoWorktreeMetadata(childWorktree)).toMatchObject({ baseRefName: "main" });
   });
 
   it("rejects a branch that exists neither locally nor on origin", async () => {
@@ -252,12 +266,23 @@ describe("per-worktree diff base", () => {
     );
   });
 
-  it("refuses to set a base on a checkout that is not an Otto worktree", async () => {
+  it("sets a base on a plain checkout, keyed to the branch it is on", async () => {
     const { userRepo, ottoHome } = await createStackedWorktreeFixture();
+    git(userRepo, ["checkout", "-b", "plain-work"]);
+    commitFile(userRepo, "plain.txt", "plain\n", "plain work");
 
-    await expect(setCheckoutBaseRef(userRepo, "parent", { ottoHome })).rejects.toThrow(
-      /Only Otto worktrees/,
-    );
+    const result = await setCheckoutBaseRef(userRepo, "parent", { ottoHome });
+    expect(result).toMatchObject({ baseRef: "parent", source: "user" });
+    await expect(getCheckoutStatus(userRepo, { ottoHome })).resolves.toMatchObject({
+      baseRef: "parent",
+    });
+
+    // A plain checkout's gitdir is shared by every branch in it, so the pick must not follow
+    // you onto the next branch you check out.
+    git(userRepo, ["checkout", "main"]);
+    const onMain = await getCheckoutStatus(userRepo, { ottoHome });
+    expect(onMain).toMatchObject({ isGit: true });
+    expect(onMain.baseRef).not.toBe("parent");
   });
 
   it("keeps other worktree metadata when the base is repointed", async () => {
@@ -272,5 +297,113 @@ describe("per-worktree diff base", () => {
       baseRefName: "parent",
       runtime: { worktreePort: 4321 },
     });
+  });
+});
+
+describe("inferred diff base", () => {
+  /** A plain checkout with main -> parent -> child, standing on `child`. */
+  function createStackedPlainCheckout(): { userRepo: string; ottoHome: string } {
+    const { userRepo, tempDir } = createStackFixture();
+    git(userRepo, ["checkout", "-b", "parent"]);
+    commitFile(userRepo, "parent.txt", "parent work\n", "parent work");
+    git(userRepo, ["checkout", "-b", "child"]);
+    commitFile(userRepo, "child.txt", "child work\n", "child work");
+    return { userRepo, ottoHome: join(tempDir, "otto-home") };
+  }
+
+  it("defaults a stacked branch to its parent rather than the repository default", async () => {
+    const { userRepo, ottoHome } = createStackedPlainCheckout();
+
+    const status = await getCheckoutStatus(userRepo, { ottoHome });
+    expect(status).toMatchObject({ isGit: true, baseRef: "parent" });
+
+    // The whole point: the parent's commit is not the child's work.
+    const diff = await getCheckoutDiff(
+      userRepo,
+      { mode: "base", includeStructured: true },
+      { ottoHome },
+    );
+    expect(changedPaths(diff)).toEqual(["child.txt"]);
+  });
+
+  it("measures the sidebar badge and ahead/behind against the parent too", async () => {
+    const { userRepo, ottoHome } = createStackedPlainCheckout();
+
+    // Every diff-derived number in the UI reads one base resolution, so detecting the parent has
+    // to move all of them together — not just the Changes list. Against `main` these would be
+    // 2 commits and 2 additions, counting the parent's work as the child's.
+    const status = await getCheckoutStatus(userRepo, { ottoHome });
+    expect(status).toMatchObject({
+      isGit: true,
+      baseRef: "parent",
+      aheadBehind: { ahead: 1, behind: 0 },
+    });
+
+    // The `+N/-N` chip on sidebar workspace rows.
+    await expect(getCheckoutShortstat(userRepo, { ottoHome })).resolves.toEqual({
+      additions: 1,
+      deletions: 0,
+    });
+  });
+
+  it("keeps an inferred base after the parent branch is deleted, healing to the default", async () => {
+    const { userRepo, ottoHome } = createStackedPlainCheckout();
+    await expect(getCheckoutStatus(userRepo, { ottoHome })).resolves.toMatchObject({
+      baseRef: "parent",
+    });
+
+    // `parent` merges and is deleted. Every diff against it would now fail, so the stored base
+    // has to re-resolve — once — to the repository default.
+    git(userRepo, ["branch", "-D", "parent"]);
+
+    const healed = await getCheckoutStatus(userRepo, { ottoHome });
+    expect(healed).toMatchObject({ isGit: true, baseRef: "main" });
+  });
+
+  it("does not re-detect once a base has been remembered", async () => {
+    const { userRepo, ottoHome } = createStackedPlainCheckout();
+    await expect(getCheckoutStatus(userRepo, { ottoHome })).resolves.toMatchObject({
+      baseRef: "parent",
+    });
+
+    // A newer branch forking closer to HEAD would win a fresh inference. Stickiness means the
+    // remembered answer holds, so the base never moves under the user.
+    git(userRepo, ["branch", "closer-fork"]);
+
+    await expect(getCheckoutStatus(userRepo, { ottoHome })).resolves.toMatchObject({
+      baseRef: "parent",
+    });
+  });
+
+  it("re-detects on request, which is the escape hatch for a wrong guess", async () => {
+    const { userRepo, ottoHome } = createStackedPlainCheckout();
+    await setCheckoutBaseRef(userRepo, "main", { ottoHome });
+    await expect(getCheckoutStatus(userRepo, { ottoHome })).resolves.toMatchObject({
+      baseRef: "main",
+    });
+
+    const result = await setCheckoutBaseRef(userRepo, null, { ottoHome }, { redetect: true });
+    expect(result).toMatchObject({ baseRef: "parent", source: "inferred" });
+    await expect(getCheckoutStatus(userRepo, { ottoHome })).resolves.toMatchObject({
+      baseRef: "parent",
+    });
+  });
+
+  it("compares the default branch against its remote-tracking ref", async () => {
+    const { userRepo, tempDir } = createStackFixture();
+    const ottoHome = join(tempDir, "otto-home");
+    // Standing on `main`, "vs main" is empty by definition — merge-base(main, HEAD) is HEAD.
+    // The useful comparison is against origin/main, which surfaces unpushed work.
+    commitFile(userRepo, "unpushed.txt", "unpushed\n", "unpushed work");
+
+    const status = await getCheckoutStatus(userRepo, { ottoHome });
+    expect(status).toMatchObject({ isGit: true, baseRef: "origin/main" });
+
+    const diff = await getCheckoutDiff(
+      userRepo,
+      { mode: "base", includeStructured: true },
+      { ottoHome },
+    );
+    expect(changedPaths(diff)).toEqual(["unpushed.txt"]);
   });
 });

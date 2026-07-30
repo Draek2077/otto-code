@@ -6,23 +6,109 @@ base is chosen. Get it wrong and the view fills with commits the user never wrot
 the single most common way this feature stops being usable.
 
 The engine is `packages/server/src/utils/checkout-git.ts`. Per-worktree state lives in
-`<gitdir>/otto/worktree.json` (`packages/server/src/utils/worktree-metadata.ts`).
+`<gitdir>/otto/worktree.json` (`packages/server/src/utils/worktree-metadata.ts`), and the
+per-branch base lives beside it in `<gitdir>/otto/diff-base.json`
+(`packages/server/src/utils/checkout-diff-base-store.ts`).
 
 ## The resolution ladder
 
-1. **Which branch is the base?** `resolveBaseRefForCwd` takes the worktree's stored
-   `baseRefName` when the checkout is an Otto worktree, else the repository default branch
-   (`resolveRepositoryDefaultBranch`, which reads `refs/remotes/origin/HEAD` and prefers the
-   local branch name over the remote-tracking one).
-2. **Local ref or remote-tracking ref?** `resolveBestComparisonBaseRef` picks between `<name>`
-   and `origin/<name>`. See the next section — this is the part that used to be wrong.
-3. **Which commit?** `git merge-base <chosen ref> HEAD`. The diff is
-   `merge-base..HEAD`, so commits that are only on the base branch never appear.
+`resolveBaseRefLadder` is the **single** answer to "what is this diffed against?". It used to be
+computed in two places; that is exactly how you get two different answers to the same question, so
+`resolveBaseRefForCwd` and `getCheckoutSnapshotFacts` both call the one ladder now.
+
+1. **The branch's remembered base** — `diff-base.json`, keyed by branch name. Either a user pick
+   or a parent detected earlier. **Sticky by design**: see below.
+2. **An Otto worktree's creation-time base** — the `baseRefName` in `worktree.json`, which already
+   records the branch the worktree was cut from.
+3. **The inferred parent branch** (`checkout-git-parent-branch.ts`), then written to
+   `diff-base.json` so step 1 answers from here on.
+4. **The repository default branch** — `resolveRepositoryDefaultBranch`, which reads
+   `refs/remotes/origin/HEAD` and prefers the local branch name over the remote-tracking one.
+5. **`origin/<branch>` when steps 1-4 land on the branch you are standing on.** On the default
+   branch `merge-base(main, HEAD)` is HEAD, so "vs main" is empty by definition. Comparing against
+   the remote-tracking ref shows unpushed local commits, which is the only useful answer there.
+
+Then, as before:
+
+- **Local ref or remote-tracking ref?** `resolveBestComparisonBaseRef` picks between `<name>` and
+  `origin/<name>` — unless the base is remote-qualified, which is a pin it honours verbatim.
+- **Which commit?** `git merge-base <chosen ref> HEAD`. The diff is `merge-base..HEAD`, so commits
+  that are only on the base branch never appear.
 
 Everything that measures against the base — the diff (`getCheckoutDiff`), ahead/behind
-(`getAheadBehind`), and the shortstat badge (`getCheckoutShortstat`) — funnels through step 2,
-either directly or via the cached `comparisonBaseRef` on `getCheckoutSnapshotFacts`. Keep it
-that way: three copies of this logic is three different answers to "what changed?".
+(`getAheadBehind`), and the shortstat badge (`getCheckoutShortstat`) — funnels through the
+comparison step, either directly or via the cached `comparisonBaseRef` on
+`getCheckoutSnapshotFacts`. Keep it that way: three copies of this logic is three different answers
+to "what changed?".
+
+**That means every diff-derived number in the UI moves together**, and there are only two places in
+the server that count anything (the `--numstat` in `getCheckoutDiff` and the `--shortstat` in
+`getCheckoutShortstat`). So the `+N/-N` chip on sidebar workspace rows (`diffStat` on the workspace
+snapshot, rendered by `sidebar-workspace-row.tsx` / `sidebar-status-list.tsx`), the ahead/behind
+counts behind the git actions, and the Changes list all report against the same base. When detection
+repoints a stacked branch at its parent, all of them shrink to that branch's own work in the same
+pass — there is no surface that keeps counting against the default branch. There is a regression
+test asserting the badge and ahead/behind specifically, not just the diff, because they are the
+numbers users notice first.
+
+One pre-existing subtlety worth knowing when reading the badge: `getCheckoutShortstat` diffs the
+**working tree** against the merge-base and adds untracked lines, so it is "everything since the
+fork point, committed or not" — not the committed diff alone.
+
+## Parent detection is a heuristic, and has to look like one
+
+**Git does not record a branch's parent.** There is no field to read, so
+`inferParentBranchRef` reconstructs it from the commit graph: enumerate up to 50 recent local and
+`origin/` refs, `merge-base` each against HEAD, drop candidates whose merge-base _is_ HEAD (those
+are children, not parents), and take the candidate whose merge-base is the **latest** commit. That
+commit is the nearest branch point, so the fewest commits the branch did not author leak in.
+
+Four things about this are load-bearing, and each has a regression test:
+
+- **The default branch has no parent, and must not be asked.** This is the one that bit in
+  practice: on `main` the scan proposed a long-merged feature branch. Every branch ever merged into
+  `main` has a tip that is an ancestor of HEAD, which is **graph-identical to a stacked parent** —
+  and since `main` is excluded from its own candidate list, a merged branch always wins. So
+  `currentBranch === defaultBranch` returns `null` up front and the ladder falls to step 5.
+  Off the default branch the ambiguity resolves itself: once a branch merges, the default branch's
+  own fork point with HEAD is _later_ than the merged branch's tip, so the default branch wins.
+- **Ancestry, not dates.** Ordering uses `merge-base --is-ancestor`, because commit timestamps are
+  rebase- and clock-controlled and routinely disagree with topology. Fork points are all ancestors
+  of HEAD but form a DAG rather than a chain (any merge in HEAD's history splits them), so the scan
+  repeats until it stops moving instead of trusting one greedy pass.
+- **It reports a branch, not a ref.** A winning `origin/X` collapses to `X` when a local branch of
+  that name exists. Otherwise the chip would read "vs origin/main" for someone who simply branched
+  off `main`, and the comparison step already picks the right side. The qualifier survives only for
+  a parent that exists _solely_ on origin, and for an explicit user pin.
+- **`%(refname:short)` renders `refs/remotes/origin/HEAD` as bare `origin`**, which reads as an
+  ordinary branch and beats real candidates on merge-base. Enumeration uses full `%(refname)` and
+  shortens explicitly to keep that case identifiable.
+
+The merge-base probes run through a bounded pool (`MERGE_BASE_CONCURRENCY`), because a git
+subprocess costs ~60ms on Windows and 50 serial probes is measurably seconds. Diverged candidates
+cannot be skipped: a parent that gained commits after you branched off it is diverged from you, and
+that is the common case, not an edge case.
+
+Detection is **sticky**: the first computed answer is written down and never recomputed, including
+when it came from the step-4/5 fallback rather than the graph. Two reasons. A heuristic that
+silently re-decides itself every read is worse than no heuristic, because the base moves under the
+user between two views of the same branch. And without persisting the negative case, the 50-candidate
+scan would re-run on every snapshot refresh for every branch with no detectable parent — the default
+branch most of all, which is where most sessions sit.
+
+Because sticky makes a wrong guess _persistent_, the provenance is on the wire (`baseSource`:
+`user` / `inferred` / `worktree` / `default`) and the chip says which. The picker's **"Detect parent
+branch"** row (`redetect` on the RPC) clears the stored entry and runs the ladder again. Treat those
+two as part of the feature, not polish: they are what makes a heuristic acceptable.
+
+**Self-healing.** If a stored base names a branch that no longer resolves on either side — the
+ordinary case where a parent merges and someone deletes it — the entry re-resolves **once** to the
+repository default and is rewritten. Guarded on the current branch itself resolving, so a repo
+mid-fetch or mid-clone does not trade a good base for the default permanently.
+
+Because a detected base is this daemon's guess rather than a user contract, the `Base ref mismatch`
+rejection below applies only when `baseSource` is `user` or `worktree`. An ad-hoc `compare.baseRef`
+may override a guess; overriding an explicit choice still fails loudly.
 
 ## Local vs origin: pick the later fork point, not the fresher ref
 
@@ -49,37 +135,63 @@ refspec that excludes it — there is only one candidate and merge-base math can
 base ref that nobody updates stays stale. Auto-fetching on workspace open is the obvious fix and
 is deliberately not built: it puts network traffic on a read-only view.
 
-## Per-worktree base override (stacked branches)
+## Base override (stacked branches)
 
 "Diff against the default branch" is the wrong question for a stacked branch. If `child` sits on
 top of `parent`, the parent's commits are between the default branch and `child`'s HEAD, so they
 show up inside the child's Changes view as if the user wrote them. A forge PR gets this right
-because it carries an explicit base; `worktree.baseRef.set.request` makes that local.
+because it carries an explicit base; `worktree.baseRef.set.request` makes that local. Detection
+now handles the common case automatically, and this is the override when it guesses wrong or you
+want a different comparison.
 
-- `setCheckoutBaseRef(cwd, baseRef | null)` validates the branch exists locally or on origin,
-  refuses the branch you are on, and rewrites `worktree.json`. `null` resets to the repository
-  default.
-- **Otto worktrees only.** The base lives in per-worktree metadata; a plain checkout has nowhere
-  to put it, so it gets the read-only "vs `<base>`" label and no picker.
-- The stored base is **one source of truth**. `mergeToBase` and `createPullRequest` read the same
-  `resolveBaseRefForCwd`, so repointing a stacked branch at its parent also makes "Create PR"
-  target the parent — the Bitbucket behavior.
-- Clients echo the base back on `compare.baseRef` and PR creation, and the daemon rejects a
-  mismatch with `Base ref mismatch`. That is intentional: one stored value, edited explicitly,
-  never an ad-hoc one-shot base. It also means a client holding a stale snapshot fails loudly
-  rather than diffing against the wrong thing.
+- `setCheckoutBaseRef(cwd, baseRef | null, context, { redetect })` validates the branch exists
+  locally or on origin, refuses the branch you are on, and records the pick. `null` pins the
+  repository default; `redetect` forgets the pick and re-runs the ladder.
+- **Any git checkout, not just Otto worktrees.** The base is stored per branch in
+  `diff-base.json`, which is what makes this work outside a worktree: a plain checkout's gitdir is
+  shared by _every_ branch you check out, so a single scalar base would bleed one branch's
+  comparison onto the next branch you switch to. An Otto worktree additionally keeps writing
+  `worktree.json`, since that record is what merge and PR creation read.
 - At creation, a `branch-off` worktree already records the base branch the user picked, so
   cutting a worktree from a parent branch stacks correctly with no extra step.
 
+### `main` and `origin/main` are separate choices
+
+The two disagree whenever local is behind, ahead of, or diverged from origin, so the picker offers
+both rows and a remote-qualified pick is stored **with** its qualifier
+(`validateBaseRefNameAllowingRemote`). `resolveBestComparisonBaseRef` then honours it verbatim
+instead of re-picking a side by fork point: an explicit pin beats the heuristic. A bare name keeps
+the auto-pick behaviour exactly as before.
+
+**This deliberately splits the "one source of truth" rule, and the split is the point.** The
+remote qualifier is _comparison-only_. Merge and PR targets collapse back to the local branch name
+(`mergeToBase` normalizes, `resolveMostAheadBaseRef` wants the freshest ref, and an Otto worktree's
+`worktree.json` always stores the local name) because **there is no such thing as opening a pull
+request against a remote-tracking ref**. If you find that asymmetry and think it is a bug, it is
+not — deleting it breaks PR creation for anyone who pinned `origin/<branch>`.
+
+Otherwise the stored base remains one source of truth: `mergeToBase` and `createPullRequest` read
+the same ladder, so repointing a stacked branch at its parent also makes "Create PR" target the
+parent (the Bitbucket behavior). Clients echo the base back on `compare.baseRef` and PR creation,
+and the daemon rejects a mismatch with `Base ref mismatch` — but only for a base someone actually
+chose (`baseSource` of `user` or `worktree`), per the ladder section above.
+
 Gated by `server_info.features.worktreeDiffBase` (`COMPAT(worktreeDiffBase)`, added v0.6.8).
-Without it the client shows the label and hides the picker — there is no client-side fallback,
-since only the daemon can write the worktree's metadata.
+Repointing a plain checkout, detection, the `origin/` pin and the re-detect action additionally need
+`server_info.features.checkoutDiffBaseAnyRepo` (`COMPAT(checkoutDiffBaseAnyRepo)`, added v0.7.4).
+Without them the client shows the label and hides the picker — there is no client-side fallback,
+since only the daemon can write the stored base.
 
 ## UI
 
 `packages/app/src/git/diff-base-switcher.tsx` renders the `vs <base>` chip beside the diff-mode
 dropdown in the Changes toolbar, visible only in Committed mode. Naming the base is half the
 value on its own: before this existed, the view never said what it was comparing against.
+
+Capability detection lives in one place in that file (`checkoutQualifies`), per the feature-contract
+rule — downstream code reads a single boolean rather than branching on daemon version. Branch rows
+come from `getBranchSuggestions`, whose `branchDetails` already carry `hasLocal` / `hasRemote`, which
+is what lets the picker render `main` and `origin/main` as separate rows without a new RPC.
 
 ## Crossing between Files and Changes
 

@@ -75,9 +75,8 @@ export function normalizeBaseRefName(input: string): string {
   return trimmed;
 }
 
-/** Normalizes and rejects anything git could read as a revision expression or a path escape. */
-export function normalizeAndValidateBaseRefName(input: string): string {
-  const baseRefName = normalizeBaseRefName(input);
+/** Rejects anything git could read as a revision expression or a path escape. */
+function assertSafeBaseRefName(baseRefName: string): void {
   if (baseRefName === "HEAD") {
     throw new Error("Base branch cannot be HEAD");
   }
@@ -87,7 +86,32 @@ export function normalizeAndValidateBaseRefName(input: string): string {
   if (!/^[0-9A-Za-z._/-]+$/.test(baseRefName)) {
     throw new Error(`Invalid base branch: ${baseRefName}`);
   }
+}
+
+/** Normalizes and rejects anything git could read as a revision expression or a path escape. */
+export function normalizeAndValidateBaseRefName(input: string): string {
+  const baseRefName = normalizeBaseRefName(input);
+  assertSafeBaseRefName(baseRefName);
   return baseRefName;
+}
+
+/**
+ * Same safety checks as {@link normalizeAndValidateBaseRefName}, but **keeps** an `origin/`
+ * qualifier instead of stripping it.
+ *
+ * `main` and `origin/main` are separate answers to "what is this diffed against?" — local can be
+ * behind, ahead, or diverged from origin — so a base the user pinned explicitly has to survive
+ * round-tripping. The comparison path honours the qualifier verbatim; merge and PR targets
+ * collapse it back to the local name, because there is no such thing as opening a PR against a
+ * remote-tracking ref.
+ */
+export function validateBaseRefNameAllowingRemote(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error("Base branch is required");
+  }
+  assertSafeBaseRefName(trimmed);
+  return trimmed;
 }
 
 export function writeOttoWorktreeMetadata(

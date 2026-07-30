@@ -50,8 +50,16 @@ import type { HostProfile } from "@/types/host-connection";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { confirmDialogWithCheckbox } from "@/utils/confirm-dialog";
 import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
-import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
-import { normalizeWorkspacePath } from "@/utils/workspace-identity";
+import {
+  normalizeWorkspaceDescriptor,
+  useSessionStore,
+  type WorkspaceDescriptor,
+} from "@/stores/session-store";
+import {
+  findWorkspaceById,
+  findWorkspaceForDirectory,
+  findWorkspaceForProject,
+} from "./new-workspace-existing-workspace";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { generateDraftId } from "@/stores/draft-keys";
 import { useDraftStore } from "@/stores/draft-store";
@@ -1621,18 +1629,26 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
 // The live workspace already backed by `directory`, if any. Same resolved-path
 // equality the daemon uses to reject a second workspace on one checkout
 // (`findOccupyingWorkspaceForCwd`), so "reuse" here matches "rejected" there.
+function workspacesForServer(serverId: string): Iterable<WorkspaceDescriptor> | undefined {
+  return useSessionStore.getState().sessions[serverId]?.workspaces?.values();
+}
+
 function findWorkspaceIdForDirectory(serverId: string, directory: string): string | null {
-  const normalizedDirectory = normalizeWorkspacePath(directory);
-  if (!normalizedDirectory) {
-    return null;
-  }
-  const workspaces = useSessionStore.getState().sessions[serverId]?.workspaces;
-  for (const workspace of workspaces?.values() ?? []) {
-    if (normalizeWorkspacePath(workspace.workspaceDirectory) === normalizedDirectory) {
-      return workspace.id;
-    }
-  }
-  return null;
+  return (
+    findWorkspaceForDirectory({ workspaces: workspacesForServer(serverId), directory })?.id ?? null
+  );
+}
+
+/**
+ * Widened on purpose relative to `findWorkspaceIdForDirectory`: opening a file
+ * only needs *a* workspace for the project, not the one that owns the root. See
+ * `findWorkspaceForProject`.
+ */
+function findWorkspaceIdForProject(serverId: string, sourceDirectory: string): string | null {
+  return (
+    findWorkspaceForProject({ workspaces: workspacesForServer(serverId), sourceDirectory })?.id ??
+    null
+  );
 }
 
 export function NewWorkspaceScreen({
@@ -2085,12 +2101,26 @@ export function NewWorkspaceScreen({
     ],
   );
 
-  // The submission path itself, isolation-parameterised so the occupied-directory
-  // steer can replay the user's exact submission as a worktree.
+  // The submission path itself, parameterised so the occupied-directory steer can
+  // replay the user's exact submission down either branch of its dialog: as a
+  // worktree, or into the workspace that is already there.
   const runSubmitNewWorkspace = useCallback(
-    async (payload: MessagePayload, isolationOverride?: "local" | "worktree") => {
-      const ensureWorkspaceForSubmit: typeof ensureWorkspace = (input) =>
-        ensureWorkspace(isolationOverride ? { ...input, isolationOverride } : input);
+    async (
+      payload: MessagePayload,
+      submitOptions?: {
+        isolationOverride?: "local" | "worktree";
+        // Short-circuits creation. Everything downstream of `ensureWorkspace`
+        // only reads the descriptor's id and directory, and the draft tab's
+        // auto-submit does not care whether the workspace is a second old or a
+        // week old, so handing back an existing descriptor is all it takes to
+        // start the chat there.
+        existingWorkspace?: WorkspaceDescriptor;
+      },
+    ) => {
+      const { isolationOverride, existingWorkspace } = submitOptions ?? {};
+      const ensureWorkspaceForSubmit: typeof ensureWorkspace = existingWorkspace
+        ? async () => existingWorkspace
+        : (input) => ensureWorkspace(isolationOverride ? { ...input, isolationOverride } : input);
       setErrorMessage(null);
       await composerState?.persistFormPreferences();
       if (isEmptyWorkspaceSubmission(payload)) {
@@ -2144,8 +2174,21 @@ export function NewWorkspaceScreen({
             findExistingWorkspaceId: (directory) =>
               findWorkspaceIdForDirectory(selectedServerId, directory),
             confirm: confirmDialogWithCheckbox,
-            openWorkspace: (workspaceId) => navigateToWorkspace(selectedServerId, workspaceId),
-            createWorktreeInstead: () => runSubmitNewWorkspace(payload, "worktree"),
+            openExistingWorkspace: (workspaceId) => {
+              const existingWorkspace = findWorkspaceById({
+                workspaces: workspacesForServer(selectedServerId),
+                workspaceId,
+              });
+              if (!existingWorkspace) {
+                // Vanished between the steer resolving it and the user answering
+                // (archived from another client). Nothing to start a chat in.
+                navigateToWorkspace(selectedServerId, workspaceId);
+                return;
+              }
+              return runSubmitNewWorkspace(payload, { existingWorkspace });
+            },
+            createWorktreeInstead: () =>
+              runSubmitNewWorkspace(payload, { isolationOverride: "worktree" }),
             onError: (message) => {
               setErrorMessage(message);
               toast.error(message);
@@ -2168,7 +2211,7 @@ export function NewWorkspaceScreen({
       void runViewDocumentation({
         readmeFileName: documentationFileName,
         findExistingWorkspaceId: (directory) =>
-          findWorkspaceIdForDirectory(selectedServerId, directory),
+          findWorkspaceIdForProject(selectedServerId, directory),
         ensureWorkspace,
         serverId: selectedServerId,
         sourceDirectory: selectedSourceDirectory,

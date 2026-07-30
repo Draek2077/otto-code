@@ -3249,6 +3249,9 @@ describe("session checkout status handling", () => {
         hasRemote: true,
         remoteUrl: "https://github.com/otto-code-ai/otto-code.git",
         isOttoOwnedWorktree: false,
+        // Any checkout on a branch can have its base repointed; the base is stored per branch,
+        // so worktree ownership is no longer the gate.
+        isBaseEditable: true,
         error: null,
         requestId: "request-status",
       },

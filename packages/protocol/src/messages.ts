@@ -2505,6 +2505,28 @@ export const AgentDetachResponseMessageSchema = z.object({
   payload: AgentActionResponsePayloadSchema,
 });
 
+// Move a chat into another workspace, in the same project or a different one.
+//
+// Ownership is one field (see the agent snapshot's `workspaceId`), independent of
+// cwd, so re-stamping it is all a move takes: nothing on disk is keyed by
+// workspace, and clients derive which workspace shows a chat from that field
+// alone.
+//
+// The chat's `cwd` does not change, and does not have to match the target
+// workspace's directory. The daemon has never required those to agree (an
+// agent's cwd can already be a subdirectory of its workspace, and nothing
+// validates one against the other), and a session already rooted on disk cannot
+// honestly be re-rooted. So a moved chat keeps running where it was started.
+//
+// Gated by server_info.features.agentWorkspaceTransfer.
+export const AgentWorkspaceTransferRequestMessageSchema = z.object({
+  type: z.literal("agent.workspace.transfer.request"),
+  agentId: z.string(),
+  // The workspace that should own the chat from now on.
+  workspaceId: z.string(),
+  requestId: z.string(),
+});
+
 // Stop a running observed subagent (Claude Task / ultracode fan-out). The
 // agentId is the observed subagent's id; the daemon resolves it to the owning
 // provider session's task and calls stopTask. Only observed subagents accept
@@ -3199,6 +3221,22 @@ export const WorkspaceTitleSetResponsePayloadSchema = z.object({
 export const WorkspaceTitleSetResponseSchema = z.object({
   type: z.literal("workspace.title.set.response"),
   payload: WorkspaceTitleSetResponsePayloadSchema,
+});
+
+export const AgentWorkspaceTransferResponsePayloadSchema = z.object({
+  requestId: z.string(),
+  agentId: z.string(),
+  // Which workspace owns the chat now: the requested one when accepted, the one
+  // it never left when refused. Lets a client correct its optimistic state from
+  // the response alone.
+  workspaceId: z.string().nullable(),
+  accepted: z.boolean(),
+  error: z.string().nullable(),
+});
+
+export const AgentWorkspaceTransferResponseMessageSchema = z.object({
+  type: z.literal("agent.workspace.transfer.response"),
+  payload: AgentWorkspaceTransferResponsePayloadSchema,
 });
 
 export const SetVoiceModeResponseMessageSchema = z.object({
@@ -4123,6 +4161,12 @@ export const WorkspaceArchivePreflightRequestSchema = z.object({
   workspaceId: z.string(),
 });
 
+// Where the Changes view's base branch came from. Surfaced so the chip can say *why* it is
+// comparing against this branch: an inferred parent is a heuristic over a graph that does not
+// record the answer, and it has to look like one or a wrong guess reads as a bug in the diff.
+// COMPAT(checkoutDiffBaseAnyRepo): added in v0.7.4.
+export const CheckoutBaseSourceSchema = z.enum(["user", "inferred", "worktree", "default"]);
+
 // Repoint a worktree-backed workspace's base branch — what the Changes view diffs
 // against, and what merge-into-base and PR creation target. On a stacked branch the
 // useful base is the parent branch, not the repo default, the same way a forge PR
@@ -4132,8 +4176,14 @@ export const WorktreeBaseRefSetRequestSchema = z.object({
   type: z.literal("worktree.baseRef.set.request"),
   requestId: z.string(),
   workspaceId: z.string(),
-  // Branch name, with or without an `origin/` prefix; null resets to the default branch.
+  // Branch name; null resets to the default branch. An `origin/` prefix is meaningful and is
+  // kept — `main` and `origin/main` are different comparisons whenever the two have drifted.
   baseRef: z.string().nullable(),
+  // Forget the remembered base and detect the branch's parent again, ignoring `baseRef`.
+  // The escape hatch for a wrong guess: parent detection is a heuristic over a graph that does
+  // not record the answer, and the result is sticky, so it has to be re-runnable on demand.
+  // COMPAT(checkoutDiffBaseAnyRepo): added in v0.7.4.
+  redetect: z.boolean().optional(),
 });
 
 // Create a new workspace record. Unlike open_project, this never deduplicates by
@@ -4926,6 +4976,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentThinkingRequestMessageSchema,
   SetAgentFeatureRequestMessageSchema,
   AgentDetachRequestMessageSchema,
+  AgentWorkspaceTransferRequestMessageSchema,
   AgentSubagentStopRequestMessageSchema,
   AgentBackgroundTaskStopRequestMessageSchema,
   AgentBackgroundTaskClearRequestMessageSchema,
@@ -5409,6 +5460,13 @@ export const ServerInfoStatusPayloadSchema = z
         // the daemon can write the worktree's metadata.
         // COMPAT(worktreeDiffBase): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
         worktreeDiffBase: z.boolean().optional(),
+        // Set when the daemon stores the diff base *per branch*, which is what lets any git
+        // checkout repoint it rather than only an Otto worktree — a plain checkout's gitdir is
+        // shared by every branch in it, so a single stored base would bleed across branch
+        // switches. Also gates parent-branch detection, the `origin/`-qualified pin, and the
+        // re-detect action. Without it the client keeps the worktree-only picker.
+        // COMPAT(checkoutDiffBaseAnyRepo): added in v0.7.4, drop the gate when daemon floor >= v0.7.4.
+        checkoutDiffBaseAnyRepo: z.boolean().optional(),
         // Set when the daemon persists the host-level hideMergeIntoBaseAction
         // workspace policy (read/written via the daemon config RPCs). Without
         // it the client hides the Workspaces toggle, since patching the field
@@ -5514,6 +5572,12 @@ export const ServerInfoStatusPayloadSchema = z
         // the daemon half of the Storage section; the app-side preview cache row
         // is local and always shown.
         attachmentStorage: z.boolean().optional(),
+        // COMPAT(agentWorkspaceTransfer): added in v0.7.4, drop the gate when
+        // daemon floor >= v0.7.4. Set when the daemon serves
+        // `agent.workspace.transfer` — moving a chat to another workspace over
+        // the same directory. The client cannot restamp ownership itself (it is
+        // daemon state), so an old daemon simply does not get the menu item.
+        agentWorkspaceTransfer: z.boolean().optional(),
       })
       .optional(),
   })
@@ -6285,6 +6349,9 @@ export const WorktreeBaseRefSetResponseSchema = z.object({
     baseRef: z.string().nullable(),
     // The stored base is the repository default branch (no stacked-branch override).
     isDefault: z.boolean(),
+    // Where the resulting base came from, so the client can label it without a refetch.
+    // COMPAT(checkoutDiffBaseAnyRepo): added in v0.7.4.
+    baseSource: CheckoutBaseSourceSchema.optional(),
     error: z.string().nullable(),
   }),
 });
@@ -6823,6 +6890,15 @@ const CheckoutStatusCommonSchema = z.object({
   // COMPAT(checkoutStatusGitStateAt): added in v0.6.8; absent from older daemons.
   // Drop the optional marker when floor >= v0.6.8 (target 2027-01-24).
   gitStateAt: z.number().optional(),
+  // Where `baseRef` came from, so the base chip can label an inferred parent as a guess rather
+  // than presenting it with the same authority as an explicit pick.
+  // COMPAT(checkoutDiffBaseAnyRepo): added in v0.7.4.
+  baseSource: CheckoutBaseSourceSchema.optional(),
+  // Whether this checkout can have its base repointed. True for any git checkout on a daemon
+  // that stores the base per branch; older daemons only supported Otto worktrees, which the
+  // client inferred from isOttoOwnedWorktree.
+  // COMPAT(checkoutDiffBaseAnyRepo): added in v0.7.4.
+  isBaseEditable: z.boolean().optional(),
 });
 
 const CheckoutStatusNotGitSchema = CheckoutStatusCommonSchema.extend({
@@ -8934,6 +9010,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentThinkingResponseMessageSchema,
   SetAgentFeatureResponseMessageSchema,
   AgentDetachResponseMessageSchema,
+  AgentWorkspaceTransferResponseMessageSchema,
   AgentQueueRemoveResponseMessageSchema,
   AgentQueueReorderResponseMessageSchema,
   AgentQueueClearResponseMessageSchema,
@@ -9225,6 +9302,12 @@ export type SetAgentModelResponseMessage = z.infer<typeof SetAgentModelResponseM
 export type SetAgentThinkingResponseMessage = z.infer<typeof SetAgentThinkingResponseMessageSchema>;
 export type SetAgentFeatureResponseMessage = z.infer<typeof SetAgentFeatureResponseMessageSchema>;
 export type AgentDetachResponseMessage = z.infer<typeof AgentDetachResponseMessageSchema>;
+export type AgentWorkspaceTransferResponseMessage = z.infer<
+  typeof AgentWorkspaceTransferResponseMessageSchema
+>;
+export type AgentWorkspaceTransferResponsePayload = z.infer<
+  typeof AgentWorkspaceTransferResponsePayloadSchema
+>;
 export type AgentPersonalitySetResponseMessage = z.infer<
   typeof AgentPersonalitySetResponseMessageSchema
 >;
@@ -9467,6 +9550,9 @@ export type SetAgentModelRequestMessage = z.infer<typeof SetAgentModelRequestMes
 export type SetAgentThinkingRequestMessage = z.infer<typeof SetAgentThinkingRequestMessageSchema>;
 export type SetAgentFeatureRequestMessage = z.infer<typeof SetAgentFeatureRequestMessageSchema>;
 export type AgentDetachRequestMessage = z.infer<typeof AgentDetachRequestMessageSchema>;
+export type AgentWorkspaceTransferRequestMessage = z.infer<
+  typeof AgentWorkspaceTransferRequestMessageSchema
+>;
 export type AgentSubagentStopRequestMessage = z.infer<typeof AgentSubagentStopRequestMessageSchema>;
 export type AgentBackgroundTaskStopRequestMessage = z.infer<
   typeof AgentBackgroundTaskStopRequestMessageSchema
@@ -9486,6 +9572,7 @@ export type AgentPersonalitySetRequestMessage = z.infer<
 export type AgentPermissionResponseMessage = z.infer<typeof AgentPermissionResponseMessageSchema>;
 export type CheckoutStatusRequest = z.infer<typeof CheckoutStatusRequestSchema>;
 export type CheckoutStatusResponse = z.infer<typeof CheckoutStatusResponseSchema>;
+export type CheckoutBaseSource = z.infer<typeof CheckoutBaseSourceSchema>;
 export type CheckoutStatusUpdate = z.infer<typeof CheckoutStatusUpdateSchema>;
 export type SubscribeCheckoutDiffRequest = z.infer<typeof SubscribeCheckoutDiffRequestSchema>;
 export type UnsubscribeCheckoutDiffRequest = z.infer<typeof UnsubscribeCheckoutDiffRequestSchema>;

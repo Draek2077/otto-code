@@ -350,3 +350,87 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(terminalSeparator?.key).toBe("rename-separator");
   });
 });
+
+describe("buildWorkspaceTabMenuEntries move-to-workspace entry", () => {
+  const baseInput = {
+    surface: "desktop" as const,
+    index: 0,
+    tabCount: 1,
+    menuTestIDBase: "workspace-tab-context-agent_123",
+    isDeveloperMode: false,
+    onCopyResumeCommand: vi.fn(),
+    onCopyAgentId: vi.fn(),
+    onCopyFilePath: vi.fn(),
+    onReloadAgent: vi.fn(),
+    onRenameTab: vi.fn(),
+    onCloseTab: vi.fn(),
+    onCloseTabsBefore: vi.fn(),
+    onCloseTabsAfter: vi.fn(),
+    onCloseOtherTabs: vi.fn(),
+  };
+
+  function labelsOf(entries: ReturnType<typeof buildWorkspaceTabMenuEntries>): string[] {
+    return entries.filter((entry) => entry.kind === "item").map((entry) => entry.label);
+  }
+
+  it("offers the move entry for a chat and passes the agent id through", () => {
+    const onMoveToWorkspace = vi.fn();
+
+    const entries = buildWorkspaceTabMenuEntries({
+      ...baseInput,
+      tab: createAgentTab(),
+      onMoveToWorkspace,
+      canMoveToWorkspace: true,
+    });
+
+    const move = entries.find(
+      (entry) => entry.kind === "item" && entry.key === "move-to-workspace",
+    );
+    expect(move).toBeDefined();
+    if (move?.kind !== "item") {
+      throw new Error("expected an item");
+    }
+    move.onSelect();
+    expect(onMoveToWorkspace).toHaveBeenCalledWith("agent-123");
+  });
+
+  it("omits the entry when the host cannot move chats", () => {
+    // An old daemon has no agent.workspace.transfer, and there is no degraded
+    // client-side version, so the row is absent rather than shown disabled.
+    const entries = buildWorkspaceTabMenuEntries({
+      ...baseInput,
+      tab: createAgentTab(),
+      onMoveToWorkspace: undefined,
+      canMoveToWorkspace: true,
+    });
+
+    expect(labelsOf(entries)).not.toContain("Move to workspace…");
+  });
+
+  it("omits the entry when there is nowhere to move to", () => {
+    const entries = buildWorkspaceTabMenuEntries({
+      ...baseInput,
+      tab: createAgentTab(),
+      onMoveToWorkspace: vi.fn(),
+      canMoveToWorkspace: false,
+    });
+
+    expect(labelsOf(entries)).not.toContain("Move to workspace…");
+  });
+
+  it("does not offer the entry for a terminal tab", () => {
+    const entries = buildWorkspaceTabMenuEntries({
+      ...baseInput,
+      tab: {
+        key: "terminal_1",
+        tabId: "terminal_1",
+        kind: "terminal",
+        target: { kind: "terminal", terminalId: "terminal-1" },
+      },
+      onMoveToWorkspace: vi.fn(),
+      canMoveToWorkspace: true,
+    });
+
+    expect(labelsOf(entries)).not.toContain("Move to workspace…");
+  });
+});

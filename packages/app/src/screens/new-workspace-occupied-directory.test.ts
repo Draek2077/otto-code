@@ -29,11 +29,11 @@ function confirmReturning(choice: ConfirmDialogChoice) {
 }
 
 function harness(overrides: Partial<Parameters<typeof runOccupiedDirectorySteer>[0]> = {}) {
-  const openWorkspace = vi.fn();
+  const openExistingWorkspace = vi.fn(async () => {});
   const createWorktreeInstead = vi.fn(async () => {});
   const onError = vi.fn();
   return {
-    openWorkspace,
+    openExistingWorkspace,
     createWorktreeInstead,
     onError,
     input: {
@@ -41,7 +41,7 @@ function harness(overrides: Partial<Parameters<typeof runOccupiedDirectorySteer>
       labels: LABELS,
       findExistingWorkspaceId: () => "wks_existing",
       confirm: confirmReturning("cancel"),
-      openWorkspace,
+      openExistingWorkspace,
       createWorktreeInstead,
       onError,
       ...overrides,
@@ -56,9 +56,42 @@ describe("runOccupiedDirectorySteer", () => {
     const outcome = await runOccupiedDirectorySteer(h.input);
 
     expect(outcome).toBe("opened_existing");
-    expect(h.openWorkspace).toHaveBeenCalledWith("wks_existing");
+    expect(h.openExistingWorkspace).toHaveBeenCalledWith("wks_existing");
     expect(h.createWorktreeInstead).not.toHaveBeenCalled();
     expect(h.onError).not.toHaveBeenCalled();
+  });
+
+  test("waits for the replayed submission before reporting the outcome", async () => {
+    // The primary action starts the user's chat in the occupying workspace, so it
+    // is async. Returning before it settles would strand a failure unreported.
+    const order: string[] = [];
+    const h = harness({
+      confirm: confirmReturning("confirm"),
+      openExistingWorkspace: async () => {
+        await Promise.resolve();
+        order.push("submitted");
+      },
+    });
+
+    const outcome = await runOccupiedDirectorySteer(h.input);
+    order.push("returned");
+
+    expect(outcome).toBe("opened_existing");
+    expect(order).toEqual(["submitted", "returned"]);
+  });
+
+  test("surfaces a failed replay into the existing workspace", async () => {
+    const h = harness({
+      confirm: confirmReturning("confirm"),
+      openExistingWorkspace: async () => {
+        throw new Error("Select a model");
+      },
+    });
+
+    const outcome = await runOccupiedDirectorySteer(h.input);
+
+    expect(outcome).toBe("unresolved");
+    expect(h.onError).toHaveBeenCalledWith("Select a model");
   });
 
   test("retries as a worktree when the user picks the alternate action", async () => {
@@ -68,7 +101,7 @@ describe("runOccupiedDirectorySteer", () => {
 
     expect(outcome).toBe("created_worktree");
     expect(h.createWorktreeInstead).toHaveBeenCalledTimes(1);
-    expect(h.openWorkspace).not.toHaveBeenCalled();
+    expect(h.openExistingWorkspace).not.toHaveBeenCalled();
     expect(h.onError).not.toHaveBeenCalled();
   });
 
@@ -78,7 +111,7 @@ describe("runOccupiedDirectorySteer", () => {
     const outcome = await runOccupiedDirectorySteer(h.input);
 
     expect(outcome).toBe("cancelled");
-    expect(h.openWorkspace).not.toHaveBeenCalled();
+    expect(h.openExistingWorkspace).not.toHaveBeenCalled();
     expect(h.createWorktreeInstead).not.toHaveBeenCalled();
     expect(h.onError).not.toHaveBeenCalled();
   });

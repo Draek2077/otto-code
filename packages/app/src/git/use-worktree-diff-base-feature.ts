@@ -15,3 +15,20 @@ export function useWorktreeDiffBaseFeature(serverId: string): boolean {
     (state) => state.sessions[serverId]?.serverInfo?.features?.worktreeDiffBase === true,
   );
 }
+
+/**
+ * Whether this host stores the diff base *per branch*.
+ *
+ * That is what lets any git checkout repoint it rather than only an Otto worktree: a plain
+ * checkout's gitdir is shared by every branch in it, so one stored base would bleed across
+ * branch switches. The same capability covers parent-branch detection, pinning an
+ * `origin/`-qualified base, and the re-detect action.
+ *
+ * COMPAT(checkoutDiffBaseAnyRepo): added in v0.7.4, drop the gate when daemon
+ * floor >= v0.7.4.
+ */
+export function useCheckoutDiffBaseAnyRepoFeature(serverId: string): boolean {
+  return useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutDiffBaseAnyRepo === true,
+  );
+}

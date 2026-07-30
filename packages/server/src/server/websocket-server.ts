@@ -1556,6 +1556,8 @@ export class VoiceAssistantWebSocketServer {
         worktreeReattach: true,
         // COMPAT(worktreeDiffBase): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
         worktreeDiffBase: true,
+        // COMPAT(checkoutDiffBaseAnyRepo): added in v0.7.4, drop the gate when daemon floor >= v0.7.4.
+        checkoutDiffBaseAnyRepo: true,
         // COMPAT(hideMergeIntoBaseSetting): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
         hideMergeIntoBaseSetting: true,
         // COMPAT(agentTeams): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
@@ -1635,6 +1637,11 @@ export class VoiceAssistantWebSocketServer {
         // Unconditionally true: both read the $OTTO_HOME attachment store
         // directly, which every daemon has.
         attachmentStorage: true,
+        // COMPAT(agentWorkspaceTransfer): added in v0.7.4, drop the gate when
+        // daemon floor >= v0.7.4. `agent.workspace.transfer`. Unconditionally
+        // true: the handler needs only the agent manager and the workspace
+        // registry, which every daemon wires.
+        agentWorkspaceTransfer: true,
       },
     };
   }

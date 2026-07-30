@@ -33,9 +33,15 @@ import {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-// The corpus lives beside the dev home rather than in a temp dir: a corpus you
-// have to re-seed after every reboot is one nobody keeps around long enough to
-// notice a regression against.
+// The repos live beside the dev home rather than in a temp dir, so re-running is
+// cheap and the projects stay where you left them.
+//
+// **The conversations are NOT durable, only the repos are.** Agent timelines live
+// in daemon memory and nothing restores them on startup, so bouncing the daemon
+// leaves every chat empty while the agent records remain on disk. Plan around it:
+// seed, then measure without restarting the daemon. If you do restart, re-seed --
+// and the seeder will tell you, because it now verifies content instead of
+// assuming an agent that exists has messages.
 const CORPUS_ROOT = path.join(repoRoot, "packages", "desktop", ".dev", "perf-corpus");
 
 const PROJECT_NAMES = [

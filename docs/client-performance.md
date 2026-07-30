@@ -202,6 +202,14 @@ produces a corpus that measures the wrong thing:
   The result reports `chats` (corpus size) separately from `chatsCreated` (what this run paid for);
   collapsing them is how a seeder starts reporting turns it never drove. Only `--clean` resets, and
   it clears the daemon records as well as the repos, because orphaned records get adopted next run.
+- **The conversations do not survive a daemon restart — only the repos do.** Agent timelines live in
+  the daemon's in-memory `agent-timeline-store`; `seedAgentTimeline` has no production caller, so
+  nothing repopulates them on startup. The agent records persist under `$OTTO_HOME/agents/`, so after
+  a bounce you are left with the full set of chats, all empty. **Seed, then measure without
+  restarting.** This cost a full round of measurements once: the daemon was restarted to clear an
+  unrelated problem, every transcript went empty, and the switch numbers taken afterwards described
+  empty workspaces (~2,600 DOM nodes) rather than loaded ones (~11,700). Adoption verifies content
+  per chat for exactly this reason, and warns about empty chats rather than counting them.
 
 Beware one asymmetry when reading results: workspaces above the deck cap are evicted and re-mounted
 cold, while chats above the stream-buffer cap of 12 lose their tail buffer and re-fetch. A corpus
@@ -210,9 +218,11 @@ dimensioned below either cap measures neither.
 Two things about the surface itself, both of which make a naive reading wrong:
 
 - **The transcript is virtualized** (`agent-chat-scroll-web-dom-virtualized`), so a chat renders only
-  its visible window. One loaded corpus chat measured **5,332 DOM nodes** — a number set by viewport
-  size, not by the 300 messages behind it. Read `dom.nodes` as cost per mounted chat; a flat series
-  is virtualization working, not history being free.
+  its visible window — its node count is set by viewport size, not by the messages behind it. Read
+  `dom.nodes` as cost per mounted chat; a flat series is virtualization working, not history being
+  free. It is still the fastest check that a corpus is real: one workspace with loaded chats measured
+  **~11,700 nodes against ~2,600 when the same chats were empty**, so a suspiciously low node count
+  means the transcripts are gone, not that rendering got cheap.
 - **Chats are tabs, and the strip overflows.** Past a handful, the rest are reachable only through
   `workspace-tab-overflow-trigger`, so a harness that walks only the visible strip measures the same
   four chats repeatedly while appearing to cover twelve. Wait on the target tab's `aria-selected`

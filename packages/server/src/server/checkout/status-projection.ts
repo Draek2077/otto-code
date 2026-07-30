@@ -3,6 +3,7 @@ import type {
   CheckoutStatusResponse,
   SessionOutboundMessage,
 } from "@otto-code/protocol/messages";
+import type { CheckoutBaseSource } from "../../utils/checkout-git.js";
 import type { WorkspaceGitRuntimeSnapshot } from "../workspace-git-service.js";
 
 type CheckoutPrStatusPayload = Extract<
@@ -75,6 +76,7 @@ function buildCheckoutStatusFields({
       hasRemote: snapshot.git.hasRemote,
       remoteUrl: snapshot.git.remoteUrl,
       isOttoOwnedWorktree: true,
+      ...buildBaseProvenanceFields(snapshot),
       error: null,
       requestId,
     };
@@ -94,8 +96,27 @@ function buildCheckoutStatusFields({
     hasRemote: snapshot.git.hasRemote,
     remoteUrl: snapshot.git.remoteUrl,
     isOttoOwnedWorktree: false,
+    ...buildBaseProvenanceFields(snapshot),
     error: null,
     requestId,
+  };
+}
+
+/**
+ * Says where the base came from and whether the client may change it.
+ *
+ * `isBaseEditable` is answered here rather than re-derived on the client: this daemon stores the
+ * base per branch, so any git checkout can be repointed — the old rule of "Otto worktrees only"
+ * was a storage limitation, not a product one, and the client has no way to know which it is.
+ */
+function buildBaseProvenanceFields(snapshot: WorkspaceGitRuntimeSnapshot): {
+  baseSource?: CheckoutBaseSource;
+  isBaseEditable: boolean;
+} {
+  const baseSource = snapshot.git.baseSource ?? null;
+  return {
+    ...(baseSource ? { baseSource } : {}),
+    isBaseEditable: snapshot.git.isGit && snapshot.git.currentBranch !== null,
   };
 }
 

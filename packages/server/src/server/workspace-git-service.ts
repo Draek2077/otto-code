@@ -5,7 +5,7 @@ import { LRUCache } from "lru-cache";
 import pLimit from "p-limit";
 import type pino from "pino";
 import type { ProjectCheckoutLitePayload } from "@otto-code/protocol/messages";
-import type { CheckoutContext } from "../utils/checkout-git.js";
+import type { CheckoutBaseSource, CheckoutContext } from "../utils/checkout-git.js";
 import {
   type BranchCheckoutResolution,
   type BranchSuggestion,
@@ -79,6 +79,9 @@ export interface WorkspaceGitRuntimeSnapshot {
     isOttoOwnedWorktree: boolean;
     isDirty: boolean | null;
     baseRef: string | null;
+    // Where baseRef came from (user pick, inferred parent, worktree record, repo default), so
+    // the client can label an inferred base as the heuristic it is.
+    baseSource?: CheckoutBaseSource | null;
     aheadBehind: { ahead: number; behind: number } | null;
     aheadOfOrigin: number | null;
     behindOfOrigin: number | null;
@@ -1870,6 +1873,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       isOttoOwnedWorktree: checkoutStatus.isOttoOwnedWorktree,
       isDirty: checkoutStatus.isDirty,
       baseRef: checkoutStatus.baseRef,
+      baseSource: checkoutStatus.baseSource,
       aheadBehind: checkoutStatus.aheadBehind,
       aheadOfOrigin: checkoutStatus.aheadOfOrigin,
       behindOfOrigin: checkoutStatus.behindOfOrigin,

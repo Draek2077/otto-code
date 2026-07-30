@@ -2790,6 +2790,52 @@ export class AgentManager {
     return nextRecord;
   }
 
+  /**
+   * Re-stamps which workspace owns a chat.
+   *
+   * A move and nothing more: ownership is the single `workspaceId` field, agent
+   * state on disk is keyed by agent id rather than by workspace, and the timeline
+   * store is keyed by agent id too, so there is nothing to migrate alongside it.
+   *
+   * Deliberately does **not** touch `cwd`. The two answer different questions
+   * (see ManagedAgent.workspaceId) and are not required to agree, so a moved chat
+   * keeps running where it was started. See `transferAgentWorkspaceCommand` for
+   * the preconditions on the target workspace.
+   */
+  async transferAgentWorkspace(
+    agentId: string,
+    workspaceId: string,
+  ): Promise<{ record: StoredAgentRecord; live: boolean }> {
+    const registry = this.requireRegistry();
+    const liveAgent = this.agents.get(agentId);
+    if (liveAgent) {
+      liveAgent.workspaceId = workspaceId;
+      this.touchUpdatedAt(liveAgent);
+      await this.persistSnapshot(liveAgent);
+      // Broadcast so every client's ownership gate re-evaluates: the tab appears
+      // in the target workspace and prunes from the source without either
+      // workspace being told about it directly.
+      this.emitState(liveAgent, { persist: false });
+      const record = await registry.get(agentId);
+      if (!record) {
+        throw new Error(`Agent not found in storage after workspace transfer: ${agentId}`);
+      }
+      return { record, live: true };
+    }
+
+    const record = await registry.get(agentId);
+    if (!record) {
+      throw new Error(`Agent not found: ${agentId}`);
+    }
+    const nextRecord: StoredAgentRecord = {
+      ...record,
+      workspaceId,
+      updatedAt: this.nextStoredUpdatedAt(record),
+    };
+    await registry.upsert(nextRecord);
+    return { record: nextRecord, live: false };
+  }
+
   async detachAgent(agentId: string): Promise<{
     record: StoredAgentRecord;
     live: boolean;

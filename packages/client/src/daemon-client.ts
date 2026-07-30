@@ -2481,12 +2481,17 @@ export class DaemonClient {
     });
   }
 
-  // Repoint a worktree-backed workspace's base branch (what Changes diffs against,
-  // and what merge-into-base / PR creation target). Pass null to reset to the
-  // repository default. Gated by server_info.features.worktreeDiffBase.
+  // Repoint a workspace's base branch (what Changes diffs against, and what
+  // merge-into-base / PR creation target). Pass null to reset to the repository
+  // default, or `redetect` to forget the stored base and detect the branch's parent
+  // again. An `origin/` prefix is preserved: `main` and `origin/main` are different
+  // comparisons whenever local and origin have drifted.
+  // Gated by server_info.features.worktreeDiffBase; repointing a plain (non-worktree)
+  // checkout additionally needs server_info.features.checkoutDiffBaseAnyRepo.
   async setWorktreeBaseRef(
     workspaceId: string,
     baseRef: string | null,
+    options?: { redetect?: boolean },
     requestId?: string,
   ): Promise<WorktreeBaseRefSetPayload> {
     return this.sendCorrelatedSessionRequest({
@@ -2495,6 +2500,7 @@ export class DaemonClient {
         type: "worktree.baseRef.set.request",
         workspaceId,
         baseRef,
+        ...(options?.redetect ? { redetect: true } : {}),
       },
       responseType: "worktree.baseRef.set.response",
     });
@@ -3191,6 +3197,31 @@ export class DaemonClient {
       throw new Error(payload.error ?? "setWorkspaceTitle rejected");
     }
     return { title: payload.title };
+  }
+
+  /**
+   * Moves a chat to another workspace over the same directory. Throws with the
+   * daemon's reason when refused; the same-directory rule is enforced there, not
+   * here, so the caller gets one explanation rather than two.
+   */
+  async transferAgentWorkspace(
+    agentId: string,
+    workspaceId: string,
+    requestId?: string,
+  ): Promise<{ workspaceId: string }> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "agent.workspace.transfer.request",
+        agentId,
+        workspaceId,
+      },
+      responseType: "agent.workspace.transfer.response",
+    });
+    if (!payload.accepted || !payload.workspaceId) {
+      throw new Error(payload.error ?? "Failed to move chat");
+    }
+    return { workspaceId: payload.workspaceId };
   }
 
   async listProjectLinks(requestId?: string): Promise<ProjectLink[]> {
