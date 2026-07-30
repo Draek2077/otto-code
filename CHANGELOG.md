@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.4 - 2026-07-30
+
+### Added
+
+- Move a chat to another workspace from the workspace tab menu
+
+### Changed
+
+- The Changes diff in a worktree compares against the branch the worktree was created from
+- The diff base you pick for a checkout is remembered the next time you open it
+- The bundled agent catalog picks up current versions of CodeBuddy, DeepAgents, Dimcode, Dirac, Factory Droid, fast-agent and Qoder
+
+### Fixed
+
+- Escape no longer clears what you typed in the composer
+- Voice cues, Visualizer, Explorer and Play move into the "..." menu on a narrow window instead of disappearing
+
 ## 0.7.3 - 2026-07-29
 
 ### Added
