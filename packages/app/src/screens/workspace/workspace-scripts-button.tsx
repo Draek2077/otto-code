@@ -51,6 +51,15 @@ interface WorkspaceScriptsButtonProps {
   // Ghost-presentation trigger icon size. The mobile header passes the same
   // `useIconSize(1.5).lg` the Explorer toggle uses so the two buttons match.
   ghostIconSize?: number;
+  /** Controlled open state, so a collapsed trigger elsewhere can open the menu. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /**
+   * Render only a zero-size anchor instead of the button. Used when the compact
+   * header fit drops the Play button into the "..." menu: the menu item there
+   * flips the controlled `open` on, and the scripts dropdown anchors here.
+   */
+  hideTrigger?: boolean;
 }
 
 interface ScriptActionButtonProps {
@@ -405,6 +414,9 @@ export function WorkspaceScriptsButton({
   fill,
   presentation = "split",
   ghostIconSize,
+  open,
+  onOpenChange,
+  hideTrigger = false,
 }: WorkspaceScriptsButtonProps): ReactElement | null {
   const { t } = useTranslation();
   const toast = useToast();
@@ -451,10 +463,18 @@ export function WorkspaceScriptsButton({
   );
 
   const triggerStyle = useCallback(
-    ({ hovered, pressed, open }: { hovered: boolean; pressed: boolean; open: boolean }) => [
+    ({
+      hovered,
+      pressed,
+      open: triggerOpen,
+    }: {
+      hovered: boolean;
+      pressed: boolean;
+      open: boolean;
+    }) => [
       presentation === "ghost" ? styles.ghostButton : styles.splitButtonPrimary,
       isFillSplit && styles.fillItem,
-      (hovered || pressed || open) &&
+      (hovered || pressed || triggerOpen) &&
         (presentation === "ghost" ? styles.ghostButtonHovered : styles.splitButtonPrimaryHovered),
     ],
     [isFillSplit, presentation],
@@ -474,53 +494,74 @@ export function WorkspaceScriptsButton({
   const triggerIconSize =
     presentation === "ghost" ? (ghostIconSize ?? GHOST_TRIGGER_ICON_SIZE) : 14;
 
+  const trigger = hideTrigger ? (
+    <DropdownMenuTrigger
+      testID="workspace-scripts-button"
+      disabled
+      accessibilityElementsHidden
+      style={styles.hiddenTrigger}
+    >
+      <View />
+    </DropdownMenuTrigger>
+  ) : (
+    <DropdownMenuTrigger
+      testID="workspace-scripts-button"
+      style={triggerStyle}
+      accessibilityRole="button"
+      accessibilityLabel={t("workspace.scripts.accessibility.trigger")}
+    >
+      <View style={styles.splitButtonContent}>
+        <ThemedPlay size={triggerIconSize} uniProps={triggerPlayMapping} />
+        {!hideLabels && (
+          <Text style={styles.splitButtonText} numberOfLines={1}>
+            {t("workspace.scripts.title")}
+          </Text>
+        )}
+        {presentation === "split" ? (
+          <ThemedChevronDown size={14} uniProps={mutedColorMapping} />
+        ) : null}
+      </View>
+    </DropdownMenuTrigger>
+  );
+
+  const menu = (
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      {trigger}
+      <DropdownMenuContent
+        align="end"
+        minWidth={200}
+        maxWidth={280}
+        testID="workspace-scripts-menu"
+      >
+        <View style={styles.scriptList}>
+          {scripts.map((script, index) => (
+            <Fragment key={script.scriptName}>
+              {index > 0 ? <DropdownMenuSeparator /> : null}
+              <ScriptRow
+                script={script}
+                liveTerminalIdSet={liveTerminalIdSet}
+                activeConnection={activeConnection}
+                isStartPending={startScriptMutation.isPending}
+                onStartScript={handleStartScript}
+                onViewTerminal={onViewTerminal}
+                onOpenUrlInBrowserTab={onOpenUrlInBrowserTab}
+              />
+            </Fragment>
+          ))}
+        </View>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  // The hidden anchor must not enter the row's flex flow (see `hiddenTrigger`),
+  // so it skips the row/frame chrome entirely.
+  if (hideTrigger) {
+    return menu;
+  }
+
   return (
     <View style={rowStyle}>
-      <View style={frameStyle}>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            testID="workspace-scripts-button"
-            style={triggerStyle}
-            accessibilityRole="button"
-            accessibilityLabel={t("workspace.scripts.accessibility.trigger")}
-          >
-            <View style={styles.splitButtonContent}>
-              <ThemedPlay size={triggerIconSize} uniProps={triggerPlayMapping} />
-              {!hideLabels && (
-                <Text style={styles.splitButtonText} numberOfLines={1}>
-                  {t("workspace.scripts.title")}
-                </Text>
-              )}
-              {presentation === "split" ? (
-                <ThemedChevronDown size={14} uniProps={mutedColorMapping} />
-              ) : null}
-            </View>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            minWidth={200}
-            maxWidth={280}
-            testID="workspace-scripts-menu"
-          >
-            <View style={styles.scriptList}>
-              {scripts.map((script, index) => (
-                <Fragment key={script.scriptName}>
-                  {index > 0 ? <DropdownMenuSeparator /> : null}
-                  <ScriptRow
-                    script={script}
-                    liveTerminalIdSet={liveTerminalIdSet}
-                    activeConnection={activeConnection}
-                    isStartPending={startScriptMutation.isPending}
-                    onStartScript={handleStartScript}
-                    onViewTerminal={onViewTerminal}
-                    onOpenUrlInBrowserTab={onOpenUrlInBrowserTab}
-                  />
-                </Fragment>
-              ))}
-            </View>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </View>
+      <View style={frameStyle}>{menu}</View>
     </View>
   );
 }
@@ -574,6 +615,17 @@ const styles = StyleSheet.create((theme) => ({
   },
   splitButtonPrimaryHovered: {
     backgroundColor: theme.colors.surfaceHover,
+  },
+  // Zero-size anchor for the collapsed mode — exists only so the dropdown has a
+  // position to open from; must never take layout space or catch pointers.
+  // `position: absolute` keeps it out of flex flow: a zero-size *flex item*
+  // still consumes a `gap` slot on both sides (same as ArtifactOpenMenu's).
+  hiddenTrigger: {
+    position: "absolute",
+    width: 0,
+    height: 0,
+    opacity: 0,
+    overflow: "hidden",
   },
   splitButtonText: {
     fontSize: theme.fontSize.sm,

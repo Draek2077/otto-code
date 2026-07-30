@@ -8,13 +8,12 @@
  * hold everything the optional buttons drop in the order Voice cues,
  * Visualizer, Explorer, Play.
  *
- * Voice cues drop first because they are the only one that is *not* a lost
- * capability: the same switch lives in Agents settings, so the header button is
- * pure convenience. Play is the last to go for the mirror-image reason — none of
- * the other three are duplicated in the "..." menu, and Play is the only one
- * with no other route at all: a Visualizer or Explorer view can be reopened as a
- * tab, but with no Play button there is no way to run a workspace script on a
- * narrow screen.
+ * A dropped button is moved, not lost: every action the fit drops reappears as
+ * an item in the "..." menu (the `menu*` flags below), so narrowing the window
+ * costs a tap, never the capability. The drop order ranks one-tap value: Voice
+ * cues go first because the same switch also lives in Agents settings, and Play
+ * goes last because starting a workspace script is the most launch-like action
+ * in the strip.
  */
 
 /** Optional compact header buttons, listed in the order they drop. */
@@ -73,6 +72,15 @@ export interface CompactHeaderActionsFit {
   showCompactExplorer: boolean;
   /** User-mode Explorer toggle, which also renders on desktop. */
   showPlainExplorer: boolean;
+  /**
+   * Requested actions that lost their header slot. The "..." menu renders one
+   * fallback item per flag so the control moves into the menu instead of
+   * disappearing; all false while every button still fits (and on desktop).
+   */
+  menuVoiceCues: boolean;
+  menuVisualizer: boolean;
+  menuExplorer: boolean;
+  menuPlay: boolean;
 }
 
 /**
@@ -104,12 +112,17 @@ export function resolveCompactHeaderActions(
     input.isCompact && input.rowWidth > 0
       ? fitCompactHeaderActions({ rowWidth: input.rowWidth, requested })
       : requested;
+  const dropped = (action: CompactHeaderAction) => requested.has(action) && !fitted.has(action);
   return {
     showPlay: fitted.has("play"),
     showVisualizer: fitted.has("visualizer"),
     showVoiceCues: fitted.has("voiceCues"),
     showCompactExplorer: input.isCompact && fitted.has("explorer"),
     showPlainExplorer: input.hasWorkspaceDirectory && fitted.has("explorer"),
+    menuVoiceCues: dropped("voiceCues"),
+    menuVisualizer: dropped("visualizer"),
+    menuExplorer: dropped("explorer"),
+    menuPlay: dropped("play"),
   };
 }
 
