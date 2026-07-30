@@ -1,13 +1,19 @@
 /**
  * The headless brain service: the router + supervisor bound to a port, with the
- * VRAM fit, on-demand model switching, remote auth, and pid-file lifecycle. Used
- * both by `otto brain serve` (foreground) and by a detached `otto brain start`.
- * It stays provider-neutral about the runtime source — it takes whatever
- * resolveRuntime picks (managed or LM Studio).
+ * VRAM fit, on-demand model switching, remote auth, built-in TLS, and pid-file
+ * lifecycle. Used both by `otto brain serve` (foreground) and by a detached
+ * `otto brain start`. It stays provider-neutral about the runtime source — it
+ * takes whatever resolveRuntime picks (managed or LM Studio).
+ *
+ * TLS is served in-process (config.tls): HTTPS with a files / self-signed /
+ * tailscale certificate, hot-swapped on renewal. This is what lets the brain be
+ * exposed securely over a network with no relay in front of it.
  */
 import http from "node:http";
+import https from "node:https";
 
 import { getCalibration, forModel, loadProfilesStore, saveProfilesStore } from "../config/index.js";
+import { resolveBrainPaths } from "../config/paths.js";
 import type { BrainConfig } from "../config/schema.js";
 import { query as queryGpu } from "../gpu.js";
 import { pickModel, scanModels } from "../models/index.js";
@@ -17,15 +23,24 @@ import type { Model } from "../types.js";
 import * as vram from "../vram.js";
 import { createRouter, Telemetry } from "./router.js";
 import { Supervisor } from "./supervisor.js";
+import * as tailscale from "./tailscale.js";
+import { CertManager, resolveTlsOptions, type SecurePair } from "./tls.js";
 import { removePidFile, writePidFile } from "./pid-lock.js";
 
 function isLoopback(host: string): boolean {
   return host === "127.0.0.1" || host === "::1" || host === "localhost";
 }
 
-function extractToken(req: http.IncomingMessage): string | null {
+/**
+ * Pull the client's presented key from the request. Accepts, in order, an
+ * `Authorization: Bearer …`, an `x-api-key` (OpenAI/Anthropic convention, and
+ * what the relay accepted), or the brain's own `x-otto-brain-token`.
+ */
+export function extractToken(req: http.IncomingMessage): string | null {
   const auth = req.headers.authorization;
   if (typeof auth === "string" && auth.startsWith("Bearer ")) return auth.slice(7).trim();
+  const apiKey = req.headers["x-api-key"];
+  if (typeof apiKey === "string" && apiKey) return apiKey;
   const header = req.headers["x-otto-brain-token"];
   return typeof header === "string" ? header : null;
 }
@@ -57,6 +72,10 @@ export interface ServiceHandle {
   host: string;
   port: number;
   model: Model;
+  /** Whether the listener terminates TLS (config.tls.mode !== "off"). */
+  secure: boolean;
+  /** The address to show a user: the MagicDNS/cert hostname when TLS is on, else the bind host. */
+  displayHost: string;
   stop: () => Promise<void>;
 }
 
@@ -75,12 +94,29 @@ export async function startService({
     });
   }
 
-  const host = config.listen.host;
+  const paths = resolveBrainPaths(env);
+  const tlsOptions = await resolveTlsOptions(config, paths);
+
+  // `listen.host: "tailscale"` binds the tailnet interface only (invisible to the
+  // LAN and the internet), mirroring the relay's default. Any other value binds
+  // verbatim. The cert hostname is what a client actually connects to.
   const port = config.listen.port;
-  if (!isLoopback(host) && config.auth.mode !== "token" && env.OTTO_BRAIN_ALLOW_INSECURE !== "1") {
+  const bindHost =
+    config.listen.host === "tailscale"
+      ? await tailscale.ipv4(config.tls.tailscaleExe ?? undefined)
+      : config.listen.host;
+  const displayHost = tlsOptions?.hostname ?? bindHost;
+
+  // Auth is orthogonal to transport: TLS encrypts the pipe, a token authorizes the
+  // caller. A non-loopback bind still needs a token even over HTTPS.
+  if (
+    !isLoopback(bindHost) &&
+    config.auth.mode !== "token" &&
+    env.OTTO_BRAIN_ALLOW_INSECURE !== "1"
+  ) {
     throw new CommandError({
       code: "INSECURE_BIND",
-      message: `refusing to bind ${host} without auth`,
+      message: `refusing to bind ${bindHost} without auth`,
       details: "set auth.mode=token (or OTTO_BRAIN_ALLOW_INSECURE=1 to override)",
     });
   }
@@ -134,36 +170,73 @@ export async function startService({
     saveProfilesStore(store);
   };
 
-  const server = http.createServer(
-    withAuth(
-      createRouter({
-        supervisor,
-        telemetry,
-        logger: { warn: (m: string) => onLog(`WARN ${m}`) },
-        getCatalog: () => catalog,
-        loadModel,
-      }),
-      config,
-    ),
+  const handler = withAuth(
+    createRouter({
+      supervisor,
+      telemetry,
+      logger: { warn: (m: string) => onLog(`WARN ${m}`) },
+      getCatalog: () => catalog,
+      loadModel,
+    }),
+    config,
   );
+
+  // TLS terminates in-process when configured; otherwise plain HTTP. The cert
+  // manager issues/generates the first keypair before we listen, and hot-swaps
+  // the secure context on renewal without dropping connections.
+  let certManager: CertManager | null = null;
+  let server: http.Server;
+  if (tlsOptions) {
+    certManager = new CertManager({ ...tlsOptions, logger: { info: onLog, warn: onLog } });
+    const secure = await certManager.load();
+    const httpsServer = https.createServer({ key: secure.key, cert: secure.cert }, handler);
+    certManager.on("renewed", (pair: SecurePair) => {
+      httpsServer.setSecureContext({ key: pair.key, cert: pair.cert });
+      onLog("note: TLS certificate hot-swapped");
+    });
+    server = httpsServer;
+  } else {
+    server = http.createServer(handler);
+  }
   server.keepAliveTimeout = 75_000;
   server.requestTimeout = 0;
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, host, resolve);
+    server.listen(port, bindHost, resolve);
   });
+  certManager?.start();
 
   await supervisor.start(model, profile);
   store.lastModelId = model.id;
   saveProfilesStore(store);
-  writePidFile({ pid: process.pid, host, port, startedAt: new Date().toISOString() }, env);
+  writePidFile(
+    {
+      pid: process.pid,
+      host: bindHost,
+      port,
+      startedAt: new Date().toISOString(),
+      secure: Boolean(tlsOptions),
+      displayHost,
+    },
+    env,
+  );
 
   const stop = async (): Promise<void> => {
+    certManager?.stop();
     await supervisor.stop();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     removePidFile(env);
   };
 
-  return { server, supervisor, host, port, model, stop };
+  return {
+    server,
+    supervisor,
+    host: bindHost,
+    port,
+    model,
+    secure: Boolean(tlsOptions),
+    displayHost,
+    stop,
+  };
 }

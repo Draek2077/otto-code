@@ -62,6 +62,27 @@ function applyKey(config: BrainConfig, key: string, value: boolean | number | st
     case "auth.token":
       config.auth.token = String(value);
       return;
+    case "tls.mode":
+      config.tls.mode = value as BrainConfig["tls"]["mode"];
+      return;
+    case "tls.certFile":
+      config.tls.certFile = String(value);
+      return;
+    case "tls.keyFile":
+      config.tls.keyFile = String(value);
+      return;
+    case "tls.hostname":
+      config.tls.hostname = String(value);
+      return;
+    case "tls.certDir":
+      config.tls.certDir = String(value);
+      return;
+    case "tls.renewBeforeDays":
+      config.tls.renewBeforeDays = Number(value);
+      return;
+    case "tls.tailscaleExe":
+      config.tls.tailscaleExe = String(value);
+      return;
     default:
       throw new CommandError({ code: "UNKNOWN_KEY", message: `unknown config key "${key}"` });
   }

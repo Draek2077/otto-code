@@ -2,7 +2,10 @@ import http from "node:http";
 
 import { Scheduler } from "./scheduler.js";
 import type { Supervisor } from "./supervisor.js";
-import type { Model, ModelMetadata } from "../types.js";
+import { makeVramFitPredicate, selectCodingModel } from "./model-selector.js";
+import { query as queryGpu } from "../gpu.js";
+import { rankModels, type RankedModel } from "../ops/results.js";
+import type { GpuInfo, Model, ModelMetadata } from "../types.js";
 import type { Profile } from "../config/schema.js";
 
 /**
@@ -552,12 +555,22 @@ function scheduleCompletion({
   });
 }
 
+// The bench ranking is read from disk (one JSON per run). A completion request
+// must not pay that IO, and rankings only change when a bench run finishes
+// (rare), so the router caches the ranking and re-reads it at most once per
+// window — the cheap time-based trigger.
+const RANKING_TTL_MS = 60_000;
+
 export interface RouterOptions {
   supervisor: Supervisor;
   telemetry: Telemetry;
   logger?: Logger | null;
   getCatalog?: GetCatalog;
   loadModel?: ((model: Model) => Promise<void>) | null;
+  // Injectable for testing; both default to the real disk/GPU sources so the
+  // service layer needs no extra wiring.
+  loadRanking?: () => RankedModel[];
+  queryGpuInfo?: () => Promise<GpuInfo | null>;
 }
 
 export function createRouter({
@@ -566,11 +579,40 @@ export function createRouter({
   logger,
   getCatalog = null,
   loadModel = null,
+  loadRanking = () => rankModels(),
+  queryGpuInfo = queryGpu,
 }: RouterOptions): (req: http.IncomingMessage, res: http.ServerResponse) => void {
   const agent = new http.Agent({ keepAlive: true, maxSockets: 32 });
   const scheduler = loadModel
     ? new Scheduler({ supervisor, loadModel, logger: (m) => logger?.warn?.(m) })
     : null;
+
+  // GPU total VRAM is static hardware, so it is queried once at startup and
+  // cached. Absent (no nvidia-smi) or not-yet-resolved leaves the fit predicate
+  // undefined, and the selector skips the VRAM filter — mirroring serve.ts.
+  let fitPredicate: ((model: Model) => boolean) | undefined;
+  void (async () => {
+    try {
+      fitPredicate = makeVramFitPredicate(await queryGpuInfo());
+    } catch {
+      /* GPU info absent → skip the fit filter */
+    }
+  })();
+
+  // TTL-cached bench ranking (see RANKING_TTL_MS above).
+  let rankingCache: RankedModel[] = [];
+  let rankingAt = 0;
+  const getRanking = (): RankedModel[] => {
+    const now = Date.now();
+    if (now - rankingAt < RANKING_TTL_MS && rankingAt !== 0) return rankingCache;
+    try {
+      rankingCache = loadRanking();
+    } catch {
+      /* keep the last good ranking (or the empty default) on a read error */
+    }
+    rankingAt = now;
+    return rankingCache;
+  };
 
   const resolveModel = (name: string | null): Model | null => {
     const catalog = resolveCatalog(getCatalog);
@@ -585,8 +627,19 @@ export function createRouter({
       }
       return null;
     }
-    // No model named: serve whatever is loaded, else the only sensible default.
-    return supervisor.model || catalog[0] || null;
+    // No model named: pick the best-ranked coding model that fits the VRAM
+    // budget, instead of blindly serving whatever is loaded. The existing
+    // default (loaded model, else catalog[0]) is the fallback when no candidate
+    // survives, and the loaded model is a tiebreak so equal-scored picks do not
+    // trigger a needless swap.
+    const fallback = supervisor.model || catalog[0] || null;
+    return selectCodingModel({
+      models: catalog,
+      ranking: getRanking(),
+      fits: fitPredicate,
+      preferLoadedId: supervisor.model?.id ?? null,
+      fallback,
+    });
   };
 
   return function handler(req: http.IncomingMessage, res: http.ServerResponse): void {

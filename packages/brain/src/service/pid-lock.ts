@@ -14,6 +14,10 @@ export interface PidRecord {
   host: string;
   port: number;
   startedAt: string;
+  /** Whether the listener terminates TLS. Absent on records written before TLS support. */
+  secure?: boolean;
+  /** The user-facing address (MagicDNS/cert hostname when TLS is on). Optional for old records. */
+  displayHost?: string;
 }
 
 export function writePidFile(record: PidRecord, env: NodeJS.ProcessEnv = process.env): void {

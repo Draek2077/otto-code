@@ -41,6 +41,24 @@ export interface Model {
   metadataError?: string | null;
   /** Which source the model was found in, for scan display. */
   origin?: "managed" | "lmstudio";
+  // --- Coding-capability metadata, reconciled from the download catalog by
+  // hfRepo path when a scanned file matches a CatalogModel (see
+  // models/enrich.ts). Absent when the model has no catalog entry (a
+  // hand-placed or LM Studio model outside the catalog). Track B1 of the brain
+  // coding-capabilities work: carries useCases/tier/thinking past download so
+  // discovery and routing can later see which local models are coding-tuned.
+  /** Curated use-case tags from the catalog (e.g. "coding", "reasoning"). */
+  useCases?: string[];
+  /** Curation tier label from the catalog. */
+  tier?: string;
+  /** Whether the catalog marks this as a thinking/reasoning model. */
+  thinking?: boolean;
+  /** The catalog's advertised max context, if known. */
+  contextMax?: number;
+  /** Back-reference: the id of the reconciled catalog entry, if matched. */
+  catalogId?: string;
+  /** Back-reference: the hfRepo of the reconciled catalog entry, if matched. */
+  catalogHfRepo?: string;
 }
 
 /** A resolved llama.cpp runtime: an executable paired with its vendor DLL dir. */

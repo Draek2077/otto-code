@@ -100,6 +100,34 @@ export const AuthSchema = z
   .strict();
 export type Auth = z.infer<typeof AuthSchema>;
 
+/**
+ * TLS termination, built into the brain so it can be exposed over HTTPS with no
+ * relay in front. Four modes:
+ *  - `off`      — plain HTTP (the default; loopback-only is the safe posture).
+ *  - `files`    — bring your own cert/key (a real cert, or one you manage).
+ *  - `self-signed` — generate a local keypair on first run, cached under `certDir`.
+ *  - `tailscale` — issue and auto-renew a real Let's Encrypt cert for this
+ *                  machine's MagicDNS name via `tailscaled` (no cert warnings on
+ *                  the tailnet). `hostname` is auto-detected when null.
+ * The service layer enforces that a non-loopback bind still carries auth.
+ */
+export const TlsSchema = z
+  .object({
+    mode: z.enum(["off", "files", "self-signed", "tailscale"]).default("off"),
+    // files mode:
+    certFile: z.string().nullable().default(null),
+    keyFile: z.string().nullable().default(null),
+    // tailscale / self-signed:
+    hostname: z.string().nullable().default(null),
+    // where issued/generated certs are cached; null => $OTTO_HOME/otto-brain/certs.
+    certDir: z.string().nullable().default(null),
+    renewBeforeDays: z.number().default(21),
+    checkIntervalMs: z.number().default(43_200_000),
+    tailscaleExe: z.string().nullable().default(null),
+  })
+  .strict();
+export type Tls = z.infer<typeof TlsSchema>;
+
 export const RuntimeConfigSchema = z
   .object({
     // auto = prefer a managed runtime, fall back to LM Studio discovery.
@@ -129,6 +157,7 @@ export const BrainConfigSchema = z
     autoStart: z.boolean().default(false),
     listen: ListenSchema.default({}),
     auth: AuthSchema.default({}),
+    tls: TlsSchema.default({}),
     runtime: RuntimeConfigSchema.default({}),
     // null => managed default ($OTTO_HOME/otto-brain/models), unioned with LM Studio.
     modelsDir: z.string().nullable().default(null),

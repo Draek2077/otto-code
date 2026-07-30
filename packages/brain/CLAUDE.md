@@ -42,6 +42,7 @@ otto brain                     # interactive TUI (needs a TTY)
 otto brain scan                # list detected models
 otto brain serve --model X     # host a model in the foreground
 otto brain start [--model X]   # start the service detached
+otto brain restart [--model X] # stop (if running) then start detached
 otto brain stop | status       # lifecycle over the pid file
 otto brain calibrate --model X # measure real KV bytes/token
 otto brain sweep --model X     # find + save the best reasoning budget
@@ -101,7 +102,21 @@ EventEmitter state machine, polls `/health`, samples VRAM at ready), `router.ts`
 (HTTP reverse proxy: 503+retry-after while loading, tees completions and classifies
 verdicts for both Anthropic and OpenAI shapes, `Telemetry`), `scheduler.ts` (queues
 model switches in turns), `serve.ts` (binds the service, VRAM fit, remote auth +
-non-loopback guard, pid file), `pid-lock.ts` (`otto-brain.pid` lifecycle).
+non-loopback guard, TLS termination, pid file), `tls.ts` + `tailscale.ts`
+(HTTPS in-process — see below), `pid-lock.ts` (`otto-brain.pid` lifecycle).
+
+**Built-in HTTPS (`config.tls`)** — the brain terminates TLS itself so it can be
+exposed securely with **no relay in front** (it supersedes the standalone
+`otto-brain-relay`). Four modes: `off` (plain HTTP, the loopback-safe default),
+`files` (bring your own cert/key), `self-signed` (generated + cached under
+`$OTTO_HOME/otto-brain/certs`, via the `selfsigned` dep — the one non-stdlib
+reason for it), and `tailscale` (a real Let's Encrypt cert for this machine's
+MagicDNS name issued/renewed via `tailscaled`, hot-swapped on renewal without
+dropping connections). `listen.host: "tailscale"` binds the tailnet IP only.
+Auth is orthogonal to transport: a non-loopback bind still requires `auth.mode=token`
+regardless of TLS, and `auth` accepts `Authorization: Bearer`, `x-api-key`, or
+`x-otto-brain-token`. Config keys: `tls.mode`, `tls.certFile`/`keyFile`,
+`tls.hostname`, `tls.certDir`, `tls.renewBeforeDays`, `tls.tailscaleExe`.
 
 **Ops (`src/ops/`)** — `calibrate.ts`, `sweep.ts`, `results.ts`, `report.ts`,
 `archive.ts`. **Bench (`src/bench/`)** — the agentic-coding benchmark suite.

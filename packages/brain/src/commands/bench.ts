@@ -16,9 +16,12 @@ import { resolveRuntime } from "../runtime/index.js";
 import { createRouter, Telemetry } from "../service/router.js";
 import { Supervisor } from "../service/supervisor.js";
 import * as bench from "../bench/index.js";
+import { loadRepoTasks } from "../bench/repo-task.js";
 import * as archive from "../ops/archive.js";
 import * as results from "../ops/results.js";
 import * as vram from "../vram.js";
+
+import type { Task } from "../bench/tasks.js";
 
 interface BenchOptions {
   model?: string;
@@ -28,6 +31,11 @@ interface BenchOptions {
   concurrency?: string;
   execute?: boolean;
   port?: string;
+  repoDir?: string;
+  repoWorkspace?: string;
+  repoWorkspaceDir?: string;
+  repoRef?: string;
+  repoMax?: string;
 }
 
 function progress(p: {
@@ -55,7 +63,18 @@ export function addBenchOptions(cmd: Command): Command {
     .option("--depths <a,b,c>", "prompt depths for the depth-scaling task")
     .option("--concurrency <n>", "requests in flight for the concurrency task", "3")
     .option("--no-execute", "syntax-check generated code but do not run it")
-    .option("--port <n>", "internal port for the loaded model", "1251");
+    .option("--port <n>", "internal port for the loaded model", "1251")
+    .option(
+      "--repo-workspace-dir <dir>",
+      "mine SWE-bench tasks from a workspace, e.g. packages/protocol",
+    )
+    .option(
+      "--repo-workspace <name>",
+      "npm workspace name for mined tasks, e.g. @otto-code/protocol",
+    )
+    .option("--repo-dir <dir>", "repo working copy to mine (default: current directory)")
+    .option("--repo-ref <ref>", "git ref to mine from", "origin/main")
+    .option("--repo-max <n>", "max mined tasks to run", "5");
 }
 
 export async function runBenchCommand(options: BenchOptions, _command: Command): Promise<void> {
@@ -66,6 +85,35 @@ export async function runBenchCommand(options: BenchOptions, _command: Command):
     : undefined;
   const only = options.only ? options.only.split(",").map((s) => s.trim()) : null;
   const concurrency = options.concurrency ? Math.max(1, Number(options.concurrency)) : 3;
+
+  // Opt-in: mining a repo replaces the static suite with real SWE-bench tasks.
+  // Absent these flags nothing touches a repo checkout.
+  let repoTasks: Task[] | undefined;
+  if (options.repoWorkspaceDir) {
+    if (!options.repoWorkspace) {
+      throw new CommandError({
+        code: "NO_WORKSPACE",
+        message: "--repo-workspace <name> is required with --repo-workspace-dir",
+      });
+    }
+    const dir = options.repoDir ? path.resolve(options.repoDir) : process.cwd();
+    process.stderr.write(`\nmining tasks from ${options.repoWorkspaceDir} @ ${options.repoRef}\n`);
+    const tasks = await loadRepoTasks({
+      dir,
+      workspace: options.repoWorkspace,
+      workspaceDir: options.repoWorkspaceDir,
+      ref: options.repoRef,
+      maxTasks: options.repoMax ? Math.max(1, Number(options.repoMax)) : 5,
+    });
+    if (!tasks.length) {
+      throw new CommandError({
+        code: "NO_TASKS",
+        message: `no mineable fix commits found in ${options.repoWorkspaceDir}`,
+      });
+    }
+    process.stderr.write(`  ${tasks.length} mined task(s): ${tasks.map((t) => t.id).join(", ")}\n`);
+    repoTasks = tasks;
+  }
 
   if (options.endpoint) {
     const [host, portStr] = options.endpoint.split(":");
@@ -78,6 +126,7 @@ export async function runBenchCommand(options: BenchOptions, _command: Command):
       depths,
       only,
       concurrency,
+      tasks: repoTasks,
       onProgress: progress,
     });
     process.stdout.write(`${bench.formatReport(report, { modelName: `${host}:${port}` })}\n`);
@@ -148,6 +197,7 @@ export async function runBenchCommand(options: BenchOptions, _command: Command):
         only,
         concurrency,
         archiveId,
+        tasks: repoTasks,
         onProgress: progress,
       });
       process.stdout.write(
