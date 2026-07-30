@@ -46,6 +46,10 @@
       "entry": ["src/index.ts", "bin/otto", "src/**/*.test.{ts,tsx}", "tests/**/*.{ts,tsx}"],
       "project": ["src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}"]
     },
+    "packages/brain": {
+      "entry": ["src/index.ts", "src/main.ts", "bin/otto-brain", "src/**/*.test.ts"],
+      "project": ["src/**/*.ts"]
+    },
     "packages/relay": {
       "entry": ["src/index.ts", "src/e2ee.ts", "src/cloudflare-adapter.ts", "src/**/*.test.ts"],
       "project": ["src/**/*.ts"]
