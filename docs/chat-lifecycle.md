@@ -80,6 +80,19 @@ The reconcile is deliberately **diagnostic, not corrective**, and that follows f
 
 `server_info.features.steerQueue` gates the daemon-owned queue (`COMPAT(steerQueue)`, v0.6.8); `features.steerQueueReorder` gates re-ordering separately (`COMPAT(steerQueueReorder)`, v0.6.9), because a 0.6.8 daemon owns a queue it cannot re-order — against one, the move controls are simply absent and the rest of the queue works. With it the client sends `delivery: "queue"` on `send_agent_message_request`, reads `AgentSnapshotPayload.queuedMessages` (id + truncated preview + `enqueuedAt`), and edits the queue via `agent.queue.remove` / `agent.queue.reorder` / `agent.queue.clear`. Without it the composer keeps its own client-held queue drained on the running→idle edge — the behavior Otto has always had, not a degraded build of the daemon feature. Attachments live only in the client, so the daemon-backed path keeps a local sidecar keyed by the daemon's entry id purely so "edit" can restore them; losing it costs the attachments on edit, nothing else.
 
+## Typed text is never destroyed
+
+Nothing Otto does to a composer may discard what the user typed. Not Escape, not dismissing a popover, not a keyboard action of any kind. The only thing that empties the box is sending or queueing the message, and that text lands on the Up-arrow history stack on its way out.
+
+The reason is that there is no undo for it. The composer is a controlled value with no edit history, and clearing it also clears the persisted draft (`useAgentInputDraft` writes through to the draft store on every change, and empty text is stored as "abandoned"). One keystroke therefore destroys the text on screen, the copy on disk, and any way of getting either back. A long unsent prompt is often the most expensive thing on the screen.
+
+Two mechanisms enforce this:
+
+- `dispatchComposerKeyboardAction` (`packages/app/src/composer/keyboard-actions.ts`) has no access to the composer text at all. Escape cancels dictation, then the running agent, and stops there. `keyboard-actions.test.ts` asserts the dispatcher never asks the input to do anything but cancel dictation.
+- The autocomplete popover dismisses **itself** on Escape (`useAgentAutocomplete`), pinned to the `/command` or `@mention` token under the caret so it stays dismissed while the user keeps typing that token. It used to answer Escape by clearing the whole input.
+
+Clearing the composer is a user action (select-all, delete), never Otto's.
+
 ## Relationships
 
 A chat's agent can launch other chats via the agent-scoped `create_agent` MCP tool. Agent-scoped creation is always asynchronous. `relationship` and `workspace` are separate decisions:

@@ -92,7 +92,7 @@ import { resolveAgentControlsMode } from "@/composer/agent-controls/mode";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
-import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
+import { dispatchComposerKeyboardAction } from "@/composer/keyboard-actions";
 import { submitAgentInput } from "@/composer/submit";
 import { confirmInterruptWithLiveSubagents } from "@/components/interrupt-subagents-warning";
 import { ComposerKeyboardScopeProvider } from "@/composer/keyboard-scope";
@@ -490,82 +490,6 @@ function focusMessageInputWithPlatformStrategy(messageInputRef: {
       return Boolean(el) && active === el;
     },
   });
-}
-
-interface DispatchComposerKeyboardActionArgs {
-  action: KeyboardActionDefinition;
-  isPaneFocused: boolean;
-  messageInputRef: { current: MessageInputRef | null };
-  isAgentRunning: boolean;
-  isCancellingAgent: boolean;
-  isConnected: boolean;
-  handleCancelAgent: () => void;
-  focusMessageInputForKeyboardAction: () => void;
-  hasComposerText: boolean;
-  clearComposerText: () => void;
-}
-
-function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs): boolean {
-  const {
-    action,
-    isPaneFocused,
-    messageInputRef,
-    isAgentRunning,
-    isCancellingAgent,
-    isConnected,
-    handleCancelAgent,
-    focusMessageInputForKeyboardAction,
-    hasComposerText,
-    clearComposerText,
-  } = args;
-  if (!isPaneFocused) return false;
-
-  if (action.id === "agent.interrupt") {
-    // Escape clears a typed message first; only a second Escape (empty box) begins
-    // cancelling anything (dictation, then the running agent).
-    if (hasComposerText) {
-      clearComposerText();
-      return true;
-    }
-    if (messageInputRef.current?.runKeyboardAction("dictation-cancel")) return true;
-    if (!isAgentRunning || isCancellingAgent || !isConnected) return false;
-    handleCancelAgent();
-    return true;
-  }
-
-  if (action.id === "message-input.focus") {
-    focusMessageInputForKeyboardAction();
-    return true;
-  }
-
-  const passthroughAction = resolveMessageInputPassthroughAction(action.id);
-  if (!passthroughAction) return false;
-  const result = messageInputRef.current?.runKeyboardAction(passthroughAction);
-  if (passthroughAction === "send" || passthroughAction === "dictation-confirm") {
-    return result ?? false;
-  }
-  return true;
-}
-
-function resolveMessageInputPassthroughAction(
-  actionId: string,
-): MessageInputKeyboardActionKind | null {
-  switch (actionId) {
-    case "message-input.send":
-      return "send";
-    case "message-input.dictation-confirm":
-      return "dictation-confirm";
-    case "message-input.dictation-toggle":
-      return "dictation-toggle";
-    case "message-input.dictation-cancel":
-      return "dictation-cancel";
-    case "message-input.voice-toggle":
-      return "voice-toggle";
-    case "message-input.voice-mute-toggle":
-      return "voice-mute-toggle";
-    default:
-      return null;
-  }
 }
 
 interface QueuedMessageRowProps {
@@ -1651,12 +1575,6 @@ export function Composer({
     focusMessageInputWithPlatformStrategy(messageInputRef);
   }, []);
 
-  const clearComposerText = useCallback(() => {
-    historyNavRef.current = { index: null, stashed: "" };
-    selectionRef.current = { start: 0, end: 0 };
-    setUserInput("");
-  }, [setUserInput]);
-
   const handleKeyboardAction = useCallback(
     (action: KeyboardActionDefinition): boolean =>
       dispatchComposerKeyboardAction({
@@ -1668,13 +1586,8 @@ export function Composer({
         isConnected,
         handleCancelAgent,
         focusMessageInputForKeyboardAction,
-        // Read from a ref so per-keystroke text changes don't re-register the
-        // keyboard handler; evaluated fresh each time the action fires.
-        hasComposerText: userInputRef.current.trim().length > 0,
-        clearComposerText,
       }),
     [
-      clearComposerText,
       focusMessageInputForKeyboardAction,
       handleCancelAgent,
       isAgentRunning,
