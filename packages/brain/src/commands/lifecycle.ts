@@ -6,15 +6,24 @@
  */
 import { spawn } from "node:child_process";
 import { openSync } from "node:fs";
+import http from "node:http";
+import https from "node:https";
 import type { Command } from "commander";
 
 import { loadBrainConfig } from "../config/index.js";
 import { resolveBrainPaths } from "../config/paths.js";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 import { CommandError } from "../output/types.js";
-import { readRunningService, removePidFile, type PidRecord } from "../service/pid-lock.js";
+import {
+  isProcessAlive,
+  readRunningService,
+  removePidFile,
+  type PidRecord,
+} from "../service/pid-lock.js";
 import { startService } from "../service/serve.js";
 import * as vram from "../vram.js";
+
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ------------------------------------------------------------------------ serve
 
@@ -34,7 +43,8 @@ export async function runServeCommand(
     modelNeedle: options.model,
     onLog: (line) => process.stderr.write(`  ${line}\n`),
   });
-  process.stdout.write(`router listening on http://${handle.host}:${handle.port}\n`);
+  const scheme = handle.secure ? "https" : "http";
+  process.stdout.write(`router listening on ${scheme}://${handle.displayHost}:${handle.port}\n`);
   process.stdout.write(
     `ready: ${handle.model.displayName}, ${vram.formatGiB(handle.supervisor.vramAtReadyBytes ?? 0)} VRAM in use\n`,
   );
@@ -135,6 +145,34 @@ export async function runStopCommand(
   };
 }
 
+// ---------------------------------------------------------------------- restart
+
+export function addRestartOptions(cmd: Command): Command {
+  return cmd
+    .description("Restart the brain service detached")
+    .option("--model <fragment>", "model name fragment or catalog id");
+}
+
+export async function runRestartCommand(
+  options: { model?: string },
+  command: Command,
+): Promise<AnyCommandResult<LifecycleRow>> {
+  const running = readRunningService();
+  if (running) {
+    try {
+      process.kill(running.pid, "SIGTERM");
+    } catch {
+      // already gone; fall through to a fresh start
+    }
+    // Wait for it to exit so the port is free before we respawn (up to ~3s).
+    for (let i = 0; i < 30 && isProcessAlive(running.pid); i++) {
+      await delay(100);
+    }
+    removePidFile();
+  }
+  return runStartCommand(options, command);
+}
+
 // ----------------------------------------------------------------------- status
 
 export interface StatusRow extends LifecycleRow {
@@ -153,15 +191,30 @@ export function addStatusOptions(cmd: Command): Command {
   return cmd.description("Show whether the brain service is running");
 }
 
-async function probeHealth(record: PidRecord): Promise<string> {
-  try {
-    const res = await fetch(`http://${record.host}:${record.port}/health`, {
-      signal: AbortSignal.timeout(3000),
+function probeHealth(record: PidRecord): Promise<string> {
+  const secure = record.secure === true;
+  const lib = secure ? https : http;
+  // Probe the bind host (always locally reachable) and skip cert validation: a
+  // self-signed or MagicDNS cert would otherwise fail a local liveness check.
+  const options: https.RequestOptions = {
+    host: record.host,
+    port: record.port,
+    path: "/health",
+    timeout: 3000,
+    ...(secure ? { rejectUnauthorized: false } : {}),
+  };
+  return new Promise((resolve) => {
+    const req = lib.get(options, (res) => {
+      res.resume();
+      const code = res.statusCode ?? 0;
+      resolve(code >= 200 && code < 300 ? "ok" : `http ${code}`);
     });
-    return res.ok ? "ok" : `http ${res.status}`;
-  } catch {
-    return "loading";
-  }
+    req.on("timeout", () => {
+      req.destroy();
+      resolve("loading");
+    });
+    req.on("error", () => resolve("loading"));
+  });
 }
 
 export async function runStatusCommand(

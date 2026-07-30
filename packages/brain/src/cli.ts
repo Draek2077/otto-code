@@ -16,10 +16,12 @@ import {
   runConfigShowCommand,
 } from "./commands/config.js";
 import {
+  addRestartOptions,
   addServeOptions,
   addStartOptions,
   addStatusOptions,
   addStopOptions,
+  runRestartCommand,
   runServeCommand,
   runStartCommand,
   runStatusCommand,
@@ -60,6 +62,7 @@ export function registerBrainCommands(program: Command): Command {
   addServeOptions(program.command("serve")).action(runServeCommand);
   addStartOptions(program.command("start")).action(withOutput(runStartCommand));
   addStopOptions(program.command("stop")).action(withOutput(runStopCommand));
+  addRestartOptions(program.command("restart")).action(withOutput(runRestartCommand));
   addStatusOptions(program.command("status")).action(withOutput(runStatusCommand));
 
   // Discovery + ops.

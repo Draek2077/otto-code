@@ -173,8 +173,20 @@ own config file and have the daemon read `enabled`/`autoStart`).
 
 ## Open questions
 
-- Auth mechanism for remote brain: reuse the daemon's password/relay scheme, or a
-  simpler bearer token? (Lean: same scheme as the daemon for consistency.)
+- Auth mechanism for remote brain: **resolved — a bearer token / API key.**
+  `auth.mode=token` gates every route but `/health`, accepting `Authorization:
+Bearer`, `x-api-key`, or `x-otto-brain-token`. Combined with built-in TLS
+  (`config.tls`), this retires `otto-brain-relay`: the brain terminates HTTPS
+  itself (`files` / `self-signed` / `tailscale`). See `CLAUDE.md` "Built-in HTTPS".
 - Does the brain register itself with the daemon (service discovery), or does the
   daemon own the child and the address? (Lean: daemon owns the managed child; a
-  standalone/remote brain is configured by address on the Otto side.)
+  standalone/remote brain is configured by address on the Otto side.) The
+  daemon-managed lifecycle + Otto tray/Settings control is chartered separately at
+  `projects/brain-host-control/`.
+- **Payload transform — verify before porting.** The relay existed partly to lift
+  images out of Anthropic `tool_result` blocks, which **LM Studio's server**
+  rejects. The brain fronts its **own** `llama-server` (llama.cpp) via the
+  supervisor, not LM Studio's server, so the quirk may not apply. Before porting
+  the ~200-line transform into `router.ts`, run a real `/v1/messages` request with
+  an image inside a `tool_result` against a supervised `llama-server` and observe
+  whether it 400s. Port only if it does.

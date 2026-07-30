@@ -93,6 +93,12 @@ export interface RunSuiteOptions {
   timeoutMs?: number;
   archiveId?: string | null;
   onProgress?: (event: ProgressEvent) => void;
+  /**
+   * Task list override. Defaults to the static {@link TASKS}. Repo-backed
+   * SWE-bench tasks are opt-in and passed here so the static suite never
+   * requires a repo checkout to run.
+   */
+  tasks?: Task[] | null;
 }
 
 /** The scored result of one task within a suite run. */
@@ -140,10 +146,12 @@ export async function runSuite({
   timeoutMs = 900_000,
   archiveId = null,
   onProgress = () => {},
+  tasks = null,
 }: RunSuiteOptions = {}): Promise<SuiteReport> {
   const python = findPython();
 
-  const selected: Task[] = only && only.length ? TASKS.filter((t) => only.includes(t.id)) : TASKS;
+  const pool: Task[] = tasks && tasks.length ? tasks : TASKS;
+  const selected: Task[] = only && only.length ? pool.filter((t) => only.includes(t.id)) : pool;
 
   const results: SuiteTaskResult[] = [];
   const startedAll = Date.now();

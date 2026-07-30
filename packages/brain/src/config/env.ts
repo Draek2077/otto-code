@@ -22,6 +22,7 @@ export function applyEnvOverrides(config: BrainConfig, env: NodeJS.ProcessEnv): 
     ...config,
     listen: { ...config.listen },
     auth: { ...config.auth },
+    tls: { ...config.tls },
     runtime: { ...config.runtime },
     defaults: { ...config.defaults },
   };
