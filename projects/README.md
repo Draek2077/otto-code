@@ -477,12 +477,27 @@ follows is everything that charter had left._
   **base** branch, not the new branch name, while the protocol comment said the opposite (comment
   corrected). **Not yet run at scale** — the soak is written and typechecks, but the numbers it
   produces are the next row, not this one.
-- 🔵 **Run the corpus soak and read the numbers.** The instrument exists; nothing has been measured
-  with it yet. The two questions it was built to answer: what a chat open costs when the transcript
-  is 300 messages rather than 3, and what a workspace switch costs when the target holds a dozen such
-  chats. It also finally exercises the two caps that were previously argued from unit tests only —
-  the stream-buffer cap of 12 (the "is 12 right?" row below) and the deck cap under a rotation wider
-  than it. Expect to have to separate seeding cost from measurement cost when reading a run.
+- ✅ **Workspace switching measured against a loaded corpus — and reported fast in real use.**
+  Measured 2026-07-29 by driving the dev build by hand (one lane, one tab) against verified-populated
+  chats, both panels open with the Changes view loading per switch. **Warm switch ~485ms; cold mount
+  ~1.3–1.9s to a usable Changes list, of which ~68% is blocked main-thread JS, including a single
+  700–850ms synchronous task.** Retention is worth roughly 4x, so the deck cap earns its keep.
+  DOM runs ~8–15k nodes per mounted loaded workspace (~35k at four).
+  **The negative result is the useful one: repository size does not drive switch cost.** A 3,012-file
+  repo with 40 changed files cold-mounted no slower than an 8-file one (961/1303ms vs
+  1147–1696ms) — the difference is noise. Switch cost tracks the app's React mount work, not git.
+  **Numbers are from a dev build with optimizations off**, so treat the ratios as the finding and the
+  absolutes as an upper bound; the profile's top frames were React DEV paths (`jsxDEV`, `createTask`,
+  `runWithFiberInDEV`) that do not exist in production.
+  **Real-world outcome:** after the .NET process door (`1bfa698b2`) and active-workspace git
+  observation (`8344e43da`), a full day of use on real work repos reported switching as "very fast
+  again". Both fixes were already in the measured build, so the numbers above are what remains after
+  them. Nothing measured looked pathological; **treat this as closed unless it regresses.**
+- 🔵 **Untested dimension: chats that run for hours.** The corpus tops out around 500 timeline rows
+  per chat, and a real all-day session is far longer. Repo size is ruled out (above) and chat count
+  per workspace is covered, so transcript _length_ is the last volume axis with no measurement behind
+  it. `OTTO_CORPUS_TURNS`/`_ITEMS` drive it; note that seeding is ~1 turn/sec per chat, so a
+  thousands-of-rows chat is minutes of seeding, and the daemon must not be restarted afterwards.
 - 🟡 **Instrument render cost per inbound daemon message.** The one gap keeping "daemon volume is the
   bottleneck" alive: `traffic.handlerMs` covers decode, validate and dispatch, **not** the React
   re-render each store write triggers. Cost is plausibly `push rate × mounted subscriber count`.

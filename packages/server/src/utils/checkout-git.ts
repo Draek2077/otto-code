@@ -25,7 +25,15 @@ import {
   normalizeAndValidateBaseRefName,
   readOttoWorktreeMetadata,
   setOttoWorktreeBaseRefName,
+  validateBaseRefNameAllowingRemote,
 } from "./worktree-metadata.js";
+import {
+  clearStoredDiffBaseForBranch,
+  readStoredDiffBaseForBranch,
+  writeStoredDiffBaseForBranch,
+  type DiffBaseSource,
+} from "./checkout-diff-base-store.js";
+import { inferParentBranchRef } from "./checkout-git-parent-branch.js";
 const READ_ONLY_GIT_ENV = {
   GIT_OPTIONAL_LOCKS: "0",
 } as const;
@@ -771,6 +779,9 @@ export interface CheckoutStatusGitNonOtto {
   currentBranch: string | null;
   isDirty: boolean;
   baseRef: string | null;
+  // Optional so the many test stubs that build a status by hand stay valid; the real
+  // implementation always sets it.
+  baseSource?: CheckoutBaseSource | null;
   aheadBehind: AheadBehind | null;
   aheadOfOrigin: number | null;
   behindOfOrigin: number | null;
@@ -786,6 +797,9 @@ export interface CheckoutStatusGitOtto {
   currentBranch: string | null;
   isDirty: boolean;
   baseRef: string;
+  // Optional so the many test stubs that build a status by hand stay valid; the real
+  // implementation always sets it.
+  baseSource?: CheckoutBaseSource | null;
   aheadBehind: AheadBehind | null;
   aheadOfOrigin: number | null;
   behindOfOrigin: number | null;
@@ -842,6 +856,7 @@ export type CheckoutSnapshotFacts =
       ottoWorktree: OttoWorktreeForCwd;
       storedBaseRef: string | null;
       resolvedBaseRef: string | null;
+      baseSource: CheckoutBaseSource | null;
       mainRepoRoot: string | null;
       comparisonBaseRef: string | null;
       branchRemoteName: string | null;
@@ -1084,21 +1099,6 @@ function readOttoWorktreeBaseRef(worktreeRoot: string): string | null {
   return readOttoWorktreeMetadata(worktreeRoot)?.baseRefName ?? null;
 }
 
-async function getStoredBaseRefForCwd(
-  cwd: string,
-  context?: CheckoutContext,
-): Promise<string | null> {
-  if (context?.facts?.isGit) {
-    return context.facts.storedBaseRef;
-  }
-  const ottoWorktree = await getOttoWorktreeForCwd(cwd, context);
-  if (!ottoWorktree.isOttoOwnedWorktree) {
-    return null;
-  }
-
-  return readOttoWorktreeBaseRef(ottoWorktree.worktreeRoot);
-}
-
 async function getResolvedBaseRefForCwd(
   cwd: string,
   context?: CheckoutContext,
@@ -1113,6 +1113,7 @@ async function getResolvedBaseRefForCwd(
 interface BaseRefResolution {
   storedBaseRef: string | null;
   resolvedBaseRef: string | null;
+  baseSource: CheckoutBaseSource | null;
 }
 
 async function resolveBaseRefForCwd(
@@ -1123,13 +1124,276 @@ async function resolveBaseRefForCwd(
     return {
       storedBaseRef: context.facts.storedBaseRef,
       resolvedBaseRef: context.facts.resolvedBaseRef,
+      baseSource: context.facts.baseSource,
     };
   }
-  const storedBaseRef = await getStoredBaseRefForCwd(cwd, context);
+  const [worktreeRoot, currentBranch, ottoWorktree] = await Promise.all([
+    getWorktreeRoot(cwd),
+    getCurrentBranch(cwd),
+    getOttoWorktreeForCwd(cwd, context),
+  ]);
+  return resolveBaseRefLadder(cwd, {
+    worktreeRoot: worktreeRoot ?? cwd,
+    currentBranch,
+    ottoWorktree,
+    context,
+  });
+}
+
+/**
+ * Where the Changes view's base branch comes from. Surfaced to the client so the chip can say
+ * *why* it is comparing against this branch — an inferred parent is a heuristic and has to look
+ * like one, or a wrong guess reads as a bug in the diff.
+ */
+export type CheckoutBaseSource = "user" | "inferred" | "worktree" | "default";
+
+interface BaseRefLadderInput {
+  worktreeRoot: string;
+  currentBranch: string | null;
+  ottoWorktree: OttoWorktreeForCwd;
+  context?: CheckoutContext;
+}
+
+/**
+ * The single answer to "what is this diffed against?".
+ *
+ * Every consumer — the diff, ahead/behind, the shortstat badge, merge-into-base and PR creation —
+ * funnels through here. Keep it that way: the previous shape computed the base in two places and
+ * the doc already warns that copies of this logic mean different answers to the same question.
+ *
+ * The ladder, in order:
+ *
+ * 1. **The branch's remembered base.** A user pick, or a parent detected earlier. Sticky by
+ *    design — a heuristic that silently re-decides itself every read is worse than no heuristic.
+ * 2. **An Otto worktree's creation-time base**, which already records the branch it was cut from.
+ * 3. **The inferred parent branch**, then remembered so step 1 answers from here on.
+ * 4. **The repository default branch**, when nothing forks.
+ * 5. If that lands on the branch you are standing on, **`origin/<branch>`** — on the default
+ *    branch `merge-base(main, HEAD)` is HEAD, so "vs main" would always be empty. Comparing
+ *    against the remote-tracking ref shows unpushed local commits, which is the useful answer.
+ */
+async function resolveBaseRefLadder(
+  cwd: string,
+  input: BaseRefLadderInput,
+): Promise<BaseRefResolution> {
+  const { worktreeRoot, currentBranch, ottoWorktree, context } = input;
+
+  if (currentBranch) {
+    const remembered = readStoredDiffBaseForBranch(worktreeRoot, currentBranch);
+    if (remembered) {
+      const healed = await healRememberedBaseRef(cwd, {
+        worktreeRoot,
+        currentBranch,
+        remembered,
+        context,
+      });
+      if (healed) {
+        return {
+          storedBaseRef: healed.ref,
+          resolvedBaseRef: healed.ref,
+          baseSource: healed.source,
+        };
+      }
+    }
+  }
+
+  const worktreeBaseRef = ottoWorktree.isOttoOwnedWorktree
+    ? readOttoWorktreeBaseRef(ottoWorktree.worktreeRoot)
+    : null;
+  if (worktreeBaseRef) {
+    return {
+      storedBaseRef: worktreeBaseRef,
+      resolvedBaseRef: worktreeBaseRef,
+      baseSource: "worktree",
+    };
+  }
+
+  const defaultBranch = await resolveBaseRef(cwd).catch(() => null);
+  const detected = await detectBaseRefForBranch(cwd, {
+    currentBranch,
+    defaultBranch,
+    context,
+  });
+  if (!detected) {
+    return { storedBaseRef: null, resolvedBaseRef: defaultBranch, baseSource: "default" };
+  }
+
+  // Remembered even when it came from the fallback rather than the graph. Without this the
+  // candidate scan would re-run on every snapshot refresh for every branch that has no
+  // detectable parent — the default branch, most notably, which is where most sessions sit.
+  if (currentBranch) {
+    persistDetectedBaseRef(worktreeRoot, currentBranch, detected.ref, context);
+  }
   return {
-    storedBaseRef,
-    resolvedBaseRef: storedBaseRef ?? (await resolveBaseRef(cwd)),
+    storedBaseRef: detected.ref,
+    resolvedBaseRef: detected.ref,
+    baseSource: detected.source,
   };
+}
+
+interface DetectedBaseRef {
+  ref: string;
+  source: CheckoutBaseSource;
+}
+
+async function detectBaseRefForBranch(
+  cwd: string,
+  input: {
+    currentBranch: string | null;
+    defaultBranch: string | null;
+    context?: CheckoutContext;
+  },
+): Promise<DetectedBaseRef | null> {
+  const { currentBranch, defaultBranch, context } = input;
+  if (!currentBranch || currentBranch === "HEAD") {
+    return defaultBranch ? { ref: defaultBranch, source: "default" } : null;
+  }
+
+  const inferred = await inferParentBranchRef(cwd, {
+    currentBranch,
+    defaultBranch,
+    ...(context?.logger ? { logger: context.logger as Logger } : {}),
+  }).catch(() => null);
+  if (inferred) {
+    return { ref: inferred, source: "inferred" };
+  }
+
+  if (!defaultBranch) {
+    return null;
+  }
+  if (normalizeLocalBranchRefName(defaultBranch) !== currentBranch) {
+    return { ref: defaultBranch, source: "default" };
+  }
+
+  // Standing on the default branch. `origin/<branch>` is the only comparison that says anything.
+  const originRef = `origin/${currentBranch}`;
+  if (await doesGitRefExist(cwd, `refs/remotes/origin/${currentBranch}`, context)) {
+    return { ref: originRef, source: "default" };
+  }
+  return { ref: defaultBranch, source: "default" };
+}
+
+/**
+ * Persisting happens on a read path, so it must never be the reason a read fails, and it must not
+ * write nonsense during a transient repository state.
+ *
+ * The guard is that HEAD resolves to a real commit: an unborn or half-written HEAD means the repo
+ * is mid-clone or mid-rebase, and a base recorded then would stick around long after the repo
+ * settled.
+ */
+function persistDetectedBaseRef(
+  worktreeRoot: string,
+  currentBranch: string,
+  ref: string,
+  context?: CheckoutContext,
+): void {
+  try {
+    writeStoredDiffBaseForBranch(worktreeRoot, currentBranch, { ref, source: "inferred" });
+  } catch (error) {
+    context?.logger?.trace(
+      { err: error, worktreeRoot, currentBranch, ref },
+      "failed to remember detected diff base",
+    );
+  }
+}
+
+/**
+ * Re-points a remembered base whose branch has gone away.
+ *
+ * The case is ordinary: you stack on a parent branch, the parent merges, someone deletes it, and
+ * now the stored base names a ref that resolves to nothing — every diff against it would fail.
+ * Re-resolve to the repository default *once* and write that down, so this costs one extra
+ * resolution rather than repeating forever.
+ *
+ * Returns the entry to use, or `null` when the caller should fall through the rest of the ladder.
+ */
+async function healRememberedBaseRef(
+  cwd: string,
+  input: {
+    worktreeRoot: string;
+    currentBranch: string;
+    remembered: { ref: string; source: DiffBaseSource };
+    context?: CheckoutContext;
+  },
+): Promise<{ ref: string; source: CheckoutBaseSource } | null> {
+  const { worktreeRoot, currentBranch, remembered, context } = input;
+  if (await baseRefStillExists(cwd, remembered.ref, context)) {
+    return { ref: remembered.ref, source: remembered.source };
+  }
+
+  // Only heal against a repo that can actually answer. Mid-fetch or mid-clone every ref lookup
+  // fails, and healing then would trade a good base for the default branch permanently.
+  const currentBranchExists = await doesGitRefExist(
+    cwd,
+    `refs/heads/${currentBranch}`,
+    context,
+  ).catch(() => false);
+  if (!currentBranchExists) {
+    return { ref: remembered.ref, source: remembered.source };
+  }
+
+  const defaultBranch = await resolveBaseRef(cwd).catch(() => null);
+  if (!defaultBranch || normalizeLocalBranchRefName(defaultBranch) === currentBranch) {
+    try {
+      clearStoredDiffBaseForBranch(worktreeRoot, currentBranch);
+    } catch {
+      // Falling through the ladder is correct either way; the stale entry is simply retried.
+    }
+    return null;
+  }
+
+  persistDetectedBaseRef(worktreeRoot, currentBranch, defaultBranch, context);
+  return { ref: defaultBranch, source: "inferred" };
+}
+
+/** True when either side of `<name>` / `origin/<name>` still resolves. */
+async function baseRefStillExists(
+  cwd: string,
+  baseRef: string,
+  context?: CheckoutContext,
+): Promise<boolean> {
+  const localName = normalizeLocalBranchRefName(baseRef);
+  if (!localName) {
+    return false;
+  }
+  if (isRemoteQualifiedBaseRef(baseRef)) {
+    // A remote-qualified pin is only satisfied by the remote ref; falling back to the local
+    // branch would silently change which commits the diff covers.
+    return doesGitRefExist(cwd, `refs/remotes/origin/${localName}`, context).catch(() => false);
+  }
+  const [hasLocal, hasOrigin] = await Promise.all([
+    doesGitRefExist(cwd, `refs/heads/${localName}`, context).catch(() => false),
+    doesGitRefExist(cwd, `refs/remotes/origin/${localName}`, context).catch(() => false),
+  ]);
+  return hasLocal || hasOrigin;
+}
+
+function isRemoteQualifiedBaseRef(baseRef: string): boolean {
+  return baseRef.startsWith("origin/") || baseRef.startsWith("refs/remotes/origin/");
+}
+
+/**
+ * Whether a caller-supplied base contradicts one the user (or worktree creation) chose on purpose.
+ *
+ * The point of rejecting a mismatch is that an explicit base is a contract: a client holding a
+ * stale snapshot should fail loudly rather than quietly diff against something else. That only
+ * applies to a base someone actually chose. A detected parent or the repository default is this
+ * daemon's own guess, and a one-shot `baseRef` on the request is allowed to override a guess —
+ * otherwise every ad-hoc comparison would break the moment detection started remembering answers.
+ */
+function isExplicitBaseRefMismatch(input: {
+  storedBaseRef: string | null;
+  baseSource: CheckoutBaseSource | null;
+  requestedBaseRef: string | undefined;
+}): boolean {
+  const { storedBaseRef, baseSource, requestedBaseRef } = input;
+  if (!storedBaseRef || !requestedBaseRef) {
+    return false;
+  }
+  if (baseSource !== "user" && baseSource !== "worktree") {
+    return false;
+  }
+  return requestedBaseRef !== storedBaseRef;
 }
 
 async function isWorkingTreeDirty(cwd: string, context?: CheckoutContext): Promise<boolean> {
@@ -1441,6 +1705,14 @@ async function resolveBestComparisonBaseRef(
     doesGitRefExist(cwd, `refs/heads/${normalized.localName}`, context),
     doesGitRefExist(cwd, `refs/remotes/origin/${normalized.localName}`, context),
   ]);
+
+  // A remote-qualified base is a pin, not a hint. `main` and `origin/main` are different answers
+  // whenever local and origin have drifted, and the user can now choose between them explicitly,
+  // so honour the qualifier verbatim rather than letting the fork-point heuristic re-pick a side.
+  // If the pinned remote ref has since disappeared, fall through instead of failing the view.
+  if (isRemoteQualifiedBaseRef(baseRef) && hasOrigin) {
+    return normalized.originRef;
+  }
 
   if (hasLocal && hasOrigin) {
     return resolveLatestForkPointBaseRef(cwd, normalized, context);
@@ -1784,10 +2056,12 @@ export async function getCheckoutSnapshotFacts(
     return { isGit: false };
   }
 
-  const storedBaseRef = inspected.ottoWorktree.isOttoOwnedWorktree
-    ? readOttoWorktreeBaseRef(inspected.ottoWorktree.worktreeRoot)
-    : null;
-  const resolvedBaseRef = storedBaseRef ?? (await resolveBaseRef(cwd));
+  const { storedBaseRef, resolvedBaseRef, baseSource } = await resolveBaseRefLadder(cwd, {
+    worktreeRoot: inspected.worktreeRoot,
+    currentBranch: inspected.currentBranch,
+    ottoWorktree: inspected.ottoWorktree,
+    context,
+  });
   const mainRepoRoot = await getMainRepoRootFromCommonDir(
     cwd,
     inspected.gitCommonDir,
@@ -1855,6 +2129,7 @@ export async function getCheckoutSnapshotFacts(
     ottoWorktree: inspected.ottoWorktree,
     storedBaseRef,
     resolvedBaseRef,
+    baseSource,
     mainRepoRoot,
     comparisonBaseRef,
     branchRemoteName,
@@ -1977,6 +2252,20 @@ export interface SetCheckoutBaseRefResult {
   baseRef: string;
   /** True when the write reset the worktree back to the repository default branch. */
   isDefault: boolean;
+  /** Where the resulting base came from, so the client can label it without a refetch. */
+  source: CheckoutBaseSource;
+}
+
+export interface SetCheckoutBaseRefOptions {
+  /**
+   * Forget this branch's remembered base and let the resolution ladder detect its parent again,
+   * rather than pinning a branch.
+   *
+   * This is the escape hatch for a wrong inference. Parent detection is a heuristic over a graph
+   * that does not record the answer, and stickiness makes a wrong guess persistent, so there has
+   * to be a way to ask for it again after the branch topology changes.
+   */
+  redetect?: boolean;
 }
 
 /**
@@ -1992,13 +2281,16 @@ export async function setCheckoutBaseRef(
   cwd: string,
   baseRef: string | null,
   context?: CheckoutContext,
+  options?: SetCheckoutBaseRefOptions,
 ): Promise<SetCheckoutBaseRefResult> {
   const facts = await getCheckoutSnapshotFacts(cwd, context);
   if (!facts.isGit) {
     throw new NotGitRepoError(cwd);
   }
-  if (!facts.ottoWorktree.isOttoOwnedWorktree) {
-    throw new Error("Only Otto worktrees can have a custom base branch");
+  const currentBranch = facts.currentBranch;
+
+  if (options?.redetect) {
+    return redetectCheckoutBaseRef(cwd, { facts, currentBranch, context });
   }
 
   const isDefault = baseRef === null;
@@ -2010,19 +2302,74 @@ export async function setCheckoutBaseRef(
     }
   }
 
-  const normalized = normalizeAndValidateBaseRefName(requested);
-  if (normalized === facts.currentBranch) {
+  // Keeps an `origin/` qualifier: the user can pin the remote-tracking side deliberately, and
+  // stripping it here would silently collapse that choice back to the local branch.
+  const normalized = validateBaseRefNameAllowingRemote(requested);
+  if (normalizeLocalBranchRefName(normalized) === currentBranch) {
     throw new Error("Base branch cannot be the branch you are on");
   }
   // Resolving proves the ref exists locally or on origin, and throws the same
   // "not found" message the comparison path would have produced later.
   await resolveBestComparisonBaseRef(cwd, normalized, context);
 
-  setOttoWorktreeBaseRefName(facts.ottoWorktree.worktreeRoot, normalized);
+  if (facts.ottoWorktree.isOttoOwnedWorktree) {
+    // The worktree's own record stays authoritative for merge-into-base and PR creation, so it
+    // has to carry the local branch name — there is no opening a PR against a remote-tracking ref.
+    setOttoWorktreeBaseRefName(
+      facts.ottoWorktree.worktreeRoot,
+      normalizeAndValidateBaseRefName(normalized),
+    );
+  }
+  // Recorded per branch either way. This is what makes the picker work on a plain checkout, whose
+  // gitdir is shared by every branch in it, and it is what pins the `origin/` qualifier.
+  if (currentBranch) {
+    writeStoredDiffBaseForBranch(facts.worktreeRoot, currentBranch, {
+      ref: normalized,
+      source: "user",
+    });
+  }
+
+  invalidateBaseRefDependentCaches(cwd);
+  return { baseRef: normalized, isDefault, source: "user" };
+}
+
+/** Drops the remembered base and runs the resolution ladder again from scratch. */
+async function redetectCheckoutBaseRef(
+  cwd: string,
+  input: {
+    facts: Extract<CheckoutSnapshotFacts, { isGit: true }>;
+    currentBranch: string | null;
+    context?: CheckoutContext;
+  },
+): Promise<SetCheckoutBaseRefResult> {
+  const { facts, currentBranch, context } = input;
+  if (!currentBranch) {
+    throw new Error("Unable to determine the current branch");
+  }
+
+  clearStoredDiffBaseForBranch(facts.worktreeRoot, currentBranch);
+  invalidateBaseRefDependentCaches(cwd);
+
+  // Deliberately not passing `facts` through: they carry the base we just discarded.
+  const redetected = await resolveBaseRefLadder(cwd, {
+    worktreeRoot: facts.worktreeRoot,
+    currentBranch,
+    ottoWorktree: facts.ottoWorktree,
+    ...(context?.logger ? { context: { logger: context.logger } } : {}),
+  });
+  if (!redetected.resolvedBaseRef) {
+    throw new Error("Unable to detect a base branch for this branch");
+  }
+  return {
+    baseRef: redetected.resolvedBaseRef,
+    isDefault: redetected.baseSource === "default",
+    source: redetected.baseSource ?? "inferred",
+  };
+}
+
+function invalidateBaseRefDependentCaches(cwd: string): void {
   shortstatCache.delete(getShortstatCacheKey(cwd));
   pullRequestStatusCache.clear();
-
-  return { baseRef: normalized, isDefault };
 }
 
 export async function getCheckoutStatus(
@@ -2063,6 +2410,7 @@ export async function getCheckoutStatus(
       currentBranch,
       isDirty,
       baseRef,
+      baseSource: facts.baseSource,
       aheadBehind,
       aheadOfOrigin,
       behindOfOrigin,
@@ -2080,6 +2428,7 @@ export async function getCheckoutStatus(
     currentBranch,
     isDirty,
     baseRef,
+    baseSource: facts.baseSource,
     aheadBehind,
     aheadOfOrigin,
     behindOfOrigin,
@@ -2560,13 +2909,13 @@ async function resolveCheckoutDiffRefs(
   if (compare.mode === "uncommitted") {
     return { baseRef: "HEAD", includeUntracked: true };
   }
-  const { storedBaseRef, resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
+  const { storedBaseRef, resolvedBaseRef, baseSource } = await resolveBaseRefForCwd(cwd, context);
   const baseRef = compare.baseRef ?? resolvedBaseRef;
   if (!baseRef) {
     return null;
   }
-  if (storedBaseRef && compare.baseRef && compare.baseRef !== storedBaseRef) {
-    throw new Error(`Base ref mismatch: expected ${baseRef}, got ${compare.baseRef}`);
+  if (isExplicitBaseRefMismatch({ storedBaseRef, baseSource, requestedBaseRef: compare.baseRef })) {
+    throw new Error(`Base ref mismatch: expected ${storedBaseRef}, got ${compare.baseRef}`);
   }
   const bestBaseRef = await resolveBestComparisonBaseRef(cwd, baseRef, context);
   return {
@@ -3066,13 +3415,13 @@ export async function mergeToBase(
 ): Promise<string> {
   await requireGitRepo(cwd);
   const currentBranch = await getCurrentBranch(cwd);
-  const { storedBaseRef, resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
+  const { storedBaseRef, resolvedBaseRef, baseSource } = await resolveBaseRefForCwd(cwd, context);
   const baseRef = options.baseRef ?? resolvedBaseRef;
   if (!baseRef) {
     throw new Error("Unable to determine base branch for merge");
   }
-  if (storedBaseRef && options.baseRef && options.baseRef !== storedBaseRef) {
-    throw new Error(`Base ref mismatch: expected ${baseRef}, got ${options.baseRef}`);
+  if (isExplicitBaseRefMismatch({ storedBaseRef, baseSource, requestedBaseRef: options.baseRef })) {
+    throw new Error(`Base ref mismatch: expected ${storedBaseRef}, got ${options.baseRef}`);
   }
   if (!currentBranch) {
     throw new Error("Unable to determine current branch for merge");
@@ -3142,13 +3491,13 @@ export async function mergeFromBase(
     throw new Error("Unable to determine current branch for merge");
   }
 
-  const { storedBaseRef, resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
+  const { storedBaseRef, resolvedBaseRef, baseSource } = await resolveBaseRefForCwd(cwd, context);
   const baseRef = options.baseRef ?? resolvedBaseRef;
   if (!baseRef) {
     throw new Error("Unable to determine base branch for merge");
   }
-  if (storedBaseRef && options.baseRef && options.baseRef !== storedBaseRef) {
-    throw new Error(`Base ref mismatch: expected ${baseRef}, got ${options.baseRef}`);
+  if (isExplicitBaseRefMismatch({ storedBaseRef, baseSource, requestedBaseRef: options.baseRef })) {
+    throw new Error(`Base ref mismatch: expected ${storedBaseRef}, got ${options.baseRef}`);
   }
 
   const requireCleanTarget = options.requireCleanTarget ?? true;

@@ -31,11 +31,16 @@ export async function resolveReadmeFileName(
 export interface RunViewDocumentationInput {
   readmeFileName: string;
   /**
-   * Id of the live workspace already backed by `sourceDirectory`, if any.
+   * Id of any live workspace for the project rooted at `sourceDirectory`, if any.
    * Reading a README never justifies a workspace of its own: the daemon rejects
    * a second workspace on an occupied directory (WorkspaceDirectoryOccupiedError),
    * so without this the button just surfaces that error instead of opening the
    * file the user asked for. Reuse first; create only when nothing is there.
+   *
+   * Deliberately project-wide, not root-only. A project whose only workspace is a
+   * worktree has nothing at the root, so a root-only lookup misses, creation then
+   * *succeeds* (the root is unoccupied), and reading a README silently leaves a
+   * spare workspace behind. See `findWorkspaceForProject`.
    */
   findExistingWorkspaceId: (sourceDirectory: string) => string | null;
   ensureWorkspace: (input: {

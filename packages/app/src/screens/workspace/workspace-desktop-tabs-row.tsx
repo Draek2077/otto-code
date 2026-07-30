@@ -17,20 +17,21 @@ import {
   type PressableStateCallbackType,
 } from "react-native";
 import {
-  CopyX,
   ArrowLeftToLine,
   ArrowRightToLine,
   ChevronDown,
   Columns2,
   Copy,
+  CopyX,
   FileText,
+  FolderOpen,
+  Globe,
   MessageSquare,
+  MoreHorizontal,
   Pencil,
+  PlayFilled,
   RotateCw,
   Rows2,
-  Globe,
-  MoreHorizontal,
-  PlayFilled,
   SquareTerminal,
   Tabs,
   X,
@@ -114,6 +115,7 @@ import { isTargetPinned, type PinnedTabTarget } from "@/workspace-pins/target";
 import { usePinnedTargetsStore } from "@/workspace-pins/store";
 import { PinnedTargetsRow } from "@/workspace-pins/pinned-targets-row";
 import { PinnableMenuItem } from "@/workspace-pins/pinnable-menu-item";
+import { useMoveChatMenu } from "@/workspace/use-move-chat-menu";
 import type { PreviewConfiguredServer, PreviewRunningServer } from "@otto-code/protocol/messages";
 import { useSessionStore } from "@/stores/session-store";
 import { createWorkspaceBrowser, useBrowserStore } from "@/stores/browser-store";
@@ -169,6 +171,7 @@ const ThemedArrowLeftToLine = withUnistyles(ArrowLeftToLine);
 const ThemedArrowRightToLine = withUnistyles(ArrowRightToLine);
 const ThemedCopyX = withUnistyles(CopyX);
 const ThemedPencil = withUnistyles(Pencil);
+const ThemedFolderOpen = withUnistyles(FolderOpen);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 const ThemedGlobe = withUnistyles(Globe);
@@ -1467,6 +1470,8 @@ function TabContextMenuItem({
         return <ThemedCopyX size={16} uniProps={mutedColorMapping} />;
       case "pencil":
         return <ThemedPencil size={16} uniProps={mutedColorMapping} />;
+      case "folder-open":
+        return <ThemedFolderOpen size={16} uniProps={mutedColorMapping} />;
       case "x":
         return <ThemedX size={16} uniProps={mutedColorMapping} />;
       default:
@@ -2372,6 +2377,7 @@ export function WorkspaceDesktopTabsRow({
       copyAgentId: t("workspace.tabs.menu.copyAgentId"),
       copyFilePath: t("workspace.tabs.menu.copyFilePath"),
       rename: t("workspace.tabs.menu.rename"),
+      moveToWorkspace: t("workspace.tabs.menu.moveToWorkspace"),
       closeAbove: t("workspace.tabs.menu.closeAbove"),
       closeBelow: t("workspace.tabs.menu.closeBelow"),
       closeLeft: t("workspace.tabs.menu.closeLeft"),
@@ -2670,6 +2676,7 @@ export function ResolvedDesktopTabChip({
 }: ResolvedDesktopTabChipProps) {
   const { t } = useTranslation();
   const isDeveloperMode = useIsDeveloperMode();
+  const { onMoveToWorkspace, canMove } = useMoveChatMenu(normalizedServerId);
   const resolvedTab = useMemo(
     () =>
       buildWorkspaceDesktopTabActions({
@@ -2686,12 +2693,16 @@ export function ResolvedDesktopTabChip({
         onCloseTabsToLeft,
         onCloseTabsToRight,
         onCloseOtherTabs,
+        onMoveToWorkspace,
+        canMoveToWorkspace: canMove,
         labels,
       }),
     [
+      canMove,
       index,
       item.tab,
       isDeveloperMode,
+      onMoveToWorkspace,
       onCloseOtherTabs,
       onCloseTab,
       onCloseTabsToLeft,

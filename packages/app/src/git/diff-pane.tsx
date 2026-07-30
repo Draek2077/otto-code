@@ -118,7 +118,11 @@ import {
   CheckoutGitRollbackFailedError,
   useCheckoutGitActionsStore,
 } from "@/git/actions-store";
-import type { CheckoutGitCommitError, GitHostingProviderId } from "@otto-code/protocol/messages";
+import type {
+  CheckoutBaseSource,
+  CheckoutGitCommitError,
+  GitHostingProviderId,
+} from "@otto-code/protocol/messages";
 import { confirmDialog, type ConfirmDialogInput } from "@/utils/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { openGitLogTab } from "@/git/open-git-log-tab";
@@ -1662,6 +1666,12 @@ interface DerivedStatusState {
   actionsDisabled: boolean;
   currentBranchName: string | null;
   isOttoOwnedWorktree: boolean;
+  baseSource: CheckoutBaseSource | null;
+  /**
+   * Whether the daemon will accept a base change for this checkout. Absent on daemons that only
+   * supported Otto worktrees, where worktree ownership was the gate.
+   */
+  isBaseEditable: boolean | null;
 }
 
 function deriveStatusState({
@@ -1691,6 +1701,21 @@ function deriveStatusState({
     actionsDisabled,
     currentBranchName,
     isOttoOwnedWorktree: gitStatus?.isOttoOwnedWorktree === true,
+    ...deriveBaseProvenance(gitStatus),
+  };
+}
+
+/**
+ * Splits out the base-provenance fields so `deriveStatusState` stays under the complexity cap.
+ * Both are absent on daemons that predate per-branch base storage, where the switcher falls back
+ * to gating on worktree ownership.
+ */
+function deriveBaseProvenance(
+  gitStatus: DerivedStatusState["gitStatus"],
+): Pick<DerivedStatusState, "baseSource" | "isBaseEditable"> {
+  return {
+    baseSource: gitStatus?.baseSource ?? null,
+    isBaseEditable: gitStatus?.isBaseEditable ?? null,
   };
 }
 
@@ -2378,6 +2403,8 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     hasUncommittedChanges,
     currentBranchName,
     isOttoOwnedWorktree,
+    baseSource,
+    isBaseEditable,
   } = statusState;
 
   const reviewDraftScopeKey = useMemo(
@@ -3445,6 +3472,8 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
                 baseRefLabel={baseRefLabel}
                 currentBranchName={currentBranchName}
                 isOttoOwnedWorktree={isOttoOwnedWorktree}
+                baseSource={baseSource}
+                isBaseEditable={isBaseEditable}
               />
             </View>
             <ChangesToolbar

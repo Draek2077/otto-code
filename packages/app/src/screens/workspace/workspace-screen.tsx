@@ -26,16 +26,17 @@ import * as Clipboard from "expo-clipboard";
 import { useTranslation } from "react-i18next";
 import { DiffStat } from "@/components/diff-stat";
 import {
-  CopyX,
   ArrowLeftToLine,
   ArrowRightToLine,
   BookOpen,
   ChevronDown,
   Copy,
+  CopyX,
   Ellipsis,
   EllipsisVertical,
   Explore,
   FileText,
+  FolderOpen,
   Globe,
   Import as ImportIcon,
   Pencil,
@@ -172,6 +173,8 @@ import {
   type WorkspaceTabMenuEntry,
   type WorkspaceTabMenuLabels,
 } from "@/screens/workspace/workspace-tab-menu";
+import { useMoveChatMenu } from "@/workspace/use-move-chat-menu";
+import { MoveChatToWorkspaceHost } from "@/components/move-chat-to-workspace-host";
 import { useDesktopBrowserNewTabRequests } from "@/browser/new-tab-requests";
 import { registerInAppLinkOpener } from "@/utils/open-link";
 import { ArtifactOpenMenu } from "@/components/artifacts/artifact-open-menu";
@@ -305,6 +308,7 @@ const ThemedArrowLeftToLine = withUnistyles(ArrowLeftToLine);
 const ThemedArrowRightToLine = withUnistyles(ArrowRightToLine);
 const ThemedCopyX = withUnistyles(CopyX);
 const ThemedPencil = withUnistyles(Pencil);
+const ThemedFolderOpen = withUnistyles(FolderOpen);
 const ThemedX = withUnistyles(X);
 const ThemedFileText = withUnistyles(FileText);
 const ThemedSquarePen = withUnistyles(SquarePen);
@@ -680,6 +684,8 @@ function MobileTabDropdownMenuItem({
         return <ThemedCopyX uniProps={mutedMdMapping} />;
       case "pencil":
         return <ThemedPencil uniProps={mutedMdMapping} />;
+      case "folder-open":
+        return <ThemedFolderOpen uniProps={mutedMdMapping} />;
       case "x":
         return <ThemedX uniProps={mutedMdMapping} />;
       default:
@@ -750,6 +756,7 @@ function MobileWorkspaceTabOption({
       copyAgentId: t("workspace.tabs.menu.copyAgentId"),
       copyFilePath: t("workspace.tabs.menu.copyFilePath"),
       rename: t("workspace.tabs.menu.rename"),
+      moveToWorkspace: t("workspace.tabs.menu.moveToWorkspace"),
       closeAbove: t("workspace.tabs.menu.closeAbove"),
       closeBelow: t("workspace.tabs.menu.closeBelow"),
       closeLeft: t("workspace.tabs.menu.closeLeft"),
@@ -761,6 +768,7 @@ function MobileWorkspaceTabOption({
     }),
     [t],
   );
+  const { onMoveToWorkspace, canMove } = useMoveChatMenu(normalizedServerId);
   const menuTestIDBase = `workspace-tab-menu-${buildDeterministicWorkspaceTabId(tab.target)}`;
   const menuEntries = buildWorkspaceTabMenuEntries({
     surface: "mobile",
@@ -778,6 +786,8 @@ function MobileWorkspaceTabOption({
     onCloseTabsBefore: onCloseTabsAbove,
     onCloseTabsAfter: onCloseTabsBelow,
     onCloseOtherTabs,
+    onMoveToWorkspace,
+    canMoveToWorkspace: canMove,
     labels: tabMenuLabels,
   });
 
@@ -4614,6 +4624,7 @@ function WorkspaceScreenContent({
               onSubmit={handleRenameModalSubmit}
               onClose={handleRenameModalClose}
             />
+            <MoveChatToWorkspaceHost />
           </View>
         </RenderProfile>
       </WorkspaceFocusProvider>

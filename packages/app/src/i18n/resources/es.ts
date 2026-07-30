@@ -626,6 +626,16 @@ export const es: TranslationResources = {
     },
   },
   workspace: {
+    moveChat: {
+      title: "Mover el chat a un espacio de trabajo",
+      move: "Mover",
+      moving: "Moviendo…",
+      empty: "No hay otros espacios de trabajo en este host a los que mover este chat.",
+      moved: "Movido a {{workspace}}",
+      errors: {
+        failed: "No se pudo mover el chat",
+      },
+    },
     route: {
       loading: "Cargando espacio de trabajo",
       restoring: "Restaurando espacio de trabajo",
@@ -866,6 +876,7 @@ export const es: TranslationResources = {
         copyAgentId: "Copiar ID del agente",
         copyFilePath: "Copiar ruta del archivo",
         rename: "Rebautizar",
+        moveToWorkspace: "Mover al espacio de trabajo…",
         closeAbove: "Cerrar pestañas arriba",
         closeBelow: "Cerrar pestañas a continuación",
         closeLeft: "Cerca de la izquierda",
@@ -1203,12 +1214,20 @@ export const es: TranslationResources = {
         baseChip: "vs {{baseRef}}",
         baseChipReadOnly: "Comparando con {{baseRef}}",
         baseChipEditable: "Comparando con {{baseRef}}: toca para cambiar",
+        baseChipInferred: "Comparando con {{baseRef}}, detectada como la rama madre de esta",
+        baseChipWorktree:
+          "Comparando con {{baseRef}}, la rama de la que se creó este árbol de trabajo",
+        baseChipPinned: "Comparando con {{baseRef}}, que elegiste",
+        baseChipTapToChange: "Toca para cambiar.",
         basePickerTitle: "Comparar con",
         basePickerPlaceholder: "Rama base",
         basePickerSearchPlaceholder: "Buscar ramas",
         basePickerEmpty: "No se encontraron ramas",
         basePickerDefault: "Rama predeterminada",
         basePickerDefaultDescription: "Restablecer a la rama predeterminada del repositorio",
+        basePickerRedetect: "Detectar la rama madre",
+        basePickerRedetectDescription: "Volver a calcular de qué rama se creó esta",
+        basePickerRemoteDescription: "La rama de seguimiento remoto, que puede diferir de la local",
         baseChangeFailed: "No se pudo cambiar la rama base",
       },
       commit: {

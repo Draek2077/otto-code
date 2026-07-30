@@ -626,6 +626,17 @@ export const fr: TranslationResources = {
     },
   },
   workspace: {
+    moveChat: {
+      title: "Déplacer la conversation vers un espace de travail",
+      move: "Déplacer",
+      moving: "Déplacement…",
+      empty:
+        "Il n’y a aucun autre espace de travail sur cet hôte vers lequel déplacer cette conversation.",
+      moved: "Déplacée vers {{workspace}}",
+      errors: {
+        failed: "Impossible de déplacer la conversation",
+      },
+    },
     route: {
       loading: "Chargement de l'espace de travail",
       restoring: "Restauration de l'espace de travail",
@@ -866,6 +877,7 @@ export const fr: TranslationResources = {
         copyAgentId: "Copier l'identifiant de l'agent",
         copyFilePath: "Copier le chemin du fichier",
         rename: "Rebaptiser",
+        moveToWorkspace: "Déplacer vers l’espace de travail…",
         closeAbove: "Fermer les onglets ci-dessus",
         closeBelow: "Fermer les onglets ci-dessous",
         closeLeft: "Près de la gauche",
@@ -1208,12 +1220,21 @@ export const fr: TranslationResources = {
         baseChip: "vs {{baseRef}}",
         baseChipReadOnly: "Comparaison avec {{baseRef}}",
         baseChipEditable: "Comparaison avec {{baseRef}} — appuyez pour changer",
+        baseChipInferred: "Comparaison avec {{baseRef}}, détectée comme la branche parente",
+        baseChipWorktree:
+          "Comparaison avec {{baseRef}}, la branche d'origine de cet arbre de travail",
+        baseChipPinned: "Comparaison avec {{baseRef}}, que vous avez choisie",
+        baseChipTapToChange: "Appuyez pour changer.",
         basePickerTitle: "Comparer avec",
         basePickerPlaceholder: "Branche de base",
         basePickerSearchPlaceholder: "Rechercher des branches",
         basePickerEmpty: "Aucune branche trouvée",
         basePickerDefault: "Branche par défaut",
         basePickerDefaultDescription: "Réinitialiser sur la branche par défaut du dépôt",
+        basePickerRedetect: "Détecter la branche parente",
+        basePickerRedetectDescription:
+          "Recalculer la branche à partir de laquelle celle-ci a été créée",
+        basePickerRemoteDescription: "La branche de suivi distante, qui peut différer de la locale",
         baseChangeFailed: "Échec du changement de branche de base",
       },
       commit: {

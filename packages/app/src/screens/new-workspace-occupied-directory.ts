@@ -38,7 +38,14 @@ export interface RunOccupiedDirectorySteerInput {
   /** Resolves the visible workspace already backing `sourceDirectory`, if known. */
   findExistingWorkspaceId: (directory: string) => string | null;
   confirm: (input: ConfirmDialogInput) => Promise<ConfirmDialogResult>;
-  openWorkspace: (workspaceId: string) => void;
+  /**
+   * Opens the occupying workspace *and* starts the chat the user just set up in
+   * it. Not a bare navigation: the user filled in a prompt, a model and a
+   * personality before submitting, and the workspace being pre-existing is no
+   * reason to throw that away. Mirrors `createWorktreeInstead`, which replays the
+   * same submission down the other branch of this dialog.
+   */
+  openExistingWorkspace: (workspaceId: string) => Promise<void> | void;
   /** Re-runs creation forcing worktree isolation. */
   createWorktreeInstead: () => Promise<void>;
   /** Fallback surface when there is nothing to steer to, and for retry failures. */
@@ -61,6 +68,9 @@ export type OccupiedDirectorySteerOutcome =
  * there, or take the worktree that gives them the independent branch they were
  * implicitly asking for. Falls back to the plain error only when the occupying
  * workspace cannot be resolved, since there is nothing to open in that case.
+ *
+ * Both branches carry the user's submission through. Neither is a detour that
+ * silently discards it and leaves them staring at an empty composer.
  */
 export async function runOccupiedDirectorySteer(
   input: RunOccupiedDirectorySteerInput,
@@ -79,8 +89,13 @@ export async function runOccupiedDirectorySteer(
   });
 
   if (result.choice === "confirm") {
-    input.openWorkspace(existingWorkspaceId);
-    return "opened_existing";
+    try {
+      await input.openExistingWorkspace(existingWorkspaceId);
+      return "opened_existing";
+    } catch (error) {
+      input.onError(error instanceof Error ? error.message : String(error));
+      return "unresolved";
+    }
   }
 
   if (result.choice === "alternate") {
