@@ -257,6 +257,25 @@ function resolveAutocompleteIsLoading(args: {
   return false;
 }
 
+/**
+ * A stable id for the `/command` or `@mention` under the caret, used to scope
+ * an Escape dismissal. Position-based, not query-based: typing more of the
+ * same token keeps it dismissed instead of popping the list back open.
+ */
+function resolveActiveAutocompleteToken(args: {
+  mode: AutocompleteMode;
+  activeSlashCommand: SlashCommandRange | null;
+  activeFileMention: FileMentionRange | null;
+}): string | null {
+  if (args.mode === "command" && args.activeSlashCommand) {
+    return `command:${args.activeSlashCommand.start}`;
+  }
+  if (args.mode === "file" && args.activeFileMention) {
+    return `file:${args.activeFileMention.start}`;
+  }
+  return null;
+}
+
 function resolveAutocompleteErrorMessage(args: {
   mode: AutocompleteMode;
   isCommandError: boolean;
@@ -349,6 +368,27 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
     autocompleteCwd,
   });
 
+  // Escape dismisses the popover, and only the popover: it must never touch the
+  // typed text. The dismissal is pinned to the token under the caret, so it
+  // lasts until the user leaves that `/command` or `@mention` behind.
+  const activeToken = resolveActiveAutocompleteToken({
+    mode,
+    activeSlashCommand,
+    activeFileMention,
+  });
+  const [dismissedToken, setDismissedToken] = useState<string | null>(null);
+  useEffect(() => {
+    if (activeToken === null) {
+      setDismissedToken(null);
+    }
+  }, [activeToken]);
+  const isDismissed = activeToken !== null && dismissedToken === activeToken;
+  const dismissAutocomplete = useCallback(() => {
+    if (activeToken !== null) {
+      setDismissedToken(activeToken);
+    }
+  }, [activeToken]);
+
   const {
     commands,
     isLoading: isCommandsLoading,
@@ -361,7 +401,8 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
     draftConfig: queryDraftConfig,
   });
 
-  const isVisible = canShowAutocomplete && !(mode === "command" && isCommandsLoading);
+  const isVisible =
+    canShowAutocomplete && !isDismissed && !(mode === "command" && isCommandsLoading);
 
   const fileSuggestionsQuery = useQuery({
     queryKey: [
@@ -478,10 +519,7 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
     options,
     query: mode === "command" ? commandFilterQuery : fileFilterQuery,
     onSelectOption,
-    onEscape:
-      mode === "command" && activeSlashCommand?.position === "start"
-        ? () => setUserInput("")
-        : undefined,
+    onEscape: dismissAutocomplete,
   });
 
   const isLoading = resolveAutocompleteIsLoading({
