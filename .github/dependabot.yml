@@ -1,0 +1,29 @@
+version: 2
+
+# Why this exists: the actions in .github/workflows/ drifted three majors behind before anyone
+# noticed, and the only signal was a Node 20 deprecation annotation buried in every run's log.
+# Grouping keeps that from turning into fourteen separate PRs a week.
+#
+# npm is deliberately absent. Routine version drift across 10+ workspaces would bury the signal,
+# and the Electron/Expo/React Native pins break in ways CI does not always catch. npm is covered
+# by Dependabot *security* updates instead, which are a repository setting rather than a block
+# here (Settings > Code security > Dependabot). Adding a `package-ecosystem: npm` entry below
+# would turn that quiet advisory feed into full version-bump PRs, which is not what we want.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      # Majors land on their own so the release notes actually get read; everything else
+      # rides in one PR that CI either passes or doesn't.
+      actions-minor:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
