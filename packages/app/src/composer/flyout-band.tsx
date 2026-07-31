@@ -2,6 +2,7 @@ import { useMemo, type ComponentType, type ReactElement } from "react";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
+import { ComposerTrackSeamShadow } from "@/composer/track-seam-shadow";
 import { ComposerTrackTransition } from "@/composer/track-transition";
 import { X } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -76,6 +77,7 @@ export function FlyoutBand({
                 testID={dismissTestID}
               />
             ) : null}
+            <ComposerTrackSeamShadow />
           </View>
         </ChatWidthBounds>
       </View>

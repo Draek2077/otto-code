@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
+import { ComposerTrackSeamShadow } from "@/composer/track-seam-shadow";
 import { COMPOSER_TRACK_LAYERS, ComposerTrackTransition } from "@/composer/track-transition";
 import { TriangleAlert, X } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -125,6 +126,7 @@ export function ContextHealthTrack({
               label={dismissLabel}
               onDismiss={handleDismiss}
             />
+            <ComposerTrackSeamShadow />
           </View>
         </ChatWidthBounds>
       </View>

@@ -1539,6 +1539,14 @@ export const AgentSnapshotPayloadSchema = z.object({
   // COMPAT(observedSubagents): added in v0.4.3; absent ⇒ "attended". Drop the
   // gate when daemon floor >= v0.4.3. See projects/observed-subagents/observed-subagents.md.
   attend: z.enum(["attended", "observed"]).optional(),
+  // True when an observed sub-agent run outlives an interrupt of the parent's
+  // turn: a backgrounded Task/Agent (its tool_result was only a launch ack) or
+  // a Workflow orchestration run. The client uses it to stop claiming that
+  // interrupting the parent stops work it will not actually stop.
+  // COMPAT(backgroundedObservedSubagents): added in v0.7.5; absent ⇒ treated as
+  // foreground, which is the pre-existing behavior. Drop the gate when daemon
+  // floor >= v0.7.5. See docs/chat-lifecycle.md.
+  backgrounded: z.boolean().optional(),
   // Spinner colors from the Agent Personality this agent was spawned from, so
   // its live thinking indicator renders in the personality's identity. Absent ⇒
   // the client falls back to the theme's default spinner colors. Purely additive

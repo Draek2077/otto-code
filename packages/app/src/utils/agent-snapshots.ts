@@ -63,6 +63,7 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     parentAgentId,
     labels: snapshot.labels,
     attend: snapshot.attend ?? "attended",
+    backgrounded: snapshot.backgrounded ?? false,
     personalitySpinner: snapshot.personalitySpinner ?? null,
     personalityName: snapshot.personalityName ?? null,
     personalityId: snapshot.personalityId ?? null,

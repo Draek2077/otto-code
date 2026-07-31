@@ -447,6 +447,11 @@ interface ObservedSubagentDerivedState {
   // progress update doesn't blank it), and is dropped by the projection once the
   // row is terminal. See docs/chat-lifecycle.md (the subagents track).
   currentTool?: string;
+  // Latches true once the provider reports this run as surviving an interrupt of
+  // the parent's turn (backgrounded Task/Agent, Workflow run). One-way on
+  // purpose: a run that has been backgrounded never becomes foreground again,
+  // and a later status-only update must not drop the flag.
+  backgrounded?: boolean;
 }
 
 /**
@@ -489,6 +494,8 @@ function resolveObservedSubagentCarriedState(
   // Not monotonic, unlike the counters: the LATEST tool is the point. The
   // projection is what drops it once the row is terminal.
   const currentTool = update.currentTool ?? existing?.currentTool;
+  // Latching, not "newest wins": once a run is backgrounded it stays that way.
+  const backgrounded = update.backgrounded || existing?.backgrounded ? true : undefined;
   return {
     ...(cumulativeTokens !== undefined ? { cumulativeTokens } : {}),
     ...(lastUsage !== undefined ? { lastUsage } : {}),
@@ -496,6 +503,7 @@ function resolveObservedSubagentCarriedState(
     ...(usageRounds !== undefined ? { usageRounds } : {}),
     ...(toolUseCount !== undefined ? { toolUseCount } : {}),
     ...(currentTool !== undefined ? { currentTool } : {}),
+    ...(backgrounded !== undefined ? { backgrounded } : {}),
   };
 }
 
@@ -543,6 +551,7 @@ interface ObservedSubagentOptionalFields {
   usageRounds?: number;
   toolUseCount?: number;
   currentTool?: string;
+  backgrounded?: boolean;
 }
 
 function observedSubagentOptionalFields(
@@ -556,6 +565,7 @@ function observedSubagentOptionalFields(
     ...(input.usageRounds !== undefined ? { usageRounds: input.usageRounds } : {}),
     ...(input.toolUseCount !== undefined ? { toolUseCount: input.toolUseCount } : {}),
     ...(input.currentTool !== undefined ? { currentTool: input.currentTool } : {}),
+    ...(input.backgrounded ? { backgrounded: true } : {}),
   };
 }
 
@@ -1269,6 +1279,12 @@ export class AgentManager {
       // See docs/chat-lifecycle.md (the subagents track).
       toolUseCount?: number;
       currentTool?: string;
+      // True when this run survives an interrupt of the owning chat's turn
+      // (backgrounded Task/Agent, Workflow run, or anything nested under one).
+      // Latched by resolveObservedSubagentCarriedState and inherited from the
+      // parent row below. Read by the client so its interrupt warning only
+      // counts work an interrupt actually stops. See docs/chat-lifecycle.md.
+      backgrounded?: boolean;
       // Watermark of what has already been written to the itemized ledger. Each
       // time the subagent settles, only the DELTA above this is recorded — so a
       // duplicate terminal update writes nothing, while a genuine second stream
@@ -5523,6 +5539,7 @@ export class AgentManager {
     usageRounds?: number;
     toolUseCount?: number;
     currentTool?: string;
+    backgrounded?: boolean;
     update: ObservedSubagentUpdate;
   }): void {
     const payload = toObservedSubagentPayload({
@@ -5566,7 +5583,17 @@ export class AgentManager {
       usageRounds,
       toolUseCount,
       currentTool,
+      backgrounded,
     } = resolveObservedSubagentDerivedState(existing, event.update);
+    // A row nested under a backgrounded run survives whatever its ancestor
+    // survives, so the flag flows down the tree. The parent row is always
+    // registered before its children (it is announced by the tool call that
+    // spawns them), so one hop is enough — the parent already carries its own
+    // inherited value.
+    const parentBackgrounded =
+      parentKey !== undefined &&
+      this.observedSubagents.get(this.observedSubagentId(agent.id, parentKey))?.backgrounded ===
+        true;
     const optional = observedSubagentOptionalFields({
       parentKey,
       cumulativeTokens,
@@ -5575,6 +5602,7 @@ export class AgentManager {
       usageRounds,
       toolUseCount,
       currentTool,
+      ...(backgrounded || parentBackgrounded ? { backgrounded: true } : {}),
     });
     // Record the subagent's real usage to the itemized ledger on every settle,
     // but only the delta above what was already written (side effect inside the

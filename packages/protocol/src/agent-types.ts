@@ -537,6 +537,18 @@ export interface ObservedSubagentUpdate {
   requiresAttention?: boolean;
   usage?: AgentUsage;
   /**
+   * True once this run is known to outlive an interrupt of the parent's turn —
+   * the provider backgrounded it, so the parent's teardown does not take it
+   * down. Sticky: the daemon keeps it set for the row's whole life, and
+   * propagates it to nested rows (a child of a backgrounded run survives too).
+   * Absent ⇒ foreground, i.e. the run dies with the turn that spawned it.
+   *
+   * Claude sets it for Workflow orchestration runs (always backgrounded) and
+   * for a Task/Agent whose tool_result turned out to be a launch ack rather
+   * than a final report. See docs/chat-lifecycle.md.
+   */
+  backgrounded?: boolean;
+  /**
    * Tool invocations this subagent has made so far (cumulative). Neutral field
    * any provider can set; kept monotonic by the daemon so a status-only final
    * update can't drop the readout. Claude reads it from the SDK's per-task

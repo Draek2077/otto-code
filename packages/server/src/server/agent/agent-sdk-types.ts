@@ -633,6 +633,15 @@ export interface ObservedSubagentUpdate {
   // "running Bash". Claude reads it from `task_progress.last_tool_name`.
   // Optional/additive — absent ⇒ the row omits it, never a guessed value.
   currentTool?: string;
+  // True once this run is known to outlive an interrupt of the parent's turn:
+  // the provider backgrounded it, so the parent's teardown leaves it alone. A
+  // neutral field any provider can set; the daemon latches it (a backgrounded
+  // run never becomes foreground again) and inherits it to nested rows. Claude
+  // sets it for Workflow runs and for a Task/Agent whose tool_result turned out
+  // to be a launch ack. Absent ⇒ foreground: the run dies with the turn, which
+  // is the only case the client's interrupt warning may count.
+  // See docs/chat-lifecycle.md.
+  backgrounded?: boolean;
 }
 
 /**
