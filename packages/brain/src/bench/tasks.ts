@@ -105,6 +105,13 @@ export interface TaskRunContext {
    * unknown (e.g. an arbitrary --endpoint), and tasks fall back to a safe cap.
    */
   reasoningBudget?: number | null;
+  /**
+   * The model's loaded context window (tokens). Long-horizon tasks report peak
+   * prompt-token usage as a fraction of this, so a run says not just whether the
+   * model fixed the bug but how much context it held while doing it. Null/unset
+   * means unknown (e.g. an arbitrary --endpoint).
+   */
+  contextWindow?: number | null;
 }
 
 /** What a task returns after running. */
@@ -463,7 +470,7 @@ const agenticLoopTask: Task = {
   category: "Agentic loop",
   weight: 3,
   description: "Reads a bug, fixes it, and iterates against a hidden test suite",
-  async run({ chat, execute = true }) {
+  async run({ chat, execute = true, contextWindow }) {
     const messages: ChatRequestMessage[] = [
       {
         role: "user",
@@ -486,10 +493,14 @@ const agenticLoopTask: Task = {
     let turns = 0;
     const maxTurns = 8;
     let stalled: string | null = null;
+    // Peak prompt size across turns: how much context the model actually held
+    // while working. Reported as a fraction of the loaded window.
+    let peakPromptTokens = 0;
 
     while (turns < maxTurns) {
       turns += 1;
       const response = await chat({ messages, tools: TOOLS, max_tokens: 4096, temperature: 0.3 });
+      peakPromptTokens = Math.max(peakPromptTokens, response.usage?.prompt_tokens ?? 0);
       const message: ChatMessage = response.choices?.[0]?.message || {};
       const calls = message.tool_calls || [];
 
@@ -577,14 +588,30 @@ const agenticLoopTask: Task = {
       score = (steps.read ? 0.34 : 0) + (steps.wrote ? 0.33 : 0) + (steps.ranTests ? 0.33 : 0);
     }
 
+    const contextUtilization =
+      contextWindow && contextWindow > 0 ? peakPromptTokens / contextWindow : null;
+    const ctxNote =
+      contextUtilization !== null ? `, held ${Math.round(contextUtilization * 100)}% ctx` : "";
+
     return {
       score: Math.min(1, score),
       summary: stalled
         ? `stalled: ${stalled}`
         : testsExecuted
-          ? `${bestPassed}/${total} hidden tests pass in ${turns} turns`
+          ? `${bestPassed}/${total} hidden tests pass in ${turns} turns${ctxNote}`
           : `no tests executed (${[steps.read && "read", steps.wrote && "wrote", steps.ranTests && "ran"].filter(Boolean).join(", ") || "no progress"})`,
-      detail: { steps, turns, bestPassed, total, testsExecuted, stalled, lastOutput },
+      detail: {
+        steps,
+        turns,
+        bestPassed,
+        total,
+        testsExecuted,
+        stalled,
+        lastOutput,
+        peakPromptTokens,
+        contextWindow: contextWindow ?? null,
+        contextUtilization,
+      },
     };
   },
 };

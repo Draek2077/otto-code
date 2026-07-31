@@ -137,6 +137,7 @@ interface BenchRunOptions {
   port: number;
   concurrency: number;
   reasoningBudget: number | null;
+  contextWindow: number | null;
   archiveId: string;
   onProgress: (event: BenchProgressEvent) => void;
 }
@@ -1333,6 +1334,7 @@ export class App {
           port: this.supervisor.internalPort,
           concurrency: Math.max(1, profile?.parallelSlots || 3),
           reasoningBudget: profile?.reasoningBudget ?? null,
+          contextWindow: profile?.contextSize ?? null,
           archiveId,
           onProgress: (p) => {
             if (p.phase === "start") this.benchProgress.push(`${p.title}…`);

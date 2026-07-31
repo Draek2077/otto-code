@@ -95,6 +95,8 @@ export interface RunSuiteOptions {
    * size their response cap above it (the concurrency throughput task).
    */
   reasoningBudget?: number | null;
+  /** The resident model's loaded context window, for context-utilization reporting. */
+  contextWindow?: number | null;
   timeoutMs?: number;
   archiveId?: string | null;
   onProgress?: (event: ProgressEvent) => void;
@@ -149,6 +151,7 @@ export async function runSuite({
   only = null,
   concurrency = 3,
   reasoningBudget = null,
+  contextWindow = null,
   timeoutMs = 900_000,
   archiveId = null,
   onProgress = () => {},
@@ -192,6 +195,7 @@ export async function runSuite({
         depths,
         concurrency,
         reasoningBudget,
+        contextWindow,
       });
       const entry: SuiteTaskResult = {
         id: task.id,
