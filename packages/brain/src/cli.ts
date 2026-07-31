@@ -39,6 +39,12 @@ import {
   runRuntimeListCommand,
 } from "./commands/runtime.js";
 import { addScanOptions, runScanCommand } from "./commands/scan.js";
+import {
+  addAddOptions,
+  addSearchOptions,
+  runAddCommand,
+  runSearchCommand,
+} from "./commands/search.js";
 import { addSweepOptions, runSweepCommand } from "./commands/sweep.js";
 import { addUiOptions, runUiCommand } from "./commands/ui.js";
 import { withOutput } from "./output/with-output.js";
@@ -73,6 +79,8 @@ export function registerBrainCommands(program: Command): Command {
   addSweepOptions(program.command("sweep")).action(withOutput(runSweepCommand));
   addCatalogOptions(program.command("catalog")).action(withOutput(runCatalogCommand));
   addPullOptions(program.command("pull")).action(withOutput(runPullCommand));
+  addSearchOptions(program.command("search")).action(withOutput(runSearchCommand));
+  addAddOptions(program.command("add")).action(withOutput(runAddCommand));
 
   // Benchmark suite (plain actions: long streaming runs with formatted reports).
   addBenchOptions(program.command("bench")).action(runBenchCommand);

@@ -22,9 +22,11 @@ export { matchCatalogEntry, enrichWithCatalog } from "./enrich.js";
 export {
   resolveHfToken,
   listRepoQuants,
+  searchModels,
   quantRank,
   type QuantOption,
   type RepoQuants,
+  type ModelSearchResult,
 } from "./hf.js";
 export {
   diskUsage,
