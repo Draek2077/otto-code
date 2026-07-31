@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { ActivityIndicator, Alert, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Text, TextInput, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFetchQuery } from "@/data/query";
 import type {
   BrainCatalogModel,
+  BrainHfSearchResult,
   BrainInstalledModel,
   BrainJob,
+  BrainRepoQuant,
   BrainRuntime,
 } from "@otto-code/protocol/messages";
 import {
@@ -31,6 +33,7 @@ import type { Theme } from "@/styles/theme";
 // Themed leaf icons (no useUnistyles: banned — see docs/unistyles.md)
 // ---------------------------------------------------------------------------
 
+const ThemedTextInput = withUnistyles(TextInput);
 const ThemedDownload = withUnistyles(Download);
 const ThemedHardDrive = withUnistyles(HardDrive);
 const ThemedPlay = withUnistyles(Play);
@@ -505,6 +508,256 @@ function CatalogList({
 }
 
 // ---------------------------------------------------------------------------
+// Hugging Face search + add (gated on features.brainHfSearch)
+// ---------------------------------------------------------------------------
+
+function formatDownloads(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1000) return `${Math.round(n / 1000)}k`;
+  return String(n);
+}
+
+const searchPlaceholderProps = (theme: Theme) => ({
+  placeholderTextColor: theme.colors.foregroundMuted,
+});
+
+function QuantRow({
+  repo,
+  quant,
+  size,
+  busy,
+  onDownload,
+}: {
+  repo: string;
+  quant: string;
+  size: string;
+  busy: boolean;
+  onDownload: (repo: string, quant: string) => void;
+}) {
+  const handleDownload = useCallback(() => onDownload(repo, quant), [repo, quant, onDownload]);
+  return (
+    <View style={styles.quantRow}>
+      <Text style={styles.quantLabel}>{quant}</Text>
+      <Text style={styles.quantSize}>{size}</Text>
+      <Button
+        variant="ghost"
+        size="sm"
+        leftIcon={downloadIcon}
+        disabled={busy}
+        onPress={handleDownload}
+      >
+        Get
+      </Button>
+    </View>
+  );
+}
+
+function QuantList({
+  repo,
+  quants,
+  loading,
+  busy,
+  onDownload,
+}: {
+  repo: string;
+  quants: BrainRepoQuant[];
+  loading: boolean;
+  busy: boolean;
+  onDownload: (repo: string, quant: string) => void;
+}) {
+  if (loading) {
+    return (
+      <View style={styles.quantList}>
+        <ActivityIndicator size="small" />
+      </View>
+    );
+  }
+  if (quants.length === 0) {
+    return (
+      <View style={styles.quantList}>
+        <Text style={settingsStyles.rowHint}>No GGUF quantizations found.</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.quantList}>
+      {quants.map((q) => (
+        <QuantRow
+          key={q.quant}
+          repo={repo}
+          quant={q.quant}
+          size={q.size}
+          busy={busy}
+          onDownload={onDownload}
+        />
+      ))}
+    </View>
+  );
+}
+
+function SearchResultRow({
+  result,
+  showBorder,
+  open,
+  quants,
+  loadingQuants,
+  busy,
+  onToggle,
+  onDownload,
+}: {
+  result: BrainHfSearchResult;
+  showBorder: boolean;
+  open: boolean;
+  quants: BrainRepoQuant[];
+  loadingQuants: boolean;
+  busy: boolean;
+  onToggle: (repo: string) => void;
+  onDownload: (repo: string, quant: string) => void;
+}) {
+  const handleToggle = useCallback(() => onToggle(result.repo), [result.repo, onToggle]);
+  return (
+    <View style={showBorder ? ROW_WITH_BORDER : settingsStyles.row}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle} numberOfLines={1}>
+          {result.repo}
+        </Text>
+        <Text style={settingsStyles.rowHint} numberOfLines={1}>
+          {formatDownloads(result.downloads)} downloads · {result.likes} likes
+          {result.gated ? " · gated" : ""}
+        </Text>
+        {open ? (
+          <QuantList
+            repo={result.repo}
+            quants={quants}
+            loading={loadingQuants}
+            busy={busy}
+            onDownload={onDownload}
+          />
+        ) : null}
+      </View>
+      <Button variant="outline" size="sm" onPress={handleToggle}>
+        {open ? "Hide" : "Quants"}
+      </Button>
+    </View>
+  );
+}
+
+function HuggingFaceSearch({
+  serverId,
+  busy,
+  onStarted,
+}: {
+  serverId: string;
+  busy: boolean;
+  onStarted: (job: BrainJob) => void;
+}) {
+  const supported = useHostFeature(serverId, "brainHfSearch");
+  const client = useHostRuntimeClient(serverId);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<BrainHfSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [openRepo, setOpenRepo] = useState<string | null>(null);
+  const [quants, setQuants] = useState<BrainRepoQuant[]>([]);
+  const [loadingQuants, setLoadingQuants] = useState(false);
+
+  const runSearch = useCallback(() => {
+    if (!client || !query.trim()) return;
+    setSearching(true);
+    setOpenRepo(null);
+    void client
+      .brainHfSearch(query.trim(), 30)
+      .then((rows) => {
+        setResults(rows);
+        return;
+      })
+      .catch((error) => reportError("Search failed", error))
+      .finally(() => setSearching(false));
+  }, [client, query]);
+
+  const toggleQuants = useCallback(
+    (repo: string) => {
+      if (!client) return;
+      if (openRepo === repo) {
+        setOpenRepo(null);
+        return;
+      }
+      setOpenRepo(repo);
+      setQuants([]);
+      setLoadingQuants(true);
+      void client
+        .brainHfQuants(repo)
+        .then((rows) => {
+          setQuants(rows);
+          return;
+        })
+        .catch((error) => reportError("Could not list quantizations", error))
+        .finally(() => setLoadingQuants(false));
+    },
+    [client, openRepo],
+  );
+
+  const handleDownload = useCallback(
+    (repo: string, quant: string) => {
+      if (!client) return;
+      void client
+        .brainModelsAdd(repo, quant)
+        .then(onStarted)
+        .catch((error) => reportError("Unable to start the download", error));
+    },
+    [client, onStarted],
+  );
+
+  if (!supported) {
+    return null;
+  }
+
+  return (
+    <View style={ROW_SECTION_WITH_BORDER}>
+      <Text style={styles.subheading}>Search Hugging Face</Text>
+      <View style={styles.searchRow}>
+        <ThemedTextInput
+          style={styles.searchInput}
+          uniProps={searchPlaceholderProps}
+          value={query}
+          onChangeText={setQuery}
+          onSubmitEditing={runSearch}
+          placeholder="Search GGUF models…"
+          returnKeyType="search"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          onPress={runSearch}
+          disabled={!query.trim() || searching}
+        >
+          Search
+        </Button>
+      </View>
+      {searching ? (
+        <View style={styles.searchLoading}>
+          <ActivityIndicator size="small" />
+        </View>
+      ) : null}
+      {results.map((r, index) => (
+        <SearchResultRow
+          key={r.repo}
+          result={r}
+          showBorder={index > 0}
+          open={openRepo === r.repo}
+          quants={quants}
+          loadingQuants={loadingQuants}
+          busy={busy}
+          onToggle={toggleQuants}
+          onDownload={handleDownload}
+        />
+      ))}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Models section
 // ---------------------------------------------------------------------------
 
@@ -567,6 +820,7 @@ export function BrainModelsSection({ serverId }: { serverId: string }) {
           busy={busy}
           onStarted={handleJobStarted}
         />
+        <HuggingFaceSearch serverId={serverId} busy={busy} onStarted={handleJobStarted} />
         <JobsPanel serverId={serverId} jobs={modelJobs} />
       </View>
     </SettingsSection>
@@ -807,6 +1061,48 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
+  },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[4],
+  },
+  searchInput: {
+    flex: 1,
+    height: 36,
+    paddingHorizontal: theme.spacing[3],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+  },
+  searchLoading: {
+    paddingVertical: theme.spacing[3],
+    alignItems: "center",
+  },
+  quantList: {
+    marginTop: theme.spacing[2],
+    gap: theme.spacing[1],
+  },
+  quantRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  quantLabel: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+    minWidth: 84,
+  },
+  quantSize: {
+    flex: 1,
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    fontVariant: ["tabular-nums"],
   },
   installedTagText: {
     color: theme.colors.palette.green[400],
