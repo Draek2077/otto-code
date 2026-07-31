@@ -292,6 +292,23 @@
       "rules": {
         "no-empty-pattern": "off"
       }
+    },
+    // Brain burn-down: rules carried over from the otto-brain port (TUI ANSI
+    // control-char regexes are intentional; complexity/depth are legacy). Shrink
+    // this list as the ported modules are cleaned up.
+    {
+      "files": ["packages/brain/src/**/*.ts"],
+      "rules": {
+        "complexity": "off",
+        "max-depth": "off",
+        "no-nested-ternary": "off",
+        "no-control-regex": "off",
+        "no-shadow": "off",
+        "unicorn/no-array-reverse": "off",
+        "unicorn/prefer-string-starts-ends-with": "off",
+        "oxc/no-map-spread": "off",
+        "promise/no-multiple-resolved": "off"
+      }
     }
   ]
 }

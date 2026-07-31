@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",
+    "@otto-code/brain": "0.7.4",
     "@otto-code/client": "0.7.4",
     "@otto-code/protocol": "0.7.4",
     "@otto-code/server": "0.7.4",

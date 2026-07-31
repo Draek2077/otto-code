@@ -2136,6 +2136,138 @@ describe("OpenAICompatAgentSession Otto tool permission gating", () => {
   });
 });
 
+describe("OpenAICompatAgentSession tool-result images", () => {
+  const IMAGE_DATA = "aW1n";
+
+  /**
+   * Drives a single browser_screenshot call, then a final text round. `type`
+   * seeds the /v1/models entry's vision tag ("vlm" | "llm" | none), letting a
+   * test flip the loaded model's reported vision capability.
+   */
+  async function startScreenshotEndpoint(
+    type?: "vlm" | "llm",
+  ): Promise<TestEndpoint & { requests: RecordedRequest[] }> {
+    const requests: RecordedRequest[] = [];
+    const server = createServer((req, res) => {
+      if (req.method === "GET" && req.url === "/v1/models") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            data: [{ id: "test-model-a", ...(type ? { type } : {}) }],
+          }),
+        );
+        return;
+      }
+      // No native listing — the /v1 tag (or its absence) is the only signal.
+      if (req.method === "GET" && req.url === "/api/v0/models") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/chat/completions") {
+        let body = "";
+        req.on("data", (chunk) => {
+          body += chunk;
+        });
+        req.on("end", () => {
+          requests.push(JSON.parse(body) as RecordedRequest);
+          res.writeHead(200, { "Content-Type": "text/event-stream" });
+          if (requests.length === 1) {
+            res.write(
+              sseChunk({
+                choices: [
+                  {
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: 0,
+                          id: "call_shot",
+                          function: { name: "browser_screenshot", arguments: "{}" },
+                        },
+                      ],
+                    },
+                    finish_reason: "tool_calls",
+                  },
+                ],
+              }),
+            );
+          } else {
+            res.write(
+              sseChunk({ choices: [{ delta: { content: "Done." }, finish_reason: "stop" }] }),
+            );
+          }
+          res.write("data: [DONE]\n\n");
+          res.end();
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const { port } = server.address() as AddressInfo;
+    return { server, baseUrl: `http://127.0.0.1:${port}`, requests };
+  }
+
+  function screenshotCatalog() {
+    const handler = async () => ({
+      content: [
+        { type: "text" as const, text: "Screenshot captured" },
+        { type: "image" as const, data: IMAGE_DATA, mimeType: "image/png" },
+      ],
+    });
+    const tools = new Map([
+      ["browser_screenshot", { name: "browser_screenshot", description: "shot", handler }],
+    ]);
+    return {
+      tools,
+      getTool: (name: string) => tools.get(name),
+      executeTool: async () => handler(),
+    };
+  }
+
+  async function toolResultContent(type?: "vlm" | "llm"): Promise<unknown> {
+    const endpoint = await startScreenshotEndpoint(type);
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession(
+      { provider: "lmstudio", cwd: process.cwd(), model: "test-model-a" },
+      { ottoTools: screenshotCatalog() },
+    );
+    await session.run("Take a screenshot");
+    const toolMessage = endpoint.requests[1]!.messages.find((message) => message.role === "tool");
+    await session.close();
+    return toolMessage?.content;
+  }
+
+  test("feeds a screenshot back as an image_url part for a vision model", async () => {
+    expect(await toolResultContent("vlm")).toEqual([
+      { type: "text", text: "Screenshot captured" },
+      { type: "image_url", image_url: { url: `data:image/png;base64,${IMAGE_DATA}` } },
+    ]);
+  });
+
+  test("sends the image when the model's vision capability is unknown", async () => {
+    // No `type` tag (a plain OpenAI /v1/models) — default to sending so a hosted
+    // vision endpoint that can't be introspected still receives the screenshot.
+    expect(await toolResultContent()).toEqual([
+      { type: "text", text: "Screenshot captured" },
+      { type: "image_url", image_url: { url: `data:image/png;base64,${IMAGE_DATA}` } },
+    ]);
+  });
+
+  test("drops the image and steers a text-only model to browser_snapshot", async () => {
+    const content = await toolResultContent("llm");
+    expect(typeof content).toBe("string");
+    expect(content).toContain("Screenshot captured");
+    expect(content).toContain("browser_snapshot");
+    expect(content).not.toContain(IMAGE_DATA);
+    expect(content).not.toContain("image_url");
+  });
+});
+
 describe("executeCompatTool", () => {
   test("edit_file replaces a unique string and rejects ambiguous matches", async () => {
     const cwd = await makeTempCwd();
