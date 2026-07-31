@@ -343,9 +343,11 @@ interface RenderQueueTrackArgs {
   queuedMessages: readonly QueuedMessage[];
   handleEditQueuedMessage: (id: string) => void;
   handleSendQueuedNow: (id: string) => Promise<void>;
+  handleSendAllQueued: () => Promise<void>;
   handleMoveQueuedMessage: ((id: string, direction: "up" | "down") => void) | null;
   editLabel: string;
   sendNowLabel: string;
+  sendAllLabel: string;
   moveUpLabel: string;
   moveDownLabel: string;
 }
@@ -355,9 +357,11 @@ function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
     queuedMessages,
     handleEditQueuedMessage,
     handleSendQueuedNow,
+    handleSendAllQueued,
     handleMoveQueuedMessage,
     editLabel,
     sendNowLabel,
+    sendAllLabel,
     moveUpLabel,
     moveDownLabel,
   } = args;
@@ -365,6 +369,10 @@ function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
   // One row cannot be re-ordered, so the controls only appear once there is
   // somewhere to move to.
   const onMove = queuedMessages.length > 1 ? handleMoveQueuedMessage : null;
+  // "Send all" is about the queue, not a row, so it rides on the head row only,
+  // the one whose "send now" it generalizes. With a single queued message that
+  // button already does exactly this, so the pill would say it twice.
+  const onSendAll = queuedMessages.length > 1 ? handleSendAllQueued : null;
   return (
     <View style={styles.queueTrack}>
       {queuedMessages.map((item, index) => (
@@ -373,11 +381,13 @@ function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
           item={item}
           onEdit={handleEditQueuedMessage}
           onSendNow={handleSendQueuedNow}
+          onSendAll={index === 0 ? onSendAll : null}
           onMove={onMove}
           canMoveUp={index > 0}
           canMoveDown={index < queuedMessages.length - 1}
           editLabel={editLabel}
           sendNowLabel={sendNowLabel}
+          sendAllLabel={sendAllLabel}
           moveUpLabel={moveUpLabel}
           moveDownLabel={moveDownLabel}
         />
@@ -496,12 +506,15 @@ interface QueuedMessageRowProps {
   item: QueuedMessage;
   onEdit: (id: string) => void;
   onSendNow: (id: string) => void;
+  /** Non-null on the head row only, and only when more than one message waits. */
+  onSendAll: (() => void) | null;
   /** Null when the host cannot re-order — the move controls are then absent. */
   onMove: ((id: string, direction: "up" | "down") => void) | null;
   canMoveUp: boolean;
   canMoveDown: boolean;
   editLabel: string;
   sendNowLabel: string;
+  sendAllLabel: string;
   moveUpLabel: string;
   moveDownLabel: string;
 }
@@ -510,11 +523,13 @@ function QueuedMessageRow({
   item,
   onEdit,
   onSendNow,
+  onSendAll,
   onMove,
   canMoveUp,
   canMoveDown,
   editLabel,
   sendNowLabel,
+  sendAllLabel,
   moveUpLabel,
   moveDownLabel,
 }: QueuedMessageRowProps) {
@@ -538,34 +553,49 @@ function QueuedMessageRow({
       </Text>
       <View style={styles.queueActions}>
         {onMove ? (
-          <>
+          // Stacked half-height arrows read as one order control instead of two
+          // buttons competing with edit/send. The ends of the queue keep their
+          // arrow, disabled, so every row's controls stay on the same grid.
+          <View style={styles.queueMoveColumn}>
             <Pressable
               onPress={handleMoveUp}
               disabled={!canMoveUp}
-              style={styles.queueActionButton}
+              hitSlop={QUEUE_MOVE_UP_HIT_SLOP}
+              style={canMoveUp ? styles.queueMoveButton : QUEUE_MOVE_BUTTON_DISABLED_STYLE}
               accessibilityLabel={moveUpLabel}
               accessibilityRole="button"
               accessibilityState={canMoveUp ? undefined : QUEUE_MOVE_DISABLED_STATE}
             >
               <ThemedChevronUp
-                size={iconSize.sm}
+                size={iconSize.xs}
                 uniProps={canMoveUp ? iconForegroundMapping : iconForegroundMutedMapping}
               />
             </Pressable>
             <Pressable
               onPress={handleMoveDown}
               disabled={!canMoveDown}
-              style={styles.queueActionButton}
+              hitSlop={QUEUE_MOVE_DOWN_HIT_SLOP}
+              style={canMoveDown ? styles.queueMoveButton : QUEUE_MOVE_BUTTON_DISABLED_STYLE}
               accessibilityLabel={moveDownLabel}
               accessibilityRole="button"
               accessibilityState={canMoveDown ? undefined : QUEUE_MOVE_DISABLED_STATE}
             >
               <ThemedChevronDown
-                size={iconSize.sm}
+                size={iconSize.xs}
                 uniProps={canMoveDown ? iconForegroundMapping : iconForegroundMutedMapping}
               />
             </Pressable>
-          </>
+          </View>
+        ) : null}
+        {onSendAll ? (
+          <Pressable
+            onPress={onSendAll}
+            style={styles.queueSendAllButton}
+            accessibilityLabel={sendAllLabel}
+            accessibilityRole="button"
+          >
+            <Text style={styles.queueSendAllText}>{sendAllLabel}</Text>
+          </Pressable>
         ) : null}
         <Pressable
           onPress={handleEdit}
@@ -1711,6 +1741,69 @@ export function Composer({
     ],
   );
 
+  /**
+   * Run the whole queue now, as ONE turn: the same thing the drain does when
+   * the turn in flight ends, just without the wait. Text is joined with a blank
+   * line and attachments are concatenated in queue order, matching the daemon's
+   * `mergeSteerQueueBatch`, so "Send all" and a natural drain produce the same
+   * prompt. Entries the drain beat us to simply come back empty and are skipped.
+   */
+  const handleSendAllQueued = useCallback(async () => {
+    if (!sendAgentMessageRef.current && !onSubmitMessageRef.current) return;
+    const ids = queuedMessages.map((item) => item.id);
+    if (ids.length === 0) return;
+    if (isAgentRunning) {
+      const confirmedInterrupt = await confirmInterruptWithLiveSubagents({
+        serverId,
+        parentAgentId: agentId,
+      });
+      if (!confirmedInterrupt) {
+        return;
+      }
+    }
+    const taken: ComposerQueueItem[] = [];
+    try {
+      for (const id of ids) {
+        const item = await messageQueue.take(id);
+        if (item) {
+          taken.push(item);
+        }
+      }
+      if (taken.length === 0) return;
+      const mergedText = taken
+        .map((item) => item.text.trim())
+        .filter((text) => text.length > 0)
+        .join("\n\n");
+      const mergedAttachments = taken.flatMap((item) => item.attachments);
+      await submitMessage(mergedText, mergedAttachments);
+    } catch (error) {
+      // Everything pulled so far is already out of the queue, so hand it back in
+      // the box rather than dropping it.
+      if (taken.length > 0) {
+        setUserInput(
+          taken
+            .map((item) => item.text.trim())
+            .filter((text) => text.length > 0)
+            .join("\n\n"),
+        );
+        setSelectedAttachments(
+          composerWorkspaceAttachment.userAttachmentsOnly(taken.flatMap((it) => it.attachments)),
+        );
+      }
+      setSendError(error instanceof Error ? error.message : t("composer.errors.failedToSend"));
+    }
+  }, [
+    agentId,
+    isAgentRunning,
+    messageQueue,
+    queuedMessages,
+    serverId,
+    setSelectedAttachments,
+    setUserInput,
+    submitMessage,
+    t,
+  ]);
+
   const handleQueue = useCallback(
     (payload: MessagePayload) => {
       const outgoingAttachments = buildOutgoingAttachments(attachments);
@@ -2167,13 +2260,22 @@ export function Composer({
         queuedMessages,
         handleEditQueuedMessage,
         handleSendQueuedNow,
+        handleSendAllQueued,
         handleMoveQueuedMessage,
         editLabel: t("composer.attachments.editQueuedMessage"),
         sendNowLabel: t("composer.attachments.sendQueuedMessageNow"),
+        sendAllLabel: t("composer.attachments.sendAllQueuedMessages"),
         moveUpLabel: t("composer.attachments.moveQueuedMessageUp"),
         moveDownLabel: t("composer.attachments.moveQueuedMessageDown"),
       }),
-    [handleEditQueuedMessage, handleMoveQueuedMessage, handleSendQueuedNow, queuedMessages, t],
+    [
+      handleEditQueuedMessage,
+      handleMoveQueuedMessage,
+      handleSendAllQueued,
+      handleSendQueuedNow,
+      queuedMessages,
+      t,
+    ],
   );
 
   const messageInputContainerRef = useRef<View>(null);
@@ -2468,6 +2570,40 @@ const styles = StyleSheet.create((theme: Theme) => ({
     justifyContent: "center",
     backgroundColor: theme.colors.surface2,
   },
+  // 15 + 2 + 15 stacks to the same 32 as the round action buttons beside it, so
+  // adding the move control does not change the row's height.
+  queueMoveColumn: {
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: compactUp(2),
+  },
+  queueMoveButton: {
+    width: compactUp(20),
+    height: compactUp(15),
+    borderRadius: theme.borderRadius.base,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.surface2,
+  },
+  queueMoveButtonDisabled: {
+    backgroundColor: "transparent",
+  },
+  queueSendAllButton: {
+    height: 32,
+    paddingHorizontal: theme.spacing[3],
+    borderRadius: theme.borderRadius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.surface2,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.borderAccent,
+  },
+  queueSendAllText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  },
   queueSendButton: {
     backgroundColor: theme.colors.accent,
   },
@@ -2479,6 +2615,10 @@ const styles = StyleSheet.create((theme: Theme) => ({
 
 const QUEUE_SEND_BUTTON_STYLE = [styles.queueActionButton, styles.queueSendButton];
 const QUEUE_MOVE_DISABLED_STATE = { disabled: true } as const;
+const QUEUE_MOVE_BUTTON_DISABLED_STYLE = [styles.queueMoveButton, styles.queueMoveButtonDisabled];
+// Slop only points away from the pair, so the two stacked targets cannot overlap.
+const QUEUE_MOVE_UP_HIT_SLOP = { top: 6, bottom: 0, left: 6, right: 6 } as const;
+const QUEUE_MOVE_DOWN_HIT_SLOP = { top: 0, bottom: 6, left: 6, right: 6 } as const;
 
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedArrowUp = withUnistyles(ArrowUp);

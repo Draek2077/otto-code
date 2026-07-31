@@ -144,6 +144,7 @@ export const ja: TranslationResources = {
       dropFilesHere: "ここにファイルをドロップ",
       editQueuedMessage: "キューに入れたメッセージを編集",
       sendQueuedMessageNow: "キューに入れたメッセージを今すぐ送信",
+      sendAllQueuedMessages: "すべて送信",
       moveQueuedMessageUp: "キューのメッセージを前へ移動",
       moveQueuedMessageDown: "キューのメッセージを後ろへ移動",
       openImage: "画像添付ファイルを開く",
@@ -188,7 +189,7 @@ export const ja: TranslationResources = {
     interruptSubagentsWarning: {
       title: "実行中のサブエージェントを中断しますか？",
       message:
-        "中断すると、実行中のサブエージェント／ワークフロー {{count}} 件が停止します。停止した処理は再開できません。",
+        "中断すると、このターン内で実行中のサブエージェント {{count}} 件が停止します。停止した処理は再開できません。バックグラウンドで実行中のものには影響しません。",
       confirm: "それでも中断する",
       cancel: "キャンセル",
       suppress: "今後は確認しない",

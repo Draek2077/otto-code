@@ -141,6 +141,7 @@ export const zhCN: TranslationResources = {
       dropFilesHere: "将文件拖放到此处",
       editQueuedMessage: "编辑排队消息",
       sendQueuedMessageNow: "立即发送排队消息",
+      sendAllQueuedMessages: "全部发送",
       moveQueuedMessageUp: "将排队消息前移",
       moveQueuedMessageDown: "将排队消息后移",
       openImage: "打开图片附件",
@@ -184,7 +185,8 @@ export const zhCN: TranslationResources = {
     },
     interruptSubagentsWarning: {
       title: "中断正在运行的子智能体？",
-      message: "中断将停止 {{count}} 个正在运行的子智能体／工作流。已停止的工作无法恢复。",
+      message:
+        "中断将停止本轮次内正在运行的子智能体（{{count}} 个）。已停止的工作无法恢复。在后台运行的内容不受影响。",
       confirm: "仍然中断",
       cancel: "取消",
       suppress: "不再询问",

@@ -143,6 +143,7 @@ export const fr: TranslationResources = {
       dropFilesHere: "Déposez les fichiers ici",
       editQueuedMessage: "Modifier le message en file d'attente",
       sendQueuedMessageNow: "Envoyer le message en file d'attente maintenant",
+      sendAllQueuedMessages: "Tout envoyer",
       moveQueuedMessageUp: "Déplacer le message en file d'attente plus tôt",
       moveQueuedMessageDown: "Déplacer le message en file d'attente plus tard",
       openImage: "Ouvrir la pièce jointe de l'image",
@@ -187,7 +188,7 @@ export const fr: TranslationResources = {
     interruptSubagentsWarning: {
       title: "Interrompre les sous-agents en cours ?",
       message:
-        "L'interruption arrêtera {{count}} sous-agents/workflows en cours. Le travail arrêté ne peut pas être repris.",
+        "L'interruption arrête les sous-agents qui s'exécutent dans ce tour ({{count}}). Leur travail ne peut pas être repris. Ce qui s'exécute en arrière-plan n'est pas affecté.",
       confirm: "Interrompre quand même",
       cancel: "Annuler",
       suppress: "Ne plus demander",
