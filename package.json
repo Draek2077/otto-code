@@ -46,6 +46,8 @@
     "dev:server:raw": "npm run dev --workspace=@otto-code/server",
     "dev:app": "cross-env EXPO_PORT=8081 ./scripts/dev-app.sh",
     "dev:website": "npm run dev --workspace=@otto-code/website",
+    "dev:brain": "./scripts/dev-home.sh npx tsx packages/brain/src/main.ts",
+    "dev:win:brain": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev-brain.ps1",
     "demo": "npm run demo --workspace=@otto-code/app --",
     "demo:run": "npm run demo:run --workspace=@otto-code/app",
     "demo:assets": "npm run demo:assets --workspace=@otto-code/app --",
