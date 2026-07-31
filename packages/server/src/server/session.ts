@@ -3161,8 +3161,54 @@ export class Session {
     }
   }
 
+  private async handleBrainHfSearchRequest(
+    query: string,
+    limit: number | null,
+    requestId: string,
+  ): Promise<void> {
+    if (!this.brainOpsManager) {
+      this.emit({
+        type: "brain.hf.search.response",
+        payload: { results: [], error: BRAIN_OPS_UNAVAILABLE, requestId },
+      });
+      return;
+    }
+    try {
+      const results = await this.brainOpsManager.searchHf(query, limit);
+      this.emit({ type: "brain.hf.search.response", payload: { results, error: null, requestId } });
+    } catch (err) {
+      this.emit({
+        type: "brain.hf.search.response",
+        payload: { results: [], error: getErrorMessage(err), requestId },
+      });
+    }
+  }
+
+  private async handleBrainHfQuantsRequest(repo: string, requestId: string): Promise<void> {
+    if (!this.brainOpsManager) {
+      this.emit({
+        type: "brain.hf.quants.response",
+        payload: { quants: [], error: BRAIN_OPS_UNAVAILABLE, requestId },
+      });
+      return;
+    }
+    try {
+      const quants = await this.brainOpsManager.repoQuants(repo);
+      this.emit({ type: "brain.hf.quants.response", payload: { quants, error: null, requestId } });
+    } catch (err) {
+      this.emit({
+        type: "brain.hf.quants.response",
+        payload: { quants: [], error: getErrorMessage(err), requestId },
+      });
+    }
+  }
+
   private handleBrainModelsPullRequest(model: string, requestId: string): void {
     this.startBrainJob(requestId, "brain.models.pull.response", (ops) => ops.pullModel(model));
+  }
+
+  private handleBrainModelsAddRequest(repo: string, quant: string, requestId: string): void {
+    this.startBrainJob(requestId, "brain.models.add.response", (ops) => ops.addModel(repo, quant));
   }
 
   private handleBrainRuntimeInstallRequest(build: string | null, requestId: string): void {
@@ -3189,6 +3235,7 @@ export class Session {
     requestId: string,
     responseType:
       | "brain.models.pull.response"
+      | "brain.models.add.response"
       | "brain.runtime.install.response"
       | "brain.calibrate.response"
       | "brain.sweep.response"
@@ -4075,6 +4122,15 @@ export class Session {
         return true;
       case "brain.models.pull.request":
         this.handleBrainModelsPullRequest(msg.model, msg.requestId);
+        return true;
+      case "brain.hf.search.request":
+        await this.handleBrainHfSearchRequest(msg.query, msg.limit, msg.requestId);
+        return true;
+      case "brain.hf.quants.request":
+        await this.handleBrainHfQuantsRequest(msg.repo, msg.requestId);
+        return true;
+      case "brain.models.add.request":
+        this.handleBrainModelsAddRequest(msg.repo, msg.quant, msg.requestId);
         return true;
       case "brain.runtime.install.request":
         this.handleBrainRuntimeInstallRequest(msg.build, msg.requestId);
