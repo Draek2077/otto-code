@@ -665,6 +665,74 @@ test("provider actions delegate to existing provider RPCs and local snapshot upd
   await client.close();
 });
 
+// Everything the client fills in from schema defaults when the daemon sends a
+// partial config — the daemon's whole config surface minus the keys each
+// assertion below actually receives on the wire. Shared by the get and patch
+// cases: both resolve to the same filled shape, so a new config key with a
+// default is one line here instead of two drifting copies.
+//
+// Kept as an exhaustive literal on purpose. The protocol contract requires
+// every new config field to ship a sensible default (see CLAUDE.md), and this
+// assertion failing when someone adds one is the check working, not noise.
+const DAEMON_CONFIG_SCHEMA_DEFAULTS = {
+  browserTools: { enabled: false },
+  metadataGeneration: { providers: [], enabled: true, preferWriterPersonalities: false },
+  agentBehaviors: {
+    promptSuggestions: true,
+    agentProgressSummaries: true,
+    notifyOnFinishDefault: true,
+    todoNudge: true,
+    todoReconcileOnIdle: true,
+  },
+  hideMergeIntoBaseAction: false,
+  // Attachment retention (docs/attachment-lifecycle.md) defaults to the
+  // constants the daemon shipped with, so a client parsing an old daemon's
+  // config sees the policy actually in force rather than zeros.
+  attachmentImageMaxAgeDays: 30,
+  attachmentImageMaxTotalMb: 512,
+  enableTerminalAgentHooks: false,
+  agentPersonalities: { personalities: [] },
+  agentTeams: { teams: [] },
+  modelTierOverrides: [],
+  savedProviderEndpoints: [],
+  appendSystemPrompt: "",
+  // Both host-scoped code sections default to a well-formed shape so a new
+  // client parsing an old daemon's config still renders the Daemon → Code
+  // screen — code intelligence on (nothing spawns until used), solution
+  // management OFF (it spawns a process).
+  lsp: {
+    enabled: true,
+    languages: {},
+    maxRunningServers: 6,
+    idleMinutes: 10,
+    backgroundIdleMinutes: 2,
+  },
+  dotnetSolutionManagement: { enabled: false, maxRunningProbes: 2, idleMinutes: 10 },
+  // The local brain defaults to fully off: nothing binds a port, auto-starts,
+  // or accepts remote config until the user turns it on.
+  brain: {
+    enabled: false,
+    autoStart: false,
+    mode: "local",
+    defaultModel: null,
+    lockModel: false,
+    allowInsecureBind: false,
+    allowRemoteConfig: false,
+    authMode: "none",
+    authToken: null,
+    listen: { host: "127.0.0.1", port: 1234 },
+    remote: { authToken: null, host: "", port: 1234, secure: false },
+    tls: {
+      certDir: null,
+      certFile: null,
+      hostname: null,
+      keyFile: null,
+      mode: "off",
+      renewBeforeDays: 21,
+    },
+  },
+};
+
 test("config actions delegate to existing daemon config RPCs", async () => {
   const { client, ws } = await connectClient();
 
@@ -686,43 +754,15 @@ test("config actions delegate to existing daemon config RPCs", async () => {
       },
     }),
   );
+  // The response above sends a partial config; everything in
+  // DAEMON_CONFIG_SCHEMA_DEFAULTS is a schema default the client fills in.
   await expect(getPromise).resolves.toEqual({
     requestId: "config-get-request",
     config: {
       mcp: { injectIntoAgents: true },
       providers: {},
-      browserTools: { enabled: false },
-      metadataGeneration: { providers: [], enabled: true, preferWriterPersonalities: false },
-      agentBehaviors: {
-        promptSuggestions: true,
-        agentProgressSummaries: true,
-        notifyOnFinishDefault: true,
-      },
       autoArchiveAfterMerge: false,
-      hideMergeIntoBaseAction: false,
-      // Attachment retention (docs/attachment-lifecycle.md) defaults to the
-      // constants the daemon shipped with, so a client parsing an old daemon's
-      // config sees the policy actually in force rather than zeros.
-      attachmentImageMaxAgeDays: 30,
-      attachmentImageMaxTotalMb: 512,
-      enableTerminalAgentHooks: false,
-      agentPersonalities: { personalities: [] },
-      agentTeams: { teams: [] },
-      modelTierOverrides: [],
-      savedProviderEndpoints: [],
-      appendSystemPrompt: "",
-      // The response above sends a partial config; everything here is a schema default the client
-      // fills in. Both host-scoped code sections default to a well-formed shape so a new client
-      // parsing an old daemon's config still renders the Daemon → Code screen — code intelligence
-      // on (nothing spawns until used), solution management OFF (it spawns a process).
-      lsp: {
-        enabled: true,
-        languages: {},
-        maxRunningServers: 6,
-        idleMinutes: 10,
-        backgroundIdleMinutes: 2,
-      },
-      dotnetSolutionManagement: { enabled: false, maxRunningProbes: 2, idleMinutes: 10 },
+      ...DAEMON_CONFIG_SCHEMA_DEFAULTS,
     },
   });
 
@@ -773,31 +813,8 @@ test("config actions delegate to existing daemon config RPCs", async () => {
           enabled: false,
         },
       },
-      browserTools: { enabled: false },
-      metadataGeneration: { providers: [], enabled: true, preferWriterPersonalities: false },
-      agentBehaviors: {
-        promptSuggestions: true,
-        agentProgressSummaries: true,
-        notifyOnFinishDefault: true,
-      },
       autoArchiveAfterMerge: false,
-      hideMergeIntoBaseAction: false,
-      attachmentImageMaxAgeDays: 30,
-      attachmentImageMaxTotalMb: 512,
-      enableTerminalAgentHooks: false,
-      agentPersonalities: { personalities: [] },
-      agentTeams: { teams: [] },
-      modelTierOverrides: [],
-      savedProviderEndpoints: [],
-      appendSystemPrompt: "",
-      lsp: {
-        enabled: true,
-        languages: {},
-        maxRunningServers: 6,
-        idleMinutes: 10,
-        backgroundIdleMinutes: 2,
-      },
-      dotnetSolutionManagement: { enabled: false, maxRunningProbes: 2, idleMinutes: 10 },
+      ...DAEMON_CONFIG_SCHEMA_DEFAULTS,
     },
   });
 

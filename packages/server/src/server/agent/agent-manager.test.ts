@@ -56,6 +56,18 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve, reject };
 }
 
+// The agentBehaviors the daemon hands a provider when nothing is configured —
+// every key in the schema at its default. Shared by the launch-context
+// assertions below rather than copied into each, so a new behavior flag is one
+// line here instead of four drifting literals.
+const DEFAULT_LAUNCH_AGENT_BEHAVIORS = {
+  promptSuggestions: true,
+  agentProgressSummaries: true,
+  notifyOnFinishDefault: true,
+  todoNudge: true,
+  todoReconcileOnIdle: true,
+};
+
 const TEST_CAPABILITIES = {
   supportsStreaming: false,
   supportsSessionPersistence: false,
@@ -1513,11 +1525,7 @@ test("createAgent passes daemon launch env through the provider launch context",
     env: {
       OTTO_AGENT_ID: snapshot.id,
     },
-    agentBehaviors: {
-      promptSuggestions: true,
-      agentProgressSummaries: true,
-      notifyOnFinishDefault: true,
-    },
+    agentBehaviors: DEFAULT_LAUNCH_AGENT_BEHAVIORS,
   });
 });
 
@@ -2282,11 +2290,7 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
     env: {
       OTTO_AGENT_ID: resumed.id,
     },
-    agentBehaviors: {
-      promptSuggestions: true,
-      agentProgressSummaries: true,
-      notifyOnFinishDefault: true,
-    },
+    agentBehaviors: DEFAULT_LAUNCH_AGENT_BEHAVIORS,
   });
 });
 
@@ -2432,11 +2436,7 @@ test("reloadAgentSession passes daemon launch env through the provider launch co
     env: {
       OTTO_AGENT_ID: snapshot.id,
     },
-    agentBehaviors: {
-      promptSuggestions: true,
-      agentProgressSummaries: true,
-      notifyOnFinishDefault: true,
-    },
+    agentBehaviors: DEFAULT_LAUNCH_AGENT_BEHAVIORS,
   });
 
   await manager.reloadAgentSession(snapshot.id, {
@@ -2448,11 +2448,7 @@ test("reloadAgentSession passes daemon launch env through the provider launch co
     env: {
       OTTO_AGENT_ID: snapshot.id,
     },
-    agentBehaviors: {
-      promptSuggestions: true,
-      agentProgressSummaries: true,
-      notifyOnFinishDefault: true,
-    },
+    agentBehaviors: DEFAULT_LAUNCH_AGENT_BEHAVIORS,
   });
 });
 
