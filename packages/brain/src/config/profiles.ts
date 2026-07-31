@@ -58,6 +58,18 @@ export function calibrationKey(profile: Profile): string {
 }
 
 /**
+ * True when this model has a stored calibration, but for different cache types
+ * than the profile currently uses - i.e. the measurement is stale and the budget
+ * has fallen back to the theoretical estimate. Drives the "recalibrate" prompt.
+ */
+export function hasStaleCalibration(store: ProfilesStore, model: Model, profile: Profile): boolean {
+  const measured = store.calibrations?.[model.id];
+  if (!measured) return false;
+  const key = calibrationKey(profile);
+  return Object.keys(measured).some((k) => k !== key);
+}
+
+/**
  * KV cost per token is a property of the attention geometry, not of the particular
  * file: two models sharing an architecture and head dimensions cost the same per
  * layer regardless of quantisation or fine-tuning. Storing the measurement *per
