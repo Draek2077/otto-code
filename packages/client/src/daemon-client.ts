@@ -177,6 +177,14 @@ import type {
 } from "@otto-code/protocol/agent-types";
 import type { OrchestrationGraph, PromptTemplate, Run } from "@otto-code/protocol/orchestration";
 import type {
+  BrainCatalogModel,
+  BrainEvals,
+  BrainHostStatus,
+  BrainInstalledModel,
+  BrainJob,
+  BrainNetworkInfo,
+  BrainRemoteConfig,
+  BrainRuntime,
   CueMoment,
   MutableDaemonConfig,
   MutableDaemonConfigPatch,
@@ -1335,6 +1343,18 @@ interface PingProbe {
   // heartbeat sets this; a latency measurement never drives teardown, even when a
   // heartbeat tick shares (dedupes onto) an in-flight measurement ping.
   drivesLivenessFailure: boolean;
+}
+
+// A job-starting brain RPC returns { job, error }; surface the error as a throw
+// so callers get a plain Promise<BrainJob>.
+function unwrapBrainJob(payload: { job: BrainJob | null; error: string | null }): BrainJob {
+  if (payload.error) {
+    throw new Error(payload.error);
+  }
+  if (!payload.job) {
+    throw new Error("The brain did not start the operation.");
+  }
+  return payload.job;
 }
 
 export class DaemonClient {
@@ -5963,6 +5983,228 @@ export class DaemonClient {
       },
       responseType: "set_daemon_config_response",
     });
+  }
+
+  async brainHostStatus(requestId?: string): Promise<BrainHostStatus> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "brain.host.status.request",
+      },
+      responseType: "brain.host.status.response",
+    });
+    return payload.status;
+  }
+
+  async brainHostStart(model?: string | null, requestId?: string): Promise<BrainHostStatus> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "brain.host.start.request",
+        model: model ?? null,
+      },
+      responseType: "brain.host.start.response",
+    });
+    return payload.status;
+  }
+
+  async brainHostStop(requestId?: string): Promise<BrainHostStatus> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "brain.host.stop.request",
+      },
+      responseType: "brain.host.stop.response",
+    });
+    return payload.status;
+  }
+
+  async brainHostRestart(model?: string | null, requestId?: string): Promise<BrainHostStatus> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "brain.host.restart.request",
+        model: model ?? null,
+      },
+      responseType: "brain.host.restart.response",
+    });
+    return payload.status;
+  }
+
+  async brainEvalsGet(requestId?: string): Promise<BrainEvals | null> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "brain.evals.get.request",
+      },
+      responseType: "brain.evals.get.response",
+    });
+    return payload.evals;
+  }
+
+  async brainRemoteConfigGet(requestId?: string): Promise<BrainRemoteConfig | null> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "brain.remote.config.get.request",
+      },
+      responseType: "brain.remote.config.get.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.config;
+  }
+
+  async brainRemoteConfigPatch(
+    patch: BrainRemoteConfig,
+    requestId?: string,
+  ): Promise<BrainRemoteConfig | null> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "brain.remote.config.patch.request",
+        patch,
+      },
+      responseType: "brain.remote.config.patch.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.config;
+  }
+
+  async brainModelsList(requestId?: string): Promise<string[]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "brain.models.list.request",
+      },
+      responseType: "brain.models.list.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.models;
+  }
+
+  async brainNetworkDiscover(requestId?: string): Promise<BrainNetworkInfo | null> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "brain.network.discover.request",
+      },
+      responseType: "brain.network.discover.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.info;
+  }
+
+  async brainModelsScan(requestId?: string): Promise<BrainInstalledModel[]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.models.scan.request" },
+      responseType: "brain.models.scan.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.models;
+  }
+
+  async brainCatalogList(requestId?: string): Promise<BrainCatalogModel[]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.catalog.list.request" },
+      responseType: "brain.catalog.list.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.models;
+  }
+
+  async brainRuntimeList(requestId?: string): Promise<BrainRuntime[]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.runtime.list.request" },
+      responseType: "brain.runtime.list.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.runtimes;
+  }
+
+  async brainModelsPull(model: string, requestId?: string): Promise<BrainJob> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.models.pull.request", model },
+      responseType: "brain.models.pull.response",
+    });
+    return unwrapBrainJob(payload);
+  }
+
+  async brainRuntimeInstall(build?: string | null, requestId?: string): Promise<BrainJob> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.runtime.install.request", build: build ?? null },
+      responseType: "brain.runtime.install.response",
+    });
+    return unwrapBrainJob(payload);
+  }
+
+  async brainCalibrate(model: string, requestId?: string): Promise<BrainJob> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.calibrate.request", model },
+      responseType: "brain.calibrate.response",
+    });
+    return unwrapBrainJob(payload);
+  }
+
+  async brainSweep(model: string, requestId?: string): Promise<BrainJob> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.sweep.request", model },
+      responseType: "brain.sweep.response",
+    });
+    return unwrapBrainJob(payload);
+  }
+
+  async brainBench(model?: string | null, requestId?: string): Promise<BrainJob> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.bench.request", model: model ?? null },
+      responseType: "brain.bench.response",
+    });
+    return unwrapBrainJob(payload);
+  }
+
+  async brainJobsList(requestId?: string): Promise<BrainJob[]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.jobs.list.request" },
+      responseType: "brain.jobs.list.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.jobs;
+  }
+
+  async brainJobsCancel(jobId: string, requestId?: string): Promise<BrainJob[]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.jobs.cancel.request", jobId },
+      responseType: "brain.jobs.cancel.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.jobs;
   }
 
   async getSpeechSettingsOptions(

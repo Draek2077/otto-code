@@ -72,6 +72,8 @@ const daemonConfig: MutableDaemonConfig = {
     promptSuggestions: true,
     agentProgressSummaries: true,
     notifyOnFinishDefault: true,
+    todoNudge: true,
+    todoReconcileOnIdle: true,
   },
   agentPersonalities: { personalities: [] },
   agentTeams: { teams: [] },
@@ -82,6 +84,27 @@ const daemonConfig: MutableDaemonConfig = {
   attachmentImageMaxTotalMb: 512,
   enableTerminalAgentHooks: false,
   appendSystemPrompt: "",
+  brain: {
+    enabled: false,
+    autoStart: false,
+    mode: "local",
+    remote: { host: "", port: 1234, secure: false, authToken: null },
+    listen: { host: "127.0.0.1", port: 1234 },
+    defaultModel: null,
+    lockModel: false,
+    allowRemoteConfig: false,
+    allowInsecureBind: false,
+    authMode: "none",
+    authToken: null,
+    tls: {
+      mode: "off",
+      certFile: null,
+      keyFile: null,
+      hostname: null,
+      certDir: null,
+      renewBeforeDays: 30,
+    },
+  },
 };
 
 function createFakeClient(config: { rejectCheckoutDiffSubscribe?: boolean } = {}): {

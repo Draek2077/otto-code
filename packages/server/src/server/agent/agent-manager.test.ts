@@ -7993,3 +7993,83 @@ test("a main chat is not counted — the liveness readout belongs to track rows"
   expect(manager.getAgent(snapshot.id)?.toolUseCount).toBeUndefined();
   expect(manager.getAgent(snapshot.id)?.currentTool).toBeUndefined();
 });
+
+function todoReconcilePromptText(prompt: AgentPromptInput): string {
+  return typeof prompt === "string"
+    ? prompt
+    : prompt.map((block) => (block.type === "text" ? block.text : "")).join("\n");
+}
+
+test("reconciles a stale todo list when the agent goes idle, nudges the turn, and does not loop", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-todo-reconcile-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+
+  const capturedPrompts: AgentPromptInput[] = [];
+  let capturedSession: TestAgentSession | null = null;
+
+  class ReconcileSession extends TestAgentSession {
+    override async startTurn(prompt: AgentPromptInput): Promise<{ turnId: string }> {
+      capturedPrompts.push(prompt);
+      const turnId = `turn-${capturedPrompts.length}`;
+      // Start the turn but leave completion to the test — the finalize (and its
+      // reconcile check) only runs when we push turn_completed.
+      setTimeout(() => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+      }, 0);
+      return { turnId };
+    }
+  }
+
+  class ReconcileClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      const session = new ReconcileSession(config);
+      capturedSession = session;
+      return session;
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: { codex: new ReconcileClient() },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-0000000004a1",
+  });
+
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  // Seed a stale todo list, as if the agent authored it during its work.
+  await manager.appendTimelineItem(snapshot.id, {
+    type: "todo",
+    items: [
+      { text: "write the parser", completed: false },
+      { text: "add tests", completed: false },
+    ],
+  });
+
+  const turn1 = manager.streamAgent(snapshot.id, "please build it");
+  const turn1Done = (async () => {
+    for await (const _ of turn1) {
+      // drain
+    }
+  })();
+
+  await vi.waitFor(() => expect(capturedPrompts.length).toBe(1));
+  capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: "turn-1" });
+  await turn1Done;
+
+  // The idle finalize parks a reconcile turn, dispatched as turn 2.
+  await vi.waitFor(() => expect(capturedPrompts.length).toBe(2));
+
+  // Turn 1 carried the passive nudge; turn 2 is the reconcile pass naming the open item.
+  expect(todoReconcilePromptText(capturedPrompts[0]!)).toContain("<system-reminder>");
+  expect(todoReconcilePromptText(capturedPrompts[1]!)).toContain("Reconcile");
+  expect(todoReconcilePromptText(capturedPrompts[1]!)).toContain("write the parser");
+
+  // Completing the reconcile turn with the SAME stale list must not re-fire.
+  capturedSession!.pushEvent({ type: "turn_completed", provider: "codex", turnId: "turn-2" });
+  await manager.flush();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  expect(capturedPrompts.length).toBe(2);
+});

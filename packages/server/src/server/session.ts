@@ -73,6 +73,7 @@ import {
   normalizeGitHostingProviderId,
   ActivityCountersSchema,
 } from "@otto-code/protocol/messages";
+import type { BrainHostStatus, BrainJob } from "@otto-code/protocol/messages";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
 import type { GitHostingService } from "../services/git-hosting/types.js";
 import type { HostingOwnerSummary, HostingRepositorySummary } from "../services/github-service.js";
@@ -218,6 +219,8 @@ import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { PushTokenStore } from "./push/token-store.js";
 import type { DevServerManager } from "./preview/dev-server-manager.js";
+import type { BrainManager } from "./brain/brain-manager.js";
+import type { BrainOpsManager } from "./brain/brain-ops-manager.js";
 import { readLaunchConfig, LaunchConfigError } from "./preview/launch-config.js";
 import {
   archivePersistedWorkspaceRecord,
@@ -351,6 +354,11 @@ function errorToFriendlyMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
   return "Unknown error";
+}
+
+/** Normalize an optional (possibly-undefined) dependency to `T | null`. */
+function coalesceToNull<T>(value: T | null | undefined): T | null {
+  return value ?? null;
 }
 
 /**
@@ -616,6 +624,11 @@ export interface SessionOptions {
   tts: Resolvable<TextToSpeechProvider | null>;
   terminalManager: TerminalManager | null;
   previewDevServers?: DevServerManager | null;
+  // Daemon-managed local AI host (otto-brain). Optional so the many test
+  // harnesses need not construct one; production (websocket-server) supplies the
+  // shared instance. Absent = the brain.* RPCs report "disabled on this daemon".
+  brainManager?: BrainManager | null;
+  brainOpsManager?: BrainOpsManager | null;
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
   onActivity?: ActivityIncrementFn;
@@ -719,6 +732,9 @@ function describeRegistryTransition(record: ArchivedRecordSnapshot | null): Regi
   return record.archivedAt ? "unarchived" : "existing";
 }
 
+/** Shown when the daemon lacks the brain-ops manager (feature not built in). */
+const BRAIN_OPS_UNAVAILABLE = "Managing models is not available on this daemon.";
+
 /**
  * Session represents a single connected client session.
  * It owns all state management, orchestration logic, and message processing.
@@ -799,6 +815,8 @@ export class Session {
   } | null = null;
   private readonly terminalManager: TerminalManager | null;
   private readonly previewDevServers: DevServerManager | null;
+  private readonly brainManager: BrainManager | null;
+  private readonly brainOpsManager: BrainOpsManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
   private readonly getActivityRollups: (() => Promise<ActivityRollups>) | undefined;
   private readonly getUsageLogPage:
@@ -872,6 +890,8 @@ export class Session {
       tts,
       terminalManager,
       previewDevServers,
+      brainManager,
+      brainOpsManager,
       providerSnapshotManager,
       providerUsageService,
       onActivity,
@@ -1143,6 +1163,10 @@ export class Session {
     this.daemonConfigStore = daemonConfigStore;
     this.terminalManager = terminalManager;
     this.previewDevServers = previewDevServers ?? null;
+    // Coalesced via a helper so this already-at-limit constructor gains no
+    // cyclomatic-complexity branch for the optional dependency.
+    this.brainManager = coalesceToNull(brainManager);
+    this.brainOpsManager = coalesceToNull(brainOpsManager);
     this.terminalController = new TerminalSessionController({
       terminalManager,
       emit: (msg) => this.emit(msg),
@@ -2873,6 +2897,372 @@ export class Session {
     }
   }
 
+  // The brain.host.* lifecycle RPCs, each answering with the derived host status
+  // plus an error string. A start/stop/restart returns a best-effort status even
+  // on failure so the dashboard can show what state the brain landed in.
+  private async handleBrainHostStatusRequest(requestId: string): Promise<void> {
+    const { status, error } = await this.resolveBrainStatus();
+    this.emit({ type: "brain.host.status.response", payload: { status, error, requestId } });
+  }
+
+  private async handleBrainHostStartRequest(
+    model: string | null,
+    requestId: string,
+  ): Promise<void> {
+    let error: string | null = null;
+    if (!this.brainManager) {
+      error = "The local AI host is not available on this daemon.";
+    } else {
+      try {
+        await this.brainManager.ensureRunning(model);
+      } catch (err) {
+        error = getErrorMessage(err);
+      }
+    }
+    const { status, error: statusError } = await this.resolveBrainStatus();
+    this.emit({
+      type: "brain.host.start.response",
+      payload: { status, error: error ?? statusError, requestId },
+    });
+  }
+
+  private async handleBrainHostStopRequest(requestId: string): Promise<void> {
+    let error: string | null = null;
+    if (!this.brainManager) {
+      error = "The local AI host is not available on this daemon.";
+    } else {
+      try {
+        await this.brainManager.stop();
+      } catch (err) {
+        error = getErrorMessage(err);
+      }
+    }
+    const { status, error: statusError } = await this.resolveBrainStatus();
+    this.emit({
+      type: "brain.host.stop.response",
+      payload: { status, error: error ?? statusError, requestId },
+    });
+  }
+
+  private async handleBrainHostRestartRequest(
+    model: string | null,
+    requestId: string,
+  ): Promise<void> {
+    let error: string | null = null;
+    if (!this.brainManager) {
+      error = "The local AI host is not available on this daemon.";
+    } else {
+      try {
+        await this.brainManager.restart(model);
+      } catch (err) {
+        error = getErrorMessage(err);
+      }
+    }
+    const { status, error: statusError } = await this.resolveBrainStatus();
+    this.emit({
+      type: "brain.host.restart.response",
+      payload: { status, error: error ?? statusError, requestId },
+    });
+  }
+
+  private async handleBrainEvalsGetRequest(requestId: string): Promise<void> {
+    if (!this.brainManager) {
+      this.emit({
+        type: "brain.evals.get.response",
+        payload: {
+          evals: null,
+          error: "The local AI host is not available on this daemon.",
+          requestId,
+        },
+      });
+      return;
+    }
+    try {
+      const evals = await this.brainManager.evals();
+      this.emit({ type: "brain.evals.get.response", payload: { evals, error: null, requestId } });
+    } catch (err) {
+      this.emit({
+        type: "brain.evals.get.response",
+        payload: { evals: null, error: getErrorMessage(err), requestId },
+      });
+    }
+  }
+
+  private async handleBrainModelsListRequest(requestId: string): Promise<void> {
+    if (!this.brainManager) {
+      this.emit({
+        type: "brain.models.list.response",
+        payload: {
+          models: [],
+          error: "The local AI host is not available on this daemon.",
+          requestId,
+        },
+      });
+      return;
+    }
+    try {
+      const models = await this.brainManager.listModels();
+      this.emit({
+        type: "brain.models.list.response",
+        payload: { models, error: null, requestId },
+      });
+    } catch (err) {
+      this.emit({
+        type: "brain.models.list.response",
+        payload: { models: [], error: getErrorMessage(err), requestId },
+      });
+    }
+  }
+
+  private async handleBrainRemoteConfigGetRequest(requestId: string): Promise<void> {
+    if (!this.brainManager) {
+      this.emit({
+        type: "brain.remote.config.get.response",
+        payload: {
+          config: null,
+          error: "The local AI host is not available on this daemon.",
+          requestId,
+        },
+      });
+      return;
+    }
+    try {
+      const config = await this.brainManager.getRemoteConfig();
+      this.emit({
+        type: "brain.remote.config.get.response",
+        payload: { config, error: config ? null : "The remote brain did not answer.", requestId },
+      });
+    } catch (err) {
+      this.emit({
+        type: "brain.remote.config.get.response",
+        payload: { config: null, error: getErrorMessage(err), requestId },
+      });
+    }
+  }
+
+  private async handleBrainRemoteConfigPatchRequest(
+    patch: Record<string, unknown>,
+    requestId: string,
+  ): Promise<void> {
+    if (!this.brainManager) {
+      this.emit({
+        type: "brain.remote.config.patch.response",
+        payload: {
+          config: null,
+          error: "The local AI host is not available on this daemon.",
+          requestId,
+        },
+      });
+      return;
+    }
+    try {
+      const config = await this.brainManager.patchRemoteConfig(patch);
+      this.emit({
+        type: "brain.remote.config.patch.response",
+        payload: { config, error: null, requestId },
+      });
+    } catch (err) {
+      this.emit({
+        type: "brain.remote.config.patch.response",
+        payload: { config: null, error: getErrorMessage(err), requestId },
+      });
+    }
+  }
+
+  private async handleBrainNetworkDiscoverRequest(requestId: string): Promise<void> {
+    if (!this.brainManager) {
+      this.emit({
+        type: "brain.network.discover.response",
+        payload: {
+          info: null,
+          error: "The local AI host is not available on this daemon.",
+          requestId,
+        },
+      });
+      return;
+    }
+    try {
+      const info = await this.brainManager.discoverNetwork();
+      this.emit({
+        type: "brain.network.discover.response",
+        payload: { info, error: null, requestId },
+      });
+    } catch (err) {
+      this.emit({
+        type: "brain.network.discover.response",
+        payload: { info: null, error: getErrorMessage(err), requestId },
+      });
+    }
+  }
+
+  private async handleBrainModelsScanRequest(requestId: string): Promise<void> {
+    if (!this.brainOpsManager) {
+      this.emit({
+        type: "brain.models.scan.response",
+        payload: { models: [], error: BRAIN_OPS_UNAVAILABLE, requestId },
+      });
+      return;
+    }
+    try {
+      const models = await this.brainOpsManager.scanModels();
+      this.emit({
+        type: "brain.models.scan.response",
+        payload: { models, error: null, requestId },
+      });
+    } catch (err) {
+      this.emit({
+        type: "brain.models.scan.response",
+        payload: { models: [], error: getErrorMessage(err), requestId },
+      });
+    }
+  }
+
+  private async handleBrainCatalogListRequest(requestId: string): Promise<void> {
+    if (!this.brainOpsManager) {
+      this.emit({
+        type: "brain.catalog.list.response",
+        payload: { models: [], error: BRAIN_OPS_UNAVAILABLE, requestId },
+      });
+      return;
+    }
+    try {
+      const models = await this.brainOpsManager.listCatalog();
+      this.emit({
+        type: "brain.catalog.list.response",
+        payload: { models, error: null, requestId },
+      });
+    } catch (err) {
+      this.emit({
+        type: "brain.catalog.list.response",
+        payload: { models: [], error: getErrorMessage(err), requestId },
+      });
+    }
+  }
+
+  private async handleBrainRuntimeListRequest(requestId: string): Promise<void> {
+    if (!this.brainOpsManager) {
+      this.emit({
+        type: "brain.runtime.list.response",
+        payload: { runtimes: [], error: BRAIN_OPS_UNAVAILABLE, requestId },
+      });
+      return;
+    }
+    try {
+      const runtimes = await this.brainOpsManager.listRuntimes();
+      this.emit({
+        type: "brain.runtime.list.response",
+        payload: { runtimes, error: null, requestId },
+      });
+    } catch (err) {
+      this.emit({
+        type: "brain.runtime.list.response",
+        payload: { runtimes: [], error: getErrorMessage(err), requestId },
+      });
+    }
+  }
+
+  private handleBrainModelsPullRequest(model: string, requestId: string): void {
+    this.startBrainJob(requestId, "brain.models.pull.response", (ops) => ops.pullModel(model));
+  }
+
+  private handleBrainRuntimeInstallRequest(build: string | null, requestId: string): void {
+    this.startBrainJob(requestId, "brain.runtime.install.response", (ops) =>
+      ops.installRuntime(build),
+    );
+  }
+
+  private handleBrainCalibrateRequest(model: string, requestId: string): void {
+    this.startBrainJob(requestId, "brain.calibrate.response", (ops) => ops.calibrate(model));
+  }
+
+  private handleBrainSweepRequest(model: string, requestId: string): void {
+    this.startBrainJob(requestId, "brain.sweep.response", (ops) => ops.sweep(model));
+  }
+
+  private handleBrainBenchRequest(model: string | null, requestId: string): void {
+    this.startBrainJob(requestId, "brain.bench.response", (ops) => ops.bench(model));
+  }
+
+  // Shared shape for the five job-starting RPCs: start the job (synchronously)
+  // and reply with the created job, or the reason it was refused.
+  private startBrainJob(
+    requestId: string,
+    responseType:
+      | "brain.models.pull.response"
+      | "brain.runtime.install.response"
+      | "brain.calibrate.response"
+      | "brain.sweep.response"
+      | "brain.bench.response",
+    start: (ops: BrainOpsManager) => BrainJob,
+  ): void {
+    if (!this.brainOpsManager) {
+      this.emit({
+        type: responseType,
+        payload: { job: null, error: BRAIN_OPS_UNAVAILABLE, requestId },
+      });
+      return;
+    }
+    try {
+      const job = start(this.brainOpsManager);
+      this.emit({ type: responseType, payload: { job, error: null, requestId } });
+    } catch (err) {
+      this.emit({
+        type: responseType,
+        payload: { job: null, error: getErrorMessage(err), requestId },
+      });
+    }
+  }
+
+  private handleBrainJobsListRequest(requestId: string): void {
+    if (!this.brainOpsManager) {
+      this.emit({
+        type: "brain.jobs.list.response",
+        payload: { jobs: [], error: BRAIN_OPS_UNAVAILABLE, requestId },
+      });
+      return;
+    }
+    this.emit({
+      type: "brain.jobs.list.response",
+      payload: { jobs: this.brainOpsManager.jobs(), error: null, requestId },
+    });
+  }
+
+  private async handleBrainJobsCancelRequest(jobId: string, requestId: string): Promise<void> {
+    if (!this.brainOpsManager) {
+      this.emit({
+        type: "brain.jobs.cancel.response",
+        payload: { jobs: [], error: BRAIN_OPS_UNAVAILABLE, requestId },
+      });
+      return;
+    }
+    try {
+      const jobs = await this.brainOpsManager.cancel(jobId);
+      this.emit({ type: "brain.jobs.cancel.response", payload: { jobs, error: null, requestId } });
+    } catch (err) {
+      this.emit({
+        type: "brain.jobs.cancel.response",
+        payload: { jobs: this.brainOpsManager.jobs(), error: getErrorMessage(err), requestId },
+      });
+    }
+  }
+
+  private async resolveBrainStatus(): Promise<{
+    status: BrainHostStatus;
+    error: string | null;
+  }> {
+    if (!this.brainManager) {
+      return {
+        status: { running: false },
+        error: "The local AI host is not available on this daemon.",
+      };
+    }
+    try {
+      return { status: await this.brainManager.status(), error: null };
+    } catch (err) {
+      return { status: { running: false }, error: getErrorMessage(err) };
+    }
+  }
+
   private dispatchWorktreeReattachMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "worktree.reattach.list.request":
@@ -3613,6 +4003,11 @@ export class Session {
   }
 
   private async dispatchMiscMessage(msg: SessionInboundMessage): Promise<void> {
+    // Brain model/runtime management is a self-contained family; handle it in a
+    // dedicated dispatcher so this method stays under the complexity ceiling.
+    if (await this.dispatchBrainManageMessage(msg)) {
+      return;
+    }
     switch (msg.type) {
       case "list_commands_request":
         await this.handleListCommandsRequest(msg);
@@ -3632,6 +4027,75 @@ export class Session {
       case "attachments.images.clear.request":
         this.handleAttachmentsImagesClearRequest(msg);
         return;
+      // Local AI host (otto-brain) lifecycle. Daemon-level, with no per-agent or
+      // per-workspace family to belong to, so it lands here rather than growing
+      // the dispatch chain.
+      case "brain.host.status.request":
+        await this.handleBrainHostStatusRequest(msg.requestId);
+        return;
+      case "brain.host.start.request":
+        await this.handleBrainHostStartRequest(msg.model, msg.requestId);
+        return;
+      case "brain.host.stop.request":
+        await this.handleBrainHostStopRequest(msg.requestId);
+        return;
+      case "brain.host.restart.request":
+        await this.handleBrainHostRestartRequest(msg.model, msg.requestId);
+        return;
+      case "brain.evals.get.request":
+        await this.handleBrainEvalsGetRequest(msg.requestId);
+        return;
+      case "brain.network.discover.request":
+        await this.handleBrainNetworkDiscoverRequest(msg.requestId);
+        return;
+      case "brain.models.list.request":
+        await this.handleBrainModelsListRequest(msg.requestId);
+        return;
+      case "brain.remote.config.get.request":
+        await this.handleBrainRemoteConfigGetRequest(msg.requestId);
+        return;
+      case "brain.remote.config.patch.request":
+        await this.handleBrainRemoteConfigPatchRequest(msg.patch, msg.requestId);
+        return;
+    }
+  }
+
+  // Brain model/runtime management dispatch. Returns true when it handled `msg`,
+  // false to let dispatchMiscMessage try the rest.
+  private async dispatchBrainManageMessage(msg: SessionInboundMessage): Promise<boolean> {
+    switch (msg.type) {
+      case "brain.models.scan.request":
+        await this.handleBrainModelsScanRequest(msg.requestId);
+        return true;
+      case "brain.catalog.list.request":
+        await this.handleBrainCatalogListRequest(msg.requestId);
+        return true;
+      case "brain.runtime.list.request":
+        await this.handleBrainRuntimeListRequest(msg.requestId);
+        return true;
+      case "brain.models.pull.request":
+        this.handleBrainModelsPullRequest(msg.model, msg.requestId);
+        return true;
+      case "brain.runtime.install.request":
+        this.handleBrainRuntimeInstallRequest(msg.build, msg.requestId);
+        return true;
+      case "brain.calibrate.request":
+        this.handleBrainCalibrateRequest(msg.model, msg.requestId);
+        return true;
+      case "brain.sweep.request":
+        this.handleBrainSweepRequest(msg.model, msg.requestId);
+        return true;
+      case "brain.bench.request":
+        this.handleBrainBenchRequest(msg.model, msg.requestId);
+        return true;
+      case "brain.jobs.list.request":
+        this.handleBrainJobsListRequest(msg.requestId);
+        return true;
+      case "brain.jobs.cancel.request":
+        await this.handleBrainJobsCancelRequest(msg.jobId, msg.requestId);
+        return true;
+      default:
+        return false;
     }
   }
 

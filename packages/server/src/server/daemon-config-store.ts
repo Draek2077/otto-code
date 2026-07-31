@@ -96,6 +96,8 @@ export const DAEMON_CONFIG_SECRET_SENTINEL = "__otto_secret_present__";
 const SECRET_WIRE_PATHS: readonly (readonly string[])[] = [
   ["speech", "openai", "apiKey"],
   ["gitHosting", "providers", "bitbucketCloud", "apiToken"],
+  ["brain", "authToken"],
+  ["brain", "remote", "authToken"],
 ];
 
 function setValueAtPath(
@@ -494,12 +496,30 @@ function mergeMutableConfigIntoPersistedConfig(params: {
       ...(mutable.terminalProfiles !== undefined
         ? { terminalProfiles: mutable.terminalProfiles }
         : {}),
+      // The local AI host projection round-trips to disk. The brain's own
+      // config.json remains the source of truth; BrainManager.applySettings
+      // writes the mapped fields through to it on every change.
+      brain: buildPersistedBrainSection(persisted, mutable),
     },
     agents: nextAgents,
     features: mergeSpeechIntoPersistedFeatures(persisted, mutable.speech),
     providers: mergeSpeechOpenAiIntoPersistedProviders(persisted, mutable.speech),
     gitHosting: buildPersistedGitHosting(persisted, mutable.gitHosting),
   } as PersistedConfig;
+}
+
+// The local AI host (otto-brain) editable projection, persisted under
+// daemon.brain. The mutable block mirrors the persisted shape 1:1 and is
+// passthrough, so spreading it carries every field (including any written by a
+// newer daemon) through untouched. The existing section is spread first so a
+// sibling key that the mutable somehow lacks still survives.
+function buildPersistedBrainSection(
+  persisted: PersistedConfig,
+  mutable: MutableDaemonConfig,
+): Record<string, unknown> {
+  const existing = isRecord(persisted.daemon?.brain) ? persisted.daemon.brain : {};
+  const brain = isRecord(mutable.brain) ? mutable.brain : {};
+  return { ...existing, ...brain };
 }
 
 // Host-level hosting credentials persist under gitHosting.providers in
@@ -836,6 +856,8 @@ interface AgentBehaviorsPersistShape {
   promptSuggestions: boolean;
   agentProgressSummaries: boolean;
   notifyOnFinishDefault: boolean;
+  todoNudge: boolean;
+  todoReconcileOnIdle: boolean;
 }
 
 // Read the agent-behavior toggles off the mutable config. The wire schema
@@ -849,6 +871,8 @@ function readAgentBehaviors(mutable: MutableDaemonConfig): AgentBehaviorsPersist
     promptSuggestions: behaviors["promptSuggestions"] !== false,
     agentProgressSummaries: behaviors["agentProgressSummaries"] !== false,
     notifyOnFinishDefault: behaviors["notifyOnFinishDefault"] !== false,
+    todoNudge: behaviors["todoNudge"] !== false,
+    todoReconcileOnIdle: behaviors["todoReconcileOnIdle"] !== false,
   };
 }
 

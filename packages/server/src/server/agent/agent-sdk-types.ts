@@ -876,6 +876,10 @@ export interface AgentBehaviorSettings {
   agentProgressSummaries: boolean;
   /** Default for agent-to-agent create/send finish notifications (Otto tools). */
   notifyOnFinishDefault: boolean;
+  /** Attach a stale-todo reminder to an agent's next turn (provider-agnostic). */
+  todoNudge: boolean;
+  /** Inject a one-shot reconcile pass when an agent goes idle with a stale todo list. */
+  todoReconcileOnIdle: boolean;
 }
 
 export interface AgentLaunchContext {

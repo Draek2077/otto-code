@@ -122,6 +122,8 @@ import { createAgentMcpServer } from "./agent/mcp-server.js";
 import { createOttoToolCatalog, type OttoToolHostDependencies } from "./agent/tools/otto-tools.js";
 import { ArtifactService } from "./artifact/artifact-service.js";
 import { DevServerManager } from "./preview/dev-server-manager.js";
+import { BrainManager } from "./brain/brain-manager.js";
+import { BrainOpsManager } from "./brain/brain-ops-manager.js";
 import type { OttoToolRuntimeContext } from "./agent/tools/types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
@@ -166,6 +168,10 @@ import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
 import type { FirstAgentContext, TerminalProfile } from "@otto-code/protocol/messages";
+import {
+  DEFAULT_MUTABLE_BRAIN_CONFIG,
+  MutableBrainConfigSchema,
+} from "@otto-code/protocol/messages";
 import type { OttoToolGroup } from "@otto-code/protocol/provider-config";
 import {
   DEFAULT_AGENT_PERSONALITIES,
@@ -408,6 +414,8 @@ export interface OttoDaemonConfig {
     promptSuggestions?: boolean;
     agentProgressSummaries?: boolean;
     notifyOnFinishDefault?: boolean;
+    todoNudge?: boolean;
+    todoReconcileOnIdle?: boolean;
   };
   autoArchiveAfterMerge?: boolean;
   enableTerminalAgentHooks?: boolean;
@@ -660,6 +668,8 @@ function buildInitialAgentBehaviors(
     promptSuggestions: config.agentBehaviors?.promptSuggestions ?? true,
     agentProgressSummaries: config.agentBehaviors?.agentProgressSummaries ?? true,
     notifyOnFinishDefault: config.agentBehaviors?.notifyOnFinishDefault ?? true,
+    todoNudge: config.agentBehaviors?.todoNudge ?? true,
+    todoReconcileOnIdle: config.agentBehaviors?.todoReconcileOnIdle ?? true,
   };
 }
 
@@ -709,6 +719,20 @@ function buildInitialDotnetSolutionManagement(
   };
 }
 
+/**
+ * The local AI host (otto-brain) projection round-trips config.json ⇄ mutable
+ * config. Absent on disk reads as the schema default (OFF). The brain's own
+ * config.json is the source of truth on disk; this is only the editable
+ * projection the settings UI reads and the daemon writes through.
+ */
+function buildInitialBrainConfig(persistedConfig: PersistedConfig): MutableDaemonConfig["brain"] {
+  const persistedBrain = persistedConfig.daemon?.brain;
+  if (persistedBrain === undefined) {
+    return DEFAULT_MUTABLE_BRAIN_CONFIG;
+  }
+  return MutableBrainConfigSchema.parse(persistedBrain);
+}
+
 type MutableSavedProviderEndpoint = MutableDaemonConfig["savedProviderEndpoints"][number];
 
 function withSavedEndpointApiKey(
@@ -746,6 +770,10 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
       backgroundIdleMinutes: 2,
     },
     dotnetSolutionManagement: buildInitialDotnetSolutionManagement(persistedConfig),
+    // Local AI host (otto-brain) section. Round-trips from config.json; the
+    // brain's own config.json is the source of truth and the daemon writes
+    // changes through once brainControl is exercised (see MutableBrainConfigSchema).
+    brain: buildInitialBrainConfig(persistedConfig),
     agentBehaviors: buildInitialAgentBehaviors(config),
     providers,
     metadataGeneration: buildInitialMetadataGeneration(config),
@@ -827,6 +855,21 @@ export async function createOttoDaemon(
   const serverId = getOrCreateServerId(config.ottoHome, { logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.ottoHome, logger);
   const managedProcesses = createBootstrapManagedProcessRegistry(config, logger);
+  // Daemon-managed local AI host (otto-brain). Constructed alongside the other
+  // managed children; it spawns the brain's `serve` command as a foreground
+  // child, holds the process so it dies with the daemon, and talks to it over
+  // HTTP. Settings are applied by the websocket server at startup and on change.
+  const brainManager = new BrainManager({
+    logger,
+    managedProcesses,
+    ottoHome: config.ottoHome,
+  });
+  // Model/runtime management + long jobs, driven by shelling out to the
+  // otto-brain CLI. Separate from BrainManager (which owns the serve lifecycle).
+  const brainOpsManager = new BrainOpsManager({
+    logger,
+    ottoHome: config.ottoHome,
+  });
   // Reconcile the helper-process ledger in the background so it never blocks the
   // daemon from coming up; terminating a live leftover can take a few seconds.
   // Best-effort, so a failure is logged here rather than crashing startup.
@@ -1935,6 +1978,8 @@ export async function createOttoDaemon(
                       promptSuggestions?: boolean;
                       agentProgressSummaries?: boolean;
                       notifyOnFinishDefault?: boolean;
+                      todoNudge?: boolean;
+                      todoReconcileOnIdle?: boolean;
                     })
                   : undefined;
               agentManager.setAgentBehaviors(behaviors);
@@ -2056,6 +2101,11 @@ export async function createOttoDaemon(
             wsServer.setPersonalityMemoryService(personalityMemory);
             wsServer.setNodeOutputStore(nodeOutputStore);
             wsServer.setPromptTemplateStore(promptTemplateStore);
+            // Late-wired like the stores above: hands the brain manager to the
+            // websocket server, which applies the current `brain` config now and
+            // re-applies it on every daemon-config change.
+            wsServer.setBrainManager(brainManager);
+            wsServer.setBrainOpsManager(brainOpsManager);
 
             // Sanity guard: never let preview "stop external server" tree-kill
             // Otto's own runtime — the daemon's listen port or a loopback dev
@@ -2140,6 +2190,10 @@ export async function createOttoDaemon(
     // Dev servers next: they are children of this daemon and hold ports the
     // next daemon instance may want.
     await previewDevServers.shutdown().catch(() => undefined);
+    // The local AI host is a managed child too — kill it so it never outlives
+    // the daemon that spawned it.
+    await brainManager.shutdown().catch(() => undefined);
+    await brainOpsManager.shutdown().catch(() => undefined);
     await closeAllAgents(logger, agentManager);
     await agentManager.flushForShutdown().catch(() => undefined);
     detachAgentStoragePersistence();

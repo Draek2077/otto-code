@@ -260,10 +260,10 @@ test.describe("Composer attachments", () => {
     }
   });
 
-  // Escape is two-stage: with text in the box it clears the draft and leaves the turn alone;
-  // only a second Escape on an empty box interrupts. (The full two-press contract is pinned by
+  // Escape never touches the composer text: typed-but-unsent text is unrecoverable, so a single
+  // Escape interrupts the running agent while leaving the draft intact. (The contract is pinned by
   // composer-suggestions-history.spec.ts — this test covers the attachment-composer path.)
-  test("Escape clears the draft first, then interrupts the running agent", async ({ page }) => {
+  test("Escape interrupts the running agent and preserves the draft", async ({ page }) => {
     test.setTimeout(120_000);
     const agent = await startRunningMockAgent(page, {
       prefix: "attach-interrupt-",
@@ -271,12 +271,11 @@ test.describe("Composer attachments", () => {
       prompt: "Stay running for interrupt test.",
     });
     try {
-      await fillComposerDraft(page, "clear me");
+      await fillComposerDraft(page, "keep me");
       await pressInterruptShortcut(page);
-      await expectComposerDraft(page, "");
 
-      await pressInterruptShortcut(page);
       await expectAgentIdle(page, 15_000);
+      await expectComposerDraft(page, "keep me");
     } finally {
       await agent.cleanup();
     }

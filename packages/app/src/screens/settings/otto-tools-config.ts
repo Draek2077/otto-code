@@ -129,11 +129,13 @@ export function createToolGroupsPatch(
   return { mcp: { toolGroups: next } };
 }
 
-// Agent behavior toggles (daemon-wide, Claude-tier). Each field defaults on.
+// Agent behavior toggles (daemon-wide). Each field defaults on.
 export type AgentBehaviorKey =
   | "promptSuggestions"
   | "agentProgressSummaries"
-  | "notifyOnFinishDefault";
+  | "notifyOnFinishDefault"
+  | "todoNudge"
+  | "todoReconcileOnIdle";
 
 export interface AgentBehaviorMeta {
   key: AgentBehaviorKey;
@@ -157,6 +159,24 @@ export const AGENT_BEHAVIOR_META: readonly AgentBehaviorMeta[] = [
     key: "notifyOnFinishDefault",
     label: "Notify on finish by default",
     description: "Default new background agents to notify their caller when they finish.",
+  },
+];
+
+// Task-list reminders (daemon-wide, provider-agnostic). Grouped separately so
+// the two related toggles read as one set. Both persist under agentBehaviors and
+// default on; gated on the todoReminders server feature.
+export const TODO_REMINDER_META: readonly AgentBehaviorMeta[] = [
+  {
+    key: "todoNudge",
+    label: "Nudge on open task list",
+    description:
+      "While an agent has an open task list, remind it on its next turn to keep the list current.",
+  },
+  {
+    key: "todoReconcileOnIdle",
+    label: "Reconcile task list when idle",
+    description:
+      "When an agent finishes with a task list left unfinished, have it reconcile the list (mark done items done, or say what's left) instead of leaving a stale checklist. Costs one extra turn.",
   },
 ];
 

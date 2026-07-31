@@ -53,6 +53,8 @@ import { PushTokenStore } from "./push/token-store.js";
 import { createPushNotificationSender, type PushNotificationSender } from "./push/notifications.js";
 import type { ScriptHealthState } from "./script-health-monitor.js";
 import type { DevServerManager } from "./preview/dev-server-manager.js";
+import type { BrainManager } from "./brain/brain-manager.js";
+import type { BrainOpsManager } from "./brain/brain-ops-manager.js";
 import type { ServiceProxySubsystem } from "./service-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
@@ -466,6 +468,12 @@ export class VoiceAssistantWebSocketServer {
   // session reads the same instance.
   private nodeOutputStore: NodeOutputStore | null = null;
   private promptTemplateStore: PromptTemplateStore | null = null;
+  // Late-wired (setBrainManager): the daemon-managed local AI host. One instance
+  // per daemon; every session reads the same one for the brain.* RPCs.
+  private brainManager: BrainManager | null = null;
+  // Late-wired (setBrainOpsManager): drives the brain's model/runtime verbs and
+  // long-running jobs. Shared across sessions like brainManager.
+  private brainOpsManager: BrainOpsManager | null = null;
   private readonly checkoutDiffManager: CheckoutDiffManager;
   private readonly github: GitHubService;
   private readonly gitHostingResolver: GitHostingResolver | null;
@@ -718,6 +726,14 @@ export class VoiceAssistantWebSocketServer {
         .catch((err: unknown) => {
           this.logger.warn({ err }, "Failed to apply solution-management settings");
         });
+      // Same rule for the local AI host: writing the `brain` block through to the
+      // brain's config.json and reconciling the running child (start/stop/switch
+      // model) is what makes the switch real rather than decorative.
+      if (this.brainManager) {
+        void this.brainManager.applySettings(config.brain).catch((err: unknown) => {
+          this.logger.warn({ err }, "Failed to apply brain settings");
+        });
+      }
       this.broadcastDaemonConfigChanged(config);
     });
 
@@ -768,6 +784,22 @@ export class VoiceAssistantWebSocketServer {
 
   public setPromptTemplateStore(store: PromptTemplateStore | null): void {
     this.promptTemplateStore = store;
+  }
+
+  // Wire the daemon-managed local AI host and apply the current `brain` config
+  // once. Applied (not merely stored): a config that says "enabled + autoStart"
+  // must bring the brain up on daemon start, mirroring lspService.setSettings.
+  public setBrainManager(manager: BrainManager | null): void {
+    this.brainManager = manager;
+    if (manager) {
+      void manager.applySettings(this.daemonConfigStore.get().brain).catch((err: unknown) => {
+        this.logger.warn({ err }, "Failed to apply brain settings");
+      });
+    }
+  }
+
+  public setBrainOpsManager(manager: BrainOpsManager | null): void {
+    this.brainOpsManager = manager;
   }
 
   private assignOptionalServices(params: {
@@ -1271,6 +1303,8 @@ export class VoiceAssistantWebSocketServer {
       tts: () => this.speech?.resolveTts() ?? null,
       terminalManager: this.terminalManager,
       previewDevServers: this.previewDevServers,
+      brainManager: this.brainManager,
+      brainOpsManager: this.brainOpsManager,
       providerSnapshotManager: this.providerSnapshotManager,
       providerUsageService: this.providerUsageService,
       onActivity: this.onActivity,
@@ -1609,6 +1643,8 @@ export class VoiceAssistantWebSocketServer {
         mcpToolGroups: true,
         // COMPAT(agentBehaviorToggles): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         agentBehaviorToggles: true,
+        // COMPAT(todoReminders): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
+        todoReminders: true,
         // COMPAT(metadataGenerationEnabled): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         metadataGenerationEnabled: true,
         // COMPAT(usageCostCategories): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
@@ -1642,6 +1678,30 @@ export class VoiceAssistantWebSocketServer {
         // true: the handler needs only the agent manager and the workspace
         // registry, which every daemon wires.
         agentWorkspaceTransfer: true,
+        // COMPAT(brainControl): added in v0.7.5, remove gate after 2026-01-30 once
+        // daemon floor >= v0.7.5. Daemon manages the local AI host (otto-brain)
+        // as a child: brain.host.status/start/stop/restart, the editable `brain`
+        // config block, kill-on-shutdown.
+        brainControl: true,
+        // COMPAT(brainStatus): added in v0.7.5, remove gate after 2026-01-30 once
+        // daemon floor >= v0.7.5. Daemon serves brain.evals.get (and the brain's
+        // status fields on brain.host.status).
+        brainStatus: true,
+        // COMPAT(brainNetworkDiscovery): added in v0.7.5, remove gate after
+        // 2026-07-30 once daemon floor >= v0.7.5. Daemon serves
+        // brain.network.discover (enumerates this host's bind addresses and
+        // probes the local `tailscale` CLI to auto-fill the tailscale TLS mode).
+        brainNetworkDiscovery: true,
+        // COMPAT(brainRemote): added in v0.7.5, remove gate after 2026-07-30
+        // once daemon floor >= v0.7.5. BrainManager can run in "remote" mode:
+        // point at a brain on another Otto host and proxy its status/evals
+        // instead of spawning a local child.
+        brainRemote: true,
+        // COMPAT(brainManage): added in v0.7.5, remove gate after 2026-07-30
+        // once daemon floor >= v0.7.5. Daemon drives the brain's model/runtime
+        // verbs (scan/catalog/runtime list) and long jobs (pull/runtime
+        // install/calibrate/sweep/bench) by shelling out to the otto-brain CLI.
+        brainManage: true,
       },
     };
   }

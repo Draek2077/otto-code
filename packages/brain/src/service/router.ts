@@ -487,6 +487,51 @@ function proxyBuffered({
   });
 }
 
+// Whether a completion may run: either a resolved model, or a status+message to
+// return. Lets the lock deny a switch with a distinct 409 rather than a 404.
+export type ModelGateResult =
+  | { ok: true; model: Model }
+  | { ok: false; status: number; message: string };
+
+/**
+ * Pure model-admission decision, factored out of the router so it is unit
+ * testable. `pinned` is the single model a locked host serves; `resolved` is the
+ * normal catalog resolution used when the lock is off. With the lock on, a
+ * request naming a model other than the pin is refused (409) rather than queuing
+ * a switch; an unnamed request rides the pin.
+ */
+export function decideModelGate(params: {
+  lockModel: boolean;
+  requestedName: string | null;
+  pinned: Model | null;
+  resolved: Model | null;
+}): ModelGateResult {
+  const { lockModel, requestedName, pinned, resolved } = params;
+  if (lockModel) {
+    if (!pinned) {
+      return { ok: false, status: 503, message: "no model is loaded yet on this locked host" };
+    }
+    if (requestedName && requestedName !== pinned.id && requestedName !== pinned.displayName) {
+      return {
+        ok: false,
+        status: 409,
+        message: `model switching is disabled on this host; only "${pinned.displayName}" is served`,
+      };
+    }
+    return { ok: true, model: pinned };
+  }
+  if (!resolved) {
+    return {
+      ok: false,
+      status: requestedName ? 404 : 503,
+      message: requestedName
+        ? `model "${requestedName}" was not found in the catalog`
+        : "no model is available to serve",
+    };
+  }
+  return { ok: true, model: resolved };
+}
+
 interface ScheduleCompletionOptions {
   req: http.IncomingMessage;
   res: http.ServerResponse;
@@ -495,7 +540,38 @@ interface ScheduleCompletionOptions {
   telemetry: Telemetry;
   logger?: Logger | null;
   scheduler: Scheduler;
-  resolveModel: (name: string | null) => Model | null;
+  modelGate: (name: string | null) => ModelGateResult;
+}
+
+type JsonBodyResult = { ok: true; body: unknown } | { ok: false; error: string };
+
+/** Buffer a bounded JSON request body (for POST /__host/config). */
+function readJsonBody(
+  req: http.IncomingMessage,
+  limit: number,
+  cb: (result: JsonBodyResult) => void,
+): void {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  let tooBig = false;
+  req.on("data", (chunk: Buffer) => {
+    size += chunk.length;
+    if (size > limit) tooBig = true;
+    else chunks.push(chunk);
+  });
+  req.on("error", () => cb({ ok: false, error: "request stream error" }));
+  req.on("end", () => {
+    if (tooBig) {
+      cb({ ok: false, error: "request body too large" });
+      return;
+    }
+    try {
+      const text = Buffer.concat(chunks).toString("utf8") || "{}";
+      cb({ ok: true, body: JSON.parse(text) });
+    } catch {
+      cb({ ok: false, error: "invalid JSON body" });
+    }
+  });
 }
 
 /** Buffer a completion request, resolve its target model, and queue it. */
@@ -507,7 +583,7 @@ function scheduleCompletion({
   telemetry,
   logger,
   scheduler,
-  resolveModel,
+  modelGate,
 }: ScheduleCompletionOptions): void {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -535,17 +611,12 @@ function scheduleCompletion({
       /* leave null */
     }
 
-    const model = resolveModel(modelName);
-    if (!model) {
-      sendError(
-        res,
-        modelName ? 404 : 503,
-        modelName
-          ? `model "${modelName}" was not found in the catalog`
-          : "no model is available to serve",
-      );
+    const gate = modelGate(modelName);
+    if (!gate.ok) {
+      sendError(res, gate.status, gate.message);
       return;
     }
+    const model = gate.model;
 
     scheduler
       .submit(model, () => proxyBuffered({ agent, supervisor, telemetry, logger, req, res, body }))
@@ -571,6 +642,28 @@ export interface RouterOptions {
   // service layer needs no extra wiring.
   loadRanking?: () => RankedModel[];
   queryGpuInfo?: () => Promise<GpuInfo | null>;
+  /** The brain package version, reported on `/__host/status` for the host UI. */
+  version?: string | null;
+  /** Effective config with secrets redacted — served on `/__host/config`. */
+  getConfig?: (() => unknown) | null;
+  /** Benchmark rankings/variance/latest — served on `/__host/evals`. */
+  getEvals?: (() => unknown) | null;
+  /** Live: pin the host to one model (refuse completions naming a different one). */
+  getLockModel?: () => boolean;
+  /** Live: the configured default model, the pin target before one is resident. */
+  getDefaultModel?: () => string | null;
+  /**
+   * Apply an editable config patch (write config.json, live-switch the model,
+   * update the lock), for POST /__host/config. Absent = the write endpoint is
+   * not offered. Returns the new effective config (secrets redacted).
+   */
+  applyConfigPatch?: ((patch: unknown) => Promise<unknown>) | null;
+  /**
+   * Live: whether remote clients may WRITE config (POST /__host/config). Off by
+   * default, so a shared brain can be used but not reconfigured over the network
+   * until its owner opts in. Read/use are unaffected.
+   */
+  getAllowConfigWrite?: () => boolean;
 }
 
 export function createRouter({
@@ -581,6 +674,13 @@ export function createRouter({
   loadModel = null,
   loadRanking = () => rankModels(),
   queryGpuInfo = queryGpu,
+  version = null,
+  getConfig = null,
+  getEvals = null,
+  getLockModel = () => false,
+  getDefaultModel = () => null,
+  applyConfigPatch = null,
+  getAllowConfigWrite = () => false,
 }: RouterOptions): (req: http.IncomingMessage, res: http.ServerResponse) => void {
   const agent = new http.Agent({ keepAlive: true, maxSockets: 32 });
   const scheduler = loadModel
@@ -642,23 +742,76 @@ export function createRouter({
     });
   };
 
+  // The single model this host will serve when switching is locked: the
+  // resident model if one is up, else the configured default resolved through
+  // the catalog. Null means nothing is loadable yet.
+  const pinnedModel = (): Model | null => {
+    if (supervisor.model) return supervisor.model;
+    const def = getDefaultModel();
+    return def ? resolveModel(def) : null;
+  };
+
+  // Decide whether a completion for `name` may run. The lock/default are read
+  // live so a POST /__host/config change takes effect without a restart. Only
+  // resolve the branch the lock actually uses.
+  const modelGate = (name: string | null): ModelGateResult => {
+    const lock = getLockModel();
+    return decideModelGate({
+      lockModel: lock,
+      requestedName: name,
+      pinned: lock ? pinnedModel() : null,
+      resolved: lock ? null : resolveModel(name),
+    });
+  };
+
+  const sendJson = (res: http.ServerResponse, payload: unknown): void => {
+    const body = JSON.stringify(payload, null, 2);
+    res.writeHead(200, {
+      "content-type": "application/json",
+      "content-length": Buffer.byteLength(body),
+    });
+    res.end(body);
+  };
+
   return function handler(req: http.IncomingMessage, res: http.ServerResponse): void {
+    // Host-management read surface (`/__host/*`): the single API both the TUI and
+    // Otto's GUI consume, so the two never drift. Status is live; config and
+    // evals are point-in-time reads the daemon proxies to its settings UI.
     if (req.url === "/__host/status") {
-      const body = JSON.stringify(
-        {
-          ...supervisor.status(),
-          telemetry: { ...telemetry.totals, warning: telemetry.warning },
-          scheduler: scheduler ? scheduler.stats() : null,
-          recent: telemetry.records.slice(-10),
-        },
-        null,
-        2,
-      );
-      res.writeHead(200, {
-        "content-type": "application/json",
-        "content-length": Buffer.byteLength(body),
+      sendJson(res, {
+        version,
+        ...supervisor.status(),
+        telemetry: { ...telemetry.totals, warning: telemetry.warning },
+        scheduler: scheduler ? scheduler.stats() : null,
+        recent: telemetry.records.slice(-10),
       });
-      res.end(body);
+      return;
+    }
+    // Config write: apply an editable patch (model/lock live, the rest persisted).
+    // Must precede the GET read below, which matches the same URL for any method.
+    // Refused unless the owner opted into remote configuration.
+    if (req.method === "POST" && req.url === "/__host/config") {
+      if (!applyConfigPatch || !getAllowConfigWrite()) {
+        sendError(res, 403, "remote configuration is disabled on this brain");
+        return;
+      }
+      readJsonBody(req, MAX_REQUEST_BYTES, (result) => {
+        if (!result.ok) {
+          sendError(res, 400, result.error);
+          return;
+        }
+        applyConfigPatch(result.body)
+          .then((cfg) => sendJson(res, cfg))
+          .catch((err) => sendError(res, 500, `could not apply config: ${errorMessage(err)}`));
+      });
+      return;
+    }
+    if (req.url === "/__host/config" && getConfig) {
+      sendJson(res, getConfig());
+      return;
+    }
+    if (req.url === "/__host/evals" && getEvals) {
+      sendJson(res, getEvals());
       return;
     }
 
@@ -678,7 +831,7 @@ export function createRouter({
         telemetry,
         logger,
         scheduler,
-        resolveModel,
+        modelGate,
       });
       return;
     }

@@ -2762,6 +2762,7 @@ export const ru: TranslationResources = {
       teams: "Команды",
       tools: "Инструменты",
       code: "Код",
+      brain: "Мозг",
       workspaces: "Workspaces",
       gitProviders: "Провайдеры Git",
       providers: "Провайдеры",

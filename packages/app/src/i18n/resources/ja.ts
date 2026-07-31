@@ -2757,6 +2757,7 @@ export const ja: TranslationResources = {
       teams: "チーム",
       tools: "ツール",
       code: "コード",
+      brain: "ブレイン",
       workspaces: "ワークスペース",
       gitProviders: "Git プロバイダー",
       providers: "プロバイダー",

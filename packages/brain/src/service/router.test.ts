@@ -6,6 +6,7 @@ import {
   Telemetry,
   describeModel,
   buildModelList,
+  decideModelGate,
   type TelemetryRecord,
 } from "./router.js";
 import type { Model } from "../types.js";
@@ -209,6 +210,73 @@ test("buildModelList returns an empty list when nothing is found or loaded", () 
     buildModelList({ state: "stopped", model: null } as unknown as Supervisor, () => []),
     [],
   );
+});
+
+const PINNED = { id: "pin/a.gguf", displayName: "Model-A" } as unknown as Model;
+const OTHER = { id: "oth/b.gguf", displayName: "Model-B" } as unknown as Model;
+
+test("lock off: a named model resolves through normally", () => {
+  const gate = decideModelGate({
+    lockModel: false,
+    requestedName: "Model-B",
+    pinned: null,
+    resolved: OTHER,
+  });
+  assert.deepEqual(gate, { ok: true, model: OTHER });
+});
+
+test("lock off: an unresolved named model is a 404", () => {
+  const gate = decideModelGate({
+    lockModel: false,
+    requestedName: "ghost",
+    pinned: null,
+    resolved: null,
+  });
+  assert.equal(gate.ok, false);
+  assert.equal(gate.ok === false && gate.status, 404);
+});
+
+test("lock on: a request for the pinned model is served", () => {
+  const gate = decideModelGate({
+    lockModel: true,
+    requestedName: "Model-A",
+    pinned: PINNED,
+    resolved: null,
+  });
+  assert.deepEqual(gate, { ok: true, model: PINNED });
+});
+
+test("lock on: an unnamed request rides the pinned model", () => {
+  const gate = decideModelGate({
+    lockModel: true,
+    requestedName: null,
+    pinned: PINNED,
+    resolved: null,
+  });
+  assert.deepEqual(gate, { ok: true, model: PINNED });
+});
+
+test("lock on: a request for a different model is refused with 409", () => {
+  const gate = decideModelGate({
+    lockModel: true,
+    requestedName: "Model-B",
+    pinned: PINNED,
+    resolved: null,
+  });
+  assert.equal(gate.ok, false);
+  assert.equal(gate.ok === false && gate.status, 409);
+  assert.match(gate.ok === false ? gate.message : "", /switching is disabled/);
+});
+
+test("lock on: nothing pinned yet yields a 503, not a switch", () => {
+  const gate = decideModelGate({
+    lockModel: true,
+    requestedName: "Model-A",
+    pinned: null,
+    resolved: null,
+  });
+  assert.equal(gate.ok, false);
+  assert.equal(gate.ok === false && gate.status, 503);
 });
 
 test("telemetry warns once reasoning-only responses dominate", () => {

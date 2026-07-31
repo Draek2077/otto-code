@@ -142,6 +142,7 @@ export const MoreHorizontal = createMaterialSymbolIcon("MoreHorizontal");
 export const MoreVertical = createMaterialSymbolIcon("MoreVertical");
 export const MousePointer2 = createMaterialSymbolIcon("MousePointer2");
 export const Network = createMaterialSymbolIcon("Network");
+export const Neurology = createMaterialSymbolIcon("Neurology");
 export const OpenInFull = createMaterialSymbolIcon("OpenInFull");
 export const PackagePlus = createMaterialSymbolIcon("PackagePlus");
 export const Palette = createMaterialSymbolIcon("Palette");

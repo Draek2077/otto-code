@@ -79,6 +79,8 @@ import {
   BrowserToolsSection,
   MetadataGenerationRows,
   OttoToolsSection,
+  TodoReminderRows,
+  useTodoRemindersFeature,
 } from "@/screens/settings/otto-tools-section";
 import { CodeIntelligenceSection } from "./code-intelligence-section";
 import { StorageSection } from "./storage-section";
@@ -280,6 +282,25 @@ export function HostConnectionsPage({ serverId }: { serverId: string }) {
   );
 }
 
+// The provider-agnostic task-list reminder toggles, grouped in their own titled
+// section so the two related switches read as one set. Self-hiding: an old daemon
+// without the todoReminders capability shows nothing rather than an empty card.
+// Title is raw English, matching the English-only convention for these host
+// toggle surfaces (see otto-tools-config.ts).
+function HostTaskListSection({ serverId }: { serverId: string }) {
+  const hasFeature = useTodoRemindersFeature(serverId);
+  if (!hasFeature) {
+    return null;
+  }
+  return (
+    <SettingsSection title="Task list">
+      <View style={settingsStyles.card}>
+        <TodoReminderRows serverId={serverId} />
+      </View>
+    </SettingsSection>
+  );
+}
+
 export function HostAgentsPage({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
   const host = useHostProfile(serverId);
@@ -302,6 +323,7 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
               <VoicePlaybackVolumeRow serverId={serverId} />
             </View>
           </SettingsSection>
+          <HostTaskListSection serverId={serverId} />
           {/* Owns its own per-card sections (Dictation / Voice / OpenAI). */}
           <SpeechSettingsCards serverId={serverId} />
         </>
