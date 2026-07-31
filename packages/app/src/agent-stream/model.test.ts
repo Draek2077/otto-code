@@ -48,7 +48,7 @@ describe("buildAgentStreamRenderModel", () => {
     expect(model.history).not.toContain(head[0]);
   });
 
-  it("keeps the full committed tail mounted on mobile web", () => {
+  it("keeps a short committed tail mounted on mobile web", () => {
     const tail = [userMessage("u1", 1), assistantMessage("a1", 2)];
     const head = [assistantMessage("live-a", 3)];
 
@@ -63,6 +63,59 @@ describe("buildAgentStreamRenderModel", () => {
     expect(model.segments.historyVirtualized).toHaveLength(0);
     expect(model.segments.historyMounted).toBe(tail);
     expect(model.segments.liveHead).toBe(head);
+  });
+
+  it("virtualizes a long committed tail on mobile web, with a tighter mounted window", () => {
+    const tail: StreamItem[] = [];
+    for (let index = 0; index < 60; index += 1) {
+      const seed = index * 2;
+      tail.push(userMessage(`u${index}`, seed + 1));
+      tail.push(assistantMessage(`a${index}`, seed + 2));
+    }
+    const head = [assistantMessage("live-a", 121)];
+
+    const mobile = buildAgentStreamRenderModel({
+      agentStatus: "running",
+      tail,
+      head,
+      platform: "web",
+      isMobileBreakpoint: true,
+    });
+    const desktop = buildAgentStreamRenderModel({
+      agentStatus: "running",
+      tail,
+      head,
+      platform: "web",
+      isMobileBreakpoint: false,
+    });
+
+    expect(mobile.segments.historyVirtualized.length).toBeGreaterThan(0);
+    expect(mobile.segments.historyMounted.length).toBeGreaterThan(0);
+    expect(mobile.segments.liveHead.map((item) => item.id)).toEqual(["live-a"]);
+    // A phone mounts strictly less than a desktop viewport does.
+    expect(mobile.segments.historyMounted.length).toBeLessThan(
+      desktop.segments.historyMounted.length,
+    );
+  });
+
+  it("never virtualizes on native, where FlatList owns the mounted window", () => {
+    const tail: StreamItem[] = [];
+    for (let index = 0; index < 60; index += 1) {
+      const seed = index * 2;
+      tail.push(userMessage(`u${index}`, seed + 1));
+      tail.push(assistantMessage(`a${index}`, seed + 2));
+    }
+
+    const model = buildAgentStreamRenderModel({
+      agentStatus: "running",
+      tail,
+      head: [],
+      platform: "native",
+      isMobileBreakpoint: true,
+    });
+
+    expect(model.segments.historyVirtualized).toHaveLength(0);
+    expect(model.segments.historyMounted).toHaveLength(tail.length);
   });
 
   it("reuses ordered committed history when only the live head changes", () => {

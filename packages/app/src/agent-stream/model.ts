@@ -98,11 +98,16 @@ function splitOrderedTail(params: {
   pinnedMountedWindowStartId?: string | null;
 }): Pick<AgentStreamRenderModel, "history" | "segments"> {
   const { orderedTail, platform, isMobileBreakpoint, pinnedMountedWindowStartId } = params;
+  // Native is excluded because FlatList already virtualizes: strategy-native
+  // merges both segments back into one `data` array and renders every row the
+  // same way, so splitting here would buy nothing and double-virtualizing would
+  // wreck its height measurement. Mobile web has no such fallback — it used to
+  // be excluded too, which left a phone browser mounting the entire transcript,
+  // the heaviest case on the weakest device.
   const shouldSplitHistory =
-    platform === "web" &&
-    !isMobileBreakpoint &&
-    orderedTail.length > getWebPartialVirtualizationThreshold();
-  const cacheKey = `${platform}:${isMobileBreakpoint}:${getWebMountedRecentStreamItems()}:${shouldSplitHistory}:${pinnedMountedWindowStartId ?? ""}`;
+    platform === "web" && orderedTail.length > getWebPartialVirtualizationThreshold();
+  const mountedRecentStreamItems = getWebMountedRecentStreamItems(isMobileBreakpoint);
+  const cacheKey = `${platform}:${isMobileBreakpoint}:${mountedRecentStreamItems}:${shouldSplitHistory}:${pinnedMountedWindowStartId ?? ""}`;
   let cachedByKey = splitHistoryCache.get(orderedTail);
   if (!cachedByKey) {
     cachedByKey = new Map();
@@ -128,7 +133,7 @@ function splitOrderedTail(params: {
 
   const mountedWindowStart = findMountedWindowStart({
     items: orderedTail,
-    minMountedCount: getWebMountedRecentStreamItems(),
+    minMountedCount: mountedRecentStreamItems,
     ...(pinnedMountedWindowStartId ? { pinnedStartItemId: pinnedMountedWindowStartId } : {}),
   });
   const split = {

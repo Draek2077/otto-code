@@ -1,11 +1,16 @@
 import {
+  createContext,
   Fragment,
+  memo,
   type ReactElement,
   useCallback,
+  useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   FlatList,
@@ -36,6 +41,65 @@ const HISTORY_START_THRESHOLD_PX = 96;
 function keyExtractor(item: { id: string }): string {
   return item.id;
 }
+
+/**
+ * The live turn renders in the inverted list's header, so before this store it
+ * was a fresh element on every ~48ms stream flush — which changed a FlatList
+ * prop, re-rendered VirtualizedList, and walked every mounted cell in the
+ * window. On a phone that is the whole per-chunk cost of a long chat, and it is
+ * what makes typing stutter while the model streams (one JS thread, shared).
+ *
+ * Now the header node is published through an external store and read by a
+ * component whose identity never changes, so a flush re-renders ONLY the live
+ * turn. Everything the FlatList itself is handed stays referentially stable and
+ * React bails out of the list subtree entirely (see the memoized element below).
+ */
+interface LiveHeaderStore {
+  subscribe: (listener: () => void) => () => void;
+  getSnapshot: () => ReactElement | null;
+}
+
+const EMPTY_LIVE_HEADER_STORE: LiveHeaderStore = {
+  subscribe: () => () => {},
+  getSnapshot: () => null,
+};
+
+const LiveHeaderContext = createContext<LiveHeaderStore>(EMPTY_LIVE_HEADER_STORE);
+
+function useLiveHeaderStore(content: ReactElement | null): LiveHeaderStore {
+  const contentRef = useRef<ReactElement | null>(content);
+  const listenersRef = useRef(new Set<() => void>());
+
+  // Layout effect, not render: publishing during render would tear if React
+  // threw the render away. Committing before paint keeps the reveal frame-exact.
+  useLayoutEffect(() => {
+    if (contentRef.current === content) {
+      return;
+    }
+    contentRef.current = content;
+    for (const listener of listenersRef.current) {
+      listener();
+    }
+  }, [content]);
+
+  return useMemo(
+    () => ({
+      subscribe: (listener: () => void) => {
+        listenersRef.current.add(listener);
+        return () => {
+          listenersRef.current.delete(listener);
+        };
+      },
+      getSnapshot: () => contentRef.current,
+    }),
+    [],
+  );
+}
+
+const LiveStreamHeader = memo(function LiveStreamHeader() {
+  const store = useContext(LiveHeaderContext);
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+});
 
 function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrategy }) {
   const {
@@ -353,33 +417,74 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     );
   }, [isLoadingOlderHistory]);
 
-  return (
-    <FlatList
-      ref={flatListRef}
-      data={historyRows}
-      renderItem={renderItem}
-      keyExtractor={keyExtractor}
-      testID="agent-chat-scroll"
-      nativeID="agent-chat-scroll-native-virtualized"
-      ListHeaderComponent={liveHeaderContent ?? undefined}
-      ListFooterComponent={historyFooterContent ?? undefined}
-      contentContainerStyle={baseListContentContainerStyle}
-      style={listStyle}
-      onLayout={handleListLayout}
-      onScroll={handleScroll}
-      scrollEventThrottle={16}
-      onContentSizeChange={handleContentSizeChange}
-      maintainVisibleContentPosition={DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION}
-      initialNumToRender={40}
-      maxToRenderPerBatch={40}
-      updateCellsBatchingPeriod={0}
-      windowSize={21}
-      removeClippedSubviews={false}
-      scrollEnabled={scrollEnabled}
-      showsVerticalScrollIndicator
-      inverted
-    />
+  const liveHeaderStore = useLiveHeaderStore(liveHeaderContent);
+
+  // History-row layout (the gap on the boundary row) depends on whether a live
+  // turn is present, but NOT on its text. Keying the list on the live head's ids
+  // re-renders the cells when the live turn appears, is promoted, or ends, while
+  // leaving per-chunk text growth invisible to the list.
+  const liveHeadSignature = useMemo(
+    () => segments.liveHead.map((item) => item.id).join(" "),
+    [segments.liveHead],
   );
+
+  // Memoized so a stream flush, which re-renders this component, hands React the
+  // identical element and it skips the entire list subtree. Every dep here is
+  // either referentially stable (the useStableEvent handlers, keyExtractor) or
+  // genuinely requires the mounted cells to re-render.
+  const list = useMemo(
+    () => (
+      <FlatList
+        ref={flatListRef}
+        data={historyRows}
+        extraData={liveHeadSignature}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        testID="agent-chat-scroll"
+        nativeID="agent-chat-scroll-native-virtualized"
+        ListHeaderComponent={LiveStreamHeader}
+        ListFooterComponent={historyFooterContent ?? undefined}
+        contentContainerStyle={baseListContentContainerStyle}
+        style={listStyle}
+        onLayout={handleListLayout}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        onContentSizeChange={handleContentSizeChange}
+        maintainVisibleContentPosition={DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION}
+        // Sized for a phone, where every mounted cell is a markdown bubble that
+        // has to re-render whenever the list does. windowSize 21 kept ten
+        // viewports of chat alive above and below the screen; 7 keeps one on
+        // each side, which is all an inverted transcript needs to scroll
+        // smoothly. Batching the cell updates (was 0, i.e. commit each one
+        // immediately) lets a burst of stream flushes coalesce into one pass.
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
+        windowSize={7}
+        // Left off deliberately: clipping subviews on an inverted Android list
+        // is a long-standing source of blank cells. Revisit only with on-device
+        // proof.
+        removeClippedSubviews={false}
+        scrollEnabled={scrollEnabled}
+        showsVerticalScrollIndicator
+        inverted
+      />
+    ),
+    [
+      baseListContentContainerStyle,
+      handleContentSizeChange,
+      handleListLayout,
+      handleScroll,
+      historyFooterContent,
+      historyRows,
+      listStyle,
+      liveHeadSignature,
+      renderItem,
+      scrollEnabled,
+    ],
+  );
+
+  return <LiveHeaderContext.Provider value={liveHeaderStore}>{list}</LiveHeaderContext.Provider>;
 }
 
 export function createNativeStreamStrategy(): StreamStrategy {
