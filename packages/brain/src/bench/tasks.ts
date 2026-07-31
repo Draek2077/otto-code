@@ -1,4 +1,4 @@
-import { verifyPython, verifyToolCall } from "./verify.js";
+import { runUnittestFiles, verifyPython, verifyToolCall } from "./verify.js";
 
 import type { ToolCall, ToolCallExpectation } from "./verify.js";
 
@@ -98,6 +98,13 @@ export interface TaskRunContext {
   execute?: boolean;
   depths?: number[];
   concurrency?: number;
+  /**
+   * The model's reasoning-token budget, so tasks can size their response cap
+   * above it. A thinking model given a max_tokens smaller than its budget spends
+   * the whole allowance reasoning and returns empty content. Null/unset means
+   * unknown (e.g. an arbitrary --endpoint), and tasks fall back to a safe cap.
+   */
+  reasoningBudget?: number | null;
 }
 
 /** What a task returns after running. */
@@ -175,6 +182,80 @@ export const TOOLS: Tool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "edit_file",
+      description:
+        "Apply a targeted edit to a file by replacing an exact string with a new one. " +
+        "Use this instead of write_file when changing part of an existing file.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string" },
+          old_text: { type: "string", description: "Exact text to find and replace" },
+          new_text: { type: "string", description: "Replacement text" },
+        },
+        required: ["path", "old_text", "new_text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_files",
+      description:
+        "Search the contents of files across the project for a string or pattern (like grep). " +
+        "Returns the matching lines and their file paths.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "The text or pattern to search for" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "find_files",
+      description:
+        "Find files by name or glob pattern across the project (like a filename search). " +
+        "Use this to locate files by their name, not their contents.",
+      parameters: {
+        type: "object",
+        properties: {
+          pattern: { type: "string", description: "A filename or glob, e.g. **/*_test.py" },
+        },
+        required: ["pattern"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_file",
+      description: "Delete a file from disk.",
+      parameters: {
+        type: "object",
+        properties: { path: { type: "string" } },
+        required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "make_directory",
+      description: "Create a new directory.",
+      parameters: {
+        type: "object",
+        properties: { path: { type: "string" } },
+        required: ["path"],
+      },
+    },
+  },
 ];
 
 // --------------------------------------------------------------- tool calling
@@ -229,6 +310,66 @@ export const TOOL_CASES: ToolCase[] = [
         /tests?/.test(String(args.path)) ? true : `path was "${String(args.path)}"`,
     },
   },
+  {
+    id: "tools/edit",
+    prompt:
+      "In src/config.py there is a line `TIMEOUT = 30`. Change it to `TIMEOUT = 60`. " +
+      "Edit the file in place, do not rewrite the whole thing. Use your tools.",
+    expect: {
+      name: "edit_file",
+      requiredArgs: ["path", "old_text", "new_text"],
+      check: (args) => {
+        if (!String(args.path).includes("config.py")) return `path was "${String(args.path)}"`;
+        if (!/\b30\b/.test(String(args.old_text))) return "old_text did not target the 30 value";
+        if (!/\b60\b/.test(String(args.new_text))) return "new_text did not contain 60";
+        return true;
+      },
+    },
+  },
+  {
+    id: "tools/search",
+    prompt:
+      "Where in the codebase is the string DATABASE_URL used? Search the file contents. Use your tools.",
+    expect: {
+      name: "search_files",
+      requiredArgs: ["query"],
+      check: (args) =>
+        /DATABASE_URL/.test(String(args.query)) ? true : `query was "${String(args.query)}"`,
+    },
+  },
+  {
+    id: "tools/find",
+    prompt:
+      "Locate every file in the project whose name ends in _test.py. Match by filename, not contents. Use your tools.",
+    expect: {
+      name: "find_files",
+      requiredArgs: ["pattern"],
+      check: (args) =>
+        /_test\.py|test/i.test(String(args.pattern))
+          ? true
+          : `pattern was "${String(args.pattern)}"`,
+    },
+  },
+  {
+    id: "tools/delete",
+    prompt: "Delete the stale file build/output.log from the project. Use your tools.",
+    expect: {
+      name: "delete_file",
+      requiredArgs: ["path"],
+      check: (args) =>
+        /output\.log/.test(String(args.path)) ? true : `path was "${String(args.path)}"`,
+    },
+  },
+  {
+    id: "tools/mkdir",
+    prompt: "Create a new directory named migrations at the project root. Use your tools.",
+    expect: {
+      name: "make_directory",
+      requiredArgs: ["path"],
+      check: (args) =>
+        /migrations/.test(String(args.path)) ? true : `path was "${String(args.path)}"`,
+    },
+  },
 ];
 
 /** Single-shot tool selection and argument correctness. */
@@ -256,9 +397,17 @@ const toolCallingTask: Task = {
       });
     }
     const passed = outcomes.filter((o) => o.ok).length;
+    // Name the cases that failed (and why) so the scorecard says which tool
+    // call the model missed, not just how many. Case ids drop the "tools/"
+    // prefix to stay legible in the fixed-width summary column.
+    const failed = outcomes
+      .filter((o) => !o.ok)
+      .map((o) => `${o.id.replace(/^tools\//, "")} (${o.reason ?? "failed"})`);
     return {
       score: passed / outcomes.length,
-      summary: `${passed}/${outcomes.length} tool calls correct`,
+      summary:
+        `${passed}/${outcomes.length} tool calls correct` +
+        (failed.length ? ` - missed: ${failed.join("; ")}` : ""),
       detail: outcomes,
     };
   },
@@ -267,41 +416,73 @@ const toolCallingTask: Task = {
 // ------------------------------------------------------------ agentic loop
 
 /**
- * A scripted three-step repair loop. The model must read a file, write a fixed
- * version that actually corrects the bug, then run the tests. Tool results are
- * simulated so every model faces exactly the same environment.
+ * A read-fix-verify loop graded by real execution. The model reads a buggy
+ * file, writes (or edits) a fix, then runs the tests - and the harness actually
+ * runs its fix against a HIDDEN unittest suite, feeding the real pass/fail back
+ * so the model can iterate. Scoring is the fraction of hidden tests that pass,
+ * which discriminates: the empty-list crash is obvious, but the equal-values
+ * (zero-span) crash is easy to miss, so weaker models land partway.
+ *
+ * The `read_file` result is simulated (deterministic input), but the verdict is
+ * the interpreter's - never a model grading a model.
  */
-const BUGGY_FILE = `def average(values):
-    total = 0
-    for value in values:
-        total += value
-    return total / len(values)
+const BUGGY_SCALE = `def normalize(values, low=0.0, high=1.0):
+    lo = min(values)
+    hi = max(values)
+    span = hi - lo
+    return [low + (high - low) * (v - lo) / span for v in values]
+`;
+
+const SCALE_TESTS = `import unittest
+from scale import normalize
 
 
-def summarize(values):
-    return {
-        "count": len(values),
-        "average": average(values),
-    }
+class TestNormalize(unittest.TestCase):
+    def test_basic(self):
+        self.assertEqual(normalize([0, 5, 10]), [0.0, 0.5, 1.0])
+
+    def test_custom_range(self):
+        self.assertEqual(normalize([0, 10], 1.0, 3.0), [1.0, 3.0])
+
+    def test_empty(self):
+        self.assertEqual(normalize([]), [])
+
+    def test_all_equal(self):
+        self.assertEqual(normalize([7, 7, 7]), [0.0, 0.0, 0.0])
+
+    def test_single(self):
+        self.assertEqual(normalize([4]), [0.0])
+
+
+if __name__ == "__main__":
+    unittest.main()
 `;
 
 const agenticLoopTask: Task = {
   id: "agentic-loop",
   category: "Agentic loop",
   weight: 3,
-  description: "Completes a read-fix-verify cycle across multiple tool turns",
-  async run({ chat }) {
+  description: "Reads a bug, fixes it, and iterates against a hidden test suite",
+  async run({ chat, execute = true }) {
     const messages: ChatRequestMessage[] = [
       {
         role: "user",
         content:
-          "The function average() in stats.py crashes with ZeroDivisionError when given an " +
-          "empty list. Fix it so an empty list returns 0. Read the file first, then write " +
-          'the fix, then run the tests with "python -m pytest -q". Use your tools for every step.',
+          "scale.py has a function normalize(values, low=0.0, high=1.0) that linearly rescales " +
+          "the numbers in `values` into the range [low, high]. It crashes on some inputs. Make " +
+          "it robust: an empty list must return [], and when every value is equal each result " +
+          "should be the low bound. Read the file first, then write the corrected scale.py, then " +
+          'run the tests with "python -m unittest". Use your tools for every step.',
       },
     ];
 
-    const steps = { read: false, wrote: false, fixCorrect: false, ranTests: false };
+    // The model's current version of scale.py, updated by write_file/edit_file.
+    let currentFile = BUGGY_SCALE;
+    const steps = { read: false, wrote: false, ranTests: false };
+    let bestPassed = 0;
+    let total: number | null = null;
+    let lastOutput = "";
+    let testsExecuted = false;
     let turns = 0;
     const maxTurns = 8;
     let stalled: string | null = null;
@@ -313,16 +494,11 @@ const agenticLoopTask: Task = {
       const calls = message.tool_calls || [];
 
       if (!calls.length) {
-        // No tool call and no content at all is the reasoning-runaway failure.
         if (!message.content) stalled = "produced neither content nor a tool call";
         break;
       }
 
-      messages.push({
-        role: "assistant",
-        content: message.content || null,
-        tool_calls: calls,
-      });
+      messages.push({ role: "assistant", content: message.content || null, tool_calls: calls });
 
       for (const call of calls) {
         const name = call.function?.name || call.name;
@@ -340,25 +516,44 @@ const agenticLoopTask: Task = {
         let toolResult = "ok";
         if (name === "read_file") {
           steps.read = true;
-          toolResult = BUGGY_FILE;
+          toolResult = currentFile;
         } else if (name === "write_file") {
           steps.wrote = true;
-          const content = String(argObj.content || "");
-          // The fix must guard the empty case before dividing.
-          const guards =
-            /if\s+not\s+values|len\(values\)\s*==\s*0|if\s+len\(values\)\s*<\s*1|values\s*==\s*\[\]/.test(
-              content,
-            );
-          const stillDivides = /total\s*\/\s*len\(values\)/.test(content);
-          if (guards && stillDivides) steps.fixCorrect = true;
-          toolResult = "wrote 1 file";
+          currentFile = String(argObj.content || "");
+          toolResult = "wrote scale.py";
+        } else if (name === "edit_file") {
+          // Apply the targeted edit to the file we are tracking.
+          steps.wrote = true;
+          const oldText = String(argObj.old_text ?? "");
+          const newText = String(argObj.new_text ?? "");
+          if (oldText && currentFile.includes(oldText)) {
+            currentFile = currentFile.replace(oldText, newText);
+            toolResult = "edited scale.py";
+          } else {
+            toolResult = "edit failed: old_text not found in scale.py";
+          }
         } else if (name === "run_command") {
           steps.ranTests = true;
-          toolResult = steps.fixCorrect
-            ? "3 passed in 0.04s"
-            : "1 failed, 2 passed - ZeroDivisionError in average()";
+          const run = await runUnittestFiles(
+            { "scale.py": currentFile, "test_scale.py": SCALE_TESTS },
+            "test_scale",
+            { execute },
+          );
+          if (run.ran && run.total) {
+            testsExecuted = true;
+            total = run.total;
+            bestPassed = Math.max(bestPassed, run.passed ?? 0);
+            lastOutput = run.output;
+            toolResult = run.output || `ran ${run.total} tests`;
+          } else if (!run.compiled) {
+            toolResult = `scale.py failed to compile:\n${run.output}`;
+          } else {
+            toolResult = "tests could not be executed in this environment";
+          }
         } else if (name === "list_directory") {
-          toolResult = "stats.py\ntest_stats.py";
+          toolResult = "scale.py\ntest_scale.py";
+        } else if (name === "find_files") {
+          toolResult = "scale.py\ntest_scale.py";
         }
 
         messages.push({
@@ -368,25 +563,28 @@ const agenticLoopTask: Task = {
         });
       }
 
-      if (steps.read && steps.fixCorrect && steps.ranTests) break;
+      if (testsExecuted && total !== null && bestPassed >= total) break;
     }
 
-    // Weighted so that actually fixing the bug dominates.
-    const score =
-      (steps.read ? 0.2 : 0) +
-      (steps.wrote ? 0.2 : 0) +
-      (steps.fixCorrect ? 0.4 : 0) +
-      (steps.ranTests ? 0.2 : 0);
+    const ratio = total ? bestPassed / total : 0;
+    let score: number;
+    if (testsExecuted) {
+      // Correctness dominates; a little credit for driving the loop at all.
+      score =
+        (steps.read ? 0.1 : 0) + (steps.wrote ? 0.1 : 0) + (steps.ranTests ? 0.1 : 0) + ratio * 0.7;
+    } else {
+      // No interpreter (or execute disabled): fall back to process credit only.
+      score = (steps.read ? 0.34 : 0) + (steps.wrote ? 0.33 : 0) + (steps.ranTests ? 0.33 : 0);
+    }
 
-    const done = Object.entries(steps)
-      .filter(([, v]) => v)
-      .map(([k]) => k);
     return {
-      score,
+      score: Math.min(1, score),
       summary: stalled
         ? `stalled: ${stalled}`
-        : `${done.length}/4 steps in ${turns} turns${steps.fixCorrect ? "" : " (fix incorrect)"}`,
-      detail: { steps, turns, stalled },
+        : testsExecuted
+          ? `${bestPassed}/${total} hidden tests pass in ${turns} turns`
+          : `no tests executed (${[steps.read && "read", steps.wrote && "wrote", steps.ranTests && "ran"].filter(Boolean).join(", ") || "no progress"})`,
+      detail: { steps, turns, bestPassed, total, testsExecuted, stalled, lastOutput },
     };
   },
 };
@@ -395,16 +593,27 @@ const agenticLoopTask: Task = {
 
 export const LONG_TASK_PROMPT =
   "Write a complete, working Python implementation of a thread-safe LRU cache with " +
-  "per-entry TTL expiry. Produce these THREE files in full, each in its own fenced " +
-  "code block labelled with its filename:\n\n" +
-  "1. lru.py - class LRUCache(maxsize, ttl) with get(key), put(key, value), " +
-  "delete(key), clear(), __len__, using OrderedDict and threading.RLock. " +
-  "Expired entries must behave as absent. get() returns None for a missing key.\n" +
-  "2. metrics.py - class Metrics tracking hits, misses and evictions with a " +
-  "snapshot() method returning a dict of those three counts.\n" +
-  "3. test_lru.py - a unittest suite with at least 8 test methods covering " +
-  "eviction order, TTL expiry, delete, clear, and concurrent access from threads. " +
-  'It must import from lru and metrics and pass when run with "python -m unittest test_lru".\n\n' +
+  "per-entry TTL expiry and an eviction callback. Produce these THREE files in full, " +
+  "each in its own fenced code block labelled with its filename:\n\n" +
+  "1. lru.py - class LRUCache(maxsize, ttl=None, on_evict=None) built on OrderedDict " +
+  "and threading.RLock, with:\n" +
+  "   - get(key): returns the value and marks it most-recently-used; returns None if " +
+  "missing or expired.\n" +
+  "   - peek(key): returns the value WITHOUT changing recency; None if missing/expired.\n" +
+  "   - put(key, value): inserts/updates; evicts the least-recently-used entry when over " +
+  "maxsize.\n" +
+  "   - delete(key), clear(), __len__ and __contains__ - all treating expired entries as " +
+  "absent.\n" +
+  "   - resize(new_maxsize): change the cap, evicting least-recently-used entries if now " +
+  "over it.\n" +
+  "   - on_evict, when provided, is called with (key, value) for every eviction AND every " +
+  "TTL expiry.\n" +
+  "2. metrics.py - class Metrics tracking hits, misses, evictions and expirations, with " +
+  "snapshot() returning a dict of those four counts and reset() zeroing them.\n" +
+  "3. test_lru.py - a unittest suite with at least 12 test methods covering recency/eviction " +
+  "order, TTL expiry, peek not changing recency, resize eviction, the on_evict callback, " +
+  "delete, clear, __contains__, and concurrent access from threads. It must import from lru " +
+  'and metrics and pass when run with "python -m unittest test_lru".\n\n' +
   "Write every file completely. Do not abbreviate or leave placeholders.";
 
 const longHorizonTask: Task = {
@@ -416,7 +625,9 @@ const longHorizonTask: Task = {
     const started = Date.now();
     const response = await chat({
       messages: [{ role: "user", content: LONG_TASK_PROMPT }],
-      max_tokens: 12288,
+      // Richer spec than before (peek, resize, eviction callback, 12+ tests);
+      // give thinking models room to reason and still emit every file.
+      max_tokens: 16384,
       temperature: 0.4,
     });
     const elapsedSeconds = (Date.now() - started) / 1000;
@@ -515,6 +726,15 @@ interface DepthPoint {
 }
 
 /**
+ * A 400 from llama-server when the prompt is longer than the model's loaded
+ * context. That is a limit of how the model was loaded, not a quality failure,
+ * so the depth task stops probing rather than zeroing the whole category.
+ */
+function isContextLimitError(message: string): boolean {
+  return /exceed|context|n_ctx|too (?:many|long|large)|larger than/i.test(message);
+}
+
+/**
  * Throughput and latency at realistic prompt depth. Agent loops resend large
  * prefixes, so behaviour on an empty context says little about real use.
  */
@@ -529,24 +749,41 @@ const contextDepthTask: Task = {
       "service reliability, retry budgets, idempotency keys and backoff strategy. "
     ).repeat(40);
 
+    // Ascending, so once a depth exceeds the loaded context every deeper probe
+    // would too - we stop there and score the depths that fit.
+    const ordered = [...depths].sort((a, b) => a - b);
     const points: DepthPoint[] = [];
-    for (const targetTokens of depths) {
+    let contextLimited = false;
+    for (const targetTokens of ordered) {
       // ~4 characters per token is close enough to hit a depth band.
       const repeats = Math.max(1, Math.round((targetTokens * 4) / filler.length));
       const padding = filler.repeat(repeats);
 
-      const response = await chat({
-        messages: [
-          {
-            role: "user",
-            content: `Reference material:\n\n${padding}\n\nIn one sentence, what is an idempotency key for?`,
-          },
-        ],
-        // Generous enough that a thinking model still reaches content; this
-        // task measures latency and throughput, not answer quality.
-        max_tokens: 2048,
-        temperature: 0.3,
-      });
+      let response: ChatResponse;
+      try {
+        response = await chat({
+          messages: [
+            {
+              role: "user",
+              content: `Reference material:\n\n${padding}\n\nIn one sentence, what is an idempotency key for?`,
+            },
+          ],
+          // Generous enough that a thinking model still reaches content; this
+          // task measures latency and throughput, not answer quality.
+          max_tokens: 2048,
+          temperature: 0.3,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        // A prompt past the loaded context ends the probe cleanly; score what
+        // fit. Any other error with no measurement yet is a genuine failure.
+        if (isContextLimitError(message)) {
+          contextLimited = true;
+          break;
+        }
+        if (points.length === 0) throw error;
+        break;
+      }
 
       const usage = response.usage || {};
       const timings = response.timings || {};
@@ -564,29 +801,46 @@ const contextDepthTask: Task = {
       });
     }
 
+    // Even the shallowest probe exceeded the context - nothing measurable.
+    if (points.length === 0) {
+      return {
+        score: 0,
+        summary: contextLimited
+          ? "every probe depth exceeds the model's loaded context"
+          : "no depth measurements",
+        detail: points,
+      };
+    }
+
     const answeredAll = points.every((p) => p.answered);
     const first = points[0];
     const last = points[points.length - 1];
     // Generation speed should not collapse as context grows; a large drop
-    // usually means the KV cache spilled out of VRAM.
+    // usually means the KV cache spilled out of VRAM. Retention needs at least
+    // two depths to compare - a single fitting depth says nothing about scaling.
     const firstGen = first?.generatePerSecond;
     const lastGen = last?.generatePerSecond;
-    const retention = firstGen && lastGen ? lastGen / firstGen : null;
+    const retention = points.length >= 2 && firstGen && lastGen ? lastGen / firstGen : null;
 
     let score = answeredAll ? 0.5 : 0.2;
     if (retention !== null) score += Math.max(0, Math.min(0.5, retention * 0.5));
 
+    const depthLabel = last.promptTokens?.toLocaleString() ?? "?";
+    let summary =
+      retention !== null
+        ? `${(retention * 100).toFixed(0)}% of throughput retained at ${depthLabel} tokens`
+        : `held ${depthLabel} tokens`;
+    if (!answeredAll) {
+      summary += points.some((p) => p.reasonedOnly)
+        ? ", some depths returned only reasoning"
+        : ", some depths returned nothing";
+    }
+    if (contextLimited)
+      summary += `, context-limited (${points.length}/${ordered.length} depths fit)`;
+
     return {
       score: Math.min(1, score),
-      summary:
-        retention !== null
-          ? `${(retention * 100).toFixed(0)}% of throughput retained at ${last.promptTokens?.toLocaleString() ?? "?"} tokens` +
-            (answeredAll
-              ? ""
-              : points.some((p) => p.reasonedOnly)
-                ? ", some depths returned only reasoning"
-                : ", some depths returned nothing")
-          : "timings unavailable",
+      summary,
       detail: points,
     };
   },
@@ -610,14 +864,26 @@ const concurrencyTask: Task = {
   category: "Concurrency",
   weight: 2,
   description: "Aggregate tokens/sec with several requests in flight at once",
-  async run({ chat, concurrency = 3 }) {
+  async run({ chat, concurrency = 3, reasoningBudget }) {
     const n = Math.max(1, concurrency);
+    // A thinking model needs room to finish reasoning AND still emit content.
+    // Cap the response at 512 and the whole allowance goes to reasoning, so every
+    // request comes back empty and this task scores 0% no matter the model. Size
+    // the cap above the reasoning budget: the budget (enforced by llama-server's
+    // --reasoning-budget) is then what ends thinking, leaving CONTENT_MARGIN
+    // tokens for the actual answer. Fall back to a safe cap when the budget is
+    // unknown (an arbitrary --endpoint) or thinking is disabled.
+    const CONTENT_MARGIN = 512;
+    const maxTokens =
+      typeof reasoningBudget === "number" && reasoningBudget > 0
+        ? reasoningBudget + CONTENT_MARGIN
+        : 2048;
     const started = Date.now();
     const responses = await Promise.all(
       Array.from({ length: n }, () =>
         chat({
           messages: [{ role: "user", content: THROUGHPUT_PROMPT }],
-          max_tokens: 512,
+          max_tokens: maxTokens,
           temperature: 0.4,
         }).catch((error: Error): ChatResponse => ({ error: error.message })),
       ),
@@ -643,6 +909,7 @@ const concurrencyTask: Task = {
       summary: `${n} at once: ${genPerSecond.toFixed(0)} gen tok/s, ${promptPerSecond.toFixed(0)} prompt tok/s, ${completed}/${n} answered`,
       detail: {
         concurrency: n,
+        maxTokens,
         wallSeconds,
         promptTokens,
         genTokens,

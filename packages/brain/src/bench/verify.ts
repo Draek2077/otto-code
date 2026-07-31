@@ -330,6 +330,84 @@ export async function verifyPython(
   }
 }
 
+/** Parse a `python -m unittest` transcript into passed/total counts. */
+export function parseUnittest(output: string): { total: number | null; passed: number | null } {
+  const ran = output.match(/Ran (\d+) tests?/);
+  const total = ran ? Number(ran[1]) : null;
+  if (total === null) return { total: null, passed: null };
+  if (/\nOK\b/.test(output) || /^OK\b/m.test(output)) return { total, passed: total };
+  const failures = Number(output.match(/failures=(\d+)/)?.[1] || 0);
+  const errors = Number(output.match(/errors=(\d+)/)?.[1] || 0);
+  return { total, passed: Math.max(0, total - failures - errors) };
+}
+
+/** Outcome of running one unittest module over a set of in-memory files. */
+export interface UnitRunResult {
+  ran: boolean;
+  compiled: boolean;
+  passed: number | null;
+  total: number | null;
+  output: string;
+}
+
+/**
+ * Write the given files to a scratch dir, syntax-check them, and run one
+ * unittest module against the real interpreter. The agentic-loop task uses this
+ * to grade a model's fix against a hidden test suite - objective, deterministic,
+ * and never a model grading a model. Returns `ran: false` when Python is absent
+ * or execution is disabled, so the caller can fall back to process credit.
+ */
+export async function runUnittestFiles(
+  files: Record<string, string>,
+  testModule: string,
+  { execute = true, timeoutMs = 60_000 }: { execute?: boolean; timeoutMs?: number } = {},
+): Promise<UnitRunResult> {
+  const result: UnitRunResult = {
+    ran: false,
+    compiled: false,
+    passed: null,
+    total: null,
+    output: "",
+  };
+  const python = findPython();
+  if (!python) return result;
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "otto-brain-agentic-"));
+  try {
+    const pyFiles: string[] = [];
+    for (const [name, content] of Object.entries(files)) {
+      const safe = path.basename(name);
+      fs.writeFileSync(path.join(dir, safe), content, "utf8");
+      if (safe.endsWith(".py")) pyFiles.push(safe);
+    }
+
+    const compileResult = await run(python.exe, ["-m", "py_compile", ...pyFiles], {
+      cwd: dir,
+      timeout: 30_000,
+    });
+    result.compiled = compileResult.ok;
+    if (!compileResult.ok) {
+      result.output = compileResult.stderr.trim().slice(-2000);
+      return result;
+    }
+    if (!execute) return result;
+
+    const testResult = await run(python.exe, ["-m", "unittest", "-v", testModule], {
+      cwd: dir,
+      timeout: timeoutMs,
+    });
+    result.ran = true;
+    result.output = `${testResult.stdout}\n${testResult.stderr}`.trim().slice(-2000);
+    const parsed = parseUnittest(result.output);
+    result.total = parsed.total;
+    result.passed = parsed.passed;
+    if (testResult.timedOut) result.output = `TIMED OUT after ${timeoutMs}ms\n${result.output}`;
+    return result;
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /** A single tool-call the model may emit, in either Anthropic or OpenAI shape. */
 export interface ToolCall {
   id?: string;

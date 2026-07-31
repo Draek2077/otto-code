@@ -90,6 +90,11 @@ export interface RunSuiteOptions {
   depths?: number[];
   only?: string[] | null;
   concurrency?: number;
+  /**
+   * The resident model's reasoning-token budget, forwarded to tasks that must
+   * size their response cap above it (the concurrency throughput task).
+   */
+  reasoningBudget?: number | null;
   timeoutMs?: number;
   archiveId?: string | null;
   onProgress?: (event: ProgressEvent) => void;
@@ -143,6 +148,7 @@ export async function runSuite({
   depths = DEFAULT_DEPTHS,
   only = null,
   concurrency = 3,
+  reasoningBudget = null,
   timeoutMs = 900_000,
   archiveId = null,
   onProgress = () => {},
@@ -185,6 +191,7 @@ export async function runSuite({
         execute: execute && Boolean(python),
         depths,
         concurrency,
+        reasoningBudget,
       });
       const entry: SuiteTaskResult = {
         id: task.id,
@@ -198,7 +205,9 @@ export async function runSuite({
         error: null,
       };
       results.push(entry);
-      onProgress({ phase: "done", ...entry });
+      // `title` is what the progress UI renders; entry carries `category`, not
+      // `title`, so pass it explicitly or the label shows "undefined".
+      onProgress({ phase: "done", title: task.category, ...entry });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const entry: SuiteTaskResult = {
@@ -211,7 +220,7 @@ export async function runSuite({
         error: message,
       };
       results.push(entry);
-      onProgress({ phase: "failed", ...entry });
+      onProgress({ phase: "failed", title: task.category, ...entry });
     }
   }
 
