@@ -394,6 +394,9 @@ export function toObservedSubagentPayload(input: {
   // latest tool). See applySubagentLiveness for the terminal-clearing rule.
   toolUseCount?: number;
   currentTool?: string;
+  // Resolved by the manager (latched, and inherited from the parent row), not
+  // read off `update` — a status-only refresh omits it.
+  backgrounded?: boolean;
   update: ObservedSubagentUpdate;
 }): AgentSnapshotPayload {
   const { update } = input;
@@ -426,6 +429,7 @@ export function toObservedSubagentPayload(input: {
     title,
     labels: { [PARENT_AGENT_ID_LABEL]: input.parentAgentId },
     attend: "observed",
+    ...(input.backgrounded ? { backgrounded: true } : {}),
     requiresAttention,
     attentionReason,
     attentionTimestamp: requiresAttention ? nowIso : null,

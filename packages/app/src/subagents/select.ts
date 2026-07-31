@@ -12,6 +12,7 @@ export interface SubagentRow {
   createdAt: Agent["createdAt"];
   updatedAt: Agent["updatedAt"];
   attend?: Agent["attend"];
+  backgrounded?: Agent["backgrounded"];
   cumulativeTokens?: Agent["cumulativeTokens"];
   cumulativeUsage?: Agent["cumulativeUsage"];
   toolUseCount?: Agent["toolUseCount"];
@@ -39,6 +40,7 @@ function toSubagentRow(agent: Agent): SubagentRow {
     createdAt: agent.createdAt,
     updatedAt: agent.updatedAt,
     attend: agent.attend,
+    backgrounded: agent.backgrounded,
     cumulativeTokens: agent.cumulativeTokens,
     cumulativeUsage: agent.cumulativeUsage,
     toolUseCount: agent.toolUseCount,

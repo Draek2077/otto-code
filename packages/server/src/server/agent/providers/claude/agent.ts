@@ -2323,6 +2323,12 @@ class ClaudeAgentSession implements AgentSession {
   // Workflow runs are backgrounded (they legitimately outlive the turn) —
   // exempt from the turn-end sweep; they settle via their own task_notification.
   private readonly workflowObservedKeys = new Set<string>();
+  // Observed keys whose Task/Agent tool_result has already come back. At that
+  // moment we cannot tell a final report from a launch ack, so nothing is
+  // concluded here — but a row that is STILL live afterwards (a later
+  // task_progress flips it back to "running") can only be a backgrounded run.
+  // That is the evidence isBackgroundedObservedRun reports to the client.
+  private readonly observedKeysWithToolResult = new Set<string>();
   // Synthetic-event sources for Workflow (ultracode) runs: the live SDK stream
   // carries no per-internal-agent identity, so a watcher tails each run's
   // on-disk transcripts and re-emits observed-subagent events per internal
@@ -2936,6 +2942,7 @@ class ClaudeAgentSession implements AgentSession {
     this.turnState = "idle";
     this.sidechainTracker.clear();
     this.workflowObservedKeys.clear();
+    this.observedKeysWithToolResult.clear();
     this.announcedObservedSubagents.clear();
     this.observedKeyByTaskId.clear();
     this.observedSubagentUsage.clear();
@@ -5005,6 +5012,18 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   /**
+   * True when this observed run outlives an interrupt of the current turn: a
+   * Workflow (the CLI always backgrounds those), or a Task/Agent whose
+   * tool_result already came back while the run kept reporting. Mirrors the
+   * condition flushPendingToolCalls uses to decide which rows an interrupt
+   * actually takes down, so the client can stop warning about the rest.
+   * See docs/chat-lifecycle.md.
+   */
+  private isBackgroundedObservedRun(key: string): boolean {
+    return this.workflowObservedKeys.has(key) || this.observedKeysWithToolResult.has(key);
+  }
+
+  /**
    * Map a task_* system message onto the observed subagent's lifecycle. Only
    * subagent tasks qualify — shell/monitor/workflow background tasks are
    * ignored. See projects/observed-subagents/observed-subagents.md.
@@ -5053,6 +5072,7 @@ class ClaudeAgentSession implements AgentSession {
         taskId: input.taskId,
         status: input.status,
         ...(parentKey ? { parentKey } : {}),
+        ...(this.isBackgroundedObservedRun(key) ? { backgrounded: true } : {}),
         ...(input.requiresAttention !== undefined
           ? { requiresAttention: input.requiresAttention }
           : {}),
@@ -6120,6 +6140,11 @@ class ClaudeAgentSession implements AgentSession {
     if (!isClaudeSubagentToolName(toolName) || !this.announcedObservedSubagents.has(toolUseId)) {
       return;
     }
+    // Remember the sighting before settling: if this result was only a launch
+    // ack, the run keeps going and a later task_progress reopens the row — at
+    // which point this is the proof that the row is backgrounded and an
+    // interrupt of the parent turn will not stop it.
+    this.observedKeysWithToolResult.add(toolUseId);
     this.settledObservedSubagents.add(toolUseId);
     this.taskTranscriptWatcher.markSettled(toolUseId, isError ? "error" : "idle");
     this.pendingObservedEvents.push({

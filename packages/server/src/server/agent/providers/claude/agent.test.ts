@@ -2452,6 +2452,89 @@ describe("ClaudeAgentSession context window usage", () => {
     expect(repeat.filter((event) => event.type === "observed_subagent_updated")).toEqual([]);
   });
 
+  // The client's interrupt warning only counts rows an interrupt actually
+  // stops, so the provider has to say which runs outlive the turn.
+  test("marks a workflow run backgrounded from its first frame", async () => {
+    const session = await createSessionForTest();
+
+    const started = session.translateMessageToEvents({
+      type: "system",
+      subtype: "task_started",
+      task_id: "wf-task-1",
+      tool_use_id: "wf-tool-1",
+      task_type: "local_workflow",
+      workflow_name: "review",
+      description: "Workflow run",
+      uuid: "task-started-1",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+
+    expect(started).toContainEqual(
+      expect.objectContaining({
+        type: "observed_subagent_updated",
+        update: expect.objectContaining({ key: "wf-tool-1", backgrounded: true }),
+      }),
+    );
+  });
+
+  test("marks an Agent backgrounded once its tool_result turns out to be a launch ack", async () => {
+    const session = await createSessionForTest();
+
+    // A foreground run reports nothing: interrupting the turn does stop it.
+    const started = session.translateMessageToEvents({
+      type: "system",
+      subtype: "task_started",
+      task_id: "task-1",
+      tool_use_id: "toolu-agent-1",
+      task_type: "local_agent",
+      subagent_type: "code-explorer",
+      description: "Explore the store",
+      uuid: "task-started-2",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+    const startedUpdate = started.find((event) => event.type === "observed_subagent_updated");
+    expect(startedUpdate).toBeDefined();
+    expect(startedUpdate).not.toHaveProperty("update.backgrounded");
+
+    // The tool_result comes back. On its own this is ambiguous — it settles the
+    // row, and a genuinely finished sub-agent stops here.
+    session.translateMessageToEvents({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "toolu-agent-1",
+            tool_name: "Agent",
+            content: "Running in the background. agentId: agent-7",
+          },
+        ],
+      },
+      uuid: "tool-result-1",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+
+    // It keeps reporting, so it was an ack: the run is backgrounded and an
+    // interrupt of the parent turn will not stop it.
+    const progress = session.translateMessageToEvents({
+      type: "system",
+      subtype: "task_progress",
+      task_id: "task-1",
+      tool_use_id: "toolu-agent-1",
+      description: "Still exploring",
+      uuid: "task-progress-1",
+      session_id: "session-1",
+    } as unknown as SDKMessage);
+
+    expect(progress).toContainEqual(
+      expect.objectContaining({
+        type: "observed_subagent_updated",
+        update: expect.objectContaining({ key: "toolu-agent-1", backgrounded: true }),
+      }),
+    );
+  });
+
   test("surfaces a monitor background task started via task_started", async () => {
     const session = await createSessionForTest();
 

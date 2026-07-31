@@ -23,6 +23,7 @@ import {
   session,
   shell,
 } from "electron";
+import { isForwardableOttoShortcutInput } from "./browser-shortcut-forwarding.js";
 import { createDaemonCommandHandlers, registerDaemonManager } from "./daemon/daemon-manager.js";
 import { parsePassthroughCliArgsFromArgv, runPassthroughCli } from "./daemon/cli/passthrough.js";
 import { closeAllTransportSessions } from "./daemon/local-transport.js";
@@ -137,32 +138,6 @@ const APP_NAME = process.env.OTTO_TEST_APP_NAME?.trim() || "Otto";
 const BROWSER_SHORTCUT_EVENT = "otto:event:browser-shortcut";
 const BROWSER_FORWARDED_KEY_EVENT = "otto:event:browser-forwarded-key";
 
-const FORWARDED_OTTO_SHORTCUT_KEYS = new Set([
-  "b",
-  "e",
-  "w",
-  "t",
-  "k",
-  "o",
-  "/",
-  "\\",
-  ",",
-  ".",
-  "1",
-  "2",
-  "3",
-  "4",
-  "5",
-  "6",
-  "7",
-  "8",
-  "9",
-  "enter",
-  "arrowleft",
-  "arrowright",
-  "arrowup",
-  "arrowdown",
-]);
 const DESKTOP_SMOKE_ENV = "OTTO_DESKTOP_SMOKE";
 const DESKTOP_SMOKE_STOP_REQUEST = "otto-smoke-stop";
 app.setName(APP_NAME);
@@ -312,16 +287,6 @@ function isBrowserLocationInput(input: Electron.Input): boolean {
     return false;
   }
   return (input.meta || input.control) && input.key.toLowerCase() === "l";
-}
-
-function isForwardableOttoShortcutInput(input: Electron.Input): boolean {
-  if (input.type !== "keyDown") {
-    return false;
-  }
-  if (!input.meta && !input.control) {
-    return false;
-  }
-  return FORWARDED_OTTO_SHORTCUT_KEYS.has(input.key.toLowerCase());
 }
 
 function showBrowserWebviewContextMenu(

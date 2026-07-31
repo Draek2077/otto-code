@@ -7,6 +7,7 @@ import { LiveElapsed } from "@/components/live-elapsed";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
+import { ComposerTrackSeamShadow } from "@/composer/track-seam-shadow";
 import { COMPOSER_TRACK_LAYERS, ComposerTrackTransition } from "@/composer/track-transition";
 import { isNative } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
@@ -191,6 +192,7 @@ export function BackgroundTasksTrack({
                 ) : null}
               </ScrollView>
             ) : null}
+            <ComposerTrackSeamShadow />
           </View>
         </ChatWidthBounds>
       </View>

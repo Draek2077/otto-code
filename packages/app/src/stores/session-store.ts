@@ -174,6 +174,13 @@ export interface Agent {
    */
   attend?: "attended" | "observed";
   /**
+   * True when this observed sub-agent run outlives an interrupt of its parent's
+   * turn (a backgrounded Task/Agent, a Workflow run, or anything nested under
+   * one). Absent (from older daemons, and on every attended agent) is treated as
+   * foreground. See docs/chat-lifecycle.md.
+   */
+  backgrounded?: boolean;
+  /**
    * Spinner colors from the Agent Personality this agent was spawned from, so
    * its live thinking indicator shows the personality's identity. Absent/null ⇒
    * the theme's default spinner colors. See docs/agent-personalities.md.

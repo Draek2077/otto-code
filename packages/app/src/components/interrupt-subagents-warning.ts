@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { i18n } from "@/i18n/i18next";
 import { useSessionStore } from "@/stores/session-store";
-import { selectSubagentsForParent } from "@/subagents/select";
+import { selectSubagentsForParent, type SubagentRow } from "@/subagents/select";
 import { isSubagentRowRunning } from "@/subagents/track-presentation";
 import { confirmDialogWithCheckbox } from "@/utils/confirm-dialog";
 
@@ -35,10 +35,21 @@ export const useInterruptSubagentsWarningPrefStore = create<InterruptSubagentsWa
 const NO_PENDING_ARCHIVE_IDS: ReadonlySet<string> = new Set();
 
 /**
- * Count of live (non-terminal) provider-managed subagent/workflow rows under a
- * parent agent. These are the `attend === "observed"` rows the subagent track
- * projects; interrupting the parent's turn kills them (the provider teardown
- * settles them all to closed), which is why an interrupting send warns first.
+ * True when interrupting the parent's turn actually stops this row. Only
+ * FOREGROUND provider-managed rows qualify: their work happens inside the
+ * parent's turn, so the provider teardown settles them to closed. A
+ * backgrounded run (a backgrounded Task/Agent, a Workflow, anything nested
+ * under one) keeps going and reports back later, and an attended child is its
+ * own chat entirely. Counting either of those made the confirmation claim it
+ * would stop work it does not touch. See docs/chat-lifecycle.md.
+ */
+function isStoppedByParentInterrupt(row: SubagentRow): boolean {
+  return row.attend === "observed" && !row.backgrounded && isSubagentRowRunning(row.status);
+}
+
+/**
+ * Count of live rows under a parent agent that an interrupting send really does
+ * stop. Zero means the send is not destructive and needs no confirmation.
  */
 export function countLiveObservedSubagents(serverId: string, parentAgentId: string): number {
   const rows = selectSubagentsForParent(
@@ -48,7 +59,7 @@ export function countLiveObservedSubagents(serverId: string, parentAgentId: stri
   );
   let count = 0;
   for (const row of rows) {
-    if (row.attend === "observed" && isSubagentRowRunning(row.status)) {
+    if (isStoppedByParentInterrupt(row)) {
       count += 1;
     }
   }
