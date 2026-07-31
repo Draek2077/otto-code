@@ -32,10 +32,22 @@ import {
   getConnectors,
   isConnectorEnabled,
   isConnectorToolDisabled,
+  type ConnectorCredentialInput,
   type ConnectorTransport,
 } from "./connectors-config";
+import {
+  catalogForAudience,
+  CONNECTOR_CATALOG,
+  groupCatalogByCategory,
+  type ConnectorCatalogEntry,
+} from "./connectors-catalog";
 
 const TRANSPORTS: ConnectorTransport[] = ["stdio", "http", "sse"];
+type CatalogFilter = "all" | "user";
+const CATALOG_FILTERS: { key: CatalogFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "user", label: "User mode" },
+];
 // Stable empty reference so a connector with no fetched tools yet doesn't hand a
 // fresh array literal down as a prop on every render.
 const NO_TOOLS: { name: string; description: string | null }[] = [];
@@ -91,6 +103,83 @@ function TransportButton(props: {
   );
 }
 
+// A catalog filter chip (All / User mode). Stable handler per option.
+function CatalogFilterChip(props: {
+  option: CatalogFilter;
+  label: string;
+  active: boolean;
+  onSelect: (option: CatalogFilter) => void;
+}) {
+  const { option, label, active, onSelect } = props;
+  const handlePress = useCallback(() => onSelect(option), [onSelect, option]);
+  return (
+    <Button
+      onPress={handlePress}
+      variant={active ? "default" : "secondary"}
+      size="sm"
+      testID={`connectors-catalog-filter-${option}`}
+    >
+      {label}
+    </Button>
+  );
+}
+
+// A single catalog entry row in the browse panel. Selecting it pre-fills the
+// add form. A component (not an inline arrow) so its handler is stable.
+function CatalogEntryButton(props: {
+  entry: ConnectorCatalogEntry;
+  onSelect: (entry: ConnectorCatalogEntry) => void;
+}) {
+  const { entry, onSelect } = props;
+  const handlePress = useCallback(() => onSelect(entry), [onSelect, entry]);
+  return (
+    <Button
+      onPress={handlePress}
+      variant="ghost"
+      size="sm"
+      testID={`connectors-catalog-entry-${entry.id}`}
+    >
+      {entry.label}
+    </Button>
+  );
+}
+
+// The browse panel: a filter row (All / User mode) over a category-grouped list
+// of catalog entries. Selecting one calls onSelect with the entry.
+function CatalogBrowser(props: {
+  filter: CatalogFilter;
+  onFilterChange: (filter: CatalogFilter) => void;
+  onSelect: (entry: ConnectorCatalogEntry) => void;
+}) {
+  const { filter, onFilterChange, onSelect } = props;
+  const groups = groupCatalogByCategory(catalogForAudience(filter === "user" ? "user" : undefined));
+  return (
+    <View style={styles.browsePanel} testID="connectors-catalog-browser">
+      <View style={styles.transportRow}>
+        {CATALOG_FILTERS.map((item) => (
+          <CatalogFilterChip
+            key={item.key}
+            option={item.key}
+            label={item.label}
+            active={filter === item.key}
+            onSelect={onFilterChange}
+          />
+        ))}
+      </View>
+      {groups.map((group) => (
+        <View key={group.category} style={styles.catalogGroup}>
+          <Text style={settingsStyles.rowHint}>{group.category}</Text>
+          <View style={styles.catalogGroupItems}>
+            {group.entries.map((entry) => (
+              <CatalogEntryButton key={entry.id} entry={entry} onSelect={onSelect} />
+            ))}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function usePatchMutation(serverId: string) {
   const { patchConfig } = useDaemonConfig(serverId);
   return useMutation({
@@ -104,20 +193,49 @@ function usePatchMutation(serverId: string) {
   });
 }
 
-// The add-connector form: name + transport + the transport's one field. Writes a
-// new connector (enabled) to the registry, then clears the form.
+// The add-connector form: browse the catalog to pre-fill, or enter an MCP server
+// by hand. Writes a new connector (enabled) to the registry, then clears.
 function AddConnectorCard(props: { serverId: string; config: MutableDaemonConfig | null }) {
   const { serverId, config } = props;
   const [name, setName] = useState("");
   const [transport, setTransport] = useState<ConnectorTransport>("stdio");
   const [command, setCommand] = useState("");
   const [url, setUrl] = useState("");
+  const [token, setToken] = useState("");
+  const [selectedCatalogId, setSelectedCatalogId] = useState<string | null>(null);
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [filter, setFilter] = useState<CatalogFilter>("all");
   const mutation = usePatchMutation(serverId);
 
+  const selectedEntry = selectedCatalogId
+    ? (CONNECTOR_CATALOG.find((entry) => entry.id === selectedCatalogId) ?? null)
+    : null;
+  const credentialSlot = selectedEntry?.credential ?? null;
+
   const id = slugify(name);
-  const server = buildConnectorServer({ transport, command, url });
+  const credential: ConnectorCredentialInput | null = credentialSlot
+    ? { token, envVar: credentialSlot.envVar }
+    : null;
+  const server = buildConnectorServer({ transport, command, url, credential });
   const duplicate = id.length > 0 && connectorExists(config, id);
   const canAdd = id.length > 0 && server !== null && !duplicate && !mutation.isPending;
+
+  const toggleBrowse = useCallback(() => setBrowseOpen((prev) => !prev), []);
+
+  const handleSelectEntry = useCallback((entry: ConnectorCatalogEntry) => {
+    setName(entry.label);
+    setTransport(entry.transport);
+    if (entry.transport === "stdio") {
+      setCommand(entry.template);
+      setUrl("");
+    } else {
+      setUrl(entry.template);
+      setCommand("");
+    }
+    setToken("");
+    setSelectedCatalogId(entry.id);
+    setBrowseOpen(false);
+  }, []);
 
   const handleAdd = useCallback(() => {
     if (!server || id.length === 0) {
@@ -129,6 +247,8 @@ function AddConnectorCard(props: { serverId: string; config: MutableDaemonConfig
         setName("");
         setCommand("");
         setUrl("");
+        setToken("");
+        setSelectedCatalogId(null);
       },
     });
   }, [server, id, name, config, mutation]);
@@ -139,11 +259,23 @@ function AddConnectorCard(props: { serverId: string; config: MutableDaemonConfig
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>Add a connector</Text>
           <Text style={settingsStyles.rowHint}>
-            Connect an MCP server. Its tools become available to agents on the openai-compatible
-            provider.
+            Browse the catalog to pre-fill, or enter an MCP server by hand. Its tools become
+            available to agents on the openai-compatible provider.
           </Text>
         </View>
+        <Button
+          onPress={toggleBrowse}
+          variant="secondary"
+          size="sm"
+          testID="connectors-browse-toggle"
+        >
+          {browseOpen ? "Close catalog" : "Browse connectors"}
+        </Button>
       </View>
+
+      {browseOpen ? (
+        <CatalogBrowser filter={filter} onFilterChange={setFilter} onSelect={handleSelectEntry} />
+      ) : null}
 
       <View style={styles.borderedRow}>
         <View style={settingsStyles.rowContent}>
@@ -220,6 +352,31 @@ function AddConnectorCard(props: { serverId: string; config: MutableDaemonConfig
           />
         )}
       </View>
+
+      {credentialSlot ? (
+        <View style={styles.borderedRow}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>{credentialSlot.label}</Text>
+            <Text style={settingsStyles.rowHint}>
+              Stored on the host.{" "}
+              {selectedEntry?.homepage ? `See ${selectedEntry.homepage} for setup.` : ""}
+            </Text>
+          </View>
+          <TextInput
+            value={token}
+            onChangeText={setToken}
+            placeholder="Paste token"
+            placeholderTextColor={styles.placeholderColor.color}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+            style={styles.input}
+            accessibilityLabel={credentialSlot.label}
+            testID="connectors-add-token-input"
+          />
+        </View>
+      ) : null}
 
       <View style={styles.borderedRow}>
         <View style={settingsStyles.rowContent}>
@@ -470,6 +627,22 @@ const styles = StyleSheet.create((theme) => ({
   },
   transportRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing[2],
+  },
+  browsePanel: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    paddingVertical: theme.spacing[3],
+    paddingHorizontal: theme.spacing[4],
+    gap: theme.spacing[3],
+  },
+  catalogGroup: {
+    gap: theme.spacing[2],
+  },
+  catalogGroupItems: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: theme.spacing[2],
   },
   toolsBody: {
