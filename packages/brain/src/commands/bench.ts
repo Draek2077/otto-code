@@ -196,6 +196,7 @@ export async function runBenchCommand(options: BenchOptions, _command: Command):
         depths,
         only,
         concurrency,
+        reasoningBudget: profile.reasoningBudget ?? null,
         archiveId,
         tasks: repoTasks,
         onProgress: progress,

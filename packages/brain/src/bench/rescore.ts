@@ -125,9 +125,14 @@ function rescoreToolCalling(exchanges: TranscriptEntry[]): RescoreOutcome {
   }
   if (!outcomes.length) return { score: null, summary: "no matching cases in archive" };
   const passed = outcomes.filter((o) => o.ok).length;
+  const failed = outcomes
+    .filter((o) => !o.ok)
+    .map((o) => `${o.id.replace(/^tools\//, "")} (${o.reason ?? "failed"})`);
   return {
     score: passed / outcomes.length,
-    summary: `${passed}/${outcomes.length} tool calls correct`,
+    summary:
+      `${passed}/${outcomes.length} tool calls correct` +
+      (failed.length ? ` - missed: ${failed.join("; ")}` : ""),
     detail: outcomes,
   };
 }
