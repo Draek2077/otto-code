@@ -4,14 +4,18 @@ import type { Logger } from "pino";
 
 import type {
   BrainCatalogModel,
+  BrainHfSearchResult,
   BrainInstalledModel,
   BrainJob,
   BrainJobKind,
+  BrainRepoQuant,
   BrainRuntime,
 } from "@otto-code/protocol/messages";
 import {
   BrainCatalogModelSchema,
+  BrainHfSearchResultSchema,
   BrainInstalledModelSchema,
+  BrainRepoQuantSchema,
   BrainRuntimeSchema,
 } from "@otto-code/protocol/messages";
 
@@ -96,6 +100,40 @@ export class BrainOpsManager {
     return this.parseRows(rows, BrainRuntimeSchema);
   }
 
+  /** Search Hugging Face for GGUF models — `otto-brain search <query> --json`. */
+  async searchHf(query: string, limit: number | null): Promise<BrainHfSearchResult[]> {
+    const args = ["search", query, "--json"];
+    if (limit) {
+      args.push("--limit", String(limit));
+    }
+    const rows = await this.runJson(args);
+    if (!Array.isArray(rows)) {
+      return [];
+    }
+    // The CLI renders `gated` as a string for its table; coerce to the protocol's
+    // boolean here rather than leaking the display shape across the wire.
+    const out: BrainHfSearchResult[] = [];
+    for (const row of rows) {
+      const r = row as { repo?: unknown; downloads?: unknown; likes?: unknown; gated?: unknown };
+      const parsed = BrainHfSearchResultSchema.safeParse({
+        repo: typeof r.repo === "string" ? r.repo : "",
+        downloads: typeof r.downloads === "number" ? r.downloads : 0,
+        likes: typeof r.likes === "number" ? r.likes : 0,
+        gated: r.gated === true || r.gated === "yes",
+      });
+      if (parsed.success) {
+        out.push(parsed.data);
+      }
+    }
+    return out;
+  }
+
+  /** Quantizations a repo offers — `otto-brain add <repo> --list-quants --json`. */
+  async repoQuants(repo: string): Promise<BrainRepoQuant[]> {
+    const rows = await this.runJson(["add", repo, "--list-quants", "--json"]);
+    return this.parseRows(rows, BrainRepoQuantSchema);
+  }
+
   // --- Jobs ----------------------------------------------------------------
 
   /** Download a catalog model. */
@@ -105,6 +143,16 @@ export class BrainOpsManager {
       target: model,
       label: `Download ${model}`,
       args: ["pull", model, "--json"],
+    });
+  }
+
+  /** Download a chosen quant of an arbitrary HF repo (a `pull` job). */
+  addModel(repo: string, quant: string): BrainJob {
+    return this.startJob({
+      kind: "pull",
+      target: `${repo}#${quant}`,
+      label: `Add ${repo} (${quant})`,
+      args: ["add", repo, "--quant", quant, "--json"],
     });
   }
 

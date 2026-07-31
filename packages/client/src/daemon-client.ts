@@ -179,11 +179,13 @@ import type { OrchestrationGraph, PromptTemplate, Run } from "@otto-code/protoco
 import type {
   BrainCatalogModel,
   BrainEvals,
+  BrainHfSearchResult,
   BrainHostStatus,
   BrainInstalledModel,
   BrainJob,
   BrainNetworkInfo,
   BrainRemoteConfig,
+  BrainRepoQuant,
   BrainRuntime,
   CueMoment,
   MutableDaemonConfig,
@@ -6143,6 +6145,43 @@ export class DaemonClient {
       requestId,
       message: { type: "brain.models.pull.request", model },
       responseType: "brain.models.pull.response",
+    });
+    return unwrapBrainJob(payload);
+  }
+
+  async brainHfSearch(
+    query: string,
+    limit?: number | null,
+    requestId?: string,
+  ): Promise<BrainHfSearchResult[]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.hf.search.request", query, limit: limit ?? null },
+      responseType: "brain.hf.search.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.results;
+  }
+
+  async brainHfQuants(repo: string, requestId?: string): Promise<BrainRepoQuant[]> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.hf.quants.request", repo },
+      responseType: "brain.hf.quants.response",
+    });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.quants;
+  }
+
+  async brainModelsAdd(repo: string, quant: string, requestId?: string): Promise<BrainJob> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "brain.models.add.request", repo, quant },
+      responseType: "brain.models.add.response",
     });
     return unwrapBrainJob(payload);
   }

@@ -1702,6 +1702,11 @@ export class VoiceAssistantWebSocketServer {
         // verbs (scan/catalog/runtime list) and long jobs (pull/runtime
         // install/calibrate/sweep/bench) by shelling out to the otto-brain CLI.
         brainManage: true,
+        // COMPAT(brainHfSearch): added in v0.7.5, remove gate after 2026-07-30
+        // once daemon floor >= v0.7.5. Daemon serves brain.hf.search /
+        // brain.hf.quants and starts brain.models.add by shelling out to the
+        // otto-brain search/add CLI verbs.
+        brainHfSearch: true,
       },
     };
   }
