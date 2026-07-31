@@ -1,6 +1,17 @@
 import { Screen, box, meter, style, pad, truncate, width, onKeys } from "./screen.js";
 
-import { scanModels } from "../models/index.js";
+import {
+  scanModels,
+  managedModelsDir,
+  diskUsage,
+  totalModelBytes,
+  planDelete,
+  deleteModelFiles,
+  listRepoQuants,
+  downloadRepoFiles,
+  resolveHfToken,
+} from "../models/index.js";
+import type { DiskUsage, QuantOption, RepoQuants } from "../models/index.js";
 import * as profiles from "../config/profiles.js";
 import { loadBrainConfig, loadProfilesStore, saveProfilesStore } from "../config/index.js";
 import * as vram from "../vram.js";
@@ -37,6 +48,27 @@ type ViewMode = "standard" | "logs" | "help" | "bench";
 /** The model a field's callbacks are rendered against. */
 interface FieldContext {
   model: Model | null;
+}
+
+/** A pending destructive action awaiting y/n. */
+interface ConfirmState {
+  kind: "delete";
+  model: Model;
+}
+
+/** One downloadable quant in the picker, with whether it is already on disk. */
+interface PickerQuant extends QuantOption {
+  installed: boolean;
+}
+
+/** The quant-download picker: a modal list of a repo's available quants. */
+interface PickerState {
+  model: Model;
+  repo: string;
+  loading: boolean;
+  options: PickerQuant[];
+  mmproj: RepoQuants["mmproj"];
+  index: number;
 }
 
 /** One editable configuration field. */
@@ -229,6 +261,9 @@ export class App {
   routerServer: http.Server | null;
 
   filterMode = false;
+  confirming: ConfirmState | null = null;
+  picker: PickerState | null = null;
+  disk: DiskUsage | null = null;
   detach?: () => void;
   ticker?: NodeJS.Timeout;
   done?: () => void;
@@ -371,6 +406,7 @@ export class App {
     this.loadRankings();
     this.selected = Math.min(this.selected, Math.max(0, this.visible.length - 1));
     this.syncProfile();
+    void this.refreshDisk();
     this.setStatus(`${this.catalog.length} models found`, "info");
   }
 
@@ -465,6 +501,8 @@ export class App {
   onKey(key: string): void {
     if (this.editing) return this.onEditKey(key);
     if (this.filterMode) return this.onFilterKey(key);
+    if (this.confirming) return this.onConfirmKey(key);
+    if (this.picker) return this.onPickerKey(key);
 
     // Esc always returns to the standard view from logs / help / bench.
     if (key === "escape" && this.viewMode !== "standard") {
@@ -533,6 +571,12 @@ export class App {
         break;
       case "m":
         this.applyMaxContext();
+        break;
+      case "g":
+        void this.beginDownload();
+        break;
+      case "D":
+        this.beginDelete();
         break;
       case "r":
         this.reload();
@@ -696,6 +740,192 @@ export class App {
   }
 
   // ------------------------------------------------------------------ actions
+
+  // -------------------------------------------------------- model management
+
+  /** The Hugging Face repo for a model: catalog match, else the id's first two
+   * path segments (`<publisher>/<repo>/<file>`). */
+  repoOf(model: Model): string | null {
+    if (model.catalogHfRepo) return model.catalogHfRepo;
+    const segments = model.id.split("/");
+    return segments.length >= 3 ? segments.slice(0, 2).join("/") : null;
+  }
+
+  async refreshDisk(): Promise<void> {
+    const usage = await diskUsage(managedModelsDir(loadBrainConfig()));
+    if (usage) {
+      this.disk = usage;
+      this.draw();
+    }
+  }
+
+  beginDelete(): void {
+    const model = this.model;
+    if (!model) return;
+    if (this.supervisor.model?.id === model.id && this.supervisor.state === "ready") {
+      this.setStatus("stop the model before deleting it (x)", "warn");
+      return;
+    }
+    const plan = planDelete(model);
+    this.confirming = { kind: "delete", model };
+    this.setStatus(
+      `delete ${model.displayName} — frees ${vram.formatGiB(plan.bytes)}` +
+        `${plan.includesProjector ? " (incl. projector)" : ""}?   y / n`,
+      "warn",
+    );
+    this.draw();
+  }
+
+  onConfirmKey(key: string): void {
+    const confirming = this.confirming;
+    if (!confirming) return;
+    if (key === "y") {
+      this.confirming = null;
+      void this.guard("delete", async () => {
+        const plan = deleteModelFiles(confirming.model);
+        this.reload();
+        void this.refreshDisk();
+        this.setStatus(
+          `deleted ${confirming.model.displayName} — freed ${vram.formatGiB(plan.bytes)}`,
+          "good",
+        );
+      });
+    } else if (key === "n" || key === "escape") {
+      this.confirming = null;
+      this.setStatus("delete cancelled", "info");
+      this.draw();
+    }
+  }
+
+  async beginDownload(): Promise<void> {
+    const model = this.model;
+    if (!model) return;
+    const repo = this.repoOf(model);
+    if (!repo) {
+      this.setStatus("cannot determine the Hugging Face repo for this model", "warn");
+      return;
+    }
+    this.picker = { model, repo, loading: true, options: [], mmproj: null, index: 0 };
+    this.draw();
+    await this.guard("list quants", async () => {
+      const token = resolveHfToken(loadBrainConfig());
+      const { quants, mmproj } = await listRepoQuants(repo, token);
+      const installed = new Set(
+        this.catalog
+          .filter((m) => this.repoOf(m) === repo && m.quant)
+          .map((m) => (m.quant as string).toUpperCase()),
+      );
+      this.picker = {
+        model,
+        repo,
+        loading: false,
+        options: quants.map((q) => ({ ...q, installed: installed.has(q.quant.toUpperCase()) })),
+        mmproj,
+        index: 0,
+      };
+      this.draw();
+    }).catch(() => {
+      this.picker = null;
+      this.draw();
+    });
+  }
+
+  onPickerKey(key: string): void {
+    const picker = this.picker;
+    if (!picker) return;
+    if (key === "escape" || key === "q") {
+      this.picker = null;
+      this.draw();
+      return;
+    }
+    if (picker.loading || !picker.options.length) return;
+    if (key === "up") {
+      picker.index = Math.max(0, picker.index - 1);
+    } else if (key === "down") {
+      picker.index = Math.min(picker.options.length - 1, picker.index + 1);
+    } else if (key === "enter") {
+      const choice = picker.options[picker.index];
+      this.picker = null;
+      void this.guard("download", () => this.downloadQuant(picker.repo, choice, picker.mmproj));
+      return;
+    }
+    this.draw();
+  }
+
+  async downloadQuant(
+    repo: string,
+    choice: PickerQuant,
+    mmproj: RepoQuants["mmproj"],
+  ): Promise<void> {
+    if (choice.installed) {
+      this.setStatus(`${choice.quant} is already installed`, "info");
+      return;
+    }
+    const token = resolveHfToken(loadBrainConfig());
+    const files = [...choice.files, ...(mmproj ? mmproj.files : [])];
+    const total = choice.sizeBytes + (mmproj?.sizeBytes ?? 0);
+    let lastPct = -1;
+    this.setStatus(`downloading ${choice.quant} (${vram.formatGiB(total)})…`, "info");
+    await downloadRepoFiles({
+      repo,
+      files,
+      destRoot: managedModelsDir(loadBrainConfig()),
+      token,
+      onProgress: (p) => {
+        const pct = total ? Math.floor((p.receivedBytes / total) * 100) : 0;
+        if (pct !== lastPct) {
+          lastPct = pct;
+          this.setStatus(`downloading ${choice.quant}  ${pct}%`, "info");
+        }
+      },
+    });
+    this.reload();
+    void this.refreshDisk();
+    this.setStatus(`downloaded ${choice.quant}`, "good");
+  }
+
+  drawPicker(cols: number): void {
+    const picker = this.picker;
+    if (!picker) return;
+    const inner = Math.min(cols - 4, 72);
+    const rows: string[] = [];
+    if (picker.loading) {
+      rows.push(`${style.grey}fetching available quantizations…${style.reset}`);
+    } else if (!picker.options.length) {
+      rows.push(`${style.yellow}no GGUF quantizations found in this repo${style.reset}`);
+    } else {
+      // Reserve the same 1.5G VRAM the budget does, as a rough "will it fit" hint.
+      const vramBudget = this.gpuInfo ? this.gpuInfo.totalBytes - 1.5 * vram.GIB : null;
+      for (let i = 0; i < picker.options.length; i += 1) {
+        const q = picker.options[i];
+        const marker = i === picker.index ? "▶" : " ";
+        const state = q.installed
+          ? `${style.brightGreen}installed${style.reset}`
+          : vramBudget !== null && q.sizeBytes > vramBudget
+            ? `${style.yellow}heavy for VRAM${style.reset}`
+            : `${style.grey}available${style.reset}`;
+        const plain = `${marker} ${pad(q.quant, 12)} ${vram.formatGiB(q.sizeBytes).padStart(8)}`;
+        rows.push(
+          i === picker.index
+            ? `${style.inverse}${pad(plain, inner)}${style.reset}`
+            : `${plain}  ${state}`,
+        );
+      }
+    }
+    const lines = [this.header(cols), ""];
+    lines.push(
+      ...box({
+        title: `Download quant — ${truncate(picker.repo, Math.max(8, inner - 18))}`,
+        lines: rows,
+        innerWidth: inner,
+        footer: picker.loading
+          ? `${style.grey}esc cancel${style.reset}`
+          : `${style.grey}↑↓ select · enter download · esc cancel${style.reset}`,
+        accent: style.brightCyan,
+      }),
+    );
+    this.renderFitted(lines);
+  }
 
   async guard(label: string, fn: () => Promise<void>): Promise<void> {
     if (this.busy) {
@@ -991,6 +1221,10 @@ export class App {
     }
     if (this.viewMode === "bench") {
       this.drawBench(cols);
+      return;
+    }
+    if (this.picker) {
+      this.drawPicker(cols);
       return;
     }
 
@@ -1477,6 +1711,15 @@ export class App {
       }
     }
 
+    // Disk: total space the models take, and free space where new downloads land.
+    const modelBytes = totalModelBytes(this.catalog);
+    const diskLine =
+      `${style.grey}disk${style.reset} models ${vram.formatGiB(modelBytes)}` +
+      (this.disk
+        ? `  ${vram.formatGiB(this.disk.freeBytes)} free of ${vram.formatGiB(this.disk.totalBytes)}`
+        : "");
+    lines.push(diskLine);
+
     const t = this.telemetry.totals;
     if (t.requests) {
       lines.push(
@@ -1518,6 +1761,9 @@ export class App {
     item("x", "stop the running model");
     item("c", "calibrate — measure real VRAM per token");
     item("w", "sweep — find the best reasoning budget");
+    section("Manage models");
+    item("g", "get a quant — pick Q4/Q5/Q6… to download for this repo");
+    item("D", "delete the selected model (frees disk, asks to confirm)");
     section("Views");
     item("b", "benchmark mode — rank models, run the coding suite");
     item("l", "view the live llama-server log");
@@ -1548,7 +1794,14 @@ export class App {
    */
   keybindings(cols: number): string[] {
     let groups: string[][][];
-    if (this.filterMode) {
+    if (this.confirming) {
+      groups = [
+        [
+          ["y", "confirm delete"],
+          ["n", "cancel"],
+        ],
+      ];
+    } else if (this.filterMode) {
       groups = [
         [
           ["type", "to filter"],
@@ -1606,6 +1859,8 @@ export class App {
           ["m", "max ctx"],
           ["c", "calibrate"],
           ["w", "sweep"],
+          ["g", "get quant"],
+          ["D", "delete"],
           ["b", "benchmarks"],
           ["l", "logs"],
           ["/", "filter"],
