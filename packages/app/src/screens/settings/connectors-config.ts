@@ -83,24 +83,43 @@ export function createSetConnectorToolDisabledPatch(
   return connectorsPatch(next);
 }
 
+// An optional credential to fold into the transport: a stdio server takes it as
+// an env var; an http/sse server takes it as an Authorization: Bearer header.
+export interface ConnectorCredentialInput {
+  token: string;
+  envVar?: string;
+}
+
 // Build the transport descriptor for the add form. stdio splits the command
 // string on whitespace (first token = command, rest = args); http/sse take a URL.
+// A supplied credential is injected per transport.
 export function buildConnectorServer(params: {
   transport: ConnectorTransport;
   command: string;
   url: string;
+  credential?: ConnectorCredentialInput | null;
 }): McpServerConfig | null {
+  const token = params.credential?.token.trim() ?? "";
   if (params.transport === "stdio") {
     const parts = params.command.trim().split(/\s+/).filter(Boolean);
     if (parts.length === 0) {
       return null;
     }
     const [command, ...args] = parts;
-    return args.length > 0 ? { type: "stdio", command, args } : { type: "stdio", command };
+    const envVar = params.credential?.envVar;
+    const env = token.length > 0 && envVar ? { [envVar]: token } : undefined;
+    return {
+      type: "stdio",
+      command,
+      ...(args.length > 0 ? { args } : {}),
+      ...(env ? { env } : {}),
+    };
   }
   const url = params.url.trim();
   if (url.length === 0) {
     return null;
   }
-  return params.transport === "http" ? { type: "http", url } : { type: "sse", url };
+  const headers = token.length > 0 ? { Authorization: `Bearer ${token}` } : undefined;
+  const type = params.transport === "http" ? "http" : "sse";
+  return { type, url, ...(headers ? { headers } : {}) };
 }
