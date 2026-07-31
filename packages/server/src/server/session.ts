@@ -66,6 +66,7 @@ import {
 } from "./session/workspace-scripts/workspace-scripts-service.js";
 import { redactDaemonConfigForClient } from "./daemon-config-store.js";
 import type { DaemonConfigStore } from "./daemon-config-store.js";
+import { listConnectorTools } from "./connectors/connector-tools.js";
 import { getErrorMessage, getErrorMessageOr } from "@otto-code/protocol/error-utils";
 import { getAgentStatusPriority } from "@otto-code/protocol/agent-state-bucket";
 import { getParentAgentIdFromLabels } from "@otto-code/protocol/agent-labels";
@@ -2369,6 +2370,41 @@ export class Session {
           },
         });
         return undefined;
+      case "connectors.list_tools.request": {
+        const listRequestId = msg.requestId;
+        const connectorId = msg.connectorId;
+        const connector = (this.daemonConfigStore.get().connectors ?? []).find(
+          (entry) => entry.id === connectorId,
+        );
+        if (!connector) {
+          this.emit({
+            type: "connectors.list_tools.response",
+            payload: {
+              connectorId,
+              tools: [],
+              error: `No connector with id '${connectorId}'.`,
+              requestId: listRequestId,
+            },
+          });
+          return undefined;
+        }
+        void listConnectorTools(connector, {
+          cwd: process.cwd(),
+          logger: this.sessionLogger,
+        }).then((result) => {
+          this.emit({
+            type: "connectors.list_tools.response",
+            payload: {
+              connectorId,
+              tools: result.tools,
+              error: result.error,
+              requestId: listRequestId,
+            },
+          });
+          return undefined;
+        });
+        return undefined;
+      }
       case "agentPersonalities.get_stats.request": {
         const statsRequestId = msg.requestId;
         // The stats store is async (file-backed); resolve then emit.

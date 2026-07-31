@@ -27,7 +27,11 @@ import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
 import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "./agent-title-limits.js";
 import { AgentProviderSchema } from "./provider-manifest.js";
-import { McpServerConfigSchema, OTTO_TOOL_GROUPS } from "./provider-config.js";
+import {
+  ConnectorConfigSchema,
+  McpServerConfigSchema,
+  OTTO_TOOL_GROUPS,
+} from "./provider-config.js";
 import { TOOL_CALL_ICON_NAMES } from "./agent-types.js";
 import {
   ChatCreateRequestSchema,
@@ -813,6 +817,11 @@ export const MutableDaemonConfigSchema = z
     // defaults OFF and well-formed so a new client parsing an old daemon's config renders
     // the row without ever implying the brain is running.
     brain: MutableBrainConfigSchema.default(DEFAULT_MUTABLE_BRAIN_CONFIG),
+    // Host-wide connector registry (MCP servers surfaced as named, toggle-able
+    // integrations). Gated by server_info features.connectors; defaults to an
+    // empty roster so a new client parsing an old daemon's config still sees a
+    // well-formed section.
+    connectors: z.array(ConnectorConfigSchema).default([]),
   })
   .passthrough();
 
@@ -867,6 +876,10 @@ export const MutableDaemonConfigPatchSchema = z
     // plain `.partial()` here keeps every field's default and resets the whole
     // block on a single-field patch.
     brain: MutableBrainConfigPatchSchema.optional(),
+    // Gated by server_info features.connectors. Replaces the full array
+    // (read-modify-write), matching modelTierOverrides/savedProviderEndpoints, so
+    // enabling/disabling a connector or a tool is a whole-array rewrite.
+    connectors: z.array(ConnectorConfigSchema).optional(),
   })
   .partial()
   .passthrough();
@@ -2655,6 +2668,38 @@ export const SetDaemonConfigRequestMessageSchema = z.object({
   requestId: z.string(),
   config: MutableDaemonConfigPatchSchema,
 });
+
+// Connectors — MCP servers surfaced as named, toggle-able integrations. The
+// registry itself (add/remove/enable/disable a connector or an individual tool)
+// lives in daemon config and is edited via set_daemon_config's `connectors`
+// patch. The one thing config can't answer is what tools a connector actually
+// exposes, which needs a live connect + listTools — that is this RPC. Gated by
+// features.connectors.
+export const ConnectorsListToolsRequestSchema = z.object({
+  type: z.literal("connectors.list_tools.request"),
+  requestId: z.string(),
+  connectorId: z.string(),
+});
+export const ConnectorsListToolsResponseSchema = z.object({
+  type: z.literal("connectors.list_tools.response"),
+  payload: z.object({
+    connectorId: z.string(),
+    tools: z
+      .array(
+        z.object({
+          name: z.string(),
+          description: z.string().nullable().default(null),
+          disabled: z.boolean().default(false),
+        }),
+      )
+      .default([]),
+    // Non-null when the connector could not be reached / enumerated.
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+export type ConnectorsListToolsRequest = z.infer<typeof ConnectorsListToolsRequestSchema>;
+export type ConnectorsListToolsResponse = z.infer<typeof ConnectorsListToolsResponseSchema>;
 
 export const SpeechSettingsGetOptionsRequestSchema = z.object({
   type: z.literal("speech.settings.get_options.request"),
@@ -5647,6 +5692,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   DiagnosticsRequestSchema,
   GetDaemonConfigRequestMessageSchema,
   SetDaemonConfigRequestMessageSchema,
+  ConnectorsListToolsRequestSchema,
   SpeechSettingsGetOptionsRequestSchema,
   SpeechTtsPreviewRequestSchema,
   SpeechTtsSpeakRequestSchema,
@@ -6275,6 +6321,12 @@ export const ServerInfoStatusPayloadSchema = z
         // group regardless, so the client hides the categorized section instead
         // of showing category switches that do nothing.
         mcpToolGroups: z.boolean().optional(),
+        // COMPAT(connectors): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
+        // Set when the daemon persists and honors `connectors` — MCP servers
+        // surfaced as named, toggle-able integrations with per-tool disable,
+        // enforced today on the openai-compat path. Old daemons ignore the
+        // section, so the client hides the Connectors settings entirely.
+        connectors: z.boolean().optional(),
         // COMPAT(agentBehaviorToggles): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         // Set when the daemon persists `agentBehaviors.*` (promptSuggestions,
         // agentProgressSummaries, notifyOnFinishDefault). The reads are wired by
@@ -9756,6 +9808,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   DiagnosticsResponseSchema,
   GetDaemonConfigResponseMessageSchema,
   SetDaemonConfigResponseMessageSchema,
+  ConnectorsListToolsResponseSchema,
   SpeechSettingsGetOptionsResponseSchema,
   SpeechTtsPreviewResponseSchema,
   SpeechTtsSpeakResponseSchema,

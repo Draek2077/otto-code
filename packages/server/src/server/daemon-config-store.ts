@@ -379,15 +379,112 @@ function removeProviders(
   };
 }
 
+/** The agents section after provider overrides and metadata-generation are
+ *  folded in - extracted from the merge so the top-level merge stays under the
+ *  cyclomatic-complexity limit. */
+function resolveNextAgents(params: {
+  persistedAgents: Record<string, unknown> | undefined;
+  providerOverrides: Record<string, ProviderOverride> | undefined;
+  removedProviders: Set<string>;
+  persistedOverrides: Record<string, ProviderOverride> | undefined;
+  shouldPersistMetadataGeneration: boolean;
+  persistedMetadataGeneration: {
+    providers: ReturnType<typeof readMetadataGenerationProviders>;
+    enabled: boolean;
+    preferWriterPersonalities: boolean;
+  };
+  initial: PersistedConfig["agents"];
+}): PersistedConfig["agents"] {
+  const {
+    persistedAgents,
+    providerOverrides,
+    removedProviders,
+    persistedOverrides,
+    shouldPersistMetadataGeneration,
+    persistedMetadataGeneration,
+    initial,
+  } = params;
+  const metadata = shouldPersistMetadataGeneration
+    ? { metadataGeneration: persistedMetadataGeneration }
+    : {};
+
+  if (providerOverrides && Object.keys(providerOverrides).length > 0) {
+    return {
+      ...persistedAgents,
+      providers: providerOverrides,
+      ...metadata,
+    } as PersistedConfig["agents"];
+  }
+  if (removedProviders.size > 0 && persistedOverrides) {
+    // The last provider override was removed — drop the providers key so the
+    // removed entry does not survive in config.json.
+    const { providers: _removed, ...agentsWithoutProviders } = persistedAgents ?? {};
+    return { ...agentsWithoutProviders, ...metadata } as PersistedConfig["agents"];
+  }
+  if (shouldPersistMetadataGeneration) {
+    return {
+      ...persistedAgents,
+      metadataGeneration: persistedMetadataGeneration,
+    } as PersistedConfig["agents"];
+  }
+  return initial;
+}
+
+/** The daemon section of a persisted config. Extracted to keep the top-level
+ *  merge under the cyclomatic-complexity limit; behaviour is unchanged. */
+function buildPersistedDaemonSection(
+  persisted: PersistedConfig,
+  mutable: MutableDaemonConfig,
+): PersistedConfig["daemon"] {
+  return {
+    ...persisted.daemon,
+    mcp: buildPersistedMcpSection({
+      persistedMcp: persisted.daemon?.mcp,
+      injectIntoAgents: mutable.mcp.injectIntoAgents,
+      toolGroups: readMcpToolGroups(mutable),
+    }),
+    browserTools: {
+      ...persisted.daemon?.browserTools,
+      enabled: readBrowserToolsEnabled(mutable),
+    },
+    agentBehaviors: {
+      ...persisted.daemon?.agentBehaviors,
+      ...readAgentBehaviors(mutable),
+    },
+    autoArchiveAfterMerge: mutable.autoArchiveAfterMerge,
+    hideMergeIntoBaseAction: mutable.hideMergeIntoBaseAction,
+    attachmentImageMaxAgeDays: mutable.attachmentImageMaxAgeDays,
+    attachmentImageMaxTotalMb: mutable.attachmentImageMaxTotalMb,
+    // Only `enabled` persists. The caps are daemon policy, not a user preference, and writing
+    // them to disk would freeze today's defaults into every existing install.
+    dotnetSolutionManagement: {
+      ...persisted.daemon?.dotnetSolutionManagement,
+      enabled: mutable.dotnetSolutionManagement.enabled,
+    },
+    enableTerminalAgentHooks: mutable.enableTerminalAgentHooks,
+    appendSystemPrompt: mutable.appendSystemPrompt,
+    ...(mutable.terminalProfiles !== undefined
+      ? { terminalProfiles: mutable.terminalProfiles }
+      : {}),
+    // The local AI host projection round-trips to disk. The brain's own
+    // config.json remains the source of truth; BrainManager.applySettings
+    // writes the mapped fields through to it on every change.
+    brain: buildPersistedBrainSection(persisted, mutable),
+    // Connector registry persists under daemon.connectors. Written only once
+    // it has content or already existed on disk, so an empty registry never
+    // adds noise to every existing install's config.json.
+    ...(mutable.connectors.length > 0 || persisted.daemon?.connectors !== undefined
+      ? { connectors: mutable.connectors }
+      : {}),
+  } as PersistedConfig["daemon"];
+}
+
 function mergeMutableConfigIntoPersistedConfig(params: {
   persisted: PersistedConfig;
   mutable: MutableDaemonConfig;
   removedProviderIds: string[];
 }): PersistedConfig {
   const { persisted, mutable, removedProviderIds } = params;
-  const browserToolsEnabled = readBrowserToolsEnabled(mutable);
-  const mcpToolGroups = readMcpToolGroups(mutable);
-  const agentBehaviors = readAgentBehaviors(mutable);
   const metadataGenerationProviders = readMetadataGenerationProviders(mutable);
   const metadataGenerationFlags = readMetadataGenerationFlags(mutable);
   const agentPersonalities = readAgentPersonalities(mutable);
@@ -419,31 +516,15 @@ function mergeMutableConfigIntoPersistedConfig(params: {
     flags: metadataGenerationFlags,
   });
 
-  let nextAgents = persisted.agents as PersistedConfig["agents"];
-  if (providerOverrides && Object.keys(providerOverrides).length > 0) {
-    nextAgents = {
-      ...persistedAgents,
-      providers: providerOverrides,
-      ...(shouldPersistMetadataGeneration
-        ? { metadataGeneration: persistedMetadataGeneration }
-        : {}),
-    } as PersistedConfig["agents"];
-  } else if (removedProviders.size > 0 && persistedOverrides) {
-    // The last provider override was removed — drop the providers key so the
-    // removed entry does not survive in config.json.
-    const { providers: _removed, ...agentsWithoutProviders } = persistedAgents ?? {};
-    nextAgents = {
-      ...agentsWithoutProviders,
-      ...(shouldPersistMetadataGeneration
-        ? { metadataGeneration: persistedMetadataGeneration }
-        : {}),
-    } as PersistedConfig["agents"];
-  } else if (shouldPersistMetadataGeneration) {
-    nextAgents = {
-      ...persistedAgents,
-      metadataGeneration: persistedMetadataGeneration,
-    } as PersistedConfig["agents"];
-  }
+  let nextAgents = resolveNextAgents({
+    persistedAgents,
+    providerOverrides,
+    removedProviders,
+    persistedOverrides,
+    shouldPersistMetadataGeneration,
+    persistedMetadataGeneration,
+    initial: persisted.agents as PersistedConfig["agents"],
+  });
 
   // Fold the personality roster into agents.agentPersonalities.
   nextAgents = withAgentPersonalities({
@@ -466,41 +547,7 @@ function mergeMutableConfigIntoPersistedConfig(params: {
 
   return {
     ...persisted,
-    daemon: {
-      ...persisted.daemon,
-      mcp: buildPersistedMcpSection({
-        persistedMcp: persisted.daemon?.mcp,
-        injectIntoAgents: mutable.mcp.injectIntoAgents,
-        toolGroups: mcpToolGroups,
-      }),
-      browserTools: {
-        ...persisted.daemon?.browserTools,
-        enabled: browserToolsEnabled,
-      },
-      agentBehaviors: {
-        ...persisted.daemon?.agentBehaviors,
-        ...agentBehaviors,
-      },
-      autoArchiveAfterMerge: mutable.autoArchiveAfterMerge,
-      hideMergeIntoBaseAction: mutable.hideMergeIntoBaseAction,
-      attachmentImageMaxAgeDays: mutable.attachmentImageMaxAgeDays,
-      attachmentImageMaxTotalMb: mutable.attachmentImageMaxTotalMb,
-      // Only `enabled` persists. The caps are daemon policy, not a user preference, and writing
-      // them to disk would freeze today's defaults into every existing install.
-      dotnetSolutionManagement: {
-        ...persisted.daemon?.dotnetSolutionManagement,
-        enabled: mutable.dotnetSolutionManagement.enabled,
-      },
-      enableTerminalAgentHooks: mutable.enableTerminalAgentHooks,
-      appendSystemPrompt: mutable.appendSystemPrompt,
-      ...(mutable.terminalProfiles !== undefined
-        ? { terminalProfiles: mutable.terminalProfiles }
-        : {}),
-      // The local AI host projection round-trips to disk. The brain's own
-      // config.json remains the source of truth; BrainManager.applySettings
-      // writes the mapped fields through to it on every change.
-      brain: buildPersistedBrainSection(persisted, mutable),
-    },
+    daemon: buildPersistedDaemonSection(persisted, mutable),
     agents: nextAgents,
     features: mergeSpeechIntoPersistedFeatures(persisted, mutable.speech),
     providers: mergeSpeechOpenAiIntoPersistedProviders(persisted, mutable.speech),

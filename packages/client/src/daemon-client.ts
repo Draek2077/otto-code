@@ -187,6 +187,7 @@ import type {
   BrainRemoteConfig,
   BrainRepoQuant,
   BrainRuntime,
+  ConnectorsListToolsResponse,
   CueMoment,
   MutableDaemonConfig,
   MutableDaemonConfigPatch,
@@ -5984,6 +5985,23 @@ export class DaemonClient {
         config,
       },
       responseType: "set_daemon_config_response",
+    });
+  }
+
+  // Enumerate a connector's tools live (connect + listTools), each flagged with
+  // its configured disabled state. Registry edits (add/enable/disable a
+  // connector or a tool) go through patchDaemonConfig's `connectors` instead.
+  async connectorsListTools(
+    connectorId: string,
+    requestId?: string,
+  ): Promise<ConnectorsListToolsResponse["payload"]> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "connectors.list_tools.request",
+        connectorId,
+      },
+      responseType: "connectors.list_tools.response",
     });
   }
 

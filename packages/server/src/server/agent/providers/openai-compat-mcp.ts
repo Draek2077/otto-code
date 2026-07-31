@@ -4,6 +4,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
+import type { ConnectorConfig } from "@otto-code/protocol/provider-config";
 import type { McpServerConfig } from "../agent-sdk-types.js";
 import type { ManagedProcessRegistry } from "../../managed-processes/managed-processes.js";
 import { createExternalProcessEnv } from "../../otto-env.js";
@@ -108,6 +109,31 @@ function flattenContentText(content: unknown): string {
     .join("\n");
 }
 
+/**
+ * Resolve the daemon's connector registry into the two inputs the MCP manager
+ * consumes: a servers map (enabled connectors only, keyed by connector id) and
+ * the per-connector disabled-tool sets. A connector with `enabled === false` is
+ * dropped entirely here, so it never spawns a process or advertises a tool —
+ * global on/off and per-tool disable both collapse into what the manager sees.
+ */
+export function resolveEnabledConnectors(
+  connectors: readonly ConnectorConfig[] | null | undefined,
+): {
+  servers: Record<string, McpServerConfig>;
+  disabledTools: Record<string, ReadonlySet<string>>;
+} {
+  const servers: Record<string, McpServerConfig> = {};
+  const disabledTools: Record<string, ReadonlySet<string>> = {};
+  for (const connector of connectors ?? []) {
+    if (connector.enabled === false) continue;
+    servers[connector.id] = connector.server;
+    if (connector.disabledTools && connector.disabledTools.length > 0) {
+      disabledTools[connector.id] = new Set(connector.disabledTools);
+    }
+  }
+  return { servers, disabledTools };
+}
+
 export interface OpenAICompatMcpManagerOptions {
   servers: Record<string, McpServerConfig>;
   providerId: string;
@@ -115,6 +141,13 @@ export interface OpenAICompatMcpManagerOptions {
   logger?: Logger;
   managedProcesses?: ManagedProcessRegistry | null;
   connectTimeoutMs?: number;
+  /**
+   * Per-connector set of tool names (as the server reports them) to withhold
+   * from the model, keyed by server name. A tool listed here is never entered
+   * into the binding map, so it is never told to the model and cannot be called
+   * — the same total-enforcement property the snapshot already gives.
+   */
+  disabledTools?: Record<string, ReadonlySet<string>>;
 }
 
 export class OpenAICompatMcpManager {
@@ -124,6 +157,8 @@ export class OpenAICompatMcpManager {
   private readonly logger?: Logger;
   private readonly managedProcesses: ManagedProcessRegistry | null;
   private readonly connectTimeoutMs: number;
+  /** Server name → disabled tool names; withheld from the model at snapshot. */
+  private readonly disabledTools: Record<string, ReadonlySet<string>>;
   /** Every configured header/env value, replaced with *** in outgoing text. */
   private readonly secrets: string[];
 
@@ -140,6 +175,7 @@ export class OpenAICompatMcpManager {
     this.logger = options.logger;
     this.managedProcesses = options.managedProcesses ?? null;
     this.connectTimeoutMs = options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
+    this.disabledTools = options.disabledTools ?? {};
     this.secrets = collectSecrets(options.servers);
   }
 
@@ -261,7 +297,11 @@ export class OpenAICompatMcpManager {
 
   private async snapshotTools(server: ConnectedServer, usedNames: Set<string>): Promise<void> {
     const listing = await server.client.listTools(undefined, { timeout: LIST_TIMEOUT_MS });
+    const disabled = this.disabledTools[server.name];
     for (const tool of listing.tools) {
+      // A per-connector disabled tool never enters the binding map, so it is
+      // never advertised to the model and cannot be invoked.
+      if (disabled?.has(tool.name)) continue;
       const prefix = `mcp_${sanitizeNamePart(server.name)}_${sanitizeNamePart(tool.name)}`;
       const modelName = buildNamespacedName(prefix, usedNames);
       this.toolBindings.set(modelName, {

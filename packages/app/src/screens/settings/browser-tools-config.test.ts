@@ -32,6 +32,7 @@ function makeConfig(browserToolsEnabled = false): MutableDaemonConfig {
     agentPersonalities: { personalities: [] },
     agentTeams: { teams: [] },
     modelTierOverrides: [],
+    connectors: [],
     autoArchiveAfterMerge: false,
     hideMergeIntoBaseAction: false,
     attachmentImageMaxAgeDays: 30,

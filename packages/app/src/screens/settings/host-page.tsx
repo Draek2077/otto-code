@@ -82,6 +82,7 @@ import {
   TodoReminderRows,
   useTodoRemindersFeature,
 } from "@/screens/settings/otto-tools-section";
+import { ConnectorsSection } from "@/screens/settings/connectors-section";
 import { CodeIntelligenceSection } from "./code-intelligence-section";
 import { StorageSection } from "./storage-section";
 import { restartDaemonFromSettings } from "./daemon-restart";
@@ -354,6 +355,7 @@ export function HostToolsPage({ serverId }: { serverId: string }) {
         <>
           <OttoToolsSection serverId={serverId} />
           <BrowserToolsSection serverId={serverId} />
+          <ConnectorsSection serverId={serverId} />
         </>
       ) : (
         <View style={EMPTY_CARD_STYLE}>

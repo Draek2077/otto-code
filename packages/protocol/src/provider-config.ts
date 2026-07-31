@@ -116,6 +116,51 @@ export const McpServerConfigSchema = z.discriminatedUnion("type", [
 ]);
 
 /**
+ * Per-workspace state for a connector, keyed by workspace cwd in
+ * ConnectorConfig.workspaces. Phase 1 leaves this inert (the daemon does not
+ * yet read it); it exists in the schema now so per-workspace scope can land
+ * later without a config migration.
+ */
+export const ConnectorWorkspaceStateSchema = z.object({
+  /** false = this connector is switched off for this workspace. Absent = enabled. */
+  enabled: z.boolean().optional(),
+});
+
+/**
+ * A Connector is an MCP server surfaced to users as a first-class, named,
+ * enable/disable-able integration. Mechanism is plain MCP (it embeds a
+ * McpServerConfig transport descriptor unchanged); what makes it a "connector"
+ * is the lifecycle state layered on top: a global on/off, an individually
+ * disabled-tools list, and (later) per-workspace activation. Every state field
+ * is optional so an absent value reads as "enabled / nothing disabled", keeping
+ * old configs and old daemons behaving exactly as before.
+ */
+export const ConnectorConfigSchema = z.object({
+  /** Stable key; doubles as the MCP server name used by the tool namespacer. */
+  id: z.string().min(1),
+  /** Human-facing name shown in the Connectors UI. Falls back to id when absent. */
+  label: z.string().optional(),
+  /** The MCP transport this connector connects over. */
+  server: McpServerConfigSchema,
+  /** Global on/off. Absent = enabled. false = never connected, no tools exposed. */
+  enabled: z.boolean().optional(),
+  /** Tool names (unqualified, as the server reports them) withheld from the model. */
+  disabledTools: z.array(z.string()).optional(),
+  /** Per-workspace activation keyed by workspace cwd. Phase 2; inert today. */
+  workspaces: z.record(z.string(), ConnectorWorkspaceStateSchema).optional(),
+  /** Display ordering in the UI; lower sorts first. */
+  order: z.number().optional(),
+});
+
+/**
+ * The daemon-wide connector registry, persisted at daemon.connectors in
+ * $OTTO_HOME/config.json. Host-owned like every other secret-bearing capability.
+ */
+export const ConnectorsConfigSchema = z.object({
+  connectors: z.array(ConnectorConfigSchema).optional(),
+});
+
+/**
  * How natively-hosted providers (openai-compat) gate MCP tool calls in
  * acceptEdits mode. "always-ask" (the default) prompts for every MCP tool;
  * "trust-read-only" auto-approves tools whose MCP readOnlyHint annotation is
@@ -278,6 +323,9 @@ export const AgentProviderRuntimeSettingsMapSchema = z
   });
 
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
+export type ConnectorWorkspaceState = z.infer<typeof ConnectorWorkspaceStateSchema>;
+export type ConnectorConfig = z.infer<typeof ConnectorConfigSchema>;
+export type ConnectorsConfig = z.infer<typeof ConnectorsConfigSchema>;
 export type McpToolPermissionMode = (typeof MCP_TOOL_PERMISSION_MODES)[number];
 export type ProviderCommand = z.infer<typeof ProviderCommandSchema>;
 export type ProviderRuntimeSettings = z.infer<typeof ProviderRuntimeSettingsSchema>;

@@ -28,6 +28,7 @@ import type {
   ProviderProfileModel,
   ProviderRuntimeSettings,
 } from "./provider-launch-config.js";
+import type { ConnectorConfig } from "@otto-code/protocol/provider-config";
 import { ClaudeAgentClient } from "./providers/claude/agent.js";
 import { CodexAppServerAgentClient } from "./providers/codex-app-server-agent.js";
 import { CopilotACPAgentClient } from "./providers/copilot-acp-agent.js";
@@ -79,6 +80,12 @@ export interface BuildProviderRegistryOptions {
   providerOverrides?: Record<string, ProviderOverride>;
   workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">;
   managedProcesses?: ManagedProcessRegistry;
+  /**
+   * Daemon-wide connector registry, injected into providers whose MCP tool loop
+   * the daemon owns (openai-compat). Provider-neutral in config; only the
+   * openai-compat path consumes it today.
+   */
+  connectors?: readonly ConnectorConfig[];
   isDev?: boolean;
 }
 
@@ -614,7 +621,7 @@ function buildResolvedBuiltinProviders(
 function addDerivedProviders(
   resolvedProviders: Map<string, ResolvedProvider>,
   providerOverrides: Record<string, ProviderOverride>,
-  options: Pick<BuildProviderRegistryOptions, "managedProcesses">,
+  options: Pick<BuildProviderRegistryOptions, "managedProcesses" | "connectors">,
 ): void {
   for (const [providerId, override] of Object.entries(providerOverrides)) {
     if (resolvedProviders.has(providerId) || BUILTIN_PROVIDER_IDS.includes(providerId)) {
@@ -722,7 +729,7 @@ function addDerivedProviders(
 function resolveOpenAICompatProvider(
   providerId: string,
   override: ProviderOverride,
-  options: Pick<BuildProviderRegistryOptions, "managedProcesses">,
+  options: Pick<BuildProviderRegistryOptions, "managedProcesses" | "connectors">,
 ): ResolvedProvider {
   const label = override.label ?? providerId;
   return {
@@ -752,6 +759,7 @@ function resolveOpenAICompatProvider(
         env: override.env,
         ottoToolGroups: override.ottoToolGroups,
         mcpServers: override.mcpServers,
+        connectors: options.connectors,
         mcpToolPermissions: override.mcpToolPermissions,
         compaction: override.compaction,
         maxToolRounds: override.maxToolRounds,
@@ -777,6 +785,7 @@ export function buildProviderRegistry(
   );
   addDerivedProviders(resolvedProviders, providerOverrides, {
     managedProcesses: options?.managedProcesses,
+    connectors: options?.connectors,
   });
 
   return Object.fromEntries(

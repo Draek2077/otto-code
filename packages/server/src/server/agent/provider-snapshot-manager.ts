@@ -22,7 +22,10 @@ import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
 } from "./provider-launch-config.js";
-import type { ProviderCompactionConfig } from "@otto-code/protocol/provider-config";
+import type {
+  ConnectorConfig,
+  ProviderCompactionConfig,
+} from "@otto-code/protocol/provider-config";
 import type { ModelTier } from "@otto-code/protocol/agent-types";
 import type { ModelTierOverride } from "@otto-code/protocol/messages";
 import { resolveModelTier } from "@otto-code/protocol/model-tiers";
@@ -82,6 +85,8 @@ export interface ProviderSnapshotManagerOptions {
   diagnosticTimeoutMs?: number;
   /** User per-model tier tags, applied when stamping model tiers at ingest. */
   modelTierOverrides?: ModelTierOverride[];
+  /** Daemon-wide connector registry, injected into the openai-compat provider. */
+  connectors?: readonly ConnectorConfig[];
 }
 
 // provider → (modelId → tier), the lookup form of the stored override array.
@@ -217,10 +222,12 @@ export class ProviderSnapshotManager {
   private providerRegistry: Record<AgentProvider, ProviderDefinition>;
   private providerClients: Record<AgentProvider, AgentClient>;
   private modelTierOverrides: ModelTierOverrideIndex;
+  private connectors: readonly ConnectorConfig[] | undefined;
 
   constructor(options: ProviderSnapshotManagerOptions) {
     this.logger = options.logger;
     this.modelTierOverrides = buildModelTierOverrideIndex(options.modelTierOverrides);
+    this.connectors = options.connectors;
     this.workspaceGitService = options.workspaceGitService;
     this.managedProcesses = options.managedProcesses;
     this.isDev = options.isDev === true;
@@ -453,6 +460,23 @@ export class ProviderSnapshotManager {
   }
 
   /**
+   * Apply the daemon-wide connector registry (from daemon config). Rebuilds the
+   * provider registry so the openai-compat client picks up the new set on its
+   * next spawn — a connector toggle takes effect without a daemon restart.
+   */
+  setConnectors(connectors: readonly ConnectorConfig[] | undefined): AgentManagerProviderState {
+    this.connectors = connectors;
+    this.providerRegistry = this.buildRegistry();
+    this.providerClients = { ...this.extraClients } as Record<AgentProvider, AgentClient>;
+    for (const cwd of this.snapshots.keys()) {
+      this.providerLoads.delete(cwd);
+      this.snapshots.set(cwd, this.reconcileSnapshotForRegistry(cwd));
+      this.emitChange(cwd);
+    }
+    return this.getAgentManagerProviderState();
+  }
+
+  /**
    * Apply the user's per-model tier tags (from daemon config). Re-stamps the
    * tiers of every already-loaded model so a settings edit hot-reloads without
    * a provider refresh, then emits so connected clients re-render.
@@ -525,6 +549,7 @@ export class ProviderSnapshotManager {
       providerOverrides: this.providerOverrides,
       workspaceGitService: this.workspaceGitService,
       managedProcesses: this.managedProcesses,
+      connectors: this.connectors,
       isDev: this.isDev,
     });
 

@@ -10,7 +10,7 @@ import {
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.js";
 import { TerminalProfileSchema } from "@otto-code/protocol/messages";
-import { OTTO_TOOL_GROUPS } from "@otto-code/protocol/provider-config";
+import { ConnectorConfigSchema, OTTO_TOOL_GROUPS } from "@otto-code/protocol/provider-config";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
 export const LogFormatSchema = z.enum(["pretty", "json"]);
@@ -466,6 +466,11 @@ export const PersistedConfigSchema = z
           })
           .passthrough()
           .optional(),
+        // Host-wide connector registry: MCP servers surfaced as named,
+        // toggle-able integrations with per-tool disable. Secret-bearing
+        // (transport headers/env), so it persists here in $OTTO_HOME/config.json,
+        // never in a repo's otto.json.
+        connectors: z.array(ConnectorConfigSchema).optional(),
       })
       .strict()
       .transform(({ allowedHosts, ...daemon }) => {
