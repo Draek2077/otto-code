@@ -85,6 +85,7 @@ interface BenchRunOptions {
   host: string;
   port: number;
   concurrency: number;
+  reasoningBudget: number | null;
   archiveId: string;
   onProgress: (event: BenchProgressEvent) => void;
 }
@@ -649,6 +650,18 @@ export class App {
       this.writeField(field.key, Math.max(field.min ?? 0, Math.min(max, value)));
     }
     this.persist();
+
+    // Changing the KV cache types invalidates any prior calibration (bytes/token
+    // is keyed by them). Nudge a recalibrate, but only if there is a stored
+    // measurement to invalidate - no point prompting a model never calibrated.
+    if (
+      (field.key === "cacheTypeK" || field.key === "cacheTypeV") &&
+      this.model &&
+      this.profile &&
+      profiles.hasStaleCalibration(this.store, this.model, this.profile)
+    ) {
+      this.setStatus("cache types changed - press c to recalibrate for an accurate budget", "warn");
+    }
   }
 
   activateField(): void {
@@ -757,9 +770,34 @@ export class App {
       profiles.putCalibration(this.store, model, profile, measurement);
       saveProfilesStore(this.store);
       const ratio = measurement.theoreticalRatio;
-      this.setStatus(
+      const measuredMsg =
         `measured ${(measurement.kvBytesPerToken / 1024).toFixed(1)} KB/token` +
-          (ratio ? ` (formula overestimated ${ratio.toFixed(1)}x)` : ""),
+        (ratio ? ` (formula overestimated ${ratio.toFixed(1)}x)` : "");
+
+      // Auto-apply the fresh budget. A measured KV cost is almost always far
+      // below the theoretical estimate, so the context that was safe before is
+      // now needlessly low and leaves VRAM idle - raise it to the measured max.
+      const info = this.gpuInfo;
+      const before = profile.contextSize;
+      let appliedTo: number | null = null;
+      if (info) {
+        const max = vram.maxContextThatFits({
+          model,
+          profile,
+          calibration: this.calibration,
+          totalVramBytes: info.totalBytes,
+        });
+        if (max && max !== before) {
+          profile.contextSize = max;
+          this.persist();
+          appliedTo = max;
+        }
+      }
+
+      this.setStatus(
+        appliedTo !== null
+          ? `${measuredMsg} - context ${before.toLocaleString()} -> ${appliedTo.toLocaleString()}`
+          : measuredMsg,
         "good",
       );
     });
@@ -879,6 +917,7 @@ export class App {
           host: this.supervisor.host,
           port: this.supervisor.internalPort,
           concurrency: Math.max(1, profile?.parallelSlots || 3),
+          reasoningBudget: profile?.reasoningBudget ?? null,
           archiveId,
           onProgress: (p) => {
             if (p.phase === "start") this.benchProgress.push(`${p.title}…`);
@@ -1202,9 +1241,11 @@ export class App {
       const marker = running ? `${style.brightGreen}●${style.reset}` : " ";
       const quant = m.quant ? m.quant.padEnd(7) : "-".padEnd(7);
       const size = vram.formatGiB(m.sizeBytes).padStart(6);
+      const isReasoning = Boolean(m.metadata?.reasoning || m.thinking);
       const tags = [
         m.mmprojPath ? `${style.cyan}V${style.reset}` : " ",
         m.features.mtp ? `${style.magenta}M${style.reset}` : " ",
+        isReasoning ? `${style.green}R${style.reset}` : " ",
       ].join("");
 
       // Benchmark score badge: how this model ranks by our latest measurement.
@@ -1227,7 +1268,7 @@ export class App {
     const title = this.filterMode
       ? `Models  ${style.brightYellow}/${this.filter}${style.reset}`
       : `Models ${style.grey}(${list.length})${style.reset}`;
-    const footer = `${style.grey}%=benchmark  V=vision  M=MTP${style.reset}`;
+    const footer = `${style.grey}%=benchmark  V=vision  M=MTP  R=reasoning${style.reset}`;
     return box({
       title,
       lines,
@@ -1344,10 +1385,23 @@ export class App {
       ` + overhead ${vram.formatGiB(b.overheadBytes)}` +
       ` = ${style.bold}${vram.formatGiB(b.totalBytes)}${style.reset}`;
 
-    const sourceNote =
-      b.source === "measured"
-        ? `${style.grey}kv ${(b.kvBytesPerToken / 1024).toFixed(1)} KB/token (measured)${style.reset}`
-        : `${style.yellow}kv ${(b.kvBytesPerToken / 1024).toFixed(1)} KB/token (theoretical - press c to measure)${style.reset}`;
+    const kvLabel = `kv ${(b.kvBytesPerToken / 1024).toFixed(1)} KB/token`;
+    const cal = this.calibration;
+    let sourceNote: string;
+    if (b.source === "measured") {
+      sourceNote = cal?.inherited
+        ? `${style.yellow}${kvLabel} (measured on a relative - press c to calibrate this model)${style.reset}`
+        : `${style.grey}${kvLabel} (measured)${style.reset}`;
+    } else {
+      const stale =
+        this.model && this.profile
+          ? profiles.hasStaleCalibration(this.store, this.model, this.profile)
+          : false;
+      const hint = stale
+        ? "cache types changed - press c to recalibrate"
+        : "press c to calibrate; usually unlocks more context";
+      sourceNote = `${style.yellow}${kvLabel} (theoretical - ${hint})${style.reset}`;
+    }
 
     return box({
       title: "VRAM budget",
