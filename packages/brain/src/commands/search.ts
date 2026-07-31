@@ -11,27 +11,47 @@ import {
   downloadRepoFiles,
   listRepoQuants,
   managedModelsDir,
+  repoOfModel,
   resolveHfToken,
+  scanModels,
   searchModels,
 } from "../models/index.js";
 import { formatBytes } from "../models/scan.js";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
 import { CommandError } from "../output/types.js";
 
+/** What is already on disk, so search + quant listings can mark installed rows. */
+function installedIndex(config: ReturnType<typeof loadBrainConfig>): {
+  repos: Set<string>;
+  quants: Set<string>;
+} {
+  const repos = new Set<string>();
+  const quants = new Set<string>();
+  for (const model of scanModels(config)) {
+    const repo = repoOfModel(model);
+    if (!repo) continue;
+    repos.add(repo.toLowerCase());
+    if (model.quant) quants.add(`${repo.toLowerCase()} ${model.quant.toUpperCase()}`);
+  }
+  return { repos, quants };
+}
+
 export interface SearchRow {
   repo: string;
   downloads: number;
   likes: number;
   gated: string;
+  installed: boolean;
 }
 
 const searchSchema: OutputSchema<SearchRow> = {
   idField: "repo",
   columns: [
-    { header: "REPO", field: "repo", width: 52 },
+    { header: "REPO", field: "repo", width: 48 },
     { header: "DOWNLOADS", field: "downloads", width: 11, align: "right" },
     { header: "LIKES", field: "likes", width: 6, align: "right" },
     { header: "GATED", field: "gated", width: 6 },
+    { header: "HAVE", field: (r) => (r.installed ? "yes" : ""), width: 5 },
   ],
 };
 
@@ -47,9 +67,11 @@ export async function runSearchCommand(
   options: { limit?: string },
   _command: Command,
 ): Promise<AnyCommandResult<SearchRow>> {
-  const token = resolveHfToken(loadBrainConfig());
+  const config = loadBrainConfig();
+  const token = resolveHfToken(config);
   const limit = Math.max(1, Math.min(100, Number(options.limit) || 25));
   const results = await searchModels(query, { limit, token });
+  const { repos } = installedIndex(config);
   return {
     type: "list",
     data: results.map((r) => ({
@@ -57,6 +79,7 @@ export async function runSearchCommand(
       downloads: r.downloads,
       likes: r.likes,
       gated: r.gated ? "yes" : "",
+      installed: repos.has(r.repo.toLowerCase()),
     })),
     schema: searchSchema,
   };
@@ -74,6 +97,7 @@ interface AddQuantRow {
   size: string;
   sizeBytes: number;
   files: number;
+  installed: boolean;
 }
 
 const addSchema: OutputSchema<AddRow> = {
@@ -92,6 +116,7 @@ const addQuantSchema: OutputSchema<AddQuantRow> = {
     { header: "QUANT", field: "quant", width: 12 },
     { header: "SIZE", field: "size", width: 10, align: "right" },
     { header: "FILES", field: "files", width: 6, align: "right" },
+    { header: "HAVE", field: (r) => (r.installed ? "yes" : ""), width: 5 },
   ],
 };
 
@@ -113,6 +138,7 @@ export async function runAddCommand(
   const { quants, mmproj } = await listRepoQuants(repo, token);
 
   if (options.listQuants || !options.quant) {
+    const { quants: installedQuants } = installedIndex(config);
     const listing: AnyCommandResult<AddQuantRow> = {
       type: "list",
       data: quants.map((q) => ({
@@ -120,6 +146,7 @@ export async function runAddCommand(
         size: formatBytes(q.sizeBytes),
         sizeBytes: q.sizeBytes,
         files: q.files.length,
+        installed: installedQuants.has(`${repo.toLowerCase()} ${q.quant.toUpperCase()}`),
       })),
       schema: addQuantSchema,
     };

@@ -5,9 +5,22 @@
  * shards and the shared vision projector the way the local scanner does.
  */
 import type { BrainConfig } from "../config/schema.js";
+import type { Model } from "../types.js";
 import { detectQuant, isProjectorFile } from "./scan.js";
 
 const HF_BASE = "https://huggingface.co";
+
+/**
+ * The Hugging Face repo a scanned model came from: its catalog match, else the
+ * first two segments of its id (`<publisher>/<repo>/<file>`). Null when the layout
+ * does not name a repo. Shared so the TUI, the CLI, and the daemon all agree on
+ * which local models belong to a given repo.
+ */
+export function repoOfModel(model: Model): string | null {
+  if (model.catalogHfRepo) return model.catalogHfRepo;
+  const segments = model.id.split("/");
+  return segments.length >= 3 ? segments.slice(0, 2).join("/") : null;
+}
 
 /** Resolve an HF token: env first (runtime override), then persisted config. */
 export function resolveHfToken(

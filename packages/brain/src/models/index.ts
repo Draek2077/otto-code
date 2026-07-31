@@ -23,6 +23,7 @@ export {
   resolveHfToken,
   listRepoQuants,
   searchModels,
+  repoOfModel,
   quantRank,
   type QuantOption,
   type RepoQuants,
