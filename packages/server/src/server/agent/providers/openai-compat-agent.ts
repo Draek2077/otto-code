@@ -365,8 +365,10 @@ type ChatMessage =
    * revertConversation can find its truncation point. Stripped from the wire
    * payload before requests — strict servers reject unknown message fields.
    *
-   * images carries attached pictures (user role only); when present, the wire
-   * message uses OpenAI's content-array vision format instead of a bare string.
+   * images carries attached pictures; on a user message these are the user's
+   * attachments, on a tool message they are image content parts a tool returned
+   * (e.g. browser_screenshot). When present, the wire message uses OpenAI's
+   * content-array vision format instead of a bare string.
    */
   | {
       role: "system" | "user";
@@ -380,7 +382,13 @@ type ChatMessage =
   // reasoning APIs don't want their own thinking echoed back as input, and
   // strict servers reject unknown message fields). Stripped in toWireMessage.
   | { role: "assistant"; content: string; tool_calls?: ToolCallPayload[]; reasoning?: string }
-  | { role: "tool"; content: string; tool_call_id: string };
+  | { role: "tool"; content: string; tool_call_id: string; images?: PromptImage[] };
+
+/** A tool call's reply: text always, plus any images to feed back as vision parts. */
+interface ToolCallOutcome {
+  text: string;
+  images?: PromptImage[];
+}
 
 /** Mirror of the opencode provider's parser: `/name rest` → command + args. */
 function parseSlashCommandInput(text: string): { commandName: string; args: string | null } | null {
@@ -426,6 +434,27 @@ function toWireMessage(message: ChatMessage): Record<string, unknown> {
       content: message.content,
       ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
     };
+  }
+  if (message.role === "tool" && message.images && message.images.length > 0) {
+    // A tool that returned image content parts (e.g. browser_screenshot) rides
+    // back as OpenAI vision content parts, exactly like a user-attached image —
+    // a screenshot the model can actually see instead of a dropped part. The
+    // text summary stays its own part; the image is never also inlined as text,
+    // so we don't pay for the same pixels twice (docs/preview.md token economy).
+    const parts: Array<Record<string, unknown>> = [];
+    if (message.content) {
+      parts.push({ type: "text", text: message.content });
+    }
+    for (const image of message.images) {
+      parts.push({
+        type: "image_url",
+        image_url: { url: `data:${image.mimeType};base64,${image.data}` },
+      });
+    }
+    return { role: message.role, content: parts, tool_call_id: message.tool_call_id };
+  }
+  if (message.role === "tool") {
+    return { role: message.role, content: message.content, tool_call_id: message.tool_call_id };
   }
   return message;
 }
@@ -814,6 +843,51 @@ function parseModelContextLengths(json: unknown): Map<string, number> {
     }
   }
   return lengths;
+}
+
+/** Vision signal a /models listing can carry per model. */
+type ModelVisionCapability = "vision" | "text" | "unknown";
+
+/**
+ * Text fed back in place of a dropped tool-result image when the loaded model
+ * has no vision capability. It both explains the omission and steers the model
+ * toward the text-first browser tools — the token economy in docs/preview.md
+ * says never send a screenshot a model can't read, and browser_snapshot /
+ * browser_page_text carry the same information as text.
+ */
+const NON_VISION_IMAGE_PLACEHOLDER =
+  "[Image output omitted: the active model has no vision capability, so a screenshot cannot be read. Use browser_snapshot (accessibility tree) or browser_page_text (readable page text) to verify the page instead of browser_screenshot.]";
+
+/**
+ * Parse a per-model vision-capability signal from a /models listing. Both the
+ * brain (`describeModel` in packages/brain/src/service/router.ts) and LM
+ * Studio's native /api/v0/models listing tag each entry `type: "vlm" | "llm"`
+ * — the one machine-readable vision signal available before a request is sent.
+ * A standard OpenAI /v1/models listing carries no such field, so those models
+ * stay absent from the map and resolve to "unknown"; the caller then sends the
+ * image anyway (see resolveModelVisionCapability) so a hosted OpenAI-compatible
+ * vision endpoint keeps working.
+ */
+function parseModelVisionCapabilities(json: unknown): Map<string, ModelVisionCapability> {
+  const capabilities = new Map<string, ModelVisionCapability>();
+  if (!json || typeof json !== "object") {
+    return capabilities;
+  }
+  const data = (json as Record<string, unknown>).data;
+  if (!Array.isArray(data)) {
+    return capabilities;
+  }
+  for (const entry of data) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    if (typeof record.id !== "string") continue;
+    if (record.type === "vlm") {
+      capabilities.set(record.id, "vision");
+    } else if (record.type === "llm") {
+      capabilities.set(record.id, "text");
+    }
+  }
+  return capabilities;
 }
 
 /**
@@ -1304,6 +1378,26 @@ function ottoResultToText(result: OttoToolResult): string {
   return result.isError ? "Tool failed" : "Done.";
 }
 
+/**
+ * Extract image content parts from an Otto tool result as prompt images.
+ * browser_screenshot and friends return MCP-style `{ type: "image", data,
+ * mimeType }` parts (see browserToolImageContent in browser-tools/tools.ts);
+ * ottoResultToText drops them, so this recovers them for the vision path.
+ */
+function ottoResultImages(result: OttoToolResult): PromptImage[] {
+  const images: PromptImage[] = [];
+  for (const part of result.content) {
+    if (
+      part.type === "image" &&
+      typeof part.data === "string" &&
+      typeof part.mimeType === "string"
+    ) {
+      images.push({ data: part.data, mimeType: part.mimeType });
+    }
+  }
+  return images;
+}
+
 export class OpenAICompatAgentSession implements AgentSession {
   readonly provider: AgentProvider;
   readonly capabilities = CAPABILITIES;
@@ -1362,6 +1456,10 @@ export class OpenAICompatAgentSession implements AgentSession {
   private contextWindowMaxTokens: number | null = null;
   /** Model the cached context window was resolved for; re-probe after a model switch. */
   private contextWindowProbedModel: string | null = null;
+  /** Resolved vision capability for the active model; re-probe after a model switch. */
+  private modelVisionCapability: ModelVisionCapability = "unknown";
+  /** Model the cached vision capability was resolved for. */
+  private visionProbedModel: string | null = null;
   /** Exact context size (prompt + completion tokens) measured by the server on the last round. */
   private lastContextTokens: number | null = null;
   /** Session config stored so the system prompt can be rebuilt after compaction. */
@@ -2077,17 +2175,23 @@ export class OpenAICompatAgentSession implements AgentSession {
 
   /**
    * Drop base64 `image_url` parts from all but the most recent
-   * PRUNE_PROTECT_RECENT_IMAGE_MESSAGES image-bearing user messages. Without
-   * this, every attached screenshot is re-uploaded on every subsequent round —
-   * base64 images dwarf the text payload. The stripped message keeps a text
-   * marker so the model still knows an image was there; the recent images the
-   * live work depends on are untouched. Mirrors pruneToolOutputs' recency rule.
+   * PRUNE_PROTECT_RECENT_IMAGE_MESSAGES image-bearing messages — user
+   * attachments and tool-result images (e.g. browser_screenshot) alike, under
+   * one shared recency budget. Without this, every attached or captured
+   * screenshot is re-uploaded on every subsequent round — base64 images dwarf
+   * the text payload. The stripped message keeps a text marker so the model
+   * still knows an image was there; the recent images the live work depends on
+   * are untouched. Mirrors pruneToolOutputs' recency rule.
    */
   private pruneAgedImages(): void {
     let imageMessagesSeen = 0;
     for (let index = this.messages.length - 1; index >= 0; index -= 1) {
       const message = this.messages[index]!;
-      if (message.role !== "user" || !message.images || message.images.length === 0) {
+      if (
+        (message.role !== "user" && message.role !== "tool") ||
+        !message.images ||
+        message.images.length === 0
+      ) {
         continue;
       }
       imageMessagesSeen += 1;
@@ -2620,8 +2724,15 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         if (turn.abort.signal.aborted) {
           throw new Error("Interrupted");
         }
-        const resultContent = await this.executeToolCall(turn, call);
-        this.messages.push({ role: "tool", content: resultContent, tool_call_id: call.id });
+        const resultOutcome = await this.executeToolCall(turn, call);
+        this.messages.push({
+          role: "tool",
+          content: resultOutcome.text,
+          tool_call_id: call.id,
+          ...(resultOutcome.images && resultOutcome.images.length > 0
+            ? { images: resultOutcome.images }
+            : {}),
+        });
       }
       if (turn.abort.signal.aborted) {
         throw new Error("Interrupted");
@@ -2659,11 +2770,14 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     }
   }
 
-  private async executeToolCall(turn: ActiveTurn, call: AccumulatedToolCall): Promise<string> {
+  private async executeToolCall(
+    turn: ActiveTurn,
+    call: AccumulatedToolCall,
+  ): Promise<ToolCallOutcome> {
     const spec = findCompatToolSpec(call.name);
     const parsed = this.parseToolCallArgs(turn, call);
     if ("error" in parsed) {
-      return parsed.error;
+      return { text: parsed.error };
     }
     const args = parsed.args;
 
@@ -2681,14 +2795,14 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       // never collide with (or shadow) builtins or Otto tools.
       const mcpBinding = this.mcpManager?.resolveTool(call.name);
       if (mcpBinding) {
-        return this.executeMcpToolCall(turn, call, args, mcpBinding);
+        return { text: await this.executeMcpToolCall(turn, call, args, mcpBinding) };
       }
     }
 
     const previewDetail = buildCompatToolPreviewDetail(call.name, args, this.cwd);
     if (!spec || !this.availableToolSpecs().some((candidate) => candidate.name === spec.name)) {
       this.emitToolItem(turn, call, "failed", previewDetail, `Tool ${call.name} is not available`);
-      return `Error: tool ${call.name} is not available in the current mode`;
+      return { text: `Error: tool ${call.name} is not available in the current mode` };
     }
 
     if (this.toolNeedsApproval(spec, args)) {
@@ -2705,9 +2819,11 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
           turn.abort.abort();
         }
         const message = response.message?.trim();
-        return message
-          ? `The user declined this tool call: ${message}`
-          : "The user declined this tool call.";
+        return {
+          text: message
+            ? `The user declined this tool call: ${message}`
+            : "The user declined this tool call.",
+        };
       }
     }
 
@@ -2720,7 +2836,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     });
     if (turn.abort.signal.aborted) {
       this.emitToolItem(turn, call, "canceled", outcome.detail, null);
-      return outcome.output;
+      return { text: outcome.output };
     }
     this.emitToolItem(
       turn,
@@ -2729,7 +2845,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       outcome.detail,
       outcome.isError ? outcome.output : null,
     );
-    return outcome.output;
+    return { text: outcome.output };
   }
 
   /**
@@ -2816,10 +2932,10 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     call: AccumulatedToolCall,
     args: Record<string, unknown>,
     tool: OttoToolDefinition,
-  ): Promise<string> {
+  ): Promise<ToolCallOutcome> {
     const catalog = this.ottoTools;
     if (!catalog) {
-      return `Error: tool ${call.name} is not available`;
+      return { text: `Error: tool ${call.name} is not available` };
     }
     const detail: ToolCallDetail = { type: "unknown", input: args, output: null };
     if (this.ottoToolNeedsApproval(tool.name)) {
@@ -2839,18 +2955,21 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
           turn.abort.abort();
         }
         const message = response.message?.trim();
-        return message
-          ? `The user declined this tool call: ${message}`
-          : "The user declined this tool call.";
+        return {
+          text: message
+            ? `The user declined this tool call: ${message}`
+            : "The user declined this tool call.",
+        };
       }
     }
     this.emitToolItem(turn, call, "running", { type: "unknown", input: args, output: null }, null);
     try {
       const result = await catalog.executeTool(tool.name, args, { signal: turn.abort.signal });
       const output = ottoResultToText(result);
+      const images = ottoResultImages(result);
       if (turn.abort.signal.aborted) {
         this.emitToolItem(turn, call, "canceled", { type: "unknown", input: args, output }, null);
-        return output;
+        return { text: output };
       }
       this.emitToolItem(
         turn,
@@ -2859,7 +2978,7 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         { type: "unknown", input: args, output },
         result.isError ? output : null,
       );
-      return output;
+      return await this.buildOttoToolOutcome(output, images);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.emitToolItem(
@@ -2869,8 +2988,33 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
         { type: "unknown", input: args, output: null },
         message,
       );
-      return `Error: ${message}`;
+      return { text: `Error: ${message}` };
     }
+  }
+
+  /**
+   * Decide how a tool result's images ride back to the model. A vision-capable
+   * model (brain/LM Studio "vlm", or a capability we couldn't determine and so
+   * optimistically treat as vision) gets the images as OpenAI image_url parts. A
+   * model the server reports as text-only can't see them, so we drop the pixels
+   * — token economy, docs/preview.md — and append a placeholder steering it to
+   * the text-first browser tools instead of leaving it a screenshot it can't
+   * read.
+   */
+  private async buildOttoToolOutcome(
+    text: string,
+    images: PromptImage[],
+  ): Promise<ToolCallOutcome> {
+    if (images.length === 0) {
+      return { text };
+    }
+    const capability = await this.resolveModelVisionCapability();
+    if (capability === "text") {
+      return {
+        text: text ? `${text}\n\n${NON_VISION_IMAGE_PLACEHOLDER}` : NON_VISION_IMAGE_PLACEHOLDER,
+      };
+    }
+    return { text, images };
   }
 
   private emitToolItem(
@@ -3279,6 +3423,56 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     }
     this.contextWindowMaxTokens = resolved;
     this.contextWindowProbedModel = model;
+    return resolved;
+  }
+
+  /**
+   * Best-effort vision-capability discovery for the active model, cached per
+   * model. Reads the `type: "vlm" | "llm"` tag the brain and LM Studio's native
+   * listing attach to each model (see parseModelVisionCapabilities), probing the
+   * same standard and native /models endpoints as the context-window discovery.
+   * A server that exposes no such tag (a plain OpenAI /v1/models) resolves to
+   * "unknown" — the caller then sends the image anyway, so a hosted vision
+   * endpoint that can't be introspected keeps working rather than losing every
+   * screenshot to a false negative.
+   */
+  private async resolveModelVisionCapability(): Promise<ModelVisionCapability> {
+    const model = this.modelId;
+    if (!model) {
+      return "unknown";
+    }
+    if (this.visionProbedModel === model) {
+      return this.modelVisionCapability;
+    }
+    let endpoint: ResolvedEndpoint;
+    try {
+      endpoint = resolveEndpoint(this.env, this.label);
+    } catch {
+      return "unknown";
+    }
+    const candidateUrls = [
+      `${endpoint.baseUrl}/models`,
+      `${endpoint.baseUrl.replace(/\/v1$/u, "")}/api/v0/models`,
+    ];
+    let resolved: ModelVisionCapability = "unknown";
+    for (const url of candidateUrls) {
+      try {
+        const response = await fetch(url, {
+          headers: buildHeaders(endpoint),
+          signal: AbortSignal.timeout(DEFAULT_CATALOG_TIMEOUT_MS),
+        });
+        if (!response.ok) continue;
+        const match = parseModelVisionCapabilities(await response.json()).get(model);
+        if (match !== undefined) {
+          resolved = match;
+          break;
+        }
+      } catch {
+        // Discovery is optional; unreachable probe endpoints are expected.
+      }
+    }
+    this.modelVisionCapability = resolved;
+    this.visionProbedModel = model;
     return resolved;
   }
 

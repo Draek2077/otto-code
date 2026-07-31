@@ -10,6 +10,7 @@ import { createSpeechCommand } from "./commands/speech/index.js";
 import { createTerminalCommand } from "./commands/terminal/index.js";
 import { createWorktreeCommand } from "./commands/worktree/index.js";
 import { createHooksCommand } from "./commands/hooks.js";
+import { createBrainCommand } from "@otto-code/brain";
 import { startCommand as daemonStartCommand } from "./commands/daemon/start.js";
 import { runStatusCommand as runDaemonStatusCommand } from "./commands/daemon/status.js";
 import { runRestartCommand as runDaemonRestartCommand } from "./commands/daemon/restart.js";
@@ -169,6 +170,9 @@ export function createCli(): Command {
 
   // Worktree commands
   program.addCommand(createWorktreeCommand());
+
+  // Local AI (otto-brain)
+  program.addCommand(createBrainCommand());
 
   return program;
 }
