@@ -234,6 +234,8 @@ interface GgufSummary {
   expertCount: number | null;
   eosTokenId: number | null;
   isProjector: boolean;
+  /** Chat template exposes a thinking/reasoning channel. */
+  reasoning: boolean;
 }
 
 /**
@@ -255,6 +257,16 @@ export function summarize(file: string): GgufSummary {
 
   let kvHeads: unknown = get("attention.head_count_kv");
   if (Array.isArray(kvHeads)) kvHeads = Math.max(...(kvHeads as number[]));
+
+  // A reasoning model advertises its thinking channel in the chat template: a
+  // `<think>` block, a `reasoning_content` field, or an `enable_thinking`
+  // toggle. Detecting it here (rather than from the filename or the catalog)
+  // means any local model is flagged, matching LM Studio's green-brain marker.
+  const chatTemplate =
+    typeof meta["tokenizer.chat_template"] === "string"
+      ? (meta["tokenizer.chat_template"] as string)
+      : "";
+  const reasoning = /<think>|<\/think>|reasoning_content|enable_thinking/i.test(chatTemplate);
 
   return {
     file,
@@ -278,5 +290,6 @@ export function summarize(file: string): GgufSummary {
     expertCount: (get("expert_count") ?? null) as number | null,
     eosTokenId: (meta["tokenizer.ggml.eos_token_id"] ?? null) as number | null,
     isProjector: Boolean(meta["clip.has_vision_encoder"] || arch === "clip"),
+    reasoning,
   };
 }
