@@ -497,6 +497,28 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     credential: { label: "StackAdapt API token", envVar: "STACKADAPT_API_TOKEN" },
     homepage: "https://www.stackadapt.com",
   },
+  {
+    id: "linkedin-ads",
+    label: "LinkedIn Ads",
+    category: "Advertising",
+    audience: "user",
+    description: "LinkedIn ad campaigns and performance.",
+    transport: "stdio",
+    template: STDIO("linkedin-ads"),
+    credential: { label: "LinkedIn access token", envVar: "LINKEDIN_ACCESS_TOKEN" },
+    homepage: "https://business.linkedin.com/marketing-solutions/ads",
+  },
+  {
+    id: "microsoft-ads",
+    label: "Microsoft Advertising (Bing Ads)",
+    category: "Advertising",
+    audience: "user",
+    description: "Bing and Microsoft Search Network ad campaigns and performance.",
+    transport: "stdio",
+    template: STDIO("microsoft-ads"),
+    credential: { label: "Microsoft access token", envVar: "MS_ACCESS_TOKEN" },
+    homepage: "https://ads.microsoft.com",
+  },
   // Social
   {
     id: "meta-business",
@@ -508,6 +530,17 @@ export const CONNECTOR_CATALOG: ConnectorCatalogEntry[] = [
     template: STDIO("meta-business"),
     credential: { label: "Meta access token", envVar: "META_ACCESS_TOKEN" },
     homepage: "https://business.facebook.com",
+  },
+  {
+    id: "linkedin-pages",
+    label: "LinkedIn Pages",
+    category: "Social",
+    audience: "user",
+    description: "Organic LinkedIn company pages, posts, and follower analytics.",
+    transport: "stdio",
+    template: STDIO("linkedin-pages"),
+    credential: { label: "LinkedIn access token", envVar: "LINKEDIN_ACCESS_TOKEN" },
+    homepage: "https://www.linkedin.com/company",
   },
 
   // ---- Developer only ------------------------------------------------------
