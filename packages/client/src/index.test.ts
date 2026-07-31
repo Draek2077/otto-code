@@ -695,6 +695,7 @@ const DAEMON_CONFIG_SCHEMA_DEFAULTS = {
   agentTeams: { teams: [] },
   modelTierOverrides: [],
   savedProviderEndpoints: [],
+  connectors: [],
   appendSystemPrompt: "",
   // Both host-scoped code sections default to a well-formed shape so a new
   // client parsing an old daemon's config still renders the Daemon → Code
