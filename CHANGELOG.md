@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.7.5 - 2026-07-31
+
+### Added
+
+- Otto Brain, a host for local GGUF models that stays off until you turn it on
+- Otto Brain downloads its own llama.cpp runtime and models, so nothing else needs installing
+- Otto Brain measures what a model really costs in VRAM and refuses to start one that will not fit
+- Otto Brain caps the thinking budget on reasoning models, which otherwise spend a whole turn reasoning and return nothing
+- A curated catalog of 16 local models sized for 12-32GB of VRAM
+- Search Hugging Face and add any model repo from Brain settings
+- Repos and quantizations you already have are flagged as you browse Hugging Face
+- Pick a quantization when you download a model
+- See what your local models cost on disk, and delete the ones you no longer want
+- Run Otto Brain on another machine and drive it from Otto
+- Connectors, a way to attach a data source once and reach it from every provider
+- A browse-and-prefill picker for connectors, covering office, marketing, ads and social sources
+- LinkedIn Ads, LinkedIn Pages and Microsoft (Bing) Ads connectors
+- Send every queued composer message at once with Send all
+- Write a personality's profile prose from its name, roles and colors
+- Task-list reminders on every provider, not only the ones that ship their own
+
+### Changed
+
+- The voice cues for a personality are written in one pass, so all four moments sound like the same character
+- Stopping a background task clears its row instead of leaving it for you to dismiss
+- Otto's own face marks its tool calls in the transcript, and winks while one is running
+- The bundled agent catalog picks up current versions of Auggie, Cline, CodeBuddy, DeepAgents, Dirac, Factory Droid, Nova, Qoder and Qwen Code
+- The queue move arrows in the composer stack vertically
+- Every critical advisory in Otto's dependencies is cleared
+
+### Fixed
+
+- The chat transcript stays where you left it while you read, instead of scrolling out from under you
+- Streaming a long chat costs far less on mobile and mobile web
+- Opening a preview no longer opens a second tab for the same page
+- Codex answers no longer get a stray divider inserted between paragraphs
+- Each fanned card in the composer is shaded down its full tucked edge
+
 ## 0.7.4 - 2026-07-30
 
 ### Added
