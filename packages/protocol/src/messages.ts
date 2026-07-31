@@ -2198,6 +2198,8 @@ export const BrainHfSearchResultSchema = z
     downloads: z.number().default(0),
     likes: z.number().default(0),
     gated: z.boolean().default(false),
+    // True when any quant of this repo is already on disk.
+    installed: z.boolean().default(false),
   })
   .passthrough();
 export type BrainHfSearchResult = z.infer<typeof BrainHfSearchResultSchema>;
@@ -2209,6 +2211,8 @@ export const BrainRepoQuantSchema = z
     size: z.string().default(""),
     sizeBytes: z.number().default(0),
     files: z.number().default(0),
+    // True when this specific quant is already on disk.
+    installed: z.boolean().default(false),
   })
   .passthrough();
 export type BrainRepoQuant = z.infer<typeof BrainRepoQuantSchema>;

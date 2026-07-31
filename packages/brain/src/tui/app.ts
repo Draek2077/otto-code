@@ -979,12 +979,21 @@ export class App {
       if (!search.results.length && !direct) {
         rows.push(`${style.yellow}no GGUF models matched${style.reset}`);
       }
+      // Repos we already have on disk, so a search hit can be flagged.
+      const installedRepos = new Set(
+        this.catalog
+          .map((x) => this.repoOf(x)?.toLowerCase())
+          .filter((v): v is string => Boolean(v)),
+      );
       for (let r = 0; r < search.results.length; r += 1) {
         const m = search.results[r];
         const dl = m.downloads >= 1000 ? `${Math.round(m.downloads / 1000)}k` : String(m.downloads);
+        const have = installedRepos.has(m.repo.toLowerCase())
+          ? ` ${style.brightGreen}have${style.reset}`
+          : "";
         const text =
-          `${pad(truncate(m.repo, inner - 20), inner - 20)} ` +
-          `${style.grey}${dl.padStart(6)} dl  ${String(m.likes).padStart(4)}♥${m.gated ? " gated" : ""}${style.reset}`;
+          `${pad(truncate(m.repo, inner - 24), inner - 24)} ` +
+          `${style.grey}${dl.padStart(6)} dl  ${String(m.likes).padStart(4)}♥${m.gated ? " gated" : ""}${style.reset}${have}`;
         rows.push(line(search.index === i, text));
         i += 1;
       }

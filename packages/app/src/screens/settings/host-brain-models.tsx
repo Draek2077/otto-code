@@ -525,12 +525,14 @@ function QuantRow({
   repo,
   quant,
   size,
+  installed,
   busy,
   onDownload,
 }: {
   repo: string;
   quant: string;
   size: string;
+  installed: boolean;
   busy: boolean;
   onDownload: (repo: string, quant: string) => void;
 }) {
@@ -539,15 +541,22 @@ function QuantRow({
     <View style={styles.quantRow}>
       <Text style={styles.quantLabel}>{quant}</Text>
       <Text style={styles.quantSize}>{size}</Text>
-      <Button
-        variant="ghost"
-        size="sm"
-        leftIcon={downloadIcon}
-        disabled={busy}
-        onPress={handleDownload}
-      >
-        Get
-      </Button>
+      {installed ? (
+        <View style={styles.installedTag}>
+          {installedIcon}
+          <Text style={styles.installedTagText}>Installed</Text>
+        </View>
+      ) : (
+        <Button
+          variant="ghost"
+          size="sm"
+          leftIcon={downloadIcon}
+          disabled={busy}
+          onPress={handleDownload}
+        >
+          Get
+        </Button>
+      )}
     </View>
   );
 }
@@ -587,6 +596,7 @@ function QuantList({
           repo={repo}
           quant={q.quant}
           size={q.size}
+          installed={q.installed}
           busy={busy}
           onDownload={onDownload}
         />
@@ -635,9 +645,17 @@ function SearchResultRow({
           />
         ) : null}
       </View>
-      <Button variant="outline" size="sm" onPress={handleToggle}>
-        {open ? "Hide" : "Quants"}
-      </Button>
+      <View style={styles.searchRowActions}>
+        {result.installed ? (
+          <View style={styles.installedTag}>
+            {installedIcon}
+            <Text style={styles.installedTagText}>Have</Text>
+          </View>
+        ) : null}
+        <Button variant="outline" size="sm" onPress={handleToggle}>
+          {open ? "Hide" : "Quants"}
+        </Button>
+      </View>
     </View>
   );
 }
@@ -1082,6 +1100,11 @@ const styles = StyleSheet.create((theme) => ({
   searchLoading: {
     paddingVertical: theme.spacing[3],
     alignItems: "center",
+  },
+  searchRowActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
   quantList: {
     marginTop: theme.spacing[2],

@@ -114,12 +114,19 @@ export class BrainOpsManager {
     // boolean here rather than leaking the display shape across the wire.
     const out: BrainHfSearchResult[] = [];
     for (const row of rows) {
-      const r = row as { repo?: unknown; downloads?: unknown; likes?: unknown; gated?: unknown };
+      const r = row as {
+        repo?: unknown;
+        downloads?: unknown;
+        likes?: unknown;
+        gated?: unknown;
+        installed?: unknown;
+      };
       const parsed = BrainHfSearchResultSchema.safeParse({
         repo: typeof r.repo === "string" ? r.repo : "",
         downloads: typeof r.downloads === "number" ? r.downloads : 0,
         likes: typeof r.likes === "number" ? r.likes : 0,
         gated: r.gated === true || r.gated === "yes",
+        installed: r.installed === true,
       });
       if (parsed.success) {
         out.push(parsed.data);
