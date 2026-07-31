@@ -192,8 +192,8 @@ export function BackgroundTasksTrack({
                 ) : null}
               </ScrollView>
             ) : null}
-            <ComposerTrackSeamShadow />
           </View>
+          <ComposerTrackSeamShadow />
         </ChatWidthBounds>
       </View>
     </ComposerTrackTransition>

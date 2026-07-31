@@ -126,8 +126,8 @@ export function ContextHealthTrack({
               label={dismissLabel}
               onDismiss={handleDismiss}
             />
-            <ComposerTrackSeamShadow />
           </View>
+          <ComposerTrackSeamShadow />
         </ChatWidthBounds>
       </View>
     </ComposerTrackTransition>

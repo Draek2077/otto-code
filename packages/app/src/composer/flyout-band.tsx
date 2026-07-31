@@ -77,8 +77,8 @@ export function FlyoutBand({
                 testID={dismissTestID}
               />
             ) : null}
-            <ComposerTrackSeamShadow />
           </View>
+          <ComposerTrackSeamShadow />
         </ChatWidthBounds>
       </View>
     </ComposerTrackTransition>
