@@ -2184,6 +2184,78 @@ export const BrainJobsCancelResponseSchema = z.object({
   payload: BrainJobsResultSchema,
 });
 
+// --- Hugging Face discovery (search + add arbitrary repos) ---------------
+// The daemon shells out to `otto-brain search`/`add --json`. Reads are
+// correlated request/response; the download runs as a `pull` job. Gated by
+// server_info.features.brainHfSearch. The brain resolves its own HF token (env
+// HF_TOKEN or its config), so no secret crosses this boundary.
+
+// One GGUF repo from a Hugging Face search. Passthrough so the brain's search
+// row can grow fields without a protocol bump.
+export const BrainHfSearchResultSchema = z
+  .object({
+    repo: z.string().default(""),
+    downloads: z.number().default(0),
+    likes: z.number().default(0),
+    gated: z.boolean().default(false),
+  })
+  .passthrough();
+export type BrainHfSearchResult = z.infer<typeof BrainHfSearchResultSchema>;
+
+// One downloadable quantization of a repo — `otto-brain add <repo> --list-quants`.
+export const BrainRepoQuantSchema = z
+  .object({
+    quant: z.string().default(""),
+    size: z.string().default(""),
+    sizeBytes: z.number().default(0),
+    files: z.number().default(0),
+  })
+  .passthrough();
+export type BrainRepoQuant = z.infer<typeof BrainRepoQuantSchema>;
+
+// Search Hugging Face for GGUF models — `otto-brain search <query>`.
+export const BrainHfSearchRequestSchema = z.object({
+  type: z.literal("brain.hf.search.request"),
+  query: z.string(),
+  limit: z.number().nullable().default(null),
+  requestId: z.string(),
+});
+export const BrainHfSearchResponseSchema = z.object({
+  type: z.literal("brain.hf.search.response"),
+  payload: z.object({
+    results: z.array(BrainHfSearchResultSchema).default([]),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// List the quantizations a repo offers — `otto-brain add <repo> --list-quants`.
+export const BrainHfQuantsRequestSchema = z.object({
+  type: z.literal("brain.hf.quants.request"),
+  repo: z.string(),
+  requestId: z.string(),
+});
+export const BrainHfQuantsResponseSchema = z.object({
+  type: z.literal("brain.hf.quants.response"),
+  payload: z.object({
+    quants: z.array(BrainRepoQuantSchema).default([]),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Download a chosen quant of an arbitrary HF repo — starts a `pull` job.
+export const BrainModelsAddRequestSchema = z.object({
+  type: z.literal("brain.models.add.request"),
+  repo: z.string(),
+  quant: z.string(),
+  requestId: z.string(),
+});
+export const BrainModelsAddResponseSchema = z.object({
+  type: z.literal("brain.models.add.response"),
+  payload: BrainJobResultSchema,
+});
+
 export const ProjectRenameRequestSchema = z.object({
   type: z.literal("project.rename.request"),
   projectId: z.string(),
@@ -5545,6 +5617,9 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   BrainBenchRequestSchema,
   BrainJobsListRequestSchema,
   BrainJobsCancelRequestSchema,
+  BrainHfSearchRequestSchema,
+  BrainHfQuantsRequestSchema,
+  BrainModelsAddRequestSchema,
   UpdateAgentRequestMessageSchema,
   ProjectRenameRequestSchema,
   ProjectRemoveRequestSchema,
@@ -5990,6 +6065,11 @@ export const ServerInfoStatusPayloadSchema = z
         // and "Operations" sections are hidden ("update the host").
         // COMPAT(brainManage): added in v0.7.5, remove gate after 2026-07-30 once daemon floor >= v0.7.5.
         brainManage: z.boolean().optional(),
+        // Daemon serves brain.hf.search / brain.hf.quants (reads) and starts
+        // brain.models.add (download an arbitrary HF repo's quant) as a pull job.
+        // Without it the Brain "Models" section hides the Hugging Face search box.
+        // COMPAT(brainHfSearch): added in v0.7.5, remove gate after 2026-07-30 once daemon floor >= v0.7.5.
+        brainHfSearch: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
         // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
@@ -9726,6 +9806,9 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   BrainBenchResponseSchema,
   BrainJobsListResponseSchema,
   BrainJobsCancelResponseSchema,
+  BrainHfSearchResponseSchema,
+  BrainHfQuantsResponseSchema,
+  BrainModelsAddResponseSchema,
   AgentArchivedMessageSchema,
   CloseItemsResponseSchema,
   CheckoutStatusResponseSchema,
@@ -10579,6 +10662,12 @@ export type BrainJobsListRequest = z.infer<typeof BrainJobsListRequestSchema>;
 export type BrainJobsListResponse = z.infer<typeof BrainJobsListResponseSchema>;
 export type BrainJobsCancelRequest = z.infer<typeof BrainJobsCancelRequestSchema>;
 export type BrainJobsCancelResponse = z.infer<typeof BrainJobsCancelResponseSchema>;
+export type BrainHfSearchRequest = z.infer<typeof BrainHfSearchRequestSchema>;
+export type BrainHfSearchResponse = z.infer<typeof BrainHfSearchResponseSchema>;
+export type BrainHfQuantsRequest = z.infer<typeof BrainHfQuantsRequestSchema>;
+export type BrainHfQuantsResponse = z.infer<typeof BrainHfQuantsResponseSchema>;
+export type BrainModelsAddRequest = z.infer<typeof BrainModelsAddRequestSchema>;
+export type BrainModelsAddResponse = z.infer<typeof BrainModelsAddResponseSchema>;
 export type KillTerminalRequest = z.infer<typeof KillTerminalRequestSchema>;
 export type KillTerminalResponse = z.infer<typeof KillTerminalResponseSchema>;
 export type CaptureTerminalRequest = z.infer<typeof CaptureTerminalRequestSchema>;
