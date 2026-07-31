@@ -53,6 +53,9 @@ function applyKey(config: BrainConfig, key: string, value: boolean | number | st
     case "defaultModel":
       config.defaultModel = String(value);
       return;
+    case "hfToken":
+      config.hfToken = String(value);
+      return;
     case "runtime.source":
       config.runtime.source = value as BrainConfig["runtime"]["source"];
       return;

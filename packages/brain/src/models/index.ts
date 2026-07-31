@@ -11,8 +11,29 @@ import { scan } from "./scan.js";
 export * from "./scan.js";
 export { pickModel } from "./pick.js";
 export { resolveModelsDirs, managedModelsDir, type ModelsDir } from "./dirs.js";
-export { pullModel, type PullOptions, type PullProgress } from "./download.js";
+export {
+  pullModel,
+  downloadRepoFiles,
+  type PullOptions,
+  type PullProgress,
+  type DownloadFilesOptions,
+} from "./download.js";
 export { matchCatalogEntry, enrichWithCatalog } from "./enrich.js";
+export {
+  resolveHfToken,
+  listRepoQuants,
+  quantRank,
+  type QuantOption,
+  type RepoQuants,
+} from "./hf.js";
+export {
+  diskUsage,
+  totalModelBytes,
+  planDelete,
+  deleteModelFiles,
+  type DiskUsage,
+  type DeletePlan,
+} from "./manage.js";
 
 export interface ScanModelsOptions {
   withMetadata?: boolean;
