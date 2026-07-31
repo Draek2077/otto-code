@@ -197,6 +197,7 @@ export async function runBenchCommand(options: BenchOptions, _command: Command):
         only,
         concurrency,
         reasoningBudget: profile.reasoningBudget ?? null,
+        contextWindow: profile.contextSize ?? null,
         archiveId,
         tasks: repoTasks,
         onProgress: progress,

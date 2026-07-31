@@ -40,6 +40,19 @@ Make the agentic-coding eval trustworthy enough to drive model selection.
 - Files: `bench/tasks.ts` (Task model, `:110-117`), `bench/index.ts` (driver, `:133`),
   `bench/verify.ts` (scoring), `bench/mine.ts`, `bench/repo.ts`, `ops/results.ts`
   (`rankModels`, `:413-443`).
+- **Update (2026-07-31).** The `MinedTask → Task` adapter now exists: `bench/repo-task.ts`
+  (+ `repo-task.test.ts`) is the SWE-bench oracle wired end to end — reset to the buggy parent,
+  author's tests as a read-only oracle, real read/write/run tools, score on the test-delta. Still
+  opt-in (needs a repo), not in the default `TASKS`. Also built: the **context-utilization metric** —
+  agentic tasks now capture peak `prompt_tokens` across turns and report it as a fraction of the
+  loaded window (`TaskRunContext.contextWindow`, threaded from `profile.contextSize`), so a run says
+  how much context the model held while solving ("5/5 tests pass, held 51% ctx"). **Planned
+  "extra-long-horizon" task (synthetic default + real opt-in, context-fill a reported metric):** a
+  self-contained corpus (interlinked modules + markdown docs) whose bug fix requires _researching_ a
+  spec scattered across the docs — the model must read widely (filling context) to fix correctly,
+  scored on a hidden oracle like the agentic loop, with context utilization surfaced. Real mined
+  repos remain the opt-in depth path. The bar in mind: a model should reach ~50%+ context on a
+  real task before we call it agentic-capable.
 
 ### B — Curation & ranking-driven routing
 
