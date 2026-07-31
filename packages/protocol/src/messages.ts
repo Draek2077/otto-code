@@ -640,6 +640,67 @@ export const MutableBrainConfigSchema = z
 
 export type MutableBrainConfig = z.infer<typeof MutableBrainConfigSchema>;
 
+// The brain PATCH schema — deliberately NOT `MutableBrainConfigSchema.partial()`.
+// Every field of the full schema carries a `.default()` (so an old daemon's
+// half-written config still parses as a well-formed OFF section), and Zod keeps
+// those defaults through `.partial()`: `MutableBrainConfigSchema.partial().parse(
+// { allowRemoteConfig: true })` expands to the FULL object with every other field
+// defaulted. The daemon deep-merges the parsed patch over the stored config, so a
+// single-field patch would silently reset the entire brain block to defaults —
+// turning sharing off (host back to loopback), wiping the auth token, and
+// disabling the server. Mirroring the shape WITHOUT defaults keeps an omitted
+// field omitted, so the deep-merge preserves it. Every level is deep-partial so a
+// nested patch (e.g. just `listen.host`) preserves its siblings too. Keep the
+// field set in sync with MutableBrainConfigSchema; `.passthrough()` carries any
+// field a newer daemon adds through untouched in the meantime.
+const MutableBrainTlsPatchSchema = z
+  .object({
+    mode: z.enum(["off", "files", "self-signed", "tailscale"]),
+    certFile: z.string().nullable(),
+    keyFile: z.string().nullable(),
+    hostname: z.string().nullable(),
+    certDir: z.string().nullable(),
+    renewBeforeDays: z.number().int().min(1),
+  })
+  .partial()
+  .passthrough();
+
+const MutableBrainRemotePatchSchema = z
+  .object({
+    host: z.string(),
+    port: z.number().int(),
+    secure: z.boolean(),
+    authToken: z.string().nullable(),
+  })
+  .partial()
+  .passthrough();
+
+const MutableBrainListenPatchSchema = z
+  .object({
+    host: z.string(),
+    port: z.number().int(),
+  })
+  .partial()
+  .passthrough();
+
+export const MutableBrainConfigPatchSchema = z
+  .object({
+    enabled: z.boolean(),
+    autoStart: z.boolean(),
+    mode: z.enum(["local", "remote"]),
+    remote: MutableBrainRemotePatchSchema,
+    listen: MutableBrainListenPatchSchema,
+    defaultModel: z.string().nullable(),
+    lockModel: z.boolean(),
+    allowRemoteConfig: z.boolean(),
+    allowInsecureBind: z.boolean(),
+    authMode: z.enum(["none", "token"]),
+    authToken: z.string().nullable(),
+    tls: MutableBrainTlsPatchSchema,
+  })
+  .partial()
+  .passthrough();
+
 export const DEFAULT_MUTABLE_BRAIN_CONFIG = {
   enabled: false,
   autoStart: false,
@@ -801,8 +862,11 @@ export const MutableDaemonConfigPatchSchema = z
     lsp: MutableLspConfigSchema.partial().optional(),
     // Gated by server_info features.solutionView; patches deep-merge.
     dotnetSolutionManagement: MutableDotnetSolutionConfigSchema.partial().optional(),
-    // Gated by server_info features.brainControl; patches deep-merge.
-    brain: MutableBrainConfigSchema.partial().optional(),
+    // Gated by server_info features.brainControl; patches deep-merge. Uses the
+    // dedicated no-default patch schema (see MutableBrainConfigPatchSchema): a
+    // plain `.partial()` here keeps every field's default and resets the whole
+    // block on a single-field patch.
+    brain: MutableBrainConfigPatchSchema.optional(),
   })
   .partial()
   .passthrough();

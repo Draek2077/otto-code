@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ActivityIndicator, Alert, Text, TextInput, View } from "react-native";
+import type { StyleProp, TextStyle, ViewStyle } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -165,6 +166,13 @@ function BrainStatusSection({ serverId, isConnected }: { serverId: string; isCon
 
   const status = query.data ?? null;
   const running = status?.running === true;
+  // Three states, not two. The daemon reports `state: "starting"` (running:
+  // false) while the child is up but the host API isn't answering yet — which is
+  // exactly what a big model load looks like for its first several seconds. A
+  // two-state running/stopped pill renders that window as "Stopped", so a brain
+  // that is loading correctly reads as one that keeps dying. Give "starting" its
+  // own pill so the load window is legible instead of alarming.
+  const statusPill = STATUS_PILL_PRESENTATION[resolveStatusPhase(status)];
 
   const detailRows = useMemo(() => {
     if (!status) return [];
@@ -192,11 +200,9 @@ function BrainStatusSection({ serverId, isConnected }: { serverId: string; isCon
                 : "Whether the brain is currently running on this host."}
             </Text>
           </View>
-          <View style={running ? STATUS_PILL_RUNNING_STYLE : STATUS_PILL_STOPPED_STYLE}>
-            <View style={running ? styles.statusDotRunning : styles.statusDotStopped} />
-            <Text style={running ? styles.statusTextRunning : styles.statusTextStopped}>
-              {running ? "Running" : "Stopped"}
-            </Text>
+          <View style={statusPill.pill}>
+            <View style={statusPill.dot} />
+            <Text style={statusPill.text}>{statusPill.label}</Text>
           </View>
         </View>
 
@@ -691,9 +697,18 @@ function BrainServerSection({ serverId }: { serverId: string }) {
   const handleAutoStart = useCallback(
     (next: boolean) => {
       autoStart.set(next);
-      patchBrain({ autoStart: next });
+      if (next) {
+        // Enable and Start automatically are independent switches that are meant
+        // to be on TOGETHER. Turning Start automatically on must never turn
+        // Enable off — it turns it on, so the two light up side by side and the
+        // setting actually does something (autoStart is a no-op while disabled).
+        enabled.set(true);
+        patchBrain({ autoStart: true, enabled: true });
+      } else {
+        patchBrain({ autoStart: false });
+      }
     },
-    [autoStart, patchBrain],
+    [autoStart, enabled, patchBrain],
   );
   const handleLockModel = useCallback(
     (next: boolean) => {
@@ -1067,7 +1082,7 @@ function BrainConfigSection({ serverId }: { serverId: string }) {
     );
   }
 
-  // Security (HTTPS) describes the local server; a remote brain's own host owns
+  // Security describes the local server's HTTPS; a remote brain's own host owns
   // it, so this renders nothing in remote mode. (Access/keys live in Sharing.)
   if (brain.mode === "remote") {
     return null;
@@ -1076,7 +1091,7 @@ function BrainConfigSection({ serverId }: { serverId: string }) {
   const tlsMode = brain.tls.mode;
 
   return (
-    <SettingsSection title="Security (HTTPS)">
+    <SettingsSection title="Security">
       <View style={settingsStyles.card} testID="host-brain-tls-card">
         <View style={settingsStyles.rowResponsive}>
           <View style={settingsStyles.rowContent}>
@@ -1568,6 +1583,9 @@ const styles = StyleSheet.create((theme) => ({
   statusPillStopped: {
     backgroundColor: "rgba(161, 161, 170, 0.1)",
   },
+  statusPillStarting: {
+    backgroundColor: theme.colors.statusWarningSurface,
+  },
   statusDotRunning: {
     width: 6,
     height: 6,
@@ -1580,6 +1598,12 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.foregroundMuted,
   },
+  statusDotStarting: {
+    width: 6,
+    height: 6,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.statusWarningStrong,
+  },
   statusTextRunning: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.palette.green[400],
@@ -1587,6 +1611,10 @@ const styles = StyleSheet.create((theme) => ({
   statusTextStopped: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
+  },
+  statusTextStarting: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.statusWarningStrong,
   },
   actionsGroup: {
     flexDirection: "row",
@@ -1619,4 +1647,48 @@ const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 const ROW_RESPONSIVE_WITH_BORDER_STYLE = [settingsStyles.rowResponsive, settingsStyles.rowBorder];
 const STATUS_PILL_RUNNING_STYLE = [styles.statusPill, styles.statusPillRunning];
 const STATUS_PILL_STOPPED_STYLE = [styles.statusPill, styles.statusPillStopped];
+const STATUS_PILL_STARTING_STYLE = [styles.statusPill, styles.statusPillStarting];
+
+type StatusPhase = "running" | "starting" | "stopped";
+
+// running wins; a live-but-not-yet-answering child (the model-load window) reads
+// as "starting"; everything else is "stopped".
+function resolveStatusPhase(status: BrainHostStatus | null): StatusPhase {
+  if (status?.running === true) {
+    return "running";
+  }
+  if (status?.state === "starting") {
+    return "starting";
+  }
+  return "stopped";
+}
+
+const STATUS_PILL_PRESENTATION: Record<
+  StatusPhase,
+  {
+    pill: StyleProp<ViewStyle>;
+    dot: StyleProp<ViewStyle>;
+    text: StyleProp<TextStyle>;
+    label: string;
+  }
+> = {
+  running: {
+    pill: STATUS_PILL_RUNNING_STYLE,
+    dot: styles.statusDotRunning,
+    text: styles.statusTextRunning,
+    label: "Running",
+  },
+  starting: {
+    pill: STATUS_PILL_STARTING_STYLE,
+    dot: styles.statusDotStarting,
+    text: styles.statusTextStarting,
+    label: "Starting…",
+  },
+  stopped: {
+    pill: STATUS_PILL_STOPPED_STYLE,
+    dot: styles.statusDotStopped,
+    text: styles.statusTextStopped,
+    label: "Stopped",
+  },
+};
 const ACTIONS_GROUP_STYLE = [styles.actionsGroup, settingsStyles.rowControlGroup];
