@@ -47,6 +47,58 @@ export interface RepoQuants {
   mmproj: { files: string[]; sizeBytes: number } | null;
 }
 
+/** One GGUF repo from a search, in a surface-agnostic shape (TUI and app share). */
+export interface ModelSearchResult {
+  repo: string;
+  author: string;
+  downloads: number;
+  likes: number;
+  updatedAt: string | null;
+  gated: boolean;
+}
+
+interface HfSearchEntry {
+  id: string;
+  author?: string;
+  downloads?: number;
+  likes?: number;
+  lastModified?: string;
+  gated?: boolean | string;
+}
+
+/**
+ * Search Hugging Face for GGUF model repos, most-downloaded first. Returns a
+ * normalized shape both the TUI and the Otto app can render; drill into a result
+ * with {@link listRepoQuants} to see and download its quantizations.
+ */
+export async function searchModels(
+  query: string,
+  { limit = 25, token = null }: { limit?: number; token?: string | null } = {},
+): Promise<ModelSearchResult[]> {
+  const params = new URLSearchParams({
+    search: query,
+    filter: "gguf",
+    sort: "downloads",
+    direction: "-1",
+    limit: String(limit),
+  });
+  const res = await fetch(`${HF_BASE}/api/models?${params.toString()}`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) {
+    throw new Error(`Hugging Face search failed (${res.status}) for "${query}"`);
+  }
+  const entries = (await res.json()) as HfSearchEntry[];
+  return entries.map((entry) => ({
+    repo: entry.id,
+    author: entry.author ?? entry.id.split("/")[0] ?? "",
+    downloads: entry.downloads ?? 0,
+    likes: entry.likes ?? 0,
+    updatedAt: entry.lastModified ?? null,
+    gated: Boolean(entry.gated),
+  }));
+}
+
 /**
  * Quality order for display: higher bits-per-weight is more faithful and larger.
  * Q2 < Q3 < ... < Q8 < F16 < F32, with K_S < K_M < K_L and _0 < _1 as tie-breaks.
