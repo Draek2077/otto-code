@@ -2795,6 +2795,30 @@ export const AgentPersonalitiesGetStatsRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// COMPAT(personalityProfile): added in v0.7.5; gate lives in
+// features.personalityProfile. Author a personality PROFILE (the prose
+// `personalityPrompt` that shapes how an agent behaves) from the only things
+// the editor knows before one exists: the handle, the roles it will be spawned
+// for, and its two spinner colors. Like the voice-cue RPC this is described
+// inline (not a stored id) so the editor can generate for an unsaved draft, and
+// is an editor-time action: the result lands in the prompt field for the user to
+// edit, and is stored on the personality by the ordinary save.
+export const AgentPersonalitiesGenerateProfileRequestSchema = z.object({
+  type: z.literal("agentPersonalities.generate_profile.request"),
+  requestId: z.string(),
+  name: z.string(),
+  // Permissive strings to match the stored personality shape (forward-compatible
+  // with roles this daemon predates); the daemon filters to its known set.
+  roles: z.array(z.string().min(1)).optional(),
+  // The spinner glow pair, read as a palette (temperature, energy) and never
+  // quoted literally in the profile.
+  glowA: z.string().optional(),
+  glowB: z.string().optional(),
+  // Scopes provider resolution to a workspace; omitted falls back to any
+  // resolvable one.
+  cwd: z.string().optional(),
+});
+
 export const ReadProjectConfigRequestMessageSchema = z.object({
   type: z.literal("read_project_config_request"),
   requestId: z.string(),
@@ -5706,6 +5730,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   SpeechTtsSpeakCancelRequestSchema,
   VisualizerVoiceCuesGenerateRequestSchema,
   AgentPersonalitiesGetStatsRequestSchema,
+  AgentPersonalitiesGenerateProfileRequestSchema,
   ReadProjectConfigRequestMessageSchema,
   WriteProjectConfigRequestMessageSchema,
   DictationStreamStartMessageSchema,
@@ -6235,6 +6260,10 @@ export const ServerInfoStatusPayloadSchema = z
         ttsSpeak: z.boolean().optional(),
         // COMPAT(visualizerVoiceCues): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
         visualizerVoiceCues: z.boolean().optional(),
+        // COMPAT(personalityProfile): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
+        // Host can author a personality profile (the prompt prose) from a name,
+        // roles, and spinner colors.
+        personalityProfile: z.boolean().optional(),
         // COMPAT(setAgentPersonality): added in v0.5.0, drop the gate when daemon floor >= v0.5.0.
         setAgentPersonality: z.boolean().optional(),
         // COMPAT(checkoutGitCommit): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
@@ -7533,6 +7562,24 @@ export const AgentPersonalitiesGetStatsResponseSchema = z.object({
     })
     .passthrough(),
 });
+
+export const AgentPersonalitiesGenerateProfileResponseSchema = z.object({
+  type: z.literal("agentPersonalities.generate_profile.response"),
+  payload: z
+    .object({
+      requestId: z.string(),
+      // The authored personality prompt, ready to drop into the editor's prompt
+      // field. Absent when generation failed (see error) or no writer/provider
+      // resolves on this host.
+      profile: z.string().optional(),
+      error: z.string().optional(),
+    })
+    .passthrough(),
+});
+
+export type AgentPersonalitiesGenerateProfileResult = z.infer<
+  typeof AgentPersonalitiesGenerateProfileResponseSchema
+>["payload"];
 
 export const DaemonGetStatusResponseSchema = z.object({
   type: z.literal("daemon.get_status.response"),
@@ -9822,6 +9869,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SpeechTtsSpeakCancelResponseSchema,
   VisualizerVoiceCuesGenerateResponseSchema,
   AgentPersonalitiesGetStatsResponseSchema,
+  AgentPersonalitiesGenerateProfileResponseSchema,
   ReadProjectConfigResponseMessageSchema,
   WriteProjectConfigResponseMessageSchema,
   SetAgentModeResponseMessageSchema,

@@ -197,6 +197,7 @@ import type {
   SpeechTtsSpeakResult,
   SpeechTtsSpeakCancelResult,
   VisualizerVoiceCuesResult,
+  AgentPersonalitiesGenerateProfileResult,
 } from "@otto-code/protocol/messages";
 import { isRelayClientWebSocketUrl } from "@otto-code/protocol/daemon-endpoints";
 import { terminalSubscriptionKey } from "@otto-code/protocol/terminal-subscription-key";
@@ -6359,6 +6360,35 @@ export class DaemonClient {
       message: {
         type: "agentPersonalities.get_stats.request",
       },
+    });
+  }
+
+  // Author a personality profile (the prose personality prompt) from a draft's
+  // name, roles, and spinner colors. Routed through the Writer chain; the caller
+  // drops the result into the editor's prompt field.
+  async generatePersonalityProfile(
+    params: {
+      name: string;
+      roles?: string[];
+      glowA?: string;
+      glowB?: string;
+      cwd?: string;
+    },
+    requestId?: string,
+  ): Promise<AgentPersonalitiesGenerateProfileResult> {
+    return this.sendNamespacedCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "agentPersonalities.generate_profile.request",
+        name: params.name,
+        ...(params.roles && params.roles.length > 0 ? { roles: params.roles } : {}),
+        ...(params.glowA ? { glowA: params.glowA } : {}),
+        ...(params.glowB ? { glowB: params.glowB } : {}),
+        ...(params.cwd ? { cwd: params.cwd } : {}),
+      },
+      // Same reason as the voice cues: the daemon spawns a structured-generation
+      // agent, and provider SDK cold starts blow past the 60s default.
+      timeout: 180000,
     });
   }
 

@@ -56,6 +56,62 @@ describe("createVoiceCueGenerator", () => {
     expect(fake.calls).toBe(1);
   });
 
+  test("authors all four moments in ONE pass and drops the voice scratchpad", async () => {
+    const fake = fakeGeneration((request) => {
+      // One prompt carries every moment, so the model writes them against each
+      // other rather than four times in isolation.
+      expect(request.prompt).toContain("STARTING");
+      expect(request.prompt).toContain("THINKING");
+      expect(request.prompt).toContain("WAITING");
+      expect(request.prompt).toContain("COMPLETED");
+      expect(request.prompt).toContain('"voice"');
+      return { ...SAMPLE, voice: "Clipped, dry, allergic to small talk." };
+    });
+    const generator = createVoiceCueGenerator({
+      generation: fake.generation,
+      fallbackCwd: () => "/repo",
+    });
+
+    // `voice` exists to steer the lines, not to be stored.
+    expect(await generator.generate({ name: "Nova" })).toEqual(SAMPLE);
+    expect(fake.calls).toBe(1);
+  });
+
+  test("drops a line reused at another moment, but never empties a group", async () => {
+    const fake = fakeGeneration(() => ({
+      join: ["Right then", "On the clock"],
+      thinking: ["Right then", "Turning it over"],
+      // Every line already claimed elsewhere — the group keeps its first anyway,
+      // because a moment with no lines is silent at playback.
+      waiting: ["on the clock!", "Right then"],
+      done: ["That's the lot"],
+    }));
+    const generator = createVoiceCueGenerator({
+      generation: fake.generation,
+      fallbackCwd: () => "/repo",
+    });
+
+    expect(await generator.generate({ name: "Nova" })).toEqual({
+      join: ["Right then", "On the clock"],
+      thinking: ["Turning it over"],
+      waiting: ["on the clock!"],
+      done: ["That's the lot"],
+    });
+  });
+
+  test("names what each role is FOR, not just the role word", async () => {
+    const fake = fakeGeneration((request) => {
+      expect(request.prompt).toContain("Read-only surveyor");
+      return SAMPLE;
+    });
+    const generator = createVoiceCueGenerator({
+      generation: fake.generation,
+      fallbackCwd: () => "/repo",
+    });
+
+    await generator.generate({ name: "Nova", roles: ["researcher"] });
+  });
+
   test("falls back to the provided cwd when none is passed", async () => {
     const fake = fakeGeneration((request) => {
       expect(request.cwd).toBe("/repo");

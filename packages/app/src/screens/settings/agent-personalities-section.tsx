@@ -99,6 +99,19 @@ export function useVisualizerVoiceCuesFeature(serverId: string): boolean {
   );
 }
 
+/**
+ * Whether the host can author a personality profile (the prompt prose) from a
+ * draft's name, roles, and spinner colors. Gates the Personality tab's
+ * "Generate with AI" action only. A host without it keeps the hand-written
+ * field, which is how every personality was authored before.
+ * COMPAT(personalityProfile): added in v0.7.5, drop the gate when floor >= v0.7.5.
+ */
+export function usePersonalityProfileFeature(serverId: string): boolean {
+  return useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.personalityProfile === true,
+  );
+}
+
 const DEFAULT_GLOW_A = "#4ec4ff";
 const DEFAULT_GLOW_B = "#e14fe8";
 
@@ -319,6 +332,13 @@ function buildVoiceOptions(options: SpeechSettingsOptions | null): ComboboxOptio
     }
   }
   return result;
+}
+
+// Both AI actions in the editor (voice cues, personality profile) need the same
+// two things: the host advertising the capability, and a live client to ask.
+// Kept as a helper so the modal reads as one call per action.
+function canAuthorWithAi(hasFeature: boolean, client: object | null): boolean {
+  return hasFeature && client !== null;
 }
 
 function generatePersonalityId(): string {
@@ -1119,25 +1139,24 @@ function PersonalityEditModal({
   // — not the spoken-reply volume, which is a different slider entirely.
   const { settings: appSettings } = useAppSettings();
   const canGenerateCues = useVisualizerVoiceCuesFeature(serverId);
+  const canGenerateProfile = usePersonalityProfileFeature(serverId);
   const client = useHostRuntimeClient(serverId);
   const [activeTab, setActiveTab] = useState<EditorTab>("identity");
   const [isGeneratingCues, setIsGeneratingCues] = useState(false);
-  // Determinate progress for cue generation — one unit per moment (join /
-  // thinking / waiting / done), each its own request. Null when not generating; the bar
-  // hides. Any result that lands after the editor closes is dropped on the
-  // floor (the draft never saved), which is exactly the intended behavior.
-  const [cueGenProgress, setCueGenProgress] = useState<{
-    completed: number;
-    total: number;
-  } | null>(null);
   // Human-readable failure notice for the last generation attempt (partial or
-  // total) — cleared when a new generation starts.
+  // total), cleared when a new generation starts. Any result that lands after
+  // the editor closes is dropped on the floor (the draft never saved), which is
+  // exactly the intended behavior.
   const [cueGenError, setCueGenError] = useState<string | null>(null);
-  // Scope cue generation's provider resolution to the user's active (last
-  // selected) workspace on this host — without a cwd the daemon falls back to
-  // an arbitrary agent's cwd. Null when the last selection is another host's.
+  // Same pair for the personality-profile writer on the Personality tab.
+  const [isGeneratingProfile, setIsGeneratingProfile] = useState(false);
+  const [profileGenError, setProfileGenError] = useState<string | null>(null);
+  // Scope the editor's AI generation (cues + personality profile) to the user's
+  // active (last selected) workspace on this host. Without a cwd the daemon
+  // falls back to an arbitrary agent's cwd. Null when the last selection is
+  // another host's.
   const lastWorkspace = useLastWorkspaceSelection();
-  const cueGenCwd = useWorkspaceDirectory(
+  const generationCwd = useWorkspaceDirectory(
     lastWorkspace?.serverId === serverId ? serverId : null,
     lastWorkspace?.serverId === serverId ? lastWorkspace.workspaceId : null,
   );
@@ -1333,16 +1352,17 @@ function PersonalityEditModal({
     }));
   }, []);
 
-  // Author cue lines for the current draft (name + prompt) via the Writer
-  // chain. One request per moment (join / thinking / waiting / done) so each moment gets
-  // a focused prompt — distinct lines — and the caller can report determinate
-  // progress as each lands. Returns the lines per SUCCEEDED moment plus the
-  // moments that failed (errored, or came back empty) so callers can merge
-  // without wiping hand-written lines and can tell the user what failed.
+  // Author cue lines for the current draft (name + prompt + roles) via the
+  // Writer chain. ONE request authors all four moments: the daemon prompt gives
+  // the model the whole character plus every moment at once, which is what makes
+  // the four groups sound like the same person and stay distinct from each other
+  // (fanning out one request per moment meant four separate readings of the
+  // persona, and four cold starts). Returns the lines per SUCCEEDED moment plus
+  // the moments that came back empty, so callers can merge without wiping
+  // hand-written lines and can tell the user what is missing.
   const generateCuesFor = useCallback(
     async (
       source: PersonalityDraft,
-      onProgress?: (completed: number) => void,
     ): Promise<{
       generated: Partial<Record<CueMoment, string[]>>;
       failedMoments: CueMoment[];
@@ -1351,29 +1371,22 @@ function PersonalityEditModal({
       const name = source.name.trim() || "Agent";
       const prompt = source.personalityPrompt.trim();
       const roles = source.roles;
-      let completed = 0;
-      const results = await Promise.all(
-        CUE_MOMENTS.map(async (moment) => {
-          try {
-            const result = await client.generateVisualizerVoiceCues({
-              name,
-              ...(prompt ? { prompt } : {}),
-              ...(cueGenCwd ? { cwd: cueGenCwd } : {}),
-              ...(roles.length > 0 ? { roles } : {}),
-              moment,
-            });
-            return { moment, lines: result.cues?.[moment] ?? [] };
-          } catch {
-            return { moment, lines: [] as string[] };
-          } finally {
-            completed += 1;
-            onProgress?.(completed);
-          }
-        }),
-      );
       const generated: Partial<Record<CueMoment, string[]>> = {};
       const failedMoments: CueMoment[] = [];
-      for (const { moment, lines } of results) {
+      let cues: Awaited<ReturnType<typeof client.generateVisualizerVoiceCues>>["cues"];
+      try {
+        const result = await client.generateVisualizerVoiceCues({
+          name,
+          ...(prompt ? { prompt } : {}),
+          ...(generationCwd ? { cwd: generationCwd } : {}),
+          ...(roles.length > 0 ? { roles } : {}),
+        });
+        cues = result.cues;
+      } catch {
+        return { generated, failedMoments: [...CUE_MOMENTS] };
+      }
+      for (const moment of CUE_MOMENTS) {
+        const lines = cues?.[moment] ?? [];
         if (lines.length > 0) {
           generated[moment] = lines;
         } else {
@@ -1382,37 +1395,26 @@ function PersonalityEditModal({
       }
       return { generated, failedMoments };
     },
-    [client, cueGenCwd],
+    [client, generationCwd],
   );
 
   // The generation ritual both callers (the Generate button and the save-time
-  // auto-fill) share: owns the progress bar, the mounted guard, and surfacing
-  // partial/total failure. Resolves with the per-moment lines that succeeded.
+  // auto-fill) share: the mounted guard plus surfacing partial/total failure.
+  // Resolves with the per-moment lines that succeeded.
   const runCueGeneration = useCallback(
     async (source: PersonalityDraft): Promise<Partial<Record<CueMoment, string[]>>> => {
       setCueGenError(null);
-      setCueGenProgress({ completed: 0, total: CUE_MOMENTS.length });
-      try {
-        const { generated, failedMoments } = await generateCuesFor(source, (done) => {
-          if (isMountedRef.current) {
-            setCueGenProgress({ completed: done, total: CUE_MOMENTS.length });
-          }
-        });
-        if (isMountedRef.current && failedMoments.length > 0) {
-          setCueGenError(
-            failedMoments.length === CUE_MOMENTS.length
-              ? "Voice cue generation failed. Any existing lines were kept."
-              : `Couldn't generate ${failedMoments
-                  .map((moment) => CUE_KIND_LABELS[moment])
-                  .join(", ")} lines. Existing lines for those moments were kept.`,
-          );
-        }
-        return generated;
-      } finally {
-        if (isMountedRef.current) {
-          setCueGenProgress(null);
-        }
+      const { generated, failedMoments } = await generateCuesFor(source);
+      if (isMountedRef.current && failedMoments.length > 0) {
+        setCueGenError(
+          failedMoments.length === CUE_MOMENTS.length
+            ? "Voice cue generation failed. Any existing lines were kept."
+            : `Couldn't generate ${failedMoments
+                .map((moment) => CUE_KIND_LABELS[moment])
+                .join(", ")} lines. Existing lines for those moments were kept.`,
+        );
       }
+      return generated;
     },
     [generateCuesFor],
   );
@@ -1441,6 +1443,55 @@ function PersonalityEditModal({
       }
     })();
   }, [client, isGeneratingCues, runCueGeneration, draft]);
+
+  // Author the personality prompt from what the editor knows: the handle, the
+  // roles it will be spawned for, and the spinner colors. Overwriting text the
+  // user wrote is the one destructive thing here, so a non-empty field asks
+  // first: a generated profile is never worth losing something hand-written.
+  const handleGenerateProfile = useCallback(() => {
+    if (!client || isGeneratingProfile) return;
+    void (async () => {
+      if (draft.personalityPrompt.trim().length > 0) {
+        const confirmed = await confirmDialog({
+          title: "Replace this personality?",
+          message: "The generated profile will overwrite what's written here.",
+          confirmLabel: "Replace",
+          cancelLabel: "Keep mine",
+          destructive: true,
+        });
+        if (!confirmed) return;
+      }
+      if (!isMountedRef.current) return;
+      setIsGeneratingProfile(true);
+      setProfileGenError(null);
+      try {
+        const result = await client.generatePersonalityProfile({
+          name: draft.name.trim() || "Agent",
+          ...(draft.roles.length > 0 ? { roles: draft.roles } : {}),
+          ...(isHexColor(draft.glowA) ? { glowA: draft.glowA.trim() } : {}),
+          ...(isHexColor(draft.glowB) ? { glowB: draft.glowB.trim() } : {}),
+          ...(generationCwd ? { cwd: generationCwd } : {}),
+        });
+        if (!isMountedRef.current) return;
+        const profile = result.profile?.trim();
+        if (profile) {
+          setDraft((current) => ({ ...current, personalityPrompt: profile }));
+        } else {
+          setProfileGenError(result.error ?? "Personality generation failed. Nothing was changed.");
+        }
+      } catch (error) {
+        if (isMountedRef.current) {
+          setProfileGenError(
+            error instanceof Error ? error.message : "Personality generation failed.",
+          );
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setIsGeneratingProfile(false);
+        }
+      }
+    })();
+  }, [client, isGeneratingProfile, draft, generationCwd]);
 
   const nameCollides = takenNames.includes(draft.name.trim().toLowerCase());
   const glowsValid = isHexColor(draft.glowA) && isHexColor(draft.glowB);
@@ -1595,6 +1646,13 @@ function PersonalityEditModal({
               style={styles.textArea}
               testID="agent-personality-prompt-input"
             />
+            <ProfileGeneratorField
+              canGenerate={canAuthorWithAi(canGenerateProfile, client)}
+              hasName={draft.name.trim().length > 0}
+              isGenerating={isGeneratingProfile}
+              error={profileGenError}
+              onGenerate={handleGenerateProfile}
+            />
 
             <View style={styles.toggleRow}>
               <View style={settingsStyles.rowContent}>
@@ -1678,9 +1736,8 @@ function PersonalityEditModal({
             ) : null}
             <VoiceCuesEditor
               cues={draft.voiceCues}
-              canGenerate={canGenerateCues && client !== null}
+              canGenerate={canAuthorWithAi(canGenerateCues, client)}
               isGenerating={isGeneratingCues}
-              progress={cueGenProgress}
               error={cueGenError}
               onGenerate={handleGenerateCues}
               onSetLine={setCueLine}
@@ -1700,6 +1757,56 @@ function PersonalityEditModal({
 
 function FieldLabel({ label }: { label: string }): ReactElement {
   return <Text style={styles.fieldLabel}>{label}</Text>;
+}
+
+// ---------------------------------------------------------------------------
+// Personality writer. Authors the prompt prose above it from the draft's name,
+// roles and spinner colors. Hidden entirely on a host without the capability,
+// where the field stays hand-written (how every personality used to be made).
+// ---------------------------------------------------------------------------
+
+interface ProfileGeneratorFieldProps {
+  canGenerate: boolean;
+  // The name is the character's seed, so there is nothing to write without one.
+  hasName: boolean;
+  isGenerating: boolean;
+  error: string | null;
+  onGenerate: () => void;
+}
+
+function ProfileGeneratorField({
+  canGenerate,
+  hasName,
+  isGenerating,
+  error,
+  onGenerate,
+}: ProfileGeneratorFieldProps): ReactElement | null {
+  if (!canGenerate) {
+    return null;
+  }
+  return (
+    <>
+      <Text style={styles.fieldHint}>
+        Written from the name, the roles, and the spinner colors. Traits are chosen to make this
+        agent better at the roles you gave it, and to work well with the rest of the team. Edit
+        anything you like afterwards.
+      </Text>
+      <Button
+        variant="secondary"
+        size="sm"
+        onPress={onGenerate}
+        disabled={isGenerating || !hasName}
+        testID="agent-personality-generate-profile"
+      >
+        {isGenerating ? "Writing personality…" : "Generate with AI"}
+      </Button>
+      {error ? (
+        <Text style={styles.fieldError} testID="agent-personality-profile-gen-error">
+          {error}
+        </Text>
+      ) : null}
+    </>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1782,7 +1889,6 @@ interface VoiceCuesEditorProps {
   cues: DraftVoiceCues;
   canGenerate: boolean;
   isGenerating: boolean;
-  progress: { completed: number; total: number } | null;
   // Failure notice for the last generation attempt (partial or total).
   error: string | null;
   onGenerate: () => void;
@@ -1795,7 +1901,6 @@ function VoiceCuesEditor({
   cues,
   canGenerate,
   isGenerating,
-  progress,
   error,
   onGenerate,
   onSetLine,
@@ -1817,10 +1922,9 @@ function VoiceCuesEditor({
           disabled={isGenerating}
           testID="agent-personality-generate-cues"
         >
-          {isGenerating ? "Generating…" : "Generate with AI"}
+          {isGenerating ? "Writing all four moments…" : "Generate with AI"}
         </Button>
       ) : null}
-      {progress ? <CueGenProgress completed={progress.completed} total={progress.total} /> : null}
       {error ? (
         <Text style={styles.fieldError} testID="agent-personality-cue-gen-error">
           {error}
@@ -1836,27 +1940,6 @@ function VoiceCuesEditor({
           onRemoveLine={onRemoveLine}
         />
       ))}
-    </View>
-  );
-}
-
-// Determinate progress bar shown while cue generation is in flight — fills as
-// each moment lands and disappears when the generation finishes.
-function CueGenProgress({ completed, total }: { completed: number; total: number }): ReactElement {
-  const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-  const width: `${number}%` = `${percent}%`;
-  const fillStyle = useMemo(() => [styles.cueProgressFill, { width }], [width]);
-  return (
-    <View style={styles.cueProgress} accessibilityRole="progressbar">
-      <View style={styles.cueProgressHeader}>
-        <Text style={styles.fieldHint}>Generating voice cues…</Text>
-        <Text style={styles.fieldHint}>
-          {completed} / {total}
-        </Text>
-      </View>
-      <View style={styles.cueProgressTrack}>
-        <View style={fillStyle} />
-      </View>
     </View>
   );
 }
@@ -2228,25 +2311,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   cuesContainer: {
     gap: theme.spacing[3],
-  },
-  cueProgress: {
-    gap: theme.spacing[1],
-  },
-  cueProgressHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  cueProgressTrack: {
-    height: 4,
-    backgroundColor: theme.colors.surface2,
-    borderRadius: theme.borderRadius.full,
-    overflow: "hidden",
-  },
-  cueProgressFill: {
-    height: "100%",
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.borderRadius.full,
   },
   cueGroup: {
     gap: theme.spacing[2],

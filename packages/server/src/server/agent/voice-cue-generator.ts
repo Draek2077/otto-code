@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { CUE_MOMENTS, PERSONALITY_ROLES, type CueMoment } from "@otto-code/protocol/messages";
+import {
+  normalizePersonalityRoles,
+  PERSONALITY_ROLE_INFO,
+} from "@otto-code/protocol/agent-personalities";
 import type { StructuredTextGeneration } from "../session/checkout/git-metadata-generator.js";
 import { isStructuredGenerationFailure } from "./agent-response-loop.js";
 
@@ -9,6 +13,15 @@ import { isStructuredGenerationFailure } from "./agent-response-loop.js";
  * Writer mini-task chain (same routing as commit messages), flavored by the
  * persona's name + prompt. This is an editor-time action: the result is stored on the
  * personality (`voiceCues`) and read directly by the Visualizer at runtime.
+ *
+ * ONE pass authors all four moments. The editor used to fan out one request per
+ * moment for a determinate progress bar, which cost four cold-start generations
+ * and, worse, four independent readings of the persona, so the moments drifted
+ * apart in character. A single call sees the whole cast sheet at once: it commits
+ * to a `voice` line first (a cheap in-schema scratchpad we discard), then writes
+ * every group against it, and can tell the four groups apart because it is
+ * holding all four. The per-moment path stays only for old clients that still
+ * send `moment`.
  *
  * See docs/visualizer.md "Voice cues".
  */
@@ -53,6 +66,13 @@ export interface VoiceCueGenerator {
 const LINE = z.string().trim().min(1).max(48);
 const GROUP = z.array(LINE).min(1).max(8);
 const VOICE_CUE_SCHEMA = z.object({
+  // A one-line characterization of how this character talks, written BEFORE the
+  // lines. It is a forcing function, not data: making the model commit to a
+  // voice first is what stops the four groups from sliding back into neutral
+  // agent-speak. Optional so a weaker local model that skips it still yields
+  // usable cues instead of failing the whole generation; discarded on the way
+  // out (nothing downstream stores it).
+  voice: z.string().trim().max(240).optional(),
   join: GROUP,
   thinking: GROUP,
   waiting: GROUP,
@@ -107,17 +127,21 @@ const MOMENT_SPECS: Record<CueMoment, MomentSpec> = {
 
 function personaBlock(name: string, prompt?: string, roles?: string[]): string[] {
   const persona = prompt?.trim();
-  const cleanRoles = (roles ?? []).map((role) => role.trim()).filter((role) => role.length > 0);
+  const known = normalizePersonalityRoles(roles);
   // A personality holding every role carries no information about what it does
   // — and the editor hands new personalities the full set by default — so
   // feeding that back as flavor is pure noise that dilutes the name/persona.
-  const rolesAreDistinguishing =
-    cleanRoles.length > 0 && cleanRoles.length < PERSONALITY_ROLES.length;
+  const rolesAreDistinguishing = known.length > 0 && known.length < PERSONALITY_ROLES.length;
   return [
     `Name: ${name.trim() || "the agent"}`,
     persona ? `Persona: ${persona}` : `Persona: (no description — infer a tone from the name)`,
     ...(rolesAreDistinguishing
-      ? [`Roles: ${cleanRoles.join(", ")} (let what the agent does color its word choice)`]
+      ? [
+          `Roles (what this agent is actually for; let the job color its word choice):`,
+          // The role's own "why you'd choose me" blurb, so the writer knows what
+          // the agent DOES rather than just the role's name.
+          ...known.map((role) => `- ${role}: ${PERSONALITY_ROLE_INFO[role].guidance}`),
+        ]
       : []),
   ];
 }
@@ -163,16 +187,18 @@ function buildMomentPrompt(
 }
 
 function buildCombinedPrompt(name: string, prompt?: string, roles?: string[]): string {
+  const who = name.trim() || "the agent";
   const moment = (m: CueMoment): string => {
     const spec = MOMENT_SPECS[m];
     return `- "${m}" (${spec.label}): ${spec.meaning} BANNED (stock lines, do not output these or near-variants): ${spec.overused.join(", ")}.`;
   };
   return [
-    `You are writing short spoken interjections for an AI coding agent's on-screen voice.`,
+    `You are casting the spoken voice of ONE character: an AI coding agent whose short interjections play out loud while it works.`,
     "",
+    `CHARACTER`,
     ...personaBlock(name, prompt, roles),
     "",
-    `Write lines ${name.trim() || "the agent"} says OUT LOUD at four DISTINCT moments:`,
+    `THE FOUR MOMENTS. ${who} speaks at each, and they must not blur together:`,
     moment("join"),
     moment("thinking"),
     moment("waiting"),
@@ -180,9 +206,44 @@ function buildCombinedPrompt(name: string, prompt?: string, roles?: string[]): s
     "",
     ...LINE_RULES,
     "",
-    `Give 4 distinct variations for each moment, in ${name.trim() || "the agent"}'s voice.`,
-    `Return JSON only: { "join": [...], "thinking": [...], "waiting": [...], "done": [...] }.`,
+    // The scratchpad-first instruction. Everything above describes the character;
+    // this makes the model state the voice in its own words before it writes a
+    // line, which is what keeps all four groups sounding like the same person.
+    `Work in this order:`,
+    `1. Write "voice": one sentence describing how ${who} talks: vocabulary, rhythm, attitude, verbal habits. Be specific; this is the character's sound.`,
+    `2. Write 4 lines for EACH of the four moments, every one of them obeying that "voice" sentence.`,
+    `Across all 16 lines: no repeats, and no two lines that are the same idea reworded.`,
+    "",
+    `Return JSON only, exactly these keys:`,
+    `{ "voice": "...", "join": [...], "thinking": [...], "waiting": [...], "done": [...] }`,
   ].join("\n");
+}
+
+// The model is told not to repeat itself; it repeats itself anyway, usually by
+// reusing one good line at two moments, which is exactly the "these all sound
+// the same" complaint. First writer of a line keeps it (CUE_MOMENTS order), and
+// a group never empties: its own first line is kept even if a previous group
+// already claimed it, since a moment with no lines is silent at playback.
+function dedupeAcrossMoments(lines: VoiceCueLines): VoiceCueLines {
+  const seen = new Set<string>();
+  const result = emptyLines();
+  const key = (line: string): string =>
+    line
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  for (const moment of CUE_MOMENTS) {
+    const texts = lines[moment].map((line) => line.trim()).filter((line) => line.length > 0);
+    const kept = texts.filter((text) => !seen.has(key(text)));
+    // Everything this moment produced was already claimed: keep its first line
+    // anyway rather than leaving the moment silent at playback.
+    const group = kept.length > 0 ? kept : texts.slice(0, 1);
+    for (const text of group) {
+      seen.add(key(text));
+    }
+    result[moment] = group;
+  }
+  return result;
 }
 
 function emptyLines(): VoiceCueLines {
@@ -208,13 +269,16 @@ export function createVoiceCueGenerator(deps: {
           });
           return { ...emptyLines(), [moment]: result.lines };
         }
-        return await deps.generation.generate({
+        // `voice` is the model's scratchpad: read for its effect on the lines,
+        // then dropped; only the four groups are returned (and stored).
+        const { join, thinking, waiting, done } = await deps.generation.generate({
           cwd: resolvedCwd,
           prompt: buildCombinedPrompt(name, prompt, roles),
           schema: VOICE_CUE_SCHEMA,
           schemaName: "VisualizerVoiceCues",
           agentTitle: "Voice cue writer",
         });
+        return dedupeAcrossMoments({ join, thinking, waiting, done });
       } catch (error) {
         if (isStructuredGenerationFailure(error)) {
           return null;

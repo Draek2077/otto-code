@@ -1577,6 +1577,9 @@ export class VoiceAssistantWebSocketServer {
         // Marks that the daemon can AUTHOR cue lines (Writer chain, always
         // available). Speaking them at runtime separately requires ttsPreview.
         visualizerVoiceCues: true,
+        // COMPAT(personalityProfile): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
+        // Authoring runs on the same always-available Writer chain as cue lines.
+        personalityProfile: true,
         // COMPAT(setAgentPersonality): added in v0.5.0, drop the gate when daemon floor >= v0.5.0.
         setAgentPersonality: true,
         // COMPAT(checkoutGitCommit): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.

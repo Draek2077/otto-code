@@ -203,6 +203,10 @@ import {
   type VoiceCueGenerator,
 } from "./agent/voice-cue-generator.js";
 import {
+  createPersonalityProfileGenerator,
+  type PersonalityProfileGenerator,
+} from "./agent/personality-profile-generator.js";
+import {
   RefineError,
   createRefineGenerator,
   type RefineGenerator,
@@ -796,6 +800,7 @@ export class Session {
   // Generates the Visualizer's short spoken cue lines for a personality (join /
   // thinking / done), via the Writer mini-task chain. Cached per personality.
   private readonly voiceCueGenerator: VoiceCueGenerator;
+  private readonly personalityProfileGenerator: PersonalityProfileGenerator;
   // Refine's one-shot document rewriter. It lives on the session rather than on
   // WorkspaceFilesSession because that class is deliberately file I/O only —
   // it reaches no agent, and this is a model call that touches no file.
@@ -1032,6 +1037,15 @@ export class Session {
       }),
       // Provider resolution needs a cwd; the editor passes none, so a live
       // agent's cwd is a sane fallback (global providers resolve regardless).
+      fallbackCwd: () => this.agentManager.listAgents()[0]?.cwd ?? process.cwd(),
+    });
+    this.personalityProfileGenerator = createPersonalityProfileGenerator({
+      generation: createAgentStructuredTextGeneration({
+        agentManager: this.agentManager,
+        providerSnapshotManager,
+        readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
+        getFocusedSelection: (cwd) => this.getFocusedAgentSelectionForCwd(cwd),
+      }),
       fallbackCwd: () => this.agentManager.listAgents()[0]?.cwd ?? process.cwd(),
     });
     this.refineGenerator = createRefineGenerator({
@@ -2432,6 +2446,10 @@ export class Session {
         });
         return undefined;
       }
+      case "agentPersonalities.generate_profile.request": {
+        this.handlePersonalityProfileRequest(msg);
+        return undefined;
+      }
       case "read_project_config_request":
         return this.projectConfigSession.handleReadProjectConfigRequest(msg);
       case "write_project_config_request":
@@ -2580,6 +2598,43 @@ export class Session {
           payload: {
             requestId,
             error: error instanceof Error ? error.message : "Voice cue generation failed.",
+          },
+        });
+      });
+  }
+
+  private handlePersonalityProfileRequest(msg: {
+    requestId: string;
+    name: string;
+    roles?: string[];
+    glowA?: string;
+    glowB?: string;
+    cwd?: string;
+  }): void {
+    const { requestId } = msg;
+    void this.personalityProfileGenerator
+      .generate({
+        name: msg.name,
+        ...(msg.roles && msg.roles.length > 0 ? { roles: msg.roles } : {}),
+        ...(msg.glowA ? { glowA: msg.glowA } : {}),
+        ...(msg.glowB ? { glowB: msg.glowB } : {}),
+        ...(msg.cwd ? { cwd: msg.cwd } : {}),
+      })
+      .then((profile) => {
+        this.emit({
+          type: "agentPersonalities.generate_profile.response",
+          payload: profile
+            ? { requestId, profile }
+            : { requestId, error: "No personality profile could be generated on this host." },
+        });
+        return undefined;
+      })
+      .catch((error: unknown) => {
+        this.emit({
+          type: "agentPersonalities.generate_profile.response",
+          payload: {
+            requestId,
+            error: error instanceof Error ? error.message : "Personality generation failed.",
           },
         });
       });
