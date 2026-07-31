@@ -198,8 +198,8 @@ export function SubagentsTrack({
                 ) : null}
               </ScrollView>
             ) : null}
-            <ComposerTrackSeamShadow />
           </View>
+          <ComposerTrackSeamShadow />
         </ChatWidthBounds>
       </View>
     </ComposerTrackTransition>

@@ -1,14 +1,31 @@
-import { View } from "react-native";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { StyleSheet as RNStyleSheet, View } from "react-native";
+import { withUnistyles } from "react-native-unistyles";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
-import type { Theme } from "@/styles/theme";
+import { SPACING, type Theme } from "@/styles/theme";
 
-// Height of the cast-shadow strip. Deliberately a fixed pixel value rather than
-// a spacing token: it is a lighting effect sized to read as a card edge, not
-// layout.
-const TRACK_SEAM_SHADOW_HEIGHT = 10;
-const TRACK_SEAM_SHADOW_OPACITY_LIGHT = 0.12;
-const TRACK_SEAM_SHADOW_OPACITY_DARK = 0.32;
+// Visible depth of the cast shadow: how far the darkening reaches UP from the
+// front card's top edge. A fixed pixel value rather than a spacing token — it
+// is a lighting effect sized to read as a card edge, not layout.
+const TRACK_SEAM_SHADOW_FALLOFF = 10;
+// How much of itself each card tucks behind the next one — the same
+// `-spacing[4]` every track carries as `track.marginBottom`.
+const TRACK_SEAM_SHADOW_TUCK = SPACING[4];
+// The strip runs from the falloff down to the card's own bottom edge, not just
+// down to the front card's top edge. The front card has rounded top corners, so
+// its two corner notches leave the tucked strip of THIS card visible at the far
+// left and right — unshaded, those notches read as bright nicks in the seam.
+const TRACK_SEAM_SHADOW_HEIGHT = TRACK_SEAM_SHADOW_FALLOFF + TRACK_SEAM_SHADOW_TUCK;
+
+const TRACK_SEAM_SHADOW_OPACITY_LIGHT = 0.06;
+const TRACK_SEAM_SHADOW_OPACITY_DARK = 0.16;
+
+// Gradient stops as fractions of the full strip. Everything below the falloff
+// sits under the front card (or in its corner notches) and stays at full
+// strength, so the notches match the darkest point of the falloff exactly and
+// no band boundary shows.
+const shadowStop = (depth: number) => `${((depth / TRACK_SEAM_SHADOW_HEIGHT) * 100).toFixed(2)}%`;
+const SHADOW_MID_STOP = shadowStop(TRACK_SEAM_SHADOW_FALLOFF * 0.55);
+const SHADOW_FULL_STOP = shadowStop(TRACK_SEAM_SHADOW_FALLOFF);
 
 // `shadowOpacity` is optional with a default for the same reason as
 // sidebar-seam-shadow.tsx: withUnistyles supplies it through `uniProps` at
@@ -25,8 +42,9 @@ function TrackSeamShadowGradient({
         <LinearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
           <Stop offset="0%" stopColor="#000000" stopOpacity={0} />
           {/* Mid stop keeps the falloff hugging the seam instead of smearing
-              evenly across all 10px — light drops off fast under a card edge. */}
-          <Stop offset="55%" stopColor="#000000" stopOpacity={shadowOpacity * 0.3} />
+              evenly across it — light drops off fast under a card edge. */}
+          <Stop offset={SHADOW_MID_STOP} stopColor="#000000" stopOpacity={shadowOpacity * 0.3} />
+          <Stop offset={SHADOW_FULL_STOP} stopColor="#000000" stopOpacity={shadowOpacity} />
           <Stop offset="100%" stopColor="#000000" stopOpacity={shadowOpacity} />
         </LinearGradient>
       </Defs>
@@ -54,14 +72,22 @@ const seamShadowOpacityMapping = (theme: Theme) => ({
  * reads as lying *under* the one in front of it rather than being pasted flush
  * against it.
  *
- * Every card in the fan tucks `-spacing[4]` of itself behind the next one
- * (`track.marginBottom` in each track's stylesheet), so the card in front has
- * its top edge exactly `spacing[4]` above this card's own bottom — that is
- * where the strip sits, and the gradient darkens toward it. The frontmost card
- * (the composer) has nothing over it and therefore carries no strip.
+ * Every card in the fan tucks `-spacing[4]` of itself behind the next one, so
+ * the card in front has its top edge exactly that far above this card's own
+ * bottom. The gradient darkens down to that seam and then holds full strength
+ * through the tucked remainder, which is mostly hidden but shows through the
+ * front card's two rounded top corners. The frontmost card (the composer) has
+ * nothing over it and therefore carries no strip.
  *
- * Render as the LAST child of a track's surface view so it paints over the
- * card's own background and any hover fill.
+ * Render as the sibling right AFTER the surface, inside the track's
+ * `ChatWidthBounds` — not inside the surface itself. Two reasons, both about
+ * the surface's box: an absolutely-positioned child anchors to the padding box,
+ * which sits inside the surface's 1px border, and the expandable surfaces clip
+ * to that same box with `overflow: "hidden"`. Either way the strip would stop
+ * short of the card's real edges. The surface is `alignSelf: "stretch"` inside
+ * a `ChatWidthBounds` that has no padding or border of its own, so anchoring
+ * here spans the surface's full border box. Being a later sibling also keeps it
+ * painted over the card's background and any hover fill.
  */
 export function ComposerTrackSeamShadow() {
   return (
@@ -71,14 +97,12 @@ export function ComposerTrackSeamShadow() {
   );
 }
 
-const styles = StyleSheet.create((theme) => ({
+const styles = RNStyleSheet.create({
   strip: {
     position: "absolute",
     left: 0,
     right: 0,
-    // Lines the strip's bottom edge up with the top edge of the card in front:
-    // the same `spacing[4]` each track tucks itself by.
-    bottom: theme.spacing[4],
+    bottom: 0,
     height: TRACK_SEAM_SHADOW_HEIGHT,
   },
-}));
+});
