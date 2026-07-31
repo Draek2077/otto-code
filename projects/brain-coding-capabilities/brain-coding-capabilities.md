@@ -46,13 +46,19 @@ Make the agentic-coding eval trustworthy enough to drive model selection.
   opt-in (needs a repo), not in the default `TASKS`. Also built: the **context-utilization metric** —
   agentic tasks now capture peak `prompt_tokens` across turns and report it as a fraction of the
   loaded window (`TaskRunContext.contextWindow`, threaded from `profile.contextSize`), so a run says
-  how much context the model held while solving ("5/5 tests pass, held 51% ctx"). **Planned
-  "extra-long-horizon" task (synthetic default + real opt-in, context-fill a reported metric):** a
-  self-contained corpus (interlinked modules + markdown docs) whose bug fix requires _researching_ a
-  spec scattered across the docs — the model must read widely (filling context) to fix correctly,
-  scored on a hidden oracle like the agentic loop, with context utilization surfaced. Real mined
-  repos remain the opt-in depth path. The bar in mind: a model should reach ~50%+ context on a
-  real task before we call it agentic-capable.
+  how much context the model held while solving ("5/5 tests pass, held 51% ctx"). **Built: the
+  synthetic "extra-long-horizon" task** (`extra-long-horizon`, in the default `TASKS`,
+  `bench/corpus.ts`): a self-contained orderkit codebase (10 files — interlinked Python + markdown
+  docs) whose pricing bug can only be fixed correctly by finding and reading `docs/SPEC.md` (two
+  load-bearing rules — discounts apply to the original subtotal, combined discount capped at 50% —
+  live only there). The model gets read/list/search/find/write/edit/run tools over the corpus
+  (docs read-only, tests hidden), and is scored on a hidden 6-test oracle via the real interpreter.
+  Verified graduated: buggy 2/6, code-only fix 3/6, spec-driven fix 6/6; the summary flags "missed
+  the spec" when the model never read it and surfaces context held. **Open:** the corpus is ~8-10K
+  tokens, enough to push a small local window toward the ~50% bar but expandable; real mined repos
+  (`repo-task.ts`) remain the opt-in depth path; and an explicit capability verdict (score well but
+  never held real context → "not yet agentic") could be surfaced in the scorecard rather than just
+  the per-task summary.
 
 ### B — Curation & ranking-driven routing
 

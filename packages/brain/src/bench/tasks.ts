@@ -1,4 +1,5 @@
 import { runUnittestFiles, verifyPython, verifyToolCall } from "./verify.js";
+import { EXTRA_CORPUS, EXTRA_HIDDEN_TEST, EXTRA_PY_FILES, EXTRA_TARGET_FILE } from "./corpus.js";
 
 import type { ToolCall, ToolCallExpectation } from "./verify.js";
 
@@ -739,6 +740,220 @@ const longHorizonTask: Task = {
   },
 };
 
+// --------------------------------------------------------- extra-long horizon
+
+/**
+ * The hardest task: fix a spec-driven bug in a multi-file codebase whose correct
+ * behaviour lives only in the docs. The model must EXPLORE the tree, read the
+ * markdown spec, and only then can it produce a fix the hidden oracle accepts -
+ * a naive code-only fix passes some tests but misses the two rules documented in
+ * docs/SPEC.md (discounts apply to the original subtotal; combined discount is
+ * capped at 50%). Reading widely fills context, which the task reports as a
+ * fraction of the loaded window. Scored on the real interpreter, never on prose.
+ */
+const extraLongHorizonTask: Task = {
+  id: "extra-long-horizon",
+  category: "Extra-long horizon",
+  weight: 4,
+  description: "Researches a codebase and its docs to fix a spec-driven bug",
+  async run({ chat, execute = true, contextWindow }) {
+    // The model's editable copy of the Python modules; docs stay read-only.
+    const workingCopy = new Map<string, string>();
+    for (const file of EXTRA_PY_FILES) workingCopy.set(file, EXTRA_CORPUS[file]);
+
+    const readFile = (path: string): string | null => {
+      if (workingCopy.has(path)) return workingCopy.get(path) ?? null;
+      return path in EXTRA_CORPUS ? EXTRA_CORPUS[path] : null;
+    };
+    const listDir = (dir: string): string => {
+      const prefix = dir === "." || dir === "" || dir === "/" ? "" : `${dir.replace(/\/+$/, "")}/`;
+      const names = new Set<string>();
+      for (const path of Object.keys(EXTRA_CORPUS)) {
+        if (!path.startsWith(prefix)) continue;
+        const rest = path.slice(prefix.length);
+        const seg = rest.split("/")[0];
+        if (seg) names.add(rest.includes("/") ? `${seg}/` : seg);
+      }
+      return [...names].sort().join("\n") || "(empty)";
+    };
+
+    const messages: ChatRequestMessage[] = [
+      {
+        role: "user",
+        content:
+          "The orderkit library prices an order by applying discount rules to a cart subtotal. A " +
+          "bug in pricing.py makes large multi-rule discounts wrong - some order totals come out " +
+          "too low. The intended behaviour is defined in the project's own documentation, and is " +
+          "NOT obvious from the code. Explore the repository (list_directory, read_file, " +
+          "search_files, find_files), find and read the specification, then fix pricing.py so it " +
+          'matches the spec, and run the tests with "python -m unittest test_pricing". Use your ' +
+          "tools for every step; the test files are read-only.",
+      },
+    ];
+
+    const filesRead = new Set<string>();
+    const steps = { explored: false, researched: false, wrote: false, ranTests: false };
+    let bestPassed = 0;
+    let total: number | null = null;
+    let lastOutput = "";
+    let testsExecuted = false;
+    let peakPromptTokens = 0;
+    let turns = 0;
+    const maxTurns = 16;
+    let stalled: string | null = null;
+
+    while (turns < maxTurns) {
+      turns += 1;
+      const response = await chat({ messages, tools: TOOLS, max_tokens: 4096, temperature: 0.3 });
+      peakPromptTokens = Math.max(peakPromptTokens, response.usage?.prompt_tokens ?? 0);
+      const message: ChatMessage = response.choices?.[0]?.message || {};
+      const calls = message.tool_calls || [];
+      if (!calls.length) {
+        if (!message.content) stalled = "produced neither content nor a tool call";
+        break;
+      }
+      messages.push({ role: "assistant", content: message.content || null, tool_calls: calls });
+
+      for (const call of calls) {
+        const name = call.function?.name || call.name;
+        let args: unknown = call.function?.arguments ?? call.input ?? {};
+        if (typeof args === "string") {
+          try {
+            args = JSON.parse(args) as unknown;
+          } catch {
+            args = {};
+          }
+        }
+        const a: Record<string, unknown> =
+          args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+        const cleanPath = (p: unknown): string => String(p ?? "").replace(/^\.?\//, "");
+
+        let toolResult = "ok";
+        if (name === "read_file") {
+          const path = cleanPath(a.path);
+          const content = readFile(path);
+          if (content === null) {
+            toolResult = `file not found: ${path}`;
+          } else {
+            filesRead.add(path);
+            if (/spec/i.test(path)) steps.researched = true;
+            toolResult = content;
+          }
+        } else if (name === "list_directory") {
+          toolResult = listDir(String(a.path ?? "."));
+        } else if (name === "find_files") {
+          const needle = String(a.pattern ?? "")
+            .toLowerCase()
+            .replace(/\*/g, "");
+          toolResult =
+            Object.keys(EXTRA_CORPUS)
+              .filter((p) => p.toLowerCase().includes(needle))
+              .join("\n") || "(no matches)";
+        } else if (name === "search_files") {
+          const query = String(a.query ?? "");
+          const hits: string[] = [];
+          if (query) {
+            for (const [path, content] of Object.entries(EXTRA_CORPUS)) {
+              content.split("\n").forEach((line, i) => {
+                if (line.includes(query)) hits.push(`${path}:${i + 1}: ${line.trim()}`);
+              });
+            }
+          }
+          toolResult = hits.slice(0, 40).join("\n") || "(no matches)";
+        } else if (name === "write_file") {
+          const path = cleanPath(a.path);
+          if (/test_/.test(path)) {
+            toolResult = "refused: test files are read-only";
+          } else {
+            workingCopy.set(path, String(a.content ?? ""));
+            if (path === EXTRA_TARGET_FILE) steps.wrote = true;
+            toolResult = `wrote ${path}`;
+          }
+        } else if (name === "edit_file") {
+          const path = cleanPath(a.path);
+          const oldText = String(a.old_text ?? "");
+          const newText = String(a.new_text ?? "");
+          const current = workingCopy.get(path) ?? EXTRA_CORPUS[path];
+          if (/test_/.test(path)) {
+            toolResult = "refused: test files are read-only";
+          } else if (current && oldText && current.includes(oldText)) {
+            workingCopy.set(path, current.replace(oldText, newText));
+            if (path === EXTRA_TARGET_FILE) steps.wrote = true;
+            toolResult = `edited ${path}`;
+          } else {
+            toolResult = "edit failed: old_text not found";
+          }
+        } else if (name === "run_command") {
+          steps.ranTests = true;
+          const files: Record<string, string> = { "test_pricing.py": EXTRA_HIDDEN_TEST };
+          for (const file of EXTRA_PY_FILES)
+            files[file] = workingCopy.get(file) ?? EXTRA_CORPUS[file];
+          const run = await runUnittestFiles(files, "test_pricing", { execute });
+          if (run.ran && run.total) {
+            testsExecuted = true;
+            total = run.total;
+            bestPassed = Math.max(bestPassed, run.passed ?? 0);
+            lastOutput = run.output;
+            toolResult = run.output || `ran ${run.total} tests`;
+          } else if (!run.compiled) {
+            toolResult = `code failed to compile:\n${run.output}`;
+          } else {
+            toolResult = "tests could not be executed in this environment";
+          }
+        }
+        messages.push({ role: "tool", tool_call_id: call.id || "call_0", content: toolResult });
+      }
+
+      steps.explored = filesRead.size >= 3;
+      if (testsExecuted && total !== null && bestPassed >= total) break;
+    }
+
+    const ratio = total ? bestPassed / total : 0;
+    let score: number;
+    if (testsExecuted) {
+      score =
+        (steps.explored ? 0.1 : 0) +
+        (steps.researched ? 0.1 : 0) +
+        (steps.wrote ? 0.05 : 0) +
+        (steps.ranTests ? 0.05 : 0) +
+        ratio * 0.7;
+    } else {
+      score =
+        (steps.explored ? 0.3 : 0) +
+        (steps.researched ? 0.3 : 0) +
+        (steps.wrote ? 0.2 : 0) +
+        (steps.ranTests ? 0.2 : 0);
+    }
+
+    const contextUtilization =
+      contextWindow && contextWindow > 0 ? peakPromptTokens / contextWindow : null;
+    const ctxNote =
+      contextUtilization !== null ? `, held ${Math.round(contextUtilization * 100)}% ctx` : "";
+
+    return {
+      score: Math.min(1, score),
+      summary: stalled
+        ? `stalled: ${stalled}`
+        : testsExecuted
+          ? `${bestPassed}/${total} tests pass, ${filesRead.size} files read${steps.researched ? "" : " (missed the spec)"}${ctxNote}`
+          : `no tests executed (${filesRead.size} files read)`,
+      detail: {
+        steps,
+        turns,
+        bestPassed,
+        total,
+        testsExecuted,
+        filesRead: [...filesRead],
+        peakPromptTokens,
+        contextWindow: contextWindow ?? null,
+        contextUtilization,
+        stalled,
+        lastOutput,
+      },
+    };
+  },
+};
+
 // -------------------------------------------------------------- context depth
 
 /** One depth measurement in the context-depth task. */
@@ -952,6 +1167,7 @@ export const TASKS: Task[] = [
   toolCallingTask,
   agenticLoopTask,
   longHorizonTask,
+  extraLongHorizonTask,
   contextDepthTask,
   concurrencyTask,
 ];
