@@ -6,9 +6,31 @@ import {
   unescapeMarkdown,
   extractCodeBlocks,
   findPlaceholders,
+  parseUnittest,
 } from "./verify.js";
 
 const EXPECTED = ["lru.py", "metrics.py", "test_lru.py"];
+
+test("parseUnittest scores a passing run", () => {
+  const stderr = "test_a (m.T) ... ok\n----------\nRan 2 tests in 0.01s\n\nOK";
+  assert.deepEqual(parseUnittest(stderr), { total: 2, passed: 2 });
+});
+
+test("parseUnittest scores a failing run from the failure counts", () => {
+  const stderr = "test_a ... FAIL\n----------\nRan 2 tests in 0.01s\n\nFAILED (failures=1)";
+  assert.deepEqual(parseUnittest(stderr), { total: 2, passed: 1 });
+});
+
+test("parseUnittest is not spoofed by an 'OK' that is not the final status", () => {
+  // A solution/test that prints "OK" earlier must not make a FAILED run pass:
+  // the status is read from the END of the transcript.
+  const stderr = "checking OK now\ntest_a ... FAIL\nRan 2 tests in 0.01s\n\nFAILED (failures=2)";
+  assert.deepEqual(parseUnittest(stderr), { total: 2, passed: 0 });
+});
+
+test("parseUnittest reports nothing passed when the run crashed before its summary", () => {
+  assert.deepEqual(parseUnittest("Ran 2 tests in 0.01s\nTraceback: boom"), { total: 2, passed: 0 });
+});
 
 test("a longer expected name wins over a name it contains", () => {
   // Regression: "test_lru.py" contains "lru.py". A naive substring scan

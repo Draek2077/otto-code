@@ -307,19 +307,15 @@ export async function verifyPython(
         { cwd: dir, timeout: timeoutMs },
       );
       result.testsRun = true;
+      // Keep stdout+stderr for display, but the pass/fail VERDICT is parsed from
+      // stderr only: unittest writes its "Ran N tests" + "OK"/"FAILED" summary to
+      // stderr, while the model's solution prints to stdout. Concatenating them
+      // and scanning for "OK" anywhere let a solution that prints "OK" spoof a
+      // pass. parseUnittest anchors the status to the end of the transcript.
       result.testOutput = `${testResult.stdout}\n${testResult.stderr}`.trim().slice(-4000);
-
-      // unittest reports "Ran N tests" and OK / FAILED (failures=n, errors=m)
-      const ran = result.testOutput.match(/Ran (\d+) tests?/);
-      result.testsTotal = ran ? Number(ran[1]) : null;
-      if (/\nOK\b/.test(result.testOutput) || /^OK\b/m.test(result.testOutput)) {
-        result.testsPassed = result.testsTotal;
-      } else {
-        const failures = Number(result.testOutput.match(/failures=(\d+)/)?.[1] || 0);
-        const errors = Number(result.testOutput.match(/errors=(\d+)/)?.[1] || 0);
-        result.testsPassed =
-          result.testsTotal !== null ? Math.max(0, result.testsTotal - failures - errors) : null;
-      }
+      const verdict = parseUnittest(testResult.stderr);
+      result.testsTotal = verdict.total;
+      result.testsPassed = verdict.passed;
       if (testResult.timedOut)
         result.testOutput = `TIMED OUT after ${timeoutMs}ms\n${result.testOutput}`;
     }
@@ -330,14 +326,28 @@ export async function verifyPython(
   }
 }
 
-/** Parse a `python -m unittest` transcript into passed/total counts. */
+/**
+ * Parse a `python -m unittest` transcript into passed/total counts.
+ *
+ * Pass this the unittest STDERR stream, not stdout+stderr combined: unittest
+ * emits its summary ("Ran N tests", then a final "OK" or "FAILED (...)" line) to
+ * stderr, whereas a graded solution prints to stdout. The final-status match is
+ * anchored to the end of the transcript so a solution that prints "OK" earlier
+ * cannot spoof a pass; "FAILED" is honored explicitly.
+ */
 export function parseUnittest(output: string): { total: number | null; passed: number | null } {
-  const ran = output.match(/Ran (\d+) tests?/);
+  const trimmed = output.trimEnd();
+  const ran = trimmed.match(/Ran (\d+) tests?/);
   const total = ran ? Number(ran[1]) : null;
   if (total === null) return { total: null, passed: null };
-  if (/\nOK\b/.test(output) || /^OK\b/m.test(output)) return { total, passed: total };
-  const failures = Number(output.match(/failures=(\d+)/)?.[1] || 0);
-  const errors = Number(output.match(/errors=(\d+)/)?.[1] || 0);
+  // The last line of a unittest run is "OK" (maybe with skips) or "FAILED (...)".
+  const status = trimmed.match(/(?:^|\n)(OK|FAILED)\b[^\n]*$/);
+  if (status && status[1] === "OK") return { total, passed: total };
+  const failures = Number(trimmed.match(/failures=(\d+)/)?.[1] || 0);
+  const errors = Number(trimmed.match(/errors=(\d+)/)?.[1] || 0);
+  // No trailing OK and no failure counts (e.g. a crash before the summary) means
+  // nothing verifiably passed.
+  if (!status && failures === 0 && errors === 0) return { total, passed: 0 };
   return { total, passed: Math.max(0, total - failures - errors) };
 }
 
@@ -398,7 +408,8 @@ export async function runUnittestFiles(
     });
     result.ran = true;
     result.output = `${testResult.stdout}\n${testResult.stderr}`.trim().slice(-2000);
-    const parsed = parseUnittest(result.output);
+    // Verdict from stderr only (see parseUnittest) so model stdout can't spoof it.
+    const parsed = parseUnittest(testResult.stderr);
     result.total = parsed.total;
     result.passed = parsed.passed;
     if (testResult.timedOut) result.output = `TIMED OUT after ${timeoutMs}ms\n${result.output}`;

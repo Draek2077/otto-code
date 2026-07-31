@@ -41,6 +41,9 @@ function redactConfig(config: BrainConfig): BrainConfig {
   return {
     ...config,
     auth: { ...config.auth, token: config.auth.token ? "********" : null },
+    // The Hugging Face token is the owner's account credential — never echo it to
+    // a caller of /__host/config (read is allowed by default on a shared brain).
+    ...(config.hfToken ? { hfToken: "********" } : {}),
   };
 }
 
@@ -187,7 +190,12 @@ export async function startService({
     if (/error|failed|warn/i.test(line)) onLog(line);
   });
 
-  const loadModel = async (target: Model): Promise<void> => {
+  // Serialize model switches: the router queues request-driven switches, but the
+  // config path (POST /__host/config) calls loadModel directly. Chaining here
+  // guarantees two switches (e.g. a config write racing a request-driven switch)
+  // can never overlap two supervisor.start() calls, whichever caller triggers them.
+  let modelSwitchChain: Promise<void> = Promise.resolve();
+  const loadModelUnsafe = async (target: Model): Promise<void> => {
     const gpuInfo = await queryGpu();
     let fitProfile = forModel(store, target, config.defaults);
     if (gpuInfo) {
@@ -203,6 +211,12 @@ export async function startService({
     await supervisor.start(target, fitProfile);
     store.lastModelId = target.id;
     saveProfilesStore(store);
+  };
+  const loadModel = (target: Model): Promise<void> => {
+    const run = modelSwitchChain.then(() => loadModelUnsafe(target));
+    // Keep the chain alive even if this switch fails, so a later switch still runs.
+    modelSwitchChain = run.catch(() => undefined);
+    return run;
   };
 
   // Apply an editable config patch from POST /__host/config: mutate the live

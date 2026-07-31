@@ -17,6 +17,10 @@ export interface ComposerQueueItem {
   id: string;
   text: string;
   attachments: ComposerAttachment[];
+  /** "system" for daemon-injected entries (mentions/schedules); else user. */
+  source?: "user" | "system";
+  /** Attachments the daemon holds for this entry, even if not in the sidecar. */
+  attachmentCount?: number;
 }
 
 export interface ComposerQueueController {
@@ -104,6 +108,8 @@ export function useComposerQueue(input: {
       id: entry.id,
       text: entry.preview,
       attachments: sidecar.get(entry.id) ?? [],
+      source: entry.source,
+      attachmentCount: entry.attachmentCount,
     }));
   }, [daemonItems, daemonOwnsQueue, localItems]);
 

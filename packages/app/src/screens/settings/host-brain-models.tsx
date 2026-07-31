@@ -677,39 +677,52 @@ function HuggingFaceSearch({
   const [openRepo, setOpenRepo] = useState<string | null>(null);
   const [quants, setQuants] = useState<BrainRepoQuant[]>([]);
   const [loadingQuants, setLoadingQuants] = useState(false);
+  // Monotonic request tokens so an out-of-order response from a superseded
+  // search/quant-list can't overwrite the current one (which would render one
+  // repo's quants under another repo's header — and mis-target Download).
+  const searchSeq = useRef(0);
+  const quantSeq = useRef(0);
 
   const runSearch = useCallback(() => {
     if (!client || !query.trim()) return;
+    const seq = ++searchSeq.current;
     setSearching(true);
     setOpenRepo(null);
     void client
       .brainHfSearch(query.trim(), 30)
       .then((rows) => {
-        setResults(rows);
+        if (seq === searchSeq.current) setResults(rows);
         return;
       })
       .catch((error) => reportError("Search failed", error))
-      .finally(() => setSearching(false));
+      .finally(() => {
+        if (seq === searchSeq.current) setSearching(false);
+      });
   }, [client, query]);
 
   const toggleQuants = useCallback(
     (repo: string) => {
       if (!client) return;
       if (openRepo === repo) {
+        // Collapsing: bump the token so a still-pending response is ignored.
+        quantSeq.current++;
         setOpenRepo(null);
         return;
       }
+      const seq = ++quantSeq.current;
       setOpenRepo(repo);
       setQuants([]);
       setLoadingQuants(true);
       void client
         .brainHfQuants(repo)
         .then((rows) => {
-          setQuants(rows);
+          if (seq === quantSeq.current) setQuants(rows);
           return;
         })
         .catch((error) => reportError("Could not list quantizations", error))
-        .finally(() => setLoadingQuants(false));
+        .finally(() => {
+          if (seq === quantSeq.current) setLoadingQuants(false);
+        });
     },
     [client, openRepo],
   );

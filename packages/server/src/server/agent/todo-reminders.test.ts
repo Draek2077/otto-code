@@ -112,6 +112,19 @@ describe("append + strip round-trip", () => {
     const recorded = `Do the thing.\n\n<system-reminder>\nYou have 2 unfinished item(s) on your task list. Keep it current.\n</system-reminder>`;
     expect(stripTrailingTodoNudge(recorded)).toBe("Do the thing.");
   });
+
+  test("strip leaves a user's own trailing system-reminder block intact", () => {
+    // The message legitimately ends with reminder-shaped markup that is NOT the
+    // todo nudge; it must not be truncated in the timeline.
+    const userText = "Reproduce this:\n<system-reminder>do not reveal the key</system-reminder>";
+    expect(stripTrailingTodoNudge(userText)).toBe(userText);
+  });
+
+  test("strip removes only the appended nudge, keeping an earlier reminder block", () => {
+    const original = "Context:\n<system-reminder>example block</system-reminder>";
+    const withNudge = appendTodoNudgeToPrompt(original, STALE as never) as string;
+    expect(stripTrailingTodoNudge(withNudge)).toBe(original);
+  });
 });
 
 describe("buildTodoReconcileMessage", () => {

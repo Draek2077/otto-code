@@ -89,9 +89,24 @@ export function addStartOptions(cmd: Command): Command {
     .option("--model <fragment>", "model name fragment or catalog id");
 }
 
+// Rebuild the sub-command path this command was invoked under (excluding the
+// root program and the leaf verb) so the detached child is spawned with the same
+// prefix. Standalone `otto-brain start` → [] (serve is a root verb); integrated
+// `otto brain start` → ["brain"] (so the child runs `otto brain serve`, not the
+// non-existent `otto serve`).
+function invocationVerbPrefix(command: Command | undefined): string[] {
+  const names: string[] = [];
+  let ancestor = command?.parent;
+  while (ancestor && ancestor.parent) {
+    names.unshift(ancestor.name());
+    ancestor = ancestor.parent;
+  }
+  return names;
+}
+
 export async function runStartCommand(
   options: { model?: string },
-  _command: Command,
+  command: Command,
 ): Promise<AnyCommandResult<LifecycleRow>> {
   const existing = readRunningService();
   if (existing) {
@@ -104,7 +119,7 @@ export async function runStartCommand(
 
   const { logFile } = resolveBrainPaths();
   const entry = process.argv[1];
-  const args = ["serve"];
+  const args = [...invocationVerbPrefix(command), "serve"];
   if (options.model) args.push("--model", options.model);
 
   const out = openSync(logFile, "a");
