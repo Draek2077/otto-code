@@ -83,12 +83,16 @@ Curate coding models, rank them, and route a coding request to the best local mo
   dropped the image and worked-blind. Move to the OpenAI-canonical shape (image in a following
   `user` message) or default `unknown`-capability to not-send, to keep the provider-agnostic promise.
 
-### C — Local FIM / autocomplete (parked — its own future effort)
+### C — Inline completion (moved out — it is an Otto feature, not a brain feature)
 
-Greenfield across three layers: a managed `/infill` serving lane + FIM-token detection in `gguf.ts`
-(brain); a new non-chat completion RPC with a `server_info.features.*` capability flag (server/
-protocol); a CodeMirror ghost-text extension in the React-free `editor/editor-core.ts` layer (app).
-Deliberately deferred until the app/server/protocol surface is worth committing.
+Originally scoped here as "local FIM/autocomplete." **Reframed 2026-07-30:** editor inline
+completion is a provider-neutral **Otto** capability driven by whatever provider the user picks
+(Claude, OpenAI-compatible, brain, …), not a brain feature. FIM is one implementation strategy
+(the one FIM-trained local models use), not the feature. Moved to its own charter:
+[`../inline-completion/inline-completion.md`](../inline-completion/inline-completion.md). What
+stays brain-side is only an **input** to that feature: a managed low-latency `/infill` lane and
+FIM-token detection in `gguf.ts`, which let the Otto feature default to a fast local completion
+model when one is present.
 
 ## Dependency order
 

@@ -1,4 +1,5 @@
 import { ACP_PROVIDER_ICON_SVGS } from "@/assets/acp-provider-icons";
+import { MATERIAL_SYMBOL_SVGS } from "@/assets/material-symbol-icons";
 
 export interface AcpProviderCatalogModel {
   id: string;
@@ -314,6 +315,21 @@ const CATALOG_DATA = [
     command: ["npx", "-y", "@compass-ai/nova@1.1.29", "acp"],
   },
   {
+    id: "otto-brain",
+    title: "Otto Brain",
+    description:
+      "Otto's built-in local AI host. Serves your local models over an OpenAI-compatible endpoint, no external server required.",
+    version: "manual",
+    iconId: null,
+    iconSvg: MATERIAL_SYMBOL_SVGS.Neurology,
+    installLink: "https://otto-code.me/docs/brain",
+    extends: "openai-compatible",
+    featured: true,
+    env: {
+      OPENAI_BASE_URL: "http://127.0.0.1:1234/v1",
+    },
+  },
+  {
     id: "openai-compatible",
     title: "OpenAI Compatible",
     description:
@@ -398,6 +414,16 @@ const CATALOG_DATA = [
   },
 ] as const;
 
+function resolveCatalogIconSvg(entry: (typeof CATALOG_DATA)[number]): string | null {
+  if ("iconSvg" in entry && entry.iconSvg) {
+    return entry.iconSvg;
+  }
+  if (entry.iconId) {
+    return ACP_PROVIDER_ICON_SVGS[entry.iconId] ?? null;
+  }
+  return null;
+}
+
 const catalogEntries: AcpProviderCatalogEntry[] = CATALOG_DATA.map((entry) => ({
   id: entry.id,
   title: entry.title,
@@ -409,7 +435,7 @@ const catalogEntries: AcpProviderCatalogEntry[] = CATALOG_DATA.map((entry) => ({
   command: "command" in entry ? entry.command : undefined,
   env: "env" in entry ? entry.env : undefined,
   params: "params" in entry ? entry.params : undefined,
-  iconSvg: entry.iconId ? (ACP_PROVIDER_ICON_SVGS[entry.iconId] ?? null) : null,
+  iconSvg: resolveCatalogIconSvg(entry),
 }));
 
 export const ACP_PROVIDER_CATALOG: AcpProviderCatalogEntry[] = [

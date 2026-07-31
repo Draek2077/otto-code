@@ -25,17 +25,26 @@ function resolveUrl(repo: string, file: string): string {
 }
 
 /**
- * The GGUF filename to download. Prefer an explicit `quantFile`; otherwise the
- * caller must pass one, because community repos name files inconsistently.
+ * The GGUF filename to download. Prefer an explicit override, then the catalog
+ * entry's `quantFile`, then the basename of the catalog `id` — which for the
+ * seeded catalog is `<hfRepo>/<file>.gguf`, so the id already names the file.
+ * Only if none of those yields a `.gguf` do we give up: community repos name
+ * files inconsistently, so a bare id with no gguf basename still needs --file.
  */
 function resolveFileName(model: CatalogModel, override?: string): string {
-  const file = override ?? model.quantFile;
+  const file = override ?? model.quantFile ?? deriveFileFromId(model.id);
   if (!file) {
     throw new Error(
       `no file name for ${model.id}: add "quantFile" to the catalog entry or pass --file <name.gguf>`,
     );
   }
   return file;
+}
+
+/** The last path segment of the id, when it is a `.gguf` file name. */
+function deriveFileFromId(id: string): string | undefined {
+  const base = id.split("/").pop();
+  return base && base.toLowerCase().endsWith(".gguf") ? base : undefined;
 }
 
 export interface PullOptions {

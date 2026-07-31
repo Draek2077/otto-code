@@ -84,9 +84,7 @@ test.describe("Composer suggestions and history", () => {
     }
   });
 
-  test("Escape clears typed text first, then a second Escape cancels the running turn", async ({
-    page,
-  }) => {
+  test("Escape cancels the running turn while preserving typed text", async ({ page }) => {
     test.setTimeout(120_000);
     // A long-running model removes ambiguity between "turn was canceled" and
     // "turn just finished on its own" when asserting the stop button vanishes.
@@ -103,19 +101,16 @@ test.describe("Composer suggestions and history", () => {
       const stopButton = page.getByRole("button", { name: /stop|cancel/i }).first();
       await expect(stopButton).toBeVisible({ timeout: 30_000 });
 
-      // First Escape with text in the box only clears the draft.
+      // Escape never touches the composer text — typed-but-unsent text is unrecoverable.
+      // A single Escape interrupts the running agent and leaves the draft intact.
       const input = composerLocator(page);
       await focusComposer(page);
-      await input.fill("draft that should be cleared");
-      await page.keyboard.press("Escape");
-      await expect(input).toHaveValue("");
-      await expect(stopButton).toBeVisible();
-
-      // Second Escape with an empty box interrupts the running agent.
+      await input.fill("draft that should survive");
       await page.keyboard.press("Escape");
       await expect(page.getByRole("button", { name: /stop|cancel/i })).toHaveCount(0, {
         timeout: 15_000,
       });
+      await expect(input).toHaveValue("draft that should survive");
     } finally {
       await agent.cleanup();
     }

@@ -2716,6 +2716,7 @@ export const ar: TranslationResources = {
       teams: "الفرق",
       tools: "الأدوات",
       code: "الكود",
+      brain: "الدماغ",
       workspaces: "Workspaces",
       gitProviders: "موفّرو Git",
       providers: "مقدمي الخدمات",

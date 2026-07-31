@@ -29,6 +29,7 @@ import {
   isPreferWriterPersonalities,
   isToolGroupEnabled,
   OTTO_CORE_TOOL_GROUP_META,
+  TODO_REMINDER_META,
   type AgentBehaviorMeta,
   type OttoToolGroupMeta,
 } from "./otto-tools-config";
@@ -64,6 +65,16 @@ export function useAgentBehaviorTogglesFeature(serverId: string): boolean {
 export function useMetadataGenerationEnabledFeature(serverId: string): boolean {
   return useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.metadataGenerationEnabled === true,
+  );
+}
+
+/**
+ * The single detection point for the provider-agnostic task-list reminders.
+ * COMPAT(todoReminders): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
+ */
+export function useTodoRemindersFeature(serverId: string): boolean {
+  return useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.todoReminders === true,
   );
 }
 
@@ -169,8 +180,11 @@ function AgentBehaviorToggleRow(props: {
   serverId: string;
   config: MutableDaemonConfig | null;
   meta: AgentBehaviorMeta;
+  // Defaults on: existing callers place these below another row in a shared card.
+  // A caller that renders these as the first row in its own card passes false.
+  withBorder?: boolean;
 }) {
-  const { serverId, config, meta } = props;
+  const { serverId, config, meta, withBorder = true } = props;
   const mutation = useToggleMutation(serverId);
   const onValueChange = useCallback(
     (next: boolean) => {
@@ -186,7 +200,7 @@ function AgentBehaviorToggleRow(props: {
       onValueChange={onValueChange}
       disabled={mutation.isPending}
       errorText={toErrorMessage(mutation.error)}
-      withBorder
+      withBorder={withBorder}
       testID={`host-page-agent-behavior-${meta.key}`}
     />
   );
@@ -386,6 +400,32 @@ export function AgentBehaviorRows({ serverId }: { serverId: string }) {
     <>
       {AGENT_BEHAVIOR_META.map((meta) => (
         <AgentBehaviorToggleRow key={meta.key} serverId={serverId} config={config} meta={meta} />
+      ))}
+    </>
+  );
+}
+
+// The provider-agnostic task-list reminder rows (nudge + idle reconcile).
+// Rendered as their own grouped set so the two related toggles read together;
+// hidden without the capability.
+export function TodoReminderRows({ serverId }: { serverId: string }) {
+  const hasFeature = useTodoRemindersFeature(serverId);
+  const { config } = useDaemonConfig(serverId);
+
+  if (!hasFeature) {
+    return null;
+  }
+
+  return (
+    <>
+      {TODO_REMINDER_META.map((meta, index) => (
+        <AgentBehaviorToggleRow
+          key={meta.key}
+          serverId={serverId}
+          config={config}
+          meta={meta}
+          withBorder={index > 0}
+        />
       ))}
     </>
   );

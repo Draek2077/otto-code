@@ -162,6 +162,17 @@ export const BrainConfigSchema = z
     // null => managed default ($OTTO_HOME/otto-brain/models), unioned with LM Studio.
     modelsDir: z.string().nullable().default(null),
     defaultModel: z.string().nullable().default(null),
+    // Pin the host to a single model: serve only the default/resident model and
+    // refuse completion requests that name a different one, instead of queuing a
+    // switch. For hosts that load one model and must not thrash between clients.
+    lockModel: z.boolean().default(false),
+    // Sharing/control gates (off by default — a brain is not remotely
+    // controllable until its owner opts in). `allowRemoteConfig`: a client with
+    // the token may CHANGE config over the network (POST /__host/config), not
+    // just use/read. `allowInsecureBind`: permit a non-loopback bind with no
+    // token (an "open, trusted network" share) — otherwise the service refuses.
+    allowRemoteConfig: z.boolean().default(false),
+    allowInsecureBind: z.boolean().default(false),
     defaults: ProfileDefaultsSchema.default({}),
   })
   .strict();

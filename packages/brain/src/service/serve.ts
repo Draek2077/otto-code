@@ -12,7 +12,14 @@
 import http from "node:http";
 import https from "node:https";
 
-import { getCalibration, forModel, loadProfilesStore, saveProfilesStore } from "../config/index.js";
+import {
+  getCalibration,
+  forModel,
+  loadPersistedConfig,
+  loadProfilesStore,
+  saveBrainConfig,
+  saveProfilesStore,
+} from "../config/index.js";
 import { resolveBrainPaths } from "../config/paths.js";
 import type { BrainConfig } from "../config/schema.js";
 import { query as queryGpu } from "../gpu.js";
@@ -21,11 +28,36 @@ import { CommandError } from "../output/types.js";
 import { resolveRuntime } from "../runtime/index.js";
 import type { Model } from "../types.js";
 import * as vram from "../vram.js";
+import { resolveVersion } from "../version.js";
+import * as results from "../ops/results.js";
 import { createRouter, Telemetry } from "./router.js";
 import { Supervisor } from "./supervisor.js";
 import * as tailscale from "./tailscale.js";
 import { CertManager, resolveTlsOptions, type SecurePair } from "./tls.js";
 import { removePidFile, writePidFile } from "./pid-lock.js";
+
+/** The effective config with secrets masked, for the `/__host/config` read. */
+function redactConfig(config: BrainConfig): BrainConfig {
+  return {
+    ...config,
+    auth: { ...config.auth, token: config.auth.token ? "********" : null },
+  };
+}
+
+/** Benchmark rankings + per-config variance + best-per-config, for `/__host/evals`. */
+function collectEvals(): unknown {
+  try {
+    const all = results.loadAll();
+    return {
+      rankings: results.rankModels(all),
+      latest: results.latestPerConfig(all),
+      variance: results.variance(all),
+      runCount: all.length,
+    };
+  } catch {
+    return { rankings: [], latest: [], variance: [], runCount: 0 };
+  }
+}
 
 function isLoopback(host: string): boolean {
   return host === "127.0.0.1" || host === "::1" || host === "localhost";
@@ -112,12 +144,15 @@ export async function startService({
   if (
     !isLoopback(bindHost) &&
     config.auth.mode !== "token" &&
+    !config.allowInsecureBind &&
     env.OTTO_BRAIN_ALLOW_INSECURE !== "1"
   ) {
     throw new CommandError({
       code: "INSECURE_BIND",
       message: `refusing to bind ${bindHost} without auth`,
-      details: "set auth.mode=token (or OTTO_BRAIN_ALLOW_INSECURE=1 to override)",
+      details:
+        "set auth.mode=token, or allowInsecureBind=true for an open trusted-network share " +
+        "(or OTTO_BRAIN_ALLOW_INSECURE=1 to override)",
     });
   }
 
@@ -170,6 +205,39 @@ export async function startService({
     saveProfilesStore(store);
   };
 
+  // Apply an editable config patch from POST /__host/config: mutate the live
+  // config (so the lock/default getters and future starts see it), persist it to
+  // config.json without baking in env overrides, and hot-switch the model when a
+  // new default is named. Network/TLS/auth are host-owned and not accepted here.
+  const applyConfigPatch = async (patch: unknown): Promise<BrainConfig> => {
+    if (typeof patch !== "object" || patch === null || Array.isArray(patch)) {
+      throw new Error("config patch must be an object");
+    }
+    const p = patch as Record<string, unknown>;
+    let switchTo: string | null = null;
+    if ("defaultModel" in p) {
+      const next = p.defaultModel;
+      if (next !== null && typeof next !== "string") {
+        throw new Error("defaultModel must be a string or null");
+      }
+      if ((next ?? null) !== config.defaultModel) switchTo = next ?? null;
+      config.defaultModel = next ?? null;
+    }
+    if ("lockModel" in p) {
+      if (typeof p.lockModel !== "boolean") throw new Error("lockModel must be a boolean");
+      config.lockModel = p.lockModel;
+    }
+    const persisted = loadPersistedConfig(paths);
+    persisted.defaultModel = config.defaultModel;
+    persisted.lockModel = config.lockModel;
+    saveBrainConfig(persisted, paths);
+    if (switchTo) {
+      const target = catalog.find((m) => m.displayName === switchTo || m.id === switchTo);
+      if (target) await loadModel(target);
+    }
+    return redactConfig(config);
+  };
+
   const handler = withAuth(
     createRouter({
       supervisor,
@@ -177,6 +245,13 @@ export async function startService({
       logger: { warn: (m: string) => onLog(`WARN ${m}`) },
       getCatalog: () => catalog,
       loadModel,
+      version: resolveVersion(),
+      getConfig: () => redactConfig(config),
+      getEvals: collectEvals,
+      getLockModel: () => config.lockModel,
+      getDefaultModel: () => config.defaultModel,
+      applyConfigPatch,
+      getAllowConfigWrite: () => config.allowRemoteConfig,
     }),
     config,
   );

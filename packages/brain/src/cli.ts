@@ -9,12 +9,14 @@ import { Command } from "commander";
 
 import { addBenchOptions, runBenchCommand } from "./commands/bench.js";
 import { addCalibrateOptions, runCalibrateCommand } from "./commands/calibrate.js";
+import { addCatalogOptions, runCatalogCommand } from "./commands/catalog.js";
 import {
   addConfigSetOptions,
   addConfigShowOptions,
   runConfigSetCommand,
   runConfigShowCommand,
 } from "./commands/config.js";
+import { addShareOptions, runShareCommand } from "./commands/share.js";
 import {
   addRestartOptions,
   addServeOptions,
@@ -69,6 +71,7 @@ export function registerBrainCommands(program: Command): Command {
   addScanOptions(program.command("scan")).action(withOutput(runScanCommand));
   addCalibrateOptions(program.command("calibrate")).action(withOutput(runCalibrateCommand));
   addSweepOptions(program.command("sweep")).action(withOutput(runSweepCommand));
+  addCatalogOptions(program.command("catalog")).action(withOutput(runCatalogCommand));
   addPullOptions(program.command("pull")).action(withOutput(runPullCommand));
 
   // Benchmark suite (plain actions: long streaming runs with formatted reports).
@@ -85,6 +88,8 @@ export function registerBrainCommands(program: Command): Command {
   const config = program.command("config").description("Inspect and edit brain config");
   addConfigShowOptions(config.command("show")).action(withOutput(runConfigShowCommand));
   addConfigSetOptions(config.command("set")).action(withOutput(runConfigSetCommand));
+
+  addShareOptions(program.command("share")).action(withOutput(runShareCommand));
 
   return program;
 }

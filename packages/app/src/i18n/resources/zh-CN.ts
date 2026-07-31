@@ -2683,6 +2683,7 @@ export const zhCN: TranslationResources = {
       teams: "团队",
       tools: "工具",
       code: "代码",
+      brain: "大脑",
       workspaces: "Workspaces",
       gitProviders: "Git 提供商",
       providers: "提供方",

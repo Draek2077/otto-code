@@ -519,6 +519,7 @@ export const HOST_SECTION_SLUGS = [
   "teams",
   "tools",
   "code",
+  "brain",
   "workspaces",
   "providers",
   "usage",

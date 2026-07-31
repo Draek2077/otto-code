@@ -2782,6 +2782,7 @@ export const es: TranslationResources = {
       teams: "Equipos",
       tools: "Herramientas",
       code: "Código",
+      brain: "Cerebro",
       workspaces: "Workspaces",
       gitProviders: "Proveedores de Git",
       providers: "Proveedores",

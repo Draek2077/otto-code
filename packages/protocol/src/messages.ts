@@ -177,6 +177,17 @@ const MutableAgentBehaviorsConfigSchema = z
     // Default value of an agent's notifyOnFinish when the spawn path leaves it
     // unspecified (the current implicit default).
     notifyOnFinishDefault: z.boolean().default(true),
+    // Provider-agnostic task-list reminders. Otto renders every provider's
+    // native todo list into one timeline UI; when an agent leaves that list with
+    // unfinished items, these keep it from going stale (the user shouldn't have
+    // to dismiss a half-checked list themselves).
+    // Passive: while a stale list is open, attach a reminder to the agent's next
+    // turn (mirrors the harness's own "your todo list looks stale" nudge).
+    todoNudge: z.boolean().default(true),
+    // Active: when the agent goes idle with a stale list, inject a one-shot
+    // reconcile pass so it marks done what's done (or states what's genuinely
+    // left) before the turn truly ends.
+    todoReconcileOnIdle: z.boolean().default(true),
   })
   .passthrough();
 
@@ -555,6 +566,102 @@ export const SavedProviderEndpointSchema = z
 
 export type SavedProviderEndpoint = z.infer<typeof SavedProviderEndpointSchema>;
 
+// The editable projection of @otto-code/brain's own config (the brain's
+// config.json stays the source of truth on disk; the daemon writes changes
+// through). Every field is defaulted so a new client parsing an old daemon's
+// config sees a well-formed, OFF section.
+export const MutableBrainTlsConfigSchema = z
+  .object({
+    mode: z.enum(["off", "files", "self-signed", "tailscale"]).default("off"),
+    certFile: z.string().nullable().default(null),
+    keyFile: z.string().nullable().default(null),
+    hostname: z.string().nullable().default(null),
+    certDir: z.string().nullable().default(null),
+    renewBeforeDays: z.number().int().min(1).default(21),
+  })
+  .passthrough();
+
+// Where a remote brain lives, when brain.mode is "remote". Every field is
+// defaulted so an old daemon's config parses as a well-formed, empty target.
+export const MutableBrainRemoteConfigSchema = z
+  .object({
+    host: z.string().default(""),
+    port: z.number().int().default(1234),
+    secure: z.boolean().default(false),
+    // Secret: masked with DAEMON_CONFIG_SECRET_SENTINEL on the way out.
+    authToken: z.string().nullable().default(null),
+  })
+  .passthrough();
+
+export const MutableBrainConfigSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    autoStart: z.boolean().default(false),
+    // "local": the daemon spawns and supervises the brain on this host.
+    // "remote": the daemon connects to a brain running on another Otto host
+    // (read-only: status/evals/config, no lifecycle). Gated by features.brainRemote.
+    mode: z.enum(["local", "remote"]).default("local"),
+    remote: MutableBrainRemoteConfigSchema.default({
+      host: "",
+      port: 1234,
+      secure: false,
+      authToken: null,
+    }),
+    listen: z
+      .object({
+        host: z.string().default("127.0.0.1"),
+        port: z.number().int().default(1234),
+      })
+      .passthrough()
+      .default({ host: "127.0.0.1", port: 1234 }),
+    defaultModel: z.string().nullable().default(null),
+    // Pin the host to one model: serve only the default/resident model and
+    // refuse completion requests that ask for a different one.
+    lockModel: z.boolean().default(false),
+    // Sharing gates (off by default). allowRemoteConfig: key holders may CHANGE
+    // config over the network (POST /__host/config), not just use it.
+    // allowInsecureBind: permit a non-loopback bind with no token (open share).
+    allowRemoteConfig: z.boolean().default(false),
+    allowInsecureBind: z.boolean().default(false),
+    authMode: z.enum(["none", "token"]).default("none"),
+    // Secret: masked with DAEMON_CONFIG_SECRET_SENTINEL on the way out; an
+    // unchanged sentinel is stripped from inbound patches.
+    authToken: z.string().nullable().default(null),
+    tls: MutableBrainTlsConfigSchema.default({
+      mode: "off",
+      certFile: null,
+      keyFile: null,
+      hostname: null,
+      certDir: null,
+      renewBeforeDays: 21,
+    }),
+  })
+  .passthrough();
+
+export type MutableBrainConfig = z.infer<typeof MutableBrainConfigSchema>;
+
+export const DEFAULT_MUTABLE_BRAIN_CONFIG = {
+  enabled: false,
+  autoStart: false,
+  mode: "local" as const,
+  remote: { host: "", port: 1234, secure: false, authToken: null },
+  listen: { host: "127.0.0.1", port: 1234 },
+  defaultModel: null,
+  lockModel: false,
+  allowRemoteConfig: false,
+  allowInsecureBind: false,
+  authMode: "none" as const,
+  authToken: null,
+  tls: {
+    mode: "off" as const,
+    certFile: null,
+    keyFile: null,
+    hostname: null,
+    certDir: null,
+    renewBeforeDays: 21,
+  },
+};
+
 export const MutableDaemonConfigSchema = z
   .object({
     mcp: z
@@ -576,6 +683,8 @@ export const MutableDaemonConfigSchema = z
       promptSuggestions: true,
       agentProgressSummaries: true,
       notifyOnFinishDefault: true,
+      todoNudge: true,
+      todoReconcileOnIdle: true,
     }),
     providers: z.record(z.string(), MutableDaemonProviderConfigSchema).default({}),
     metadataGeneration: MutableMetadataGenerationConfigSchema.default({
@@ -639,6 +748,10 @@ export const MutableDaemonConfigSchema = z
       maxRunningProbes: 2,
       idleMinutes: 10,
     }),
+    // Local AI host (otto-brain) management. Gated by server_info features.brainControl;
+    // defaults OFF and well-formed so a new client parsing an old daemon's config renders
+    // the row without ever implying the brain is running.
+    brain: MutableBrainConfigSchema.default(DEFAULT_MUTABLE_BRAIN_CONFIG),
   })
   .passthrough();
 
@@ -688,6 +801,8 @@ export const MutableDaemonConfigPatchSchema = z
     lsp: MutableLspConfigSchema.partial().optional(),
     // Gated by server_info features.solutionView; patches deep-merge.
     dotnetSolutionManagement: MutableDotnetSolutionConfigSchema.partial().optional(),
+    // Gated by server_info features.brainControl; patches deep-merge.
+    brain: MutableBrainConfigSchema.partial().optional(),
   })
   .partial()
   .passthrough();
@@ -1570,6 +1685,439 @@ export const AttachmentsImagesClearResponseSchema = z.object({
     error: z.string().nullable(),
     requestId: z.string(),
   }),
+});
+
+// --- Local AI host (otto-brain) management -------------------------------
+// Lifecycle + evals are correlated request/response RPCs. Gated by
+// server_info.features.brainControl (lifecycle) and features.brainStatus
+// (evals). Live status streaming (subscribe_brain_status + brain_status_changed)
+// is added alongside its client/daemon consumers.
+
+// The brain's host status, as the daemon derives it: liveness plus the fields
+// proxied from the brain's own `/__host/status`. Passthrough on the opaque
+// sub-objects so the brain can evolve them without a protocol bump.
+export const BrainHostStatusSchema = z
+  .object({
+    running: z.boolean(),
+    pid: z.number().nullable().optional(),
+    version: z.string().nullable().optional(),
+    host: z.string().nullable().optional(),
+    port: z.number().nullable().optional(),
+    displayHost: z.string().nullable().optional(),
+    secure: z.boolean().optional(),
+    state: z.string().nullable().optional(),
+    model: z.string().nullable().optional(),
+    modelId: z.string().nullable().optional(),
+    vramBytes: z.number().nullable().optional(),
+    loadSeconds: z.number().nullable().optional(),
+    startedAt: z.string().nullable().optional(),
+    lastError: z.string().nullable().optional(),
+    telemetry: z.record(z.string(), z.unknown()).nullable().optional(),
+    scheduler: z.record(z.string(), z.unknown()).nullable().optional(),
+    recent: z.array(z.record(z.string(), z.unknown())).optional(),
+  })
+  .passthrough();
+export type BrainHostStatus = z.infer<typeof BrainHostStatusSchema>;
+
+const BrainHostStatusResultSchema = z.object({
+  status: BrainHostStatusSchema,
+  error: z.string().nullable(),
+  requestId: z.string(),
+});
+
+export const BrainHostStatusRequestSchema = z.object({
+  type: z.literal("brain.host.status.request"),
+  requestId: z.string(),
+});
+export const BrainHostStatusResponseSchema = z.object({
+  type: z.literal("brain.host.status.response"),
+  payload: BrainHostStatusResultSchema,
+});
+
+export const BrainHostStartRequestSchema = z.object({
+  type: z.literal("brain.host.start.request"),
+  // Optional model fragment/id to load on start; null = the brain's default.
+  model: z.string().nullable().default(null),
+  requestId: z.string(),
+});
+export const BrainHostStartResponseSchema = z.object({
+  type: z.literal("brain.host.start.response"),
+  payload: BrainHostStatusResultSchema,
+});
+
+export const BrainHostStopRequestSchema = z.object({
+  type: z.literal("brain.host.stop.request"),
+  requestId: z.string(),
+});
+export const BrainHostStopResponseSchema = z.object({
+  type: z.literal("brain.host.stop.response"),
+  payload: BrainHostStatusResultSchema,
+});
+
+export const BrainHostRestartRequestSchema = z.object({
+  type: z.literal("brain.host.restart.request"),
+  model: z.string().nullable().default(null),
+  requestId: z.string(),
+});
+export const BrainHostRestartResponseSchema = z.object({
+  type: z.literal("brain.host.restart.response"),
+  payload: BrainHostStatusResultSchema,
+});
+
+// Benchmark rankings/variance/latest, proxied from the brain's `/__host/evals`.
+export const BrainEvalsSchema = z
+  .object({
+    rankings: z.array(z.record(z.string(), z.unknown())).default([]),
+    latest: z.array(z.record(z.string(), z.unknown())).default([]),
+    variance: z.array(z.record(z.string(), z.unknown())).default([]),
+    runCount: z.number().default(0),
+  })
+  .passthrough();
+export type BrainEvals = z.infer<typeof BrainEvalsSchema>;
+
+export const BrainEvalsGetRequestSchema = z.object({
+  type: z.literal("brain.evals.get.request"),
+  requestId: z.string(),
+});
+export const BrainEvalsGetResponseSchema = z.object({
+  type: z.literal("brain.evals.get.response"),
+  payload: z.object({
+    evals: BrainEvalsSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Brain network auto-discovery: the daemon enumerates this host's bind
+// addresses and probes the local `tailscale` CLI so the client can offer the
+// operator a pick-list of likely listen hosts (and pre-fill the tailscale TLS
+// mode) instead of asking them to hunt for IPs by hand.
+// Gated by server_info.features.brainNetworkDiscovery.
+export const BrainTailscaleInfoSchema = z
+  .object({
+    // Whether the tailscale CLI is present and its daemon answers.
+    available: z.boolean(),
+    // This machine's MagicDNS name, e.g. greyskull.tail279562.ts.net.
+    hostname: z.string().nullable().optional(),
+    // The tailnet IPv4 address, for a tailnet-only bind.
+    ipv4: z.string().nullable().optional(),
+    // The default directory the brain writes issued certificates to.
+    certDir: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type BrainTailscaleInfo = z.infer<typeof BrainTailscaleInfoSchema>;
+
+// One candidate value for `listen.host`, with a human label for the pick-list.
+export const BrainBindAddressSchema = z
+  .object({
+    // The literal value written to listen.host (an IP, 0.0.0.0, or "tailscale").
+    value: z.string(),
+    // Display label, e.g. "Local only", "All interfaces", "192.168.1.42 (en0)".
+    label: z.string(),
+    kind: z.enum(["loopback", "all", "lan", "tailscale"]),
+  })
+  .passthrough();
+export type BrainBindAddress = z.infer<typeof BrainBindAddressSchema>;
+
+export const BrainNetworkInfoSchema = z
+  .object({
+    addresses: z.array(BrainBindAddressSchema).default([]),
+    tailscale: BrainTailscaleInfoSchema.nullable().optional(),
+  })
+  .passthrough();
+export type BrainNetworkInfo = z.infer<typeof BrainNetworkInfoSchema>;
+
+// Detected model names for the settings pickers. Read from the brain's
+// /v1/models when it is reachable (local child up, or remote); empty otherwise,
+// which the client renders as a disabled picker. Gated by features.brainStatus.
+export const BrainModelsListRequestSchema = z.object({
+  type: z.literal("brain.models.list.request"),
+  requestId: z.string(),
+});
+export const BrainModelsListResponseSchema = z.object({
+  type: z.literal("brain.models.list.response"),
+  payload: z.object({
+    models: z.array(z.string()).default([]),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Read/write a *remote* brain's own config (its /__host/config). Only valid in
+// brain.mode "remote"; the config is the remote brain's effective config with
+// secrets redacted. Editable fields are model-related (defaultModel, lockModel);
+// network/TLS/auth stay host-owned. Gated by features.brainRemote.
+export const BrainRemoteConfigSchema = z.record(z.string(), z.unknown());
+export type BrainRemoteConfig = z.infer<typeof BrainRemoteConfigSchema>;
+
+export const BrainRemoteConfigGetRequestSchema = z.object({
+  type: z.literal("brain.remote.config.get.request"),
+  requestId: z.string(),
+});
+export const BrainRemoteConfigGetResponseSchema = z.object({
+  type: z.literal("brain.remote.config.get.response"),
+  payload: z.object({
+    config: BrainRemoteConfigSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const BrainRemoteConfigPatchRequestSchema = z.object({
+  type: z.literal("brain.remote.config.patch.request"),
+  patch: BrainRemoteConfigSchema,
+  requestId: z.string(),
+});
+export const BrainRemoteConfigPatchResponseSchema = z.object({
+  type: z.literal("brain.remote.config.patch.response"),
+  payload: z.object({
+    config: BrainRemoteConfigSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+export const BrainNetworkDiscoverRequestSchema = z.object({
+  type: z.literal("brain.network.discover.request"),
+  requestId: z.string(),
+});
+export const BrainNetworkDiscoverResponseSchema = z.object({
+  type: z.literal("brain.network.discover.response"),
+  payload: z.object({
+    info: BrainNetworkInfoSchema.nullable(),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// --- Brain model management (runtimes, catalog, downloads, ops) ----------
+// The daemon drives these by shelling out to `otto-brain <verb> --json` (it
+// never imports the brain's runtime modules in-process). Reads (scan, catalog,
+// runtime list) are correlated request/response; long operations (pull, runtime
+// install, calibrate, sweep, bench) run as tracked JOBS the client polls via
+// brain.jobs.list. All gated by server_info.features.brainManage.
+
+// An installed local model, from `otto-brain scan`. Passthrough so the brain's
+// scan row can grow fields without a protocol bump.
+export const BrainInstalledModelSchema = z
+  .object({
+    model: z.string().default(""),
+    arch: z.string().default(""),
+    quant: z.string().default(""),
+    size: z.string().default(""),
+    ctx: z.string().default(""),
+    vision: z.string().default(""),
+    calibrated: z.string().default(""),
+    features: z.string().default(""),
+    source: z.string().default(""),
+  })
+  .passthrough();
+export type BrainInstalledModel = z.infer<typeof BrainInstalledModelSchema>;
+
+// A downloadable catalog model, annotated with whether it is already installed
+// (the daemon reuses the brain's authoritative catalog↔model join). Passthrough
+// over the catalog entry's optional metadata.
+export const BrainCatalogModelSchema = z
+  .object({
+    id: z.string(),
+    name: z.string().default(""),
+    installed: z.boolean().default(false),
+    publisher: z.string().default(""),
+    repo: z.string().default(""),
+    quant: z.string().default(""),
+    params: z.string().default(""),
+    sizeBytes: z.number().nullable().optional(),
+    size: z.string().default(""),
+    vision: z.boolean().default(false),
+    thinking: z.boolean().default(false),
+    contextMax: z.number().nullable().optional(),
+    tier: z.string().default(""),
+    useCases: z.array(z.string()).default([]),
+    why: z.string().default(""),
+  })
+  .passthrough();
+export type BrainCatalogModel = z.infer<typeof BrainCatalogModelSchema>;
+
+// An installed llama.cpp runtime, from `otto-brain runtime list`.
+export const BrainRuntimeSchema = z
+  .object({
+    label: z.string().default(""),
+    version: z.string().default(""),
+    source: z.string().default(""),
+    dir: z.string().default(""),
+  })
+  .passthrough();
+export type BrainRuntime = z.infer<typeof BrainRuntimeSchema>;
+
+// A tracked long-running brain operation. The client polls brain.jobs.list and
+// renders progress. `percent` is null when the job reports no measurable
+// progress (indeterminate). Terminal jobs linger briefly so the UI can show
+// the outcome before they are pruned.
+export const BrainJobKindSchema = z.enum([
+  "pull",
+  "runtime-install",
+  "calibrate",
+  "sweep",
+  "bench",
+]);
+export type BrainJobKind = z.infer<typeof BrainJobKindSchema>;
+
+export const BrainJobStatusSchema = z.enum(["running", "succeeded", "failed", "canceled"]);
+export type BrainJobStatus = z.infer<typeof BrainJobStatusSchema>;
+
+export const BrainJobSchema = z
+  .object({
+    id: z.string(),
+    kind: BrainJobKindSchema,
+    // A short human label, e.g. "Download Phi-4 (14B)".
+    label: z.string().default(""),
+    // The subject id (catalog id, model name, or build tag) this job acts on.
+    target: z.string().nullable().default(null),
+    status: BrainJobStatusSchema.default("running"),
+    percent: z.number().nullable().default(null),
+    // The latest progress line (e.g. "extracting…", "budget 512: done").
+    message: z.string().nullable().default(null),
+    error: z.string().nullable().default(null),
+    startedAt: z.string().default(""),
+    finishedAt: z.string().nullable().default(null),
+  })
+  .passthrough();
+export type BrainJob = z.infer<typeof BrainJobSchema>;
+
+// Every job-starting RPC returns the created (or refused) job under this shape.
+const BrainJobResultSchema = z.object({
+  job: BrainJobSchema.nullable(),
+  error: z.string().nullable(),
+  requestId: z.string(),
+});
+
+// Every job-listing RPC returns the active + recently-finished jobs.
+const BrainJobsResultSchema = z.object({
+  jobs: z.array(BrainJobSchema).default([]),
+  error: z.string().nullable(),
+  requestId: z.string(),
+});
+
+// Installed models — `otto-brain scan`.
+export const BrainModelsScanRequestSchema = z.object({
+  type: z.literal("brain.models.scan.request"),
+  requestId: z.string(),
+});
+export const BrainModelsScanResponseSchema = z.object({
+  type: z.literal("brain.models.scan.response"),
+  payload: z.object({
+    models: z.array(BrainInstalledModelSchema).default([]),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Downloadable catalog — `otto-brain catalog`.
+export const BrainCatalogListRequestSchema = z.object({
+  type: z.literal("brain.catalog.list.request"),
+  requestId: z.string(),
+});
+export const BrainCatalogListResponseSchema = z.object({
+  type: z.literal("brain.catalog.list.response"),
+  payload: z.object({
+    models: z.array(BrainCatalogModelSchema).default([]),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Installed runtimes — `otto-brain runtime list`.
+export const BrainRuntimeListRequestSchema = z.object({
+  type: z.literal("brain.runtime.list.request"),
+  requestId: z.string(),
+});
+export const BrainRuntimeListResponseSchema = z.object({
+  type: z.literal("brain.runtime.list.response"),
+  payload: z.object({
+    runtimes: z.array(BrainRuntimeSchema).default([]),
+    error: z.string().nullable(),
+    requestId: z.string(),
+  }),
+});
+
+// Download a catalog model — starts a `pull` job.
+export const BrainModelsPullRequestSchema = z.object({
+  type: z.literal("brain.models.pull.request"),
+  // Catalog id or name fragment.
+  model: z.string(),
+  requestId: z.string(),
+});
+export const BrainModelsPullResponseSchema = z.object({
+  type: z.literal("brain.models.pull.response"),
+  payload: BrainJobResultSchema,
+});
+
+// Install a llama.cpp runtime — starts a `runtime-install` job.
+export const BrainRuntimeInstallRequestSchema = z.object({
+  type: z.literal("brain.runtime.install.request"),
+  // Optional llama.cpp release build tag; null = the brain's default.
+  build: z.string().nullable().default(null),
+  requestId: z.string(),
+});
+export const BrainRuntimeInstallResponseSchema = z.object({
+  type: z.literal("brain.runtime.install.response"),
+  payload: BrainJobResultSchema,
+});
+
+// Measure real KV bytes/token for a model — starts a `calibrate` job. Needs a
+// runtime + GPU; refused with a helpful error otherwise.
+export const BrainCalibrateRequestSchema = z.object({
+  type: z.literal("brain.calibrate.request"),
+  model: z.string(),
+  requestId: z.string(),
+});
+export const BrainCalibrateResponseSchema = z.object({
+  type: z.literal("brain.calibrate.response"),
+  payload: BrainJobResultSchema,
+});
+
+// Find the best reasoning budget for a model — starts a `sweep` job.
+export const BrainSweepRequestSchema = z.object({
+  type: z.literal("brain.sweep.request"),
+  model: z.string(),
+  requestId: z.string(),
+});
+export const BrainSweepResponseSchema = z.object({
+  type: z.literal("brain.sweep.response"),
+  payload: BrainJobResultSchema,
+});
+
+// Run the agentic-coding benchmark — starts a `bench` job. `model` is an
+// optional comma list of name fragments; null lets the brain pick.
+export const BrainBenchRequestSchema = z.object({
+  type: z.literal("brain.bench.request"),
+  model: z.string().nullable().default(null),
+  requestId: z.string(),
+});
+export const BrainBenchResponseSchema = z.object({
+  type: z.literal("brain.bench.response"),
+  payload: BrainJobResultSchema,
+});
+
+// Poll the active + recently-finished jobs.
+export const BrainJobsListRequestSchema = z.object({
+  type: z.literal("brain.jobs.list.request"),
+  requestId: z.string(),
+});
+export const BrainJobsListResponseSchema = z.object({
+  type: z.literal("brain.jobs.list.response"),
+  payload: BrainJobsResultSchema,
+});
+
+// Cancel a running job; returns the refreshed job list.
+export const BrainJobsCancelRequestSchema = z.object({
+  type: z.literal("brain.jobs.cancel.request"),
+  jobId: z.string(),
+  requestId: z.string(),
+});
+export const BrainJobsCancelResponseSchema = z.object({
+  type: z.literal("brain.jobs.cancel.response"),
+  payload: BrainJobsResultSchema,
 });
 
 export const ProjectRenameRequestSchema = z.object({
@@ -4914,6 +5462,25 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   HistoryAgentsClearArchivedRequestSchema,
   AttachmentsImagesStatsRequestSchema,
   AttachmentsImagesClearRequestSchema,
+  BrainHostStatusRequestSchema,
+  BrainHostStartRequestSchema,
+  BrainHostStopRequestSchema,
+  BrainHostRestartRequestSchema,
+  BrainEvalsGetRequestSchema,
+  BrainNetworkDiscoverRequestSchema,
+  BrainModelsListRequestSchema,
+  BrainRemoteConfigGetRequestSchema,
+  BrainRemoteConfigPatchRequestSchema,
+  BrainModelsScanRequestSchema,
+  BrainCatalogListRequestSchema,
+  BrainRuntimeListRequestSchema,
+  BrainModelsPullRequestSchema,
+  BrainRuntimeInstallRequestSchema,
+  BrainCalibrateRequestSchema,
+  BrainSweepRequestSchema,
+  BrainBenchRequestSchema,
+  BrainJobsListRequestSchema,
+  BrainJobsCancelRequestSchema,
   UpdateAgentRequestMessageSchema,
   ProjectRenameRequestSchema,
   ProjectRemoveRequestSchema,
@@ -5329,6 +5896,36 @@ export const ServerInfoStatusPayloadSchema = z
         daemonDiagnostics: z.boolean().optional(),
         // COMPAT(daemonSelfUpdate): added in v0.1.93, remove gate after 2026-12-13.
         daemonSelfUpdate: z.boolean().optional(),
+        // Daemon manages the local AI host (otto-brain) as a child: reports
+        // brain.host.status, serves brain.host.start/stop/restart, exposes the
+        // editable `brain` config block, and honors kill-on-shutdown. Without it
+        // the Local brain host UI is hidden ("update the host").
+        // COMPAT(brainControl): added in v0.7.5, remove gate after 2026-01-30 once daemon floor >= v0.7.5.
+        brainControl: z.boolean().optional(),
+        // Daemon streams the brain's live status/telemetry via
+        // subscribe_brain_status + brain_status_changed, and serves brain.evals.get.
+        // Separate from brainControl because status/eval watching can ship after
+        // lifecycle control. Without it the Brain dashboard falls back to a
+        // periodic brain.host.status poll (no live feed, no eval charts).
+        // COMPAT(brainStatus): added in v0.7.5, remove gate after 2026-01-30 once daemon floor >= v0.7.5.
+        brainStatus: z.boolean().optional(),
+        // Daemon serves brain.network.discover: enumerates this host's bind
+        // addresses and probes the local `tailscale` CLI, so the client can
+        // offer a listen-host pick-list and auto-fill the tailscale TLS mode.
+        // COMPAT(brainNetworkDiscovery): added in v0.7.5, remove gate after 2026-07-30 once daemon floor >= v0.7.5.
+        brainNetworkDiscovery: z.boolean().optional(),
+        // Daemon can point the brain at a remote host (brain.mode "remote"):
+        // status/evals/config proxied from another Otto's brain, no local spawn.
+        // COMPAT(brainRemote): added in v0.7.5, remove gate after 2026-07-30 once daemon floor >= v0.7.5.
+        brainRemote: z.boolean().optional(),
+        // Daemon manages the brain's models and runtimes by shelling out to the
+        // otto-brain CLI: serves brain.models.scan / brain.catalog.list /
+        // brain.runtime.list (reads) and starts brain.models.pull /
+        // brain.runtime.install / brain.calibrate / brain.sweep / brain.bench as
+        // tracked jobs polled via brain.jobs.list. Without it the Brain "Models"
+        // and "Operations" sections are hidden ("update the host").
+        // COMPAT(brainManage): added in v0.7.5, remove gate after 2026-07-30 once daemon floor >= v0.7.5.
+        brainManage: z.boolean().optional(),
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: z.boolean().optional(),
         // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
@@ -5527,6 +6124,12 @@ export const ServerInfoStatusPayloadSchema = z
         // agentProgressSummaries, notifyOnFinishDefault). The reads are wired by
         // Claude-tier providers (WP-E); the client gates the toggle cards on this.
         agentBehaviorToggles: z.boolean().optional(),
+        // COMPAT(todoReminders): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
+        // Set when the daemon acts on `agentBehaviors.{todoNudge,todoReconcileOnIdle}` —
+        // the provider-agnostic stale-todo nudge (next turn) and idle reconcile pass.
+        // The client gates the task-list toggle cards on this so an old daemon never
+        // shows switches that do nothing.
+        todoReminders: z.boolean().optional(),
         // COMPAT(metadataGenerationEnabled): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         // Set when the daemon persists `metadataGeneration.{enabled,preferWriterPersonalities}`.
         // The generation path (WP-B) reads them; the client gates the toggle cards on this.
@@ -9040,6 +9643,25 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   HistoryAgentsClearArchivedResponseSchema,
   AttachmentsImagesStatsResponseSchema,
   AttachmentsImagesClearResponseSchema,
+  BrainHostStatusResponseSchema,
+  BrainHostStartResponseSchema,
+  BrainHostStopResponseSchema,
+  BrainHostRestartResponseSchema,
+  BrainEvalsGetResponseSchema,
+  BrainNetworkDiscoverResponseSchema,
+  BrainModelsListResponseSchema,
+  BrainRemoteConfigGetResponseSchema,
+  BrainRemoteConfigPatchResponseSchema,
+  BrainModelsScanResponseSchema,
+  BrainCatalogListResponseSchema,
+  BrainRuntimeListResponseSchema,
+  BrainModelsPullResponseSchema,
+  BrainRuntimeInstallResponseSchema,
+  BrainCalibrateResponseSchema,
+  BrainSweepResponseSchema,
+  BrainBenchResponseSchema,
+  BrainJobsListResponseSchema,
+  BrainJobsCancelResponseSchema,
   AgentArchivedMessageSchema,
   CloseItemsResponseSchema,
   CheckoutStatusResponseSchema,
@@ -9855,6 +10477,44 @@ export type AttachmentsImagesStatsRequest = z.infer<typeof AttachmentsImagesStat
 export type AttachmentsImagesStatsResponse = z.infer<typeof AttachmentsImagesStatsResponseSchema>;
 export type AttachmentsImagesClearRequest = z.infer<typeof AttachmentsImagesClearRequestSchema>;
 export type AttachmentsImagesClearResponse = z.infer<typeof AttachmentsImagesClearResponseSchema>;
+export type BrainHostStatusRequest = z.infer<typeof BrainHostStatusRequestSchema>;
+export type BrainHostStatusResponse = z.infer<typeof BrainHostStatusResponseSchema>;
+export type BrainHostStartRequest = z.infer<typeof BrainHostStartRequestSchema>;
+export type BrainHostStartResponse = z.infer<typeof BrainHostStartResponseSchema>;
+export type BrainHostStopRequest = z.infer<typeof BrainHostStopRequestSchema>;
+export type BrainHostStopResponse = z.infer<typeof BrainHostStopResponseSchema>;
+export type BrainHostRestartRequest = z.infer<typeof BrainHostRestartRequestSchema>;
+export type BrainHostRestartResponse = z.infer<typeof BrainHostRestartResponseSchema>;
+export type BrainEvalsGetRequest = z.infer<typeof BrainEvalsGetRequestSchema>;
+export type BrainEvalsGetResponse = z.infer<typeof BrainEvalsGetResponseSchema>;
+export type BrainNetworkDiscoverRequest = z.infer<typeof BrainNetworkDiscoverRequestSchema>;
+export type BrainNetworkDiscoverResponse = z.infer<typeof BrainNetworkDiscoverResponseSchema>;
+export type BrainModelsListRequest = z.infer<typeof BrainModelsListRequestSchema>;
+export type BrainModelsListResponse = z.infer<typeof BrainModelsListResponseSchema>;
+export type BrainRemoteConfigGetRequest = z.infer<typeof BrainRemoteConfigGetRequestSchema>;
+export type BrainRemoteConfigGetResponse = z.infer<typeof BrainRemoteConfigGetResponseSchema>;
+export type BrainRemoteConfigPatchRequest = z.infer<typeof BrainRemoteConfigPatchRequestSchema>;
+export type BrainRemoteConfigPatchResponse = z.infer<typeof BrainRemoteConfigPatchResponseSchema>;
+export type BrainModelsScanRequest = z.infer<typeof BrainModelsScanRequestSchema>;
+export type BrainModelsScanResponse = z.infer<typeof BrainModelsScanResponseSchema>;
+export type BrainCatalogListRequest = z.infer<typeof BrainCatalogListRequestSchema>;
+export type BrainCatalogListResponse = z.infer<typeof BrainCatalogListResponseSchema>;
+export type BrainRuntimeListRequest = z.infer<typeof BrainRuntimeListRequestSchema>;
+export type BrainRuntimeListResponse = z.infer<typeof BrainRuntimeListResponseSchema>;
+export type BrainModelsPullRequest = z.infer<typeof BrainModelsPullRequestSchema>;
+export type BrainModelsPullResponse = z.infer<typeof BrainModelsPullResponseSchema>;
+export type BrainRuntimeInstallRequest = z.infer<typeof BrainRuntimeInstallRequestSchema>;
+export type BrainRuntimeInstallResponse = z.infer<typeof BrainRuntimeInstallResponseSchema>;
+export type BrainCalibrateRequest = z.infer<typeof BrainCalibrateRequestSchema>;
+export type BrainCalibrateResponse = z.infer<typeof BrainCalibrateResponseSchema>;
+export type BrainSweepRequest = z.infer<typeof BrainSweepRequestSchema>;
+export type BrainSweepResponse = z.infer<typeof BrainSweepResponseSchema>;
+export type BrainBenchRequest = z.infer<typeof BrainBenchRequestSchema>;
+export type BrainBenchResponse = z.infer<typeof BrainBenchResponseSchema>;
+export type BrainJobsListRequest = z.infer<typeof BrainJobsListRequestSchema>;
+export type BrainJobsListResponse = z.infer<typeof BrainJobsListResponseSchema>;
+export type BrainJobsCancelRequest = z.infer<typeof BrainJobsCancelRequestSchema>;
+export type BrainJobsCancelResponse = z.infer<typeof BrainJobsCancelResponseSchema>;
 export type KillTerminalRequest = z.infer<typeof KillTerminalRequestSchema>;
 export type KillTerminalResponse = z.infer<typeof KillTerminalResponseSchema>;
 export type CaptureTerminalRequest = z.infer<typeof CaptureTerminalRequestSchema>;

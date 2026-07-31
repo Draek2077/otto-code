@@ -25,6 +25,7 @@ import {
   Palette,
   Server,
   Network,
+  Neurology,
   Bot,
   Boxes,
   DataObject,
@@ -134,6 +135,7 @@ import {
   HostWorkspacesPage,
   HostTerminalsPage,
 } from "@/screens/settings/host-page";
+import { HostBrainPage } from "@/screens/settings/host-brain-page";
 import ProjectsScreen from "@/screens/projects-screen";
 import ProjectSettingsScreen, {
   confirmDiscardProjectSettingsChanges,
@@ -247,6 +249,7 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "teams", labelKey: "settings.hostSections.teams", icon: Groups },
   { id: "tools", labelKey: "settings.hostSections.tools", icon: Wrench },
   { id: "code", labelKey: "settings.hostSections.code", icon: DataObject },
+  { id: "brain", labelKey: "settings.hostSections.brain", icon: Neurology },
   // Git-provider settings are collapsed into "Workspaces" as a "Git" panel — too
   // few options to warrant its own sidebar category. See HostWorkspacesPage.
   // Everything in that page (PR auto-archive, Git providers) is developer-only,
@@ -286,6 +289,8 @@ function renderHostSettingsContent(
       return <HostToolsPage serverId={view.serverId} />;
     case "code":
       return <HostCodePage serverId={view.serverId} />;
+    case "brain":
+      return <HostBrainPage serverId={view.serverId} />;
     case "workspaces":
       return isDeveloperMode ? <HostWorkspacesPage serverId={view.serverId} /> : null;
     case "providers":

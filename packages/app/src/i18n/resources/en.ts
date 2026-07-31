@@ -2765,6 +2765,7 @@ export const en = {
       teams: "Teams",
       tools: "Tools",
       code: "Code",
+      brain: "Brain",
       workspaces: "Workspaces",
       gitProviders: "Git",
       providers: "Providers",

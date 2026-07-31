@@ -109,7 +109,15 @@ import {
 } from "./steer-queue-state.js";
 import { getAgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
-import { isSystemInjectedEnvelope } from "./agent-prompt.js";
+import { formatSystemNotificationPrompt, isSystemInjectedEnvelope } from "./agent-prompt.js";
+import {
+  appendTodoNudgeToPrompt,
+  buildTodoReconcileMessage,
+  findLatestTodoItem,
+  isStaleTodoList,
+  stripTrailingTodoNudge,
+  todoListSignature,
+} from "./todo-reminders.js";
 import { unwrapSpokenInput } from "../voice-config.js";
 import { stripInternalOttoMcpServer, withRuntimeOttoMcpServer } from "./runtime-mcp-config.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
@@ -167,6 +175,8 @@ function resolveAgentBehaviorSettings(
         promptSuggestions?: boolean;
         agentProgressSummaries?: boolean;
         notifyOnFinishDefault?: boolean;
+        todoNudge?: boolean;
+        todoReconcileOnIdle?: boolean;
       }
     | undefined,
 ): AgentBehaviorSettings {
@@ -174,6 +184,8 @@ function resolveAgentBehaviorSettings(
     promptSuggestions: behaviors?.promptSuggestions !== false,
     agentProgressSummaries: behaviors?.agentProgressSummaries !== false,
     notifyOnFinishDefault: behaviors?.notifyOnFinishDefault !== false,
+    todoNudge: behaviors?.todoNudge !== false,
+    todoReconcileOnIdle: behaviors?.todoReconcileOnIdle !== false,
   };
 }
 
@@ -373,6 +385,8 @@ export interface AgentManagerOptions {
     promptSuggestions?: boolean;
     agentProgressSummaries?: boolean;
     notifyOnFinishDefault?: boolean;
+    todoNudge?: boolean;
+    todoReconcileOnIdle?: boolean;
   };
   agentStreamCoalesceWindowMs?: number;
   rescueTimeouts?: AgentManagerRescueTimeouts;
@@ -1098,11 +1112,14 @@ function normalizeUserMessageForDisplay(item: AgentTimelineItem): AgentTimelineI
   if (item.type !== "user_message") {
     return item;
   }
-  const unwrapped = unwrapSpokenInput(item.text);
-  if (unwrapped === item.text) {
+  // Strip the passive todo nudge Otto appended for the model, then unwrap voice
+  // scaffolding. Both are display-only and idempotent (see stripTrailingTodoNudge
+  // and unwrapSpokenInput); the provider already received the full prompt.
+  const cleaned = unwrapSpokenInput(stripTrailingTodoNudge(item.text));
+  if (cleaned === item.text) {
     return item;
   }
-  return { ...item, text: unwrapped };
+  return { ...item, text: cleaned };
 }
 
 /**
@@ -1194,6 +1211,11 @@ export class AgentManager {
   // no requireAgent throw).
   private readonly retainedTimelineIds = new Set<string>();
   private readonly previousStatuses = new Map<string, AgentLifecycleStatus>();
+  // Signature of the last stale todo list we fired an idle reconcile pass for,
+  // per agent. Guards against a nag loop: an unchanged stale list (the agent
+  // explained why rows stay open) never re-fires. See todo-reminders.ts and the
+  // agentBehaviors.todoReconcileOnIdle toggle.
+  private readonly lastReconciledTodoSignature = new Map<string, string>();
   // Owning-chat agent id -> sum of its observed sub-agents' priced cost (micro-USD)
   // not yet backed out of the parent. Provider-agnostic de-inflation: whenever a
   // provider reports a WHOLE-TREE cost on the parent turn (parent + in-process
@@ -1432,6 +1454,8 @@ export class AgentManager {
           promptSuggestions?: boolean;
           agentProgressSummaries?: boolean;
           notifyOnFinishDefault?: boolean;
+          todoNudge?: boolean;
+          todoReconcileOnIdle?: boolean;
         }
       | undefined,
   ): void {
@@ -3137,13 +3161,18 @@ export class AgentManager {
     agent.steerQueueHeld = false;
     agent.lastError = undefined;
 
+    // Passive stale-todo nudge: ride a reminder along on this turn if the agent
+    // has an open todo list. Stripped from the recorded user message for display
+    // (normalizeUserMessageForDisplay); the provider still sees it this turn.
+    const effectivePrompt = this.maybeAppendTodoNudge(agent, prompt);
+
     const pendingRun = this.foregroundRuns.createPendingRun(agentId);
 
     const streamForwarder = async function* streamForwarder(this: AgentManager) {
       let turnId: string;
       let turnStream: ReturnType<ForegroundRunState["createTurnStream"]> | null = null;
       try {
-        const result = await agent.session.startTurn(prompt, options);
+        const result = await agent.session.startTurn(effectivePrompt, options);
         turnId = result.turnId;
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : "Failed to start turn";
@@ -3203,6 +3232,12 @@ export class AgentManager {
     mutableAgent.activeForegroundTurnId = null;
     const terminalError = mutableAgent.lastError;
     const shouldHoldBusyForReplacement = mutableAgent.pendingReplacement && !terminalError;
+    // Before the drain is decided: if this turn would otherwise leave the agent
+    // idle with a stale todo list, park a one-shot reconcile turn on the queue so
+    // the drain below runs it instead of going idle. Enqueuing here (not in the
+    // idle-attention hook) reuses the existing steer machinery and avoids
+    // re-entering the turn lifecycle. The method owns its own guards.
+    this.maybeEnqueueTodoReconcile(mutableAgent);
     // Queue drain. Decided SYNCHRONOUSLY here, before the state emit, so a
     // message enqueued while the handoff is in flight sees a busy agent and is
     // buffered instead of racing into a second concurrent turn. A terminal
@@ -3257,6 +3292,80 @@ export class AgentManager {
     if (drainBatch) {
       void this.dispatchSteerQueueBatch(agent.id, drainBatch.entries);
     }
+  }
+
+  /**
+   * Park a one-shot todo reconcile turn on the queue when a turn is about to
+   * leave the agent idle with a stale todo list (rows still open). The caller
+   * runs this before deciding the drain, so the parked entry is picked up as the
+   * next turn — the agent finishes the list instead of leaving a half-checked
+   * one for the user to dismiss. Provider-agnostic: reads Otto's own `todo`
+   * timeline item, which every provider's native todo tool feeds.
+   *
+   * Guards: opt-in via agentBehaviors.todoReconcileOnIdle; never for internal
+   * agents; skips a turn that errored, is being replaced, or whose queue is held
+   * (nothing new runs on its own then); only when the agent would otherwise go
+   * idle (nothing already queued); and at most once per unique list state, so an
+   * unchanged stale list (the agent explained why rows stay open) never re-fires.
+   */
+  private maybeEnqueueTodoReconcile(agent: ActiveManagedAgent): void {
+    if (!this.agentBehaviors.todoReconcileOnIdle || agent.internal) {
+      return;
+    }
+    // Mirror the drain's own preconditions: a terminal error, a pending
+    // replacement, or a held queue all mean nothing should start on its own.
+    if (agent.lastError || agent.pendingReplacement || agent.steerQueueHeld) {
+      return;
+    }
+    // Only when the agent would otherwise become idle. A non-empty queue means
+    // real work is already lined up to run next; don't jump ahead of it.
+    if (agent.steerQueue.length > 0 || agent.session === null) {
+      return;
+    }
+    const todo = findLatestTodoItem(this.timelineStore.getItems(agent.id));
+    if (!isStaleTodoList(todo)) {
+      // Clean (or absent) list: clear the guard so a future stale list can fire.
+      this.lastReconciledTodoSignature.delete(agent.id);
+      return;
+    }
+    const signature = todoListSignature(todo);
+    if (this.lastReconciledTodoSignature.get(agent.id) === signature) {
+      return;
+    }
+    this.lastReconciledTodoSignature.set(agent.id, signature);
+    const entry = createSteerQueueEntry({
+      prompt: formatSystemNotificationPrompt(buildTodoReconcileMessage(todo)),
+      source: "system",
+    });
+    agent.steerQueue = [...agent.steerQueue, entry];
+    this.logger.debug(
+      { agentId: agent.id, provider: agent.provider, openItems: todo.items.length },
+      "agent.manager.todo_reconcile.enqueue",
+    );
+  }
+
+  /**
+   * Attach the passive stale-todo reminder to an outgoing turn's prompt when the
+   * agent has an open todo list. Opt-in via agentBehaviors.todoNudge; never for
+   * internal agents; never for system-injected turns (chat mentions, schedule
+   * fires, the idle reconcile pass carry their own envelope). Provider-agnostic —
+   * runs at the one seam every provider's startTurn flows through.
+   */
+  private maybeAppendTodoNudge(
+    agent: ActiveManagedAgent,
+    prompt: AgentPromptInput,
+  ): AgentPromptInput {
+    if (!this.agentBehaviors.todoNudge || agent.internal) {
+      return prompt;
+    }
+    if (typeof prompt === "string" && isSystemInjectedEnvelope(prompt)) {
+      return prompt;
+    }
+    const todo = findLatestTodoItem(this.timelineStore.getItems(agent.id));
+    if (!isStaleTodoList(todo)) {
+      return prompt;
+    }
+    return appendTodoNudgeToPrompt(prompt, todo);
   }
 
   /**
@@ -4393,6 +4502,7 @@ export class AgentManager {
     this.agentStreamCoalescer.flushAndDiscard(agent.id);
     this.agents.delete(agent.id);
     this.previousStatuses.delete(agent.id);
+    this.lastReconciledTodoSignature.delete(agent.id);
     if (agent.unsubscribeSession) {
       agent.unsubscribeSession();
       agent.unsubscribeSession = null;

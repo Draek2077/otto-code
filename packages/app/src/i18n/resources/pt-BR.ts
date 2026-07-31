@@ -2768,6 +2768,7 @@ export const ptBR: TranslationResources = {
       teams: "Equipes",
       tools: "Ferramentas",
       code: "Código",
+      brain: "Cérebro",
       workspaces: "Workspaces",
       gitProviders: "Provedores de Git",
       providers: "Provedores",

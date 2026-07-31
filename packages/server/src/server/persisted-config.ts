@@ -383,6 +383,8 @@ export const PersistedConfigSchema = z
             promptSuggestions: z.boolean().optional(),
             agentProgressSummaries: z.boolean().optional(),
             notifyOnFinishDefault: z.boolean().optional(),
+            todoNudge: z.boolean().optional(),
+            todoReconcileOnIdle: z.boolean().optional(),
           })
           .passthrough()
           .optional(),
@@ -431,6 +433,39 @@ export const PersistedConfigSchema = z
           .strict()
           .optional(),
         auth: DaemonAuthSchema.optional(),
+        // Local AI host (otto-brain) editable projection. The brain's own
+        // $OTTO_HOME/otto-brain/config.json is the source of truth on disk; this
+        // block round-trips config.json ⇄ mutable config so the settings screen
+        // survives a restart. Passthrough at every level so a field written by a
+        // newer daemon is never dropped on the next save.
+        brain: z
+          .object({
+            enabled: z.boolean().optional(),
+            autoStart: z.boolean().optional(),
+            listen: z
+              .object({
+                host: z.string().optional(),
+                port: z.number().int().optional(),
+              })
+              .passthrough()
+              .optional(),
+            defaultModel: z.string().nullable().optional(),
+            authMode: z.enum(["none", "token"]).optional(),
+            authToken: z.string().nullable().optional(),
+            tls: z
+              .object({
+                mode: z.enum(["off", "files", "self-signed", "tailscale"]).optional(),
+                certFile: z.string().nullable().optional(),
+                keyFile: z.string().nullable().optional(),
+                hostname: z.string().nullable().optional(),
+                certDir: z.string().nullable().optional(),
+                renewBeforeDays: z.number().int().optional(),
+              })
+              .passthrough()
+              .optional(),
+          })
+          .passthrough()
+          .optional(),
       })
       .strict()
       .transform(({ allowedHosts, ...daemon }) => {
