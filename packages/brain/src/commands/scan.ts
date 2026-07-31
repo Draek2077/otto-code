@@ -58,7 +58,11 @@ export async function runScanCommand(
   const rows: ScanRow[] = catalog.map((model) => {
     const profile = forModel(store, model, config.defaults);
     const md = model.metadata ?? {};
-    const feat = [model.features.mtp ? "MTP" : null, model.features.distilled ? "distill" : null]
+    const feat = [
+      model.features.mtp ? "MTP" : null,
+      md.reasoning || model.thinking ? "think" : null,
+      model.features.distilled ? "distill" : null,
+    ]
       .filter(Boolean)
       .join(",");
     return {

@@ -15,6 +15,13 @@ export interface ModelMetadata {
   keyLength?: number | null;
   valueLength?: number | null;
   embeddingLength?: number | null;
+  /**
+   * Whether the model's chat template exposes a thinking/reasoning channel
+   * (a `<think>` block, `reasoning_content`, or an `enable_thinking` toggle).
+   * Derived from the GGUF template in `gguf.summarize`, mirroring how LM Studio
+   * flags a reasoning model - works for any local model, catalog or not.
+   */
+  reasoning?: boolean;
   [key: string]: unknown;
 }
 
