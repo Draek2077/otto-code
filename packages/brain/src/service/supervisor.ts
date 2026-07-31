@@ -9,6 +9,18 @@ import type { Profile } from "../config/schema.js";
 
 const LOG_LINES_KEPT = 300;
 
+/**
+ * Default loopback port for the private llama-server child. Deliberately clear
+ * of Otto's space: 8081 (the old default) is the Expo/Metro dev port, so a brain
+ * started from the dev checkout collided with the running app - the server bound
+ * a port the app also wanted, and benchmark requests hit Metro (or a dead
+ * socket) instead of the model. This range sits above Otto's daemon ports
+ * (6788/6868) and app port (8081/19000) and below the Windows ephemeral range.
+ * Calibrate and sweep run their own supervisors at +1/+2 so they never collide
+ * with a main service already holding the base port.
+ */
+export const DEFAULT_INTERNAL_PORT = 20800;
+
 export type SupervisorState = "stopped" | "starting" | "ready" | "failed" | "stopping";
 
 export interface SupervisorOptions {
@@ -57,7 +69,7 @@ export class Supervisor extends EventEmitter {
 
   constructor({
     runtime,
-    internalPort = 8081,
+    internalPort = DEFAULT_INTERNAL_PORT,
     host = "127.0.0.1",
     readyTimeoutMs = 300_000,
   }: SupervisorOptions) {
