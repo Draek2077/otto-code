@@ -54,11 +54,24 @@ Make the agentic-coding eval trustworthy enough to drive model selection.
   live only there). The model gets read/list/search/find/write/edit/run tools over the corpus
   (docs read-only, tests hidden), and is scored on a hidden 6-test oracle via the real interpreter.
   Verified graduated: buggy 2/6, code-only fix 3/6, spec-driven fix 6/6; the summary flags "missed
-  the spec" when the model never read it and surfaces context held. **Open:** the corpus is ~8-10K
-  tokens, enough to push a small local window toward the ~50% bar but expandable; real mined repos
-  (`repo-task.ts`) remain the opt-in depth path; and an explicit capability verdict (score well but
-  never held real context → "not yet agentic") could be surfaced in the scorecard rather than just
-  the per-task summary.
+  the spec" when the model never read it and surfaces context held.
+- **Update (2026-07-31, Phase 1 of "make long-horizon actually long").** Two things shipped after
+  the extra-long-horizon corpus (~8-10K tokens) proved too small to move the held-context bar past
+  1-2% on a large window. (1) A **window-aware `context-stress`** task (`bench/context-corpus.ts` +
+  `contextStressTask`, in the default `TASKS`, weight 4): a staged pipeline of N passthrough
+  placeholder modules whose real per-stage rules live only in a spec that is _generated to ~55% of
+  the served context window_ (`contextWindow` threaded through, ~4 chars/token), split across
+  `docs/spec/part_XX.md`. The correct rule for a stage exists nowhere in the code, so a model cannot
+  score without reading (and holding) the spec — the ≥50%-held guarantee is by construction, not by
+  hope. Scored on a hidden per-stage oracle via the real interpreter; deterministic and bounded mod
+  1000 so JS-computed expectations match Python. `long-horizon` now also reports held context.
+  (2) A **curated mined-repo flow**: `bench/curated-repos.ts` presets + `otto brain bench --curated
+<name>` (requires an explicit `--repo-dir` — the working copy is reset hard, never the live
+  checkout); `Repo.test()` now takes a `files` filter and the oracle runs are scoped to the mined
+  test paths, so a repo task no longer runs the whole workspace suite. **Open:** the heavyweight
+  opt-in "deep mode" (15 min–2 hr, LongCLI/SWE-EVO scale) is Phase 2, kept isolated from the fast
+  suite; an explicit capability verdict (score well but never held real context → "not yet
+  agentic") could be surfaced in the scorecard rather than just the per-task summary.
 
 ### B — Curation & ranking-driven routing
 

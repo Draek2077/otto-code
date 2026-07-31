@@ -216,18 +216,24 @@ export class Repo {
   /**
    * Run the workspace test suite and return per-test outcomes.
    *
+   * `files` restricts the run to those test paths (passed to vitest as filters).
+   * The SWE-bench oracle only ever scores its own test files, so scoping to them
+   * avoids running the whole workspace suite - faster, and it keeps the harness
+   * within the "never run the full suite" rule.
+   *
    * vitest's --outputFile needs a native path; a POSIX-style /tmp path silently
    * produces no file on Windows.
    */
-  async test({ timeout = 600_000 }: { timeout?: number } = {}): Promise<TestResult> {
+  async test({
+    timeout = 600_000,
+    files,
+  }: { timeout?: number; files?: string[] } = {}): Promise<TestResult> {
     const outFile = path.join(os.tmpdir(), `vitest-${process.pid}-${Date.now()}.json`);
     const cwd = path.join(this.dir, this.workspaceDir);
 
-    const result = await run(
-      "npx",
-      ["vitest", "run", "--reporter=json", `--outputFile=${outFile}`],
-      { cwd, timeout },
-    );
+    const args = ["vitest", "run", "--reporter=json", `--outputFile=${outFile}`];
+    if (files && files.length) args.push(...files);
+    const result = await run("npx", args, { cwd, timeout });
 
     let report: VitestReport;
     try {

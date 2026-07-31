@@ -17,6 +17,7 @@ import { createRouter, Telemetry } from "../service/router.js";
 import { Supervisor } from "../service/supervisor.js";
 import * as bench from "../bench/index.js";
 import { loadRepoTasks } from "../bench/repo-task.js";
+import { describeCuratedRepos, findCuratedRepo } from "../bench/curated-repos.js";
 import * as archive from "../ops/archive.js";
 import * as results from "../ops/results.js";
 import * as vram from "../vram.js";
@@ -36,6 +37,7 @@ interface BenchOptions {
   repoWorkspaceDir?: string;
   repoRef?: string;
   repoMax?: string;
+  curated?: string;
 }
 
 function progress(p: {
@@ -74,7 +76,11 @@ export function addBenchOptions(cmd: Command): Command {
     )
     .option("--repo-dir <dir>", "repo working copy to mine (default: current directory)")
     .option("--repo-ref <ref>", "git ref to mine from", "origin/main")
-    .option("--repo-max <n>", "max mined tasks to run", "5");
+    .option("--repo-max <n>", "max mined tasks to run", "5")
+    .option(
+      "--curated <name>",
+      "run a curated mined-repo preset (needs --repo-dir); pass an unknown name to list presets",
+    );
 }
 
 export async function runBenchCommand(options: BenchOptions, _command: Command): Promise<void> {
@@ -89,7 +95,46 @@ export async function runBenchCommand(options: BenchOptions, _command: Command):
   // Opt-in: mining a repo replaces the static suite with real SWE-bench tasks.
   // Absent these flags nothing touches a repo checkout.
   let repoTasks: Task[] | undefined;
-  if (options.repoWorkspaceDir) {
+  if (options.curated) {
+    const preset = findCuratedRepo(options.curated);
+    if (!preset) {
+      throw new CommandError({
+        code: "NO_CURATED",
+        message: `unknown curated preset "${options.curated}". Available:\n${describeCuratedRepos()}`,
+      });
+    }
+    // The harness resets the working copy hard between tasks, so require an
+    // explicit --repo-dir rather than silently mutating the current checkout.
+    if (!options.repoDir) {
+      throw new CommandError({
+        code: "NO_REPO_DIR",
+        message:
+          "--repo-dir is required with --curated: the working copy is reset hard " +
+          "(git reset --hard + git clean -fd) between tasks, so point it at a spare " +
+          "checkout, never one with uncommitted work.",
+      });
+    }
+    const dir = path.resolve(options.repoDir);
+    process.stderr.write(
+      `\ncurated: mining ${preset.workspace} @ ${preset.ref} in ${dir}\n` +
+        `  note: this resets the working copy (git reset --hard + git clean -fd)\n`,
+    );
+    const tasks = await loadRepoTasks({
+      dir,
+      workspace: preset.workspace,
+      workspaceDir: preset.workspaceDir,
+      ref: preset.ref,
+      maxTasks: preset.maxTasks,
+    });
+    if (!tasks.length) {
+      throw new CommandError({
+        code: "NO_TASKS",
+        message: `no mineable fix commits found in ${preset.workspaceDir}`,
+      });
+    }
+    process.stderr.write(`  ${tasks.length} mined task(s): ${tasks.map((t) => t.id).join(", ")}\n`);
+    repoTasks = tasks;
+  } else if (options.repoWorkspaceDir) {
     if (!options.repoWorkspace) {
       throw new CommandError({
         code: "NO_WORKSPACE",

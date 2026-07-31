@@ -79,23 +79,44 @@ function formatGiB(bytes: number | null): string {
   return bytes ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : "—";
 }
 
-/** Horizontal grouped bars: one group per model, one bar per task category. */
-function groupedBars(records: RunRecord[], columns: TaskColumn[]): string {
-  const rowHeight = 22;
-  const barHeight = 14;
-  const groupGap = 18;
-  const labelWidth = 250;
-  const chartWidth = 460;
-  const width = labelWidth + chartWidth + 70;
-  const groupHeight = columns.length * rowHeight + groupGap;
-  const height = records.length * groupHeight + 16;
+/**
+ * Per-model score card: each task labelled directly with its weight, then the
+ * weighted Overall on its own row so the headline number reads as the sum of its
+ * parts. Every bar measures the same thing (a 0-100% score), so it is one hue
+ * with a direct label - never the categorical palette, which is reserved for
+ * distinguishing model series in the line charts and only defines four slots.
+ * Colour-cycling it across a growing task list is what dropped later tasks
+ * (extra-long-horizon) off the chart when they landed in an undefined slot.
+ */
+function groupedBars(
+  records: RunRecord[],
+  columns: TaskColumn[],
+  weightOf: Map<string, number>,
+): string {
+  const rowHeight = 20;
+  const barHeight = 12;
+  const headerHeight = 30;
+  const groupGap = 22;
+  const labelWidth = 210;
+  const chartWidth = 430;
+  const valueGutter = 46;
+  const width = labelWidth + chartWidth + valueGutter;
+  const groupHeight = headerHeight + (columns.length + 1) * rowHeight + groupGap;
+  const height = records.length * groupHeight + 8;
+
+  const bar = (x: number, y: number, w: number, cls: string, title?: string): string =>
+    `<rect x="${x}" y="${y}" width="${chartWidth}" height="${barHeight}" class="track"/>` +
+    `<rect x="${x}" y="${y}" width="${Math.max(2, w).toFixed(1)}" height="${barHeight}" rx="4" class="${cls}">` +
+    (title ? `<title>${title}</title>` : "") +
+    `</rect>`;
 
   const parts: string[] = [];
   records.forEach((record, groupIndex) => {
     const top = groupIndex * groupHeight + 8;
 
+    // Group header: model + config on the left, its overall score on the right.
     parts.push(
-      `<text x="0" y="${top + 11}" class="grp">${escapeHtml(record.model.displayName.slice(0, 38))}</text>`,
+      `<text x="0" y="${top + 13}" class="grp">${escapeHtml(record.model.displayName.slice(0, 38))}</text>`,
     );
     const meta = [
       record.model.quant,
@@ -104,28 +125,49 @@ function groupedBars(records: RunRecord[], columns: TaskColumn[]): string {
     ]
       .filter(Boolean)
       .join(" · ");
-    parts.push(`<text x="0" y="${top + 25}" class="grpmeta">${escapeHtml(meta)}</text>`);
+    parts.push(`<text x="0" y="${top + 26}" class="grpmeta">${escapeHtml(meta)}</text>`);
+    parts.push(
+      `<text x="${width}" y="${top + 15}" text-anchor="end" class="grpscore">${(record.overall * 100).toFixed(0)}%</text>`,
+    );
 
+    const bodyTop = top + headerHeight;
     columns.forEach((column, i) => {
       const task = record.tasks.find((t) => t.id === column.id);
       const score = task ? task.score : 0;
-      const y = top + i * rowHeight;
-      const w = Math.max(2, score * chartWidth);
-
+      const y = bodyTop + i * rowHeight;
+      const weight = weightOf.get(column.id);
+      const label = escapeHtml(column.category);
       parts.push(
-        `<rect x="${labelWidth}" y="${y}" width="${chartWidth}" height="${barHeight}" class="track"/>` +
-          `<rect x="${labelWidth}" y="${y}" width="${w.toFixed(1)}" height="${barHeight}" rx="4" ` +
-          `fill="var(--series-${i + 1})"><title>${escapeHtml(column.category)}: ` +
-          `${(score * 100).toFixed(0)}% — ${escapeHtml(task ? task.summary : "not run")}</title></rect>` +
-          // Direct label: required relief for the sub-3:1 light-mode slots.
-          `<text x="${labelWidth + w + 7}" y="${y + 11}" class="val">${(score * 100).toFixed(0)}%</text>`,
+        `<text x="0" y="${y + barHeight - 2}" class="tlabel">${label}</text>` +
+          (weight
+            ? `<text x="${labelWidth - 8}" y="${y + barHeight - 2}" text-anchor="end" class="twt">×${weight}</text>`
+            : "") +
+          bar(
+            labelWidth,
+            y,
+            score * chartWidth,
+            "scorebar",
+            `${label}: ${(score * 100).toFixed(0)}%${weight ? ` (weight ${weight})` : ""} — ${escapeHtml(task ? task.summary : "not run")}`,
+          ) +
+          `<text x="${labelWidth + chartWidth + 8}" y="${y + barHeight - 2}" class="val">${task ? `${(score * 100).toFixed(0)}%` : "—"}</text>`,
       );
     });
+
+    // The weighted Overall, set off by a divider so it reads as the sum of the
+    // task rows above it rather than one more task.
+    const oy = bodyTop + columns.length * rowHeight + 5;
+    parts.push(`<line x1="0" y1="${oy - 3}" x2="${width}" y2="${oy - 3}" class="grid"/>`);
+    parts.push(
+      `<text x="0" y="${oy + barHeight - 2}" class="olabel">Overall</text>` +
+        `<text x="${labelWidth - 8}" y="${oy + barHeight - 2}" text-anchor="end" class="twt">weighted</text>` +
+        bar(labelWidth, oy, record.overall * chartWidth, "overallbar") +
+        `<text x="${labelWidth + chartWidth + 8}" y="${oy + barHeight - 2}" class="oval">${(record.overall * 100).toFixed(0)}%</text>`,
+    );
   });
 
   return (
     `<svg viewBox="0 0 ${width} ${height}" width="100%" role="img" ` +
-    `aria-label="Task scores by model"><g>${parts.join("")}</g></svg>`
+    `aria-label="Task scores and weighted overall by model"><g>${parts.join("")}</g></svg>`
   );
 }
 
@@ -310,6 +352,15 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
   const ranked = [...records].sort((a, b) => b.overall - a.overall);
   const best = ranked[0];
 
+  // Overall is a weighted mean of the task scores (see bench/index.ts runSuite);
+  // the report has to carry the weights or the headline number cannot be
+  // reconciled with the per-task bars. Weight is persisted per task, so read it
+  // from the records rather than re-importing the task table.
+  const weightOf = new Map<string, number>();
+  for (const record of records) {
+    for (const task of record.tasks) if (!weightOf.has(task.id)) weightOf.set(task.id, task.weight);
+  }
+
   // Consistency: how much the same config's overall score moves across reruns.
   const groups = results.grouped(allRuns);
   const meanOverall = (g: results.Group): number =>
@@ -395,10 +446,12 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
 
   <section class="card">
     <h2>Scores by task</h2>
-    <p class="cap">Each bar is one task category, scored 0–100% from objectively verifiable outcomes —
-      tool calls checked against expected name and arguments, generated code compiled and its tests executed.</p>
-    ${legend(columns.map((c) => c.category))}
-    ${groupedBars(ranked, columns)}
+    <p class="cap">Each row is one task, scored 0–100% from objectively verifiable outcomes — tool calls
+      checked against expected name and arguments, generated code compiled and its tests executed. The
+      <b>×N</b> after a task is its weight. <b>Overall</b> is the weighted mean of the task scores,
+      <span class="mono">Σ(score × weight) ÷ Σ(weight)</span> — so a heavier task moves the headline
+      number more, and it is not the plain average of the bars above it.</p>
+    ${groupedBars(ranked, columns, weightOf)}
   </section>
 
   ${
@@ -438,16 +491,18 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
     <h2>Does each task actually tell us anything?</h2>
     <p class="cap">A task every model passes cannot rank them, however hard it looks. This is the
       score spread across all runs — low spread means the task is saturated and its contribution to
-      the overall figure is inflating everyone equally.</p>
+      the overall figure is inflating everyone equally. The weight is how hard that task pulls on the
+      overall score, so a saturated <em>heavy</em> task matters most.</p>
     <div class="scroll">
       <table>
-        <thead><tr><th>Task</th><th class="num">Lowest</th><th class="num">Highest</th>
+        <thead><tr><th>Task</th><th class="num">Weight</th><th class="num">Lowest</th><th class="num">Highest</th>
           <th class="num">Spread</th><th>Verdict</th></tr></thead>
         <tbody>${spreads
           .map((s) => {
             const tone = s.verdict === "saturated" ? "bad" : s.verdict === "weak" ? "warn" : "good";
             return (
               `<tr><td>${escapeHtml(s.category)}</td>` +
+              `<td class="num">×${weightOf.get(s.id) ?? "?"}</td>` +
               `<td class="num">${s.min === undefined ? "—" : `${(s.min * 100).toFixed(0)}%`}</td>` +
               `<td class="num">${s.max === undefined ? "—" : `${(s.max * 100).toFixed(0)}%`}</td>` +
               `<td class="num strong">${s.spread === null ? "—" : `${(s.spread * 100).toFixed(0)} pts`}</td>` +
@@ -542,8 +597,8 @@ function build(records: RunRecord[], allRuns: RunRecord[] = records): string {
     <div class="scroll">
       <table>
         <thead><tr><th>Model</th><th>Quant</th><th class="num">Context</th><th class="num">Reasoning</th>
-          ${columns.map((c) => `<th class="num">${escapeHtml(c.category)}</th>`).join("")}
-          <th class="num">Overall</th><th class="num">VRAM</th><th>Run at</th></tr></thead>
+          ${columns.map((c) => `<th class="num">${escapeHtml(c.category)}<span class="wt">×${weightOf.get(c.id) ?? "?"}</span></th>`).join("")}
+          <th class="num">Overall<span class="wt">wtd</span></th><th class="num">VRAM</th><th>Run at</th></tr></thead>
         <tbody>${tableRows}</tbody>
       </table>
     </div>
@@ -596,8 +651,15 @@ h2{font-size:1.02rem;margin:0 0 4px}
 svg{display:block;overflow:visible}
 .grp{font-size:11.5px;font-weight:600;fill:var(--text-primary)}
 .grpmeta{font-size:10px;fill:var(--muted)}
+.grpscore{font-size:13px;font-weight:700;fill:var(--text-primary);font-variant-numeric:tabular-nums}
 .track{fill:var(--grid)}
 .val{font-size:10.5px;fill:var(--text-secondary);font-variant-numeric:tabular-nums}
+.tlabel{font-size:11px;fill:var(--text-secondary)}
+.twt{font-size:9.5px;fill:var(--muted);font-variant-numeric:tabular-nums}
+.scorebar{fill:var(--series-1)}
+.overallbar{fill:var(--series-1);stroke:var(--text-primary);stroke-width:.75}
+.olabel{font-size:11px;font-weight:600;fill:var(--text-primary)}
+.oval{font-size:11px;font-weight:700;fill:var(--text-primary);font-variant-numeric:tabular-nums}
 .grid{stroke:var(--grid);stroke-width:1}
 .axis{stroke:var(--axis);stroke-width:1}
 .tick{font-size:10px;fill:var(--muted);font-variant-numeric:tabular-nums}
@@ -609,6 +671,8 @@ th{font-size:.71rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mu
 .num{text-align:right;font-variant-numeric:tabular-nums}
 .strong{font-weight:600}
 .muted{color:var(--muted)}
+.mono{font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;font-size:.78rem;background:var(--plane);border:1px solid var(--border);border-radius:4px;padding:1px 5px;white-space:nowrap}
+.wt{color:var(--muted);font-weight:400;font-size:.72em;margin-left:4px}
 .notes{margin:12px 0 0;padding-left:18px;color:var(--text-secondary);font-size:.78rem}
 .empty{color:var(--muted);font-size:.82rem}
 .v-good{color:var(--text-secondary)}
