@@ -128,6 +128,8 @@ function toQueuedMessagePayloads(
       preview: steerQueuePreview(entry),
       enqueuedAt: entry.enqueuedAt,
       ...(attachmentCount > 0 ? { attachmentCount } : {}),
+      // Only surface the non-default source so the wire stays lean; absent = user.
+      ...(entry.source === "system" ? { source: "system" as const } : {}),
     };
   });
 }

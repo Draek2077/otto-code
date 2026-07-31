@@ -2391,18 +2391,33 @@ export class Session {
         void listConnectorTools(connector, {
           cwd: process.cwd(),
           logger: this.sessionLogger,
-        }).then((result) => {
-          this.emit({
-            type: "connectors.list_tools.response",
-            payload: {
-              connectorId,
-              tools: result.tools,
-              error: result.error,
-              requestId: listRequestId,
-            },
+        })
+          .then((result) => {
+            this.emit({
+              type: "connectors.list_tools.response",
+              payload: {
+                connectorId,
+                tools: result.tools,
+                error: result.error,
+                requestId: listRequestId,
+              },
+            });
+            return undefined;
+          })
+          .catch((err: unknown) => {
+            // listConnectorTools guards internally, but its finally awaits
+            // manager.close(); a close rejection must still emit a response so the
+            // client's correlated request never hangs.
+            this.emit({
+              type: "connectors.list_tools.response",
+              payload: {
+                connectorId,
+                tools: [],
+                error: getErrorMessage(err),
+                requestId: listRequestId,
+              },
+            });
           });
-          return undefined;
-        });
         return undefined;
       }
       case "agentPersonalities.get_stats.request": {

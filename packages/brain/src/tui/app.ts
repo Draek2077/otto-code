@@ -1336,44 +1336,53 @@ export class App {
         const archiveId = archive.runId(model);
 
         const healthSampler = health.start();
-        const report = await bench.runSuite({
-          host: this.supervisor.host,
-          port: this.supervisor.internalPort,
-          concurrency: Math.max(1, profile?.parallelSlots || 3),
-          reasoningBudget: profile?.reasoningBudget ?? null,
-          contextWindow: profile?.contextSize ?? null,
-          archiveId,
-          onProgress: (p) => {
-            if (p.phase === "start") this.benchProgress.push(`${p.title}…`);
-            else if (p.phase === "done") {
-              this.benchProgress[this.benchProgress.length - 1] =
-                `${p.title}: ${(p.score * 100).toFixed(0)}%  ${p.summary}`;
-            } else if (p.phase === "failed")
-              this.benchProgress.push(`${p.title}: failed — ${p.summary}`);
-            this.draw();
-          },
-        });
-        report.system = healthSampler.stop();
-        report.vramBytes = this.supervisor.vramAtReadyBytes;
-        report.loadSeconds = this.supervisor.loadSeconds;
-        results.save({
-          model,
-          profile,
-          report,
-          gpu: this.gpuInfo,
-          runtime: `${this.runtime.label} v${this.runtime.version}`,
-          system: report.system,
-          archiveId,
-        });
-        this.loadBenchResults();
-        this.loadRankings();
-        this.benchProgress.push(
-          `done — overall ${(report.overall * 100).toFixed(0)}% (${report.grade})`,
-        );
-        this.setStatus(
-          `benchmark complete: ${model.displayName} ${(report.overall * 100).toFixed(0)}% (${report.grade})`,
-          "good",
-        );
+        // stop() is idempotent (clearInterval); guarantee the 1s nvidia-smi
+        // sampler never outlives the run even if runSuite throws — otherwise a
+        // failed bench leaks a recurring subprocess.
+        let sampled = false;
+        try {
+          const report = await bench.runSuite({
+            host: this.supervisor.host,
+            port: this.supervisor.internalPort,
+            concurrency: Math.max(1, profile?.parallelSlots || 3),
+            reasoningBudget: profile?.reasoningBudget ?? null,
+            contextWindow: profile?.contextSize ?? null,
+            archiveId,
+            onProgress: (p) => {
+              if (p.phase === "start") this.benchProgress.push(`${p.title}…`);
+              else if (p.phase === "done") {
+                this.benchProgress[this.benchProgress.length - 1] =
+                  `${p.title}: ${(p.score * 100).toFixed(0)}%  ${p.summary}`;
+              } else if (p.phase === "failed")
+                this.benchProgress.push(`${p.title}: failed — ${p.summary}`);
+              this.draw();
+            },
+          });
+          report.system = healthSampler.stop();
+          sampled = true;
+          report.vramBytes = this.supervisor.vramAtReadyBytes;
+          report.loadSeconds = this.supervisor.loadSeconds;
+          results.save({
+            model,
+            profile,
+            report,
+            gpu: this.gpuInfo,
+            runtime: `${this.runtime.label} v${this.runtime.version}`,
+            system: report.system,
+            archiveId,
+          });
+          this.loadBenchResults();
+          this.loadRankings();
+          this.benchProgress.push(
+            `done — overall ${(report.overall * 100).toFixed(0)}% (${report.grade})`,
+          );
+          this.setStatus(
+            `benchmark complete: ${model.displayName} ${(report.overall * 100).toFixed(0)}% (${report.grade})`,
+            "good",
+          );
+        } finally {
+          if (!sampled) healthSampler.stop();
+        }
       } finally {
         this.benchRunning = false;
       }

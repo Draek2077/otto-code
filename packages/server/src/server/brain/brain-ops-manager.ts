@@ -102,10 +102,16 @@ export class BrainOpsManager {
 
   /** Search Hugging Face for GGUF models — `otto-brain search <query> --json`. */
   async searchHf(query: string, limit: number | null): Promise<BrainHfSearchResult[]> {
-    const args = ["search", query, "--json"];
+    if (!query.trim()) {
+      return [];
+    }
+    // Options first, then `--` so a query starting with `-` is a positional, not
+    // parsed as an (unknown) option.
+    const args = ["search", "--json"];
     if (limit) {
       args.push("--limit", String(limit));
     }
+    args.push("--", query);
     const rows = await this.runJson(args);
     if (!Array.isArray(rows)) {
       return [];
@@ -137,7 +143,10 @@ export class BrainOpsManager {
 
   /** Quantizations a repo offers — `otto-brain add <repo> --list-quants --json`. */
   async repoQuants(repo: string): Promise<BrainRepoQuant[]> {
-    const rows = await this.runJson(["add", repo, "--list-quants", "--json"]);
+    if (!repo.trim()) {
+      return [];
+    }
+    const rows = await this.runJson(["add", "--list-quants", "--json", "--", repo]);
     return this.parseRows(rows, BrainRepoQuantSchema);
   }
 
@@ -145,21 +154,29 @@ export class BrainOpsManager {
 
   /** Download a catalog model. */
   pullModel(model: string): BrainJob {
+    if (!model.trim()) {
+      throw new Error("A model is required.");
+    }
     return this.startJob({
       kind: "pull",
       target: model,
       label: `Download ${model}`,
-      args: ["pull", model, "--json"],
+      args: ["pull", "--json", "--", model],
     });
   }
 
   /** Download a chosen quant of an arbitrary HF repo (a `pull` job). */
   addModel(repo: string, quant: string): BrainJob {
+    // An empty quant makes the CLI list quants instead of downloading, so the job
+    // would report success while writing nothing — reject it up front.
+    if (!repo.trim() || !quant.trim()) {
+      throw new Error("A repo and a quant are required.");
+    }
     return this.startJob({
       kind: "pull",
       target: `${repo}#${quant}`,
       label: `Add ${repo} (${quant})`,
-      args: ["add", repo, "--quant", quant, "--json"],
+      args: ["add", "--quant", quant, "--json", "--", repo],
     });
   }
 
@@ -343,6 +360,11 @@ export class BrainOpsManager {
   // Progress lines arrive on stderr (and, for bench, stdout). We keep the last
   // meaningful line as the message and lift any `<pct>%` into percent.
   private ingestProgress(job: JobState, text: string): void {
+    // A canceled/failed job is terminal: buffered stdout/stderr that arrives after
+    // the child was killed must not overwrite the terminal message/percent.
+    if (job.status !== "running") {
+      return;
+    }
     job.errBuffer = appendTail(job.errBuffer, text);
     const lines = text
       .split(/[\r\n]+/u)

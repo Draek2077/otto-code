@@ -1750,7 +1750,19 @@ export function Composer({
    */
   const handleSendAllQueued = useCallback(async () => {
     if (!sendAgentMessageRef.current && !onSubmitMessageRef.current) return;
-    const ids = queuedMessages.map((item) => item.id);
+    // Two kinds of entry must NOT be pulled into a merged user turn, and are left
+    // in the queue to drain naturally instead:
+    //  - system-injected entries (mentions/schedules), which the daemon's own
+    //    drain never merges into a user turn;
+    //  - entries whose attachments the daemon holds but this client can't back
+    //    (sidecar lost to a reload or another device) — merging here would send
+    //    the turn with those images silently dropped.
+    const sendable = queuedMessages.filter(
+      (item) =>
+        item.source !== "system" &&
+        !((item.attachmentCount ?? 0) > 0 && item.attachments.length === 0),
+    );
+    const ids = sendable.map((item) => item.id);
     if (ids.length === 0) return;
     if (isAgentRunning) {
       const confirmedInterrupt = await confirmInterruptWithLiveSubagents({

@@ -132,14 +132,27 @@ export async function downloadRepoFiles({
   token,
   onProgress,
 }: DownloadFilesOptions): Promise<string[]> {
-  const repoDir = path.join(destRoot, repo.replace(/\//g, path.sep));
+  const rootResolved = path.resolve(destRoot);
+  const repoDir = path.join(rootResolved, repo.replace(/\//g, path.sep));
   const received = { bytes: 0 };
   const written: string[] = [];
   for (const repoFile of files) {
-    const destPath = path.join(repoDir, ...repoFile.split("/"));
+    // `repo` and `repoFile` come from the untrusted Hugging Face API; a crafted
+    // repo tree could list names with `..` or backslash segments that escape the
+    // models dir. Split on BOTH separators, reject traversal segments, and verify
+    // the resolved path stays under destRoot before writing.
+    const segments = repoFile.split(/[/\\]/).filter(Boolean);
+    if (segments.some((segment) => segment === "." || segment === "..")) {
+      throw new Error(`Refusing to download file with unsafe path: ${repoFile}`);
+    }
+    const destPath = path.join(repoDir, ...segments);
+    const resolved = path.resolve(destPath);
+    if (resolved !== rootResolved && !resolved.startsWith(rootResolved + path.sep)) {
+      throw new Error(`Refusing to write outside the models directory: ${repoFile}`);
+    }
     const url = `${HF_BASE}/${repo}/resolve/main/${repoFile}`;
-    const wrote = await streamRepoFile(url, destPath, repoFile, token, onProgress, received);
-    if (wrote) written.push(destPath);
+    const wrote = await streamRepoFile(url, resolved, repoFile, token, onProgress, received);
+    if (wrote) written.push(resolved);
   }
   return written;
 }

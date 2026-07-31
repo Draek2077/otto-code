@@ -493,14 +493,13 @@ function ConnectorCard(props: {
   });
 
   const toggleExpanded = useCallback(() => {
-    setExpanded((prev) => {
-      const next = !prev;
-      if (next && !toolsMutation.data && !toolsMutation.isPending) {
-        toolsMutation.mutate();
-      }
-      return next;
-    });
-  }, [toolsMutation]);
+    // Fetch outside the setState updater — an updater must be pure (React may
+    // double-invoke it in dev, firing two live MCP connects).
+    if (!expanded && !toolsMutation.data && !toolsMutation.isPending) {
+      toolsMutation.mutate();
+    }
+    setExpanded((prev) => !prev);
+  }, [expanded, toolsMutation]);
 
   const onEnableChange = useCallback(
     (next: boolean) => {

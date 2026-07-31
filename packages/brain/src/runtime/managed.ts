@@ -129,10 +129,14 @@ async function extractArchive(archivePath: string, destDir: string): Promise<voi
   fs.mkdirSync(destDir, { recursive: true });
   if (/\.zip$/i.test(archivePath)) {
     // PowerShell ships with Windows; -Force overwrites an interrupted extract.
+    // Paths are rooted at $OTTO_HOME (under the user profile), so a username with
+    // an apostrophe would break — or inject into — a raw single-quoted string.
+    // Escape single quotes for PowerShell (a literal ' is written as '').
+    const psQuote = (value: string): string => `'${value.replace(/'/g, "''")}'`;
     await run("powershell", [
       "-NoProfile",
       "-Command",
-      `Expand-Archive -LiteralPath '${archivePath}' -DestinationPath '${destDir}' -Force`,
+      `Expand-Archive -LiteralPath ${psQuote(archivePath)} -DestinationPath ${psQuote(destDir)} -Force`,
     ]);
     return;
   }

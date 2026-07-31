@@ -1449,6 +1449,13 @@ export const QueuedAgentMessagePayloadSchema = z.object({
   preview: z.string(),
   enqueuedAt: z.string(),
   attachmentCount: z.number().int().nonnegative().optional(),
+  /**
+   * Who parked the message. Absent (from an older daemon) or "user" is a normal
+   * user turn; "system" marks a system-injected entry (a chat mention, a
+   * scheduled fire) that the daemon's drain never merges into a user turn — the
+   * client must likewise exclude it from "Send all".
+   */
+  source: z.enum(["user", "system"]).optional(),
 });
 
 /**

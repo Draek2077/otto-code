@@ -78,10 +78,13 @@ export function buildTodoNudgeReminder(todo: TodoTimelineItem): string {
   return `<system-reminder>\nYou have ${openCount} unfinished item(s) on your task list. As you work, keep it current: mark items completed the moment you finish them rather than in a batch at the end.\n</system-reminder>`;
 }
 
-// A trailing todo nudge block, with any whitespace that precedes it. Anchored to
-// the end because the nudge is always appended last; Otto is the only thing that
-// appends `<system-reminder>` to a prompt, so matching the trailing block is safe.
-const TRAILING_TODO_NUDGE_PATTERN = /\s*<system-reminder>[\s\S]*?<\/system-reminder>\s*$/;
+// The trailing todo-nudge block, with any whitespace that precedes it. Matched by
+// the nudge's own opening sentence — NOT any `<system-reminder>` — so a user
+// message that legitimately ends with (or merely contains) reminder-shaped markup
+// isn't truncated in the timeline. Anchored to the end because the nudge is always
+// appended last; keep this wording in sync with buildTodoNudgeReminder.
+const TRAILING_TODO_NUDGE_PATTERN =
+  /\s*<system-reminder>\s*You have \d+ unfinished item\(s\) on your task list\.[\s\S]*?<\/system-reminder>\s*$/;
 
 /**
  * Append the passive nudge to an outgoing prompt (string or content blocks).

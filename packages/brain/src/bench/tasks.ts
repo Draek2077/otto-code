@@ -854,12 +854,10 @@ const extraLongHorizonTask: Task = {
         } else if (name === "list_directory") {
           toolResult = listDir(String(a.path ?? "."));
         } else if (name === "find_files") {
-          const needle = String(a.pattern ?? "")
-            .toLowerCase()
-            .replace(/\*/g, "");
+          const pattern = String(a.pattern ?? "");
           toolResult =
             Object.keys(EXTRA_CORPUS)
-              .filter((p) => p.toLowerCase().includes(needle))
+              .filter((p) => globMatchesPath(pattern, p))
               .join("\n") || "(no matches)";
         } else if (name === "search_files") {
           const query = String(a.query ?? "");
@@ -1078,12 +1076,10 @@ const contextStressTask: Task = {
         } else if (name === "list_directory") {
           toolResult = listDir(String(a.path ?? "."));
         } else if (name === "find_files") {
-          const needle = String(a.pattern ?? "")
-            .toLowerCase()
-            .replace(/\*/g, "");
+          const pattern = String(a.pattern ?? "");
           toolResult =
             Object.keys(corpus.files)
-              .filter((p) => p.toLowerCase().includes(needle))
+              .filter((p) => globMatchesPath(pattern, p))
               .join("\n") || "(no matches)";
         } else if (name === "search_files") {
           const query = String(a.query ?? "");
@@ -1211,7 +1207,30 @@ interface DepthPoint {
  * so the depth task stops probing rather than zeroing the whole category.
  */
 function isContextLimitError(message: string): boolean {
-  return /exceed|context|n_ctx|too (?:many|long|large)|larger than/i.test(message);
+  // Specific to a context-length rejection — a bare "context" would misclassify
+  // any unrelated 500 whose body happens to mention the word.
+  return /exceed|n_ctx|context (?:length|window|size)|too (?:many|long|large)|larger than|prompt is too long/i.test(
+    message,
+  );
+}
+
+// Match a corpus path against a simple glob (single-star and recursive
+// double-star wildcards) on a path suffix, so a conventional recursive
+// "star-star-slash-star-dot-py" pattern finds `pricing.py`. The old behavior
+// just stripped every star, turning that pattern into a needle that matched
+// nothing in a flat corpus and starved the model's file-discovery signal.
+function globMatchesPath(pattern: string, filePath: string): boolean {
+  const raw = pattern.toLowerCase().trim();
+  if (!raw) return false;
+  const body = raw
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*\//g, "")
+    .replace(/\*/g, "[^/]*");
+  try {
+    return new RegExp(`(?:^|/)${body}$`).test(filePath.toLowerCase());
+  } catch {
+    return filePath.toLowerCase().includes(raw.replace(/\*/g, ""));
+  }
 }
 
 /**
@@ -1354,10 +1373,18 @@ const concurrencyTask: Task = {
     // tokens for the actual answer. Fall back to a safe cap when the budget is
     // unknown (an arbitrary --endpoint) or thinking is disabled.
     const CONTENT_MARGIN = 512;
+    // reasoningBudget === -1 means UNRESTRICTED thinking (sweep couldn't cap it):
+    // the 2048 fallback is then the exact "all tokens go to reasoning, content is
+    // empty, task scores 0%" trap the note above describes, so give a generous cap
+    // instead. Positive budgets size the cap above the budget; 2048 is only for
+    // thinking disabled/unknown.
+    const UNRESTRICTED_THINKING_MAX_TOKENS = 8192;
     const maxTokens =
       typeof reasoningBudget === "number" && reasoningBudget > 0
         ? reasoningBudget + CONTENT_MARGIN
-        : 2048;
+        : reasoningBudget === -1
+          ? UNRESTRICTED_THINKING_MAX_TOKENS
+          : 2048;
     const started = Date.now();
     const responses = await Promise.all(
       Array.from({ length: n }, () =>
