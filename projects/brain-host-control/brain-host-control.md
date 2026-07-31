@@ -74,23 +74,24 @@ acp-provider-catalog.ts`, extends openai-compatible) and the Material `Brain` ic
 
 ## Named remainder (open)
 
-- **Hugging Face model discovery — app side (Phase 2).** The brain half is built
-  and live-verified: `models/hf.ts` (`searchModels`, `listRepoQuants`), the
-  `otto brain search <query>` and `otto brain add <repo> [--quant|--list-quants]`
-  CLI verbs (`--json`, the same shell-out contract the daemon already uses for
-  `catalog`/`scan`/`pull`), arbitrary-repo download with shard + shared-projector
-  handling and an HF token (`config set hfToken`, env `HF_TOKEN` wins), and the TUI
-  gained `f` (search-and-add: query → results → quant picker → download), `g`
-  (re-quant an installed repo), `D` (delete with confirm) and a disk-usage line.
-  **Open (mirror the existing `brain.*` pattern exactly):** a `brain.hf.search`
-  read RPC + a `brain.models.add` job RPC (owner/repo + quant) with matching
-  `daemon-client.ts` methods behind `features.brainManage` (with a `COMPAT(...)`
-  tag); add `hfToken` to `MutableBrainConfigSchema` + `writeThroughConfig` so the
-  app is the single settings surface; and a "Search Hugging Face" subsection in
-  `host-brain-models.tsx` (reuse the `combobox` search input + a virtualized list —
-  the current catalog `.map()` won't scale to search results — and the existing
-  jobs/progress panel). Design + contract: TUI and app share the brain code, one
-  `--json`/RPC contract, no new app↔brain network path.
+- **Hugging Face model discovery — BUILT across six packages (2026-07-31), not yet
+  live-verified through the app.** Brain: `models/hf.ts` (`searchModels`,
+  `listRepoQuants`), the `otto brain search`/`add [--quant|--list-quants]` CLI verbs
+  (`--json`), arbitrary-repo download with shard + shared-projector handling and an
+  HF token (`config set hfToken`, env `HF_TOKEN` wins), plus TUI `f` (search-and-add),
+  `g` (re-quant), `D` (delete-with-confirm) and a disk-usage line. Daemon→app: three
+  RPCs behind `features.brainHfSearch` — `brain.hf.search` + `brain.hf.quants` (reads)
+  and `brain.models.add` (a `pull` job, owner/repo + quant) — served by
+  `BrainOpsManager.searchHf`/`repoQuants`/`addModel` (shell-out to the CLI, `gated`
+  coerced string→bool at the daemon), matching `daemon-client.ts` methods, and a
+  "Search Hugging Face" subsection in `host-brain-models.tsx` (query → results →
+  per-repo quant list → Get, downloads flow through the existing jobs panel).
+  **Open:** live-verify the app path end-to-end (search → add → installed); add
+  `hfToken` to `MutableBrainConfigSchema` + `writeThroughConfig` so the token is
+  editable from app settings (today the brain resolves its own from env/config, so
+  gated repos already work); and the results list is a plain `.map()` — fine for ~30
+  rows, virtualize if the limit grows. Contract: TUI and app share the brain code,
+  one `--json`/RPC path, no new app↔brain network hop.
 - **Websocket push feed.** The dashboard live status is a 2s `brainHostStatus`
   poll today. `features.brainStatus` reserves the capability; a
   `subscribe_brain_status` / `brain_status_changed` push (mirroring checkout-diff/
