@@ -205,11 +205,16 @@ function resolveInRepo(repoDir: string, p: string): string | null {
   return resolved;
 }
 
-/** Build the workspace, then run its suite. Build failure is non-fatal: vitest
- *  transpiles per file and still runs when a tsc build has type errors. */
-async function runOracleTests(repo: Repo, timeoutMs: number): Promise<TestResult> {
+/** Build the workspace, then run only the oracle test files. Build failure is
+ *  non-fatal: vitest transpiles per file and still runs when a tsc build has type
+ *  errors. Scoping to `oracleFiles` avoids running the whole workspace suite. */
+async function runOracleTests(
+  repo: Repo,
+  timeoutMs: number,
+  oracleFiles: string[],
+): Promise<TestResult> {
   await repo.build();
-  return repo.test({ timeout: timeoutMs });
+  return repo.test({ timeout: timeoutMs, files: oracleFiles });
 }
 
 /** Compact one oracle run into a line for the model. */
@@ -268,7 +273,7 @@ export function makeRepoTask(mined: MinedTask, options: RepoTaskOptions): Task {
       await repo.checkoutPaths(mined.fix, mined.testPaths);
       await repo.ensureDependencies();
 
-      const baselineResult = await runOracleTests(repo, testTimeoutMs);
+      const baselineResult = await runOracleTests(repo, testTimeoutMs, mined.testPaths);
       const baseline = collectOracleRun(baselineResult, oracleFiles);
 
       const preDelta = scoreTestDeltas(baseline, baseline);
@@ -371,7 +376,7 @@ export function makeRepoTask(mined: MinedTask, options: RepoTaskOptions): Task {
           } else if (name === "run_tests") {
             ranTests = true;
             const current = collectOracleRun(
-              await runOracleTests(repo, testTimeoutMs),
+              await runOracleTests(repo, testTimeoutMs, mined.testPaths),
               oracleFiles,
             );
             toolResult = describeRun(current);
@@ -388,7 +393,7 @@ export function makeRepoTask(mined: MinedTask, options: RepoTaskOptions): Task {
       }
 
       // 3. Authoritative final run and delta scoring.
-      const finalResult = await runOracleTests(repo, testTimeoutMs);
+      const finalResult = await runOracleTests(repo, testTimeoutMs, mined.testPaths);
       const after = collectOracleRun(finalResult, oracleFiles);
       const delta = scoreTestDeltas(baseline, after);
 

@@ -161,6 +161,13 @@ interface ConcurrencyDetail {
   promptPerSecond?: number;
 }
 
+/** An agentic task's peak context-window utilization (see tasks.ts). */
+interface ContextDetail {
+  contextUtilization?: number | null;
+  peakPromptTokens?: number;
+  contextWindow?: number | null;
+}
+
 /** Editable configuration fields, in display order. */
 export const FIELDS: Field[] = [
   {
@@ -1468,9 +1475,12 @@ export class App {
    * (or live run progress) where the Status panel sits.
    */
   drawBench(cols: number): void {
+    // Keep this identical to draw()'s split so the Benchmark sidebar lands at the
+    // same width as the Configuration panel and the model list does not jump when
+    // toggling between the two screens.
     const rightWidth = Math.max(
       CONFIG_MIN_WIDTH,
-      Math.min(CONFIG_MAX_WIDTH + 4, Math.round(cols * 0.42)),
+      Math.min(CONFIG_MAX_WIDTH, Math.round(cols * 0.38)),
     );
     const leftWidth = Math.max(MODEL_MIN_WIDTH, cols - rightWidth - 7);
 
@@ -1546,6 +1556,27 @@ export class App {
             `  ${style.grey}prompt${style.reset} ${(detail.promptPerSecond ?? 0).toFixed(0)} tok/s`,
           );
         }
+
+        // Peak context held by the long-horizon / agentic tasks. It rides in the
+        // live run summary but is lost from the persisted scorecard otherwise, so
+        // surface it here alongside throughput.
+        const held = rec.tasks
+          .map((t) => ({ task: t, detail: t.detail as ContextDetail | undefined }))
+          .filter((x) => typeof x.detail?.contextUtilization === "number");
+        if (held.length) {
+          lines.push("");
+          lines.push(`${style.grey}context held${style.reset}`);
+          for (const { task, detail } of held) {
+            const pct = Math.round((detail?.contextUtilization ?? 0) * 100);
+            const peak = detail?.peakPromptTokens
+              ? ` ${style.grey}${(detail.peakPromptTokens / 1000).toFixed(1)}k tok${style.reset}`
+              : "";
+            lines.push(
+              `  ${style.grey}${pad(truncate(task.category, 14), 14)}${style.reset} ${this.scoreColour(1 - pct / 100)}${String(pct).padStart(3)}%${style.reset}${peak}`,
+            );
+          }
+        }
+
         lines.push("");
         lines.push(`${style.grey}ran ${rec.ranAt.slice(0, 10)} · ${rec.grade}${style.reset}`);
       }

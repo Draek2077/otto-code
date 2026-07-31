@@ -1,5 +1,6 @@
 import { runUnittestFiles, verifyPython, verifyToolCall } from "./verify.js";
 import { EXTRA_CORPUS, EXTRA_HIDDEN_TEST, EXTRA_PY_FILES, EXTRA_TARGET_FILE } from "./corpus.js";
+import { generateContextCorpus } from "./context-corpus.js";
 
 import type { ToolCall, ToolCallExpectation } from "./verify.js";
 
@@ -649,7 +650,7 @@ const longHorizonTask: Task = {
   category: "Long-horizon code",
   weight: 4,
   description: "Generates a multi-file program that compiles and whose tests pass",
-  async run({ chat, execute }) {
+  async run({ chat, execute, contextWindow }) {
     const started = Date.now();
     const response = await chat({
       messages: [{ role: "user", content: LONG_TASK_PROMPT }],
@@ -721,15 +722,26 @@ const longHorizonTask: Task = {
     }
     if (verification.placeholders) bits.push(`${verification.placeholders} placeholders`);
 
+    // How much of the loaded window the single generation held, reported like the
+    // other agentic tasks so every long-horizon row carries a context figure.
+    const peakPromptTokens = response.usage?.prompt_tokens ?? 0;
+    const contextUtilization =
+      contextWindow && contextWindow > 0 ? peakPromptTokens / contextWindow : null;
+    const ctxNote =
+      contextUtilization !== null ? `, held ${Math.round(contextUtilization * 100)}% ctx` : "";
+
     return {
       score,
-      summary: bits.join(", "),
+      summary: bits.join(", ") + ctxNote,
       detail: {
         finishReason: choice.finish_reason,
         outputTokens: response.usage?.completion_tokens ?? null,
         reasoningChars: reasoning.length,
         contentChars: content.length,
         elapsedSeconds,
+        peakPromptTokens,
+        contextWindow: contextWindow ?? null,
+        contextUtilization,
         tokensPerSecond: response.timings?.predicted_per_second ?? null,
         verification: {
           ...verification,
@@ -940,6 +952,232 @@ const extraLongHorizonTask: Task = {
       detail: {
         steps,
         turns,
+        bestPassed,
+        total,
+        testsExecuted,
+        filesRead: [...filesRead],
+        peakPromptTokens,
+        contextWindow: contextWindow ?? null,
+        contextUtilization,
+        stalled,
+        lastOutput,
+      },
+    };
+  },
+};
+
+// -------------------------------------------------------------- context stress
+
+/**
+ * A volume test, not a puzzle: a staged pipeline whose N modules are all
+ * passthrough placeholders, with each stage's real rule living ONLY in a
+ * specification generated large enough to fill ~55% of the served context
+ * window (see context-corpus.ts). The model must read the spec to fix any stage
+ * and hold most of it to fix them all, so a high score is proof it held real
+ * context - the signal a 1-2%-held long-horizon task cannot give. Sized from the
+ * model's own loaded window; scored on a hidden per-stage oracle.
+ */
+const contextStressTask: Task = {
+  id: "context-stress",
+  category: "Context stress",
+  weight: 4,
+  description: "Reconstructs N spec-defined pipeline stages from a window-filling spec",
+  async run({ chat, execute = true, contextWindow }) {
+    // Fill ~55% of the loaded window (est. 4 chars/token), clamped so a tiny
+    // window still gets a real pipeline and a huge one stays bounded. Fall back
+    // to a solid fixed size when the endpoint does not report a window.
+    const targetTokens =
+      contextWindow && contextWindow > 0
+        ? Math.min(160_000, Math.round(contextWindow * 0.55))
+        : 16_000;
+    const corpus = generateContextCorpus({ targetTokens });
+
+    const workingCopy = new Map<string, string>();
+    for (const file of corpus.pyFiles) workingCopy.set(file, corpus.files[file]);
+
+    const readFile = (path: string): string | null => {
+      if (workingCopy.has(path)) return workingCopy.get(path) ?? null;
+      return path in corpus.files ? corpus.files[path] : null;
+    };
+    const listDir = (dir: string): string => {
+      const prefix = dir === "." || dir === "" || dir === "/" ? "" : `${dir.replace(/\/+$/, "")}/`;
+      const names = new Set<string>();
+      for (const path of Object.keys(corpus.files)) {
+        if (!path.startsWith(prefix)) continue;
+        const rest = path.slice(prefix.length);
+        const seg = rest.split("/")[0];
+        if (seg) names.add(rest.includes("/") ? `${seg}/` : seg);
+      }
+      return [...names].sort().join("\n") || "(empty)";
+    };
+
+    const messages: ChatRequestMessage[] = [
+      {
+        role: "user",
+        content:
+          `The staged-pipeline project has ${corpus.stages.length} stage modules ` +
+          "(stage_00.py, stage_01.py, ...), each a placeholder that returns its input unchanged. " +
+          "The rule every stage must implement - an operation and an operand - is defined ONLY in " +
+          "the specification under docs/spec/. Explore the repository (list_directory, read_file, " +
+          "search_files, find_files), read the spec parts, implement every stage's apply(x) exactly " +
+          'as specified, and run the tests with "python -m unittest test_pipeline". The code carries ' +
+          "no hint of the operands; you must read the spec. Test files are read-only.",
+      },
+    ];
+
+    const filesRead = new Set<string>();
+    const steps = { explored: false, researched: false, wrote: false, ranTests: false };
+    let bestPassed = 0;
+    let total: number | null = null;
+    let lastOutput = "";
+    let testsExecuted = false;
+    let peakPromptTokens = 0;
+    let turns = 0;
+    const maxTurns = 24;
+    let stalled: string | null = null;
+
+    while (turns < maxTurns) {
+      turns += 1;
+      const response = await chat({ messages, tools: TOOLS, max_tokens: 4096, temperature: 0.3 });
+      peakPromptTokens = Math.max(peakPromptTokens, response.usage?.prompt_tokens ?? 0);
+      const message: ChatMessage = response.choices?.[0]?.message || {};
+      const calls = message.tool_calls || [];
+      if (!calls.length) {
+        if (!message.content) stalled = "produced neither content nor a tool call";
+        break;
+      }
+      messages.push({ role: "assistant", content: message.content || null, tool_calls: calls });
+
+      for (const call of calls) {
+        const name = call.function?.name || call.name;
+        let args: unknown = call.function?.arguments ?? call.input ?? {};
+        if (typeof args === "string") {
+          try {
+            args = JSON.parse(args) as unknown;
+          } catch {
+            args = {};
+          }
+        }
+        const a: Record<string, unknown> =
+          args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+        const cleanPath = (p: unknown): string => String(p ?? "").replace(/^\.?\//, "");
+        const isStagePath = (p: string): boolean =>
+          /^stage_\d+\.py$/.test(p) || p === "pipeline.py";
+
+        let toolResult = "ok";
+        if (name === "read_file") {
+          const path = cleanPath(a.path);
+          const content = readFile(path);
+          if (content === null) {
+            toolResult = `file not found: ${path}`;
+          } else {
+            filesRead.add(path);
+            if (/spec/i.test(path)) steps.researched = true;
+            toolResult = content;
+          }
+        } else if (name === "list_directory") {
+          toolResult = listDir(String(a.path ?? "."));
+        } else if (name === "find_files") {
+          const needle = String(a.pattern ?? "")
+            .toLowerCase()
+            .replace(/\*/g, "");
+          toolResult =
+            Object.keys(corpus.files)
+              .filter((p) => p.toLowerCase().includes(needle))
+              .join("\n") || "(no matches)";
+        } else if (name === "search_files") {
+          const query = String(a.query ?? "");
+          const hits: string[] = [];
+          if (query) {
+            for (const [path, content] of Object.entries(corpus.files)) {
+              content.split("\n").forEach((line, i) => {
+                if (line.includes(query)) hits.push(`${path}:${i + 1}: ${line.trim()}`);
+              });
+            }
+          }
+          toolResult = hits.slice(0, 40).join("\n") || "(no matches)";
+        } else if (name === "write_file") {
+          const path = cleanPath(a.path);
+          if (/test_/.test(path)) {
+            toolResult = "refused: test files are read-only";
+          } else {
+            workingCopy.set(path, String(a.content ?? ""));
+            if (isStagePath(path)) steps.wrote = true;
+            toolResult = `wrote ${path}`;
+          }
+        } else if (name === "edit_file") {
+          const path = cleanPath(a.path);
+          const oldText = String(a.old_text ?? "");
+          const newText = String(a.new_text ?? "");
+          const current = workingCopy.get(path) ?? corpus.files[path];
+          if (/test_/.test(path)) {
+            toolResult = "refused: test files are read-only";
+          } else if (current && oldText && current.includes(oldText)) {
+            workingCopy.set(path, current.replace(oldText, newText));
+            if (isStagePath(path)) steps.wrote = true;
+            toolResult = `edited ${path}`;
+          } else {
+            toolResult = "edit failed: old_text not found";
+          }
+        } else if (name === "run_command") {
+          steps.ranTests = true;
+          const files: Record<string, string> = { "test_pipeline.py": corpus.hiddenTest };
+          for (const file of corpus.pyFiles)
+            files[file] = workingCopy.get(file) ?? corpus.files[file];
+          const run = await runUnittestFiles(files, "test_pipeline", { execute });
+          if (run.ran && run.total) {
+            testsExecuted = true;
+            total = run.total;
+            bestPassed = Math.max(bestPassed, run.passed ?? 0);
+            lastOutput = run.output;
+            toolResult = run.output || `ran ${run.total} tests`;
+          } else if (!run.compiled) {
+            toolResult = `code failed to compile:\n${run.output}`;
+          } else {
+            toolResult = "tests could not be executed in this environment";
+          }
+        }
+        messages.push({ role: "tool", tool_call_id: call.id || "call_0", content: toolResult });
+      }
+
+      steps.explored = filesRead.size >= 3;
+      if (testsExecuted && total !== null && bestPassed >= total) break;
+    }
+
+    const ratio = total ? bestPassed / total : 0;
+    let score: number;
+    if (testsExecuted) {
+      score =
+        (steps.explored ? 0.1 : 0) +
+        (steps.researched ? 0.1 : 0) +
+        (steps.wrote ? 0.05 : 0) +
+        (steps.ranTests ? 0.05 : 0) +
+        ratio * 0.7;
+    } else {
+      score =
+        (steps.explored ? 0.3 : 0) +
+        (steps.researched ? 0.3 : 0) +
+        (steps.wrote ? 0.2 : 0) +
+        (steps.ranTests ? 0.2 : 0);
+    }
+
+    const contextUtilization =
+      contextWindow && contextWindow > 0 ? peakPromptTokens / contextWindow : null;
+    const ctxNote =
+      contextUtilization !== null ? `, held ${Math.round(contextUtilization * 100)}% ctx` : "";
+
+    return {
+      score: Math.min(1, score),
+      summary: stalled
+        ? `stalled: ${stalled}`
+        : testsExecuted
+          ? `${bestPassed}/${total} stages pass, ${filesRead.size} files read${steps.researched ? "" : " (missed the spec)"}${ctxNote}`
+          : `no tests executed (${filesRead.size} files read)`,
+      detail: {
+        steps,
+        turns,
+        stageCount: corpus.stages.length,
+        targetTokens,
         bestPassed,
         total,
         testsExecuted,
@@ -1168,6 +1406,7 @@ export const TASKS: Task[] = [
   agenticLoopTask,
   longHorizonTask,
   extraLongHorizonTask,
+  contextStressTask,
   contextDepthTask,
   concurrencyTask,
 ];
