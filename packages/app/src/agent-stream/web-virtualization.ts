@@ -12,6 +12,10 @@ export const DEFAULT_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD = 40;
 // 12 comfortably covers the visible viewport plus the live turn, which is all the tail has
 // to do; everything above it goes through the virtualizer like the rest of history.
 export const DEFAULT_WEB_MOUNTED_RECENT_STREAM_ITEMS = 12;
+// A phone viewport holds a fraction of what a desktop one does, and every mounted
+// bubble is markdown that re-renders on the same JS thread the composer types on.
+// 8 still covers a phone screen plus the live turn.
+export const DEFAULT_WEB_MOBILE_MOUNTED_RECENT_STREAM_ITEMS = 8;
 const COLLAPSED_TOOL_SEQUENCE_ROW_HEIGHT_ESTIMATE = 40;
 
 type BottomAnchorE2ETestGlobals = typeof globalThis & {
@@ -34,11 +38,16 @@ export function getWebPartialVirtualizationThreshold(): number {
   return override ?? DEFAULT_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD;
 }
 
-export function getWebMountedRecentStreamItems(): number {
+export function getWebMountedRecentStreamItems(isMobileBreakpoint = false): number {
   const override = readPositiveIntegerOverride(
     (globalThis as BottomAnchorE2ETestGlobals).__OTTO_E2E_WEB_MOUNTED_RECENT_STREAM_ITEMS,
   );
-  return override ?? DEFAULT_WEB_MOUNTED_RECENT_STREAM_ITEMS;
+  if (override !== null) {
+    return override;
+  }
+  return isMobileBreakpoint
+    ? DEFAULT_WEB_MOBILE_MOUNTED_RECENT_STREAM_ITEMS
+    : DEFAULT_WEB_MOUNTED_RECENT_STREAM_ITEMS;
 }
 
 export interface IndexedStreamItem {
