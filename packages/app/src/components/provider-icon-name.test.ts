@@ -5,6 +5,7 @@ import {
   TERMINAL_PROFILE_ICON_NAMES,
 } from "@otto-code/protocol/provider-icon-names";
 import { ACP_PROVIDER_CATALOG } from "@/data/acp-provider-catalog";
+import { getProviderIcon } from "./provider-icons";
 import { resolveProviderIconName } from "./provider-icon-name";
 
 describe("resolveProviderIconName", () => {
@@ -27,11 +28,21 @@ describe("resolveProviderIconName", () => {
 });
 
 describe("known provider icon names", () => {
-  it("includes every ACP catalog entry that ships an icon", () => {
-    const known = new Set(KNOWN_PROVIDER_ICON_NAMES);
+  // Membership in the protocol registry is only ONE of the two routes to a
+  // specific icon: app-only ids resolve through APP_PROVIDER_ICONS in
+  // provider-icons.ts instead, which getProviderIcon consults first. The local
+  // brain host is deliberately on that route — it is Otto's own host rather
+  // than an ACP provider, and adding it to the protocol registry would also
+  // make guessTerminalProfileIcon match a command named "otto-brain".
+  //
+  // So assert the outcome both routes exist for — a catalog entry that ships
+  // an icon never falls back to the generic bot — rather than membership in
+  // one particular route.
+  it("gives every ACP catalog entry that ships an icon a specific icon", () => {
+    const botFallback = getProviderIcon("provider-id-that-cannot-exist");
     for (const entry of ACP_PROVIDER_CATALOG) {
       if (entry.iconSvg) {
-        expect(known).toContain(entry.id);
+        expect(getProviderIcon(entry.id), entry.id).not.toBe(botFallback);
       }
     }
   });
