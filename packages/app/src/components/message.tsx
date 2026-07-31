@@ -80,7 +80,7 @@ import type { AgentUsage, ToolCallDetail } from "@otto-code/protocol/agent-types
 import { readWidgetPayload } from "@otto-code/protocol/widgets/types";
 import { buildToolCallPresentation } from "@/tool-calls/presentation";
 import { WidgetCard } from "@/widgets/widget-card";
-import { resolveToolCallIcon } from "@/utils/tool-call-icon";
+import { isTightGlyphToolIcon, resolveToolCallIcon } from "@/utils/tool-call-icon";
 import { getMarkdownListMarker, getMarkdownListSpacing } from "@/utils/markdown-list";
 import { markdownNodeContainsType } from "@/utils/markdown-ast";
 import { useStableEvent } from "@/hooks/use-stable-event";
@@ -2969,14 +2969,27 @@ const LUCIDE_TOOL_ICON_NUDGE_LEFT: ViewStyle = { marginLeft: -1 };
 const LUCIDE_CHEVRON_NUDGE_LEFT: ViewStyle = { marginLeft: -4 };
 const TRIANGLE_ALERT_ICON_OPACITY: ViewStyle = { opacity: 0.8 };
 
+// The Otto face crops its viewBox to the ink, so it needs neither the lucide
+// nudge nor the 12px square: it carries the same optical weight at 18px wide,
+// and the 22px icon badge centres it.
+const OTTO_FACE_ICON_WIDTH = 18;
+
 function renderExpandableBadgeIcon({
   errorLevel,
   isActive,
+  isRunning,
+  isTightGlyph,
   ThemedIcon,
 }: {
   errorLevel: ExpandableBadgeErrorLevel | undefined;
   isActive: boolean;
-  ThemedIcon: ComponentType<{ size?: number; uniProps?: typeof foregroundColorMapping }> | null;
+  isRunning: boolean;
+  isTightGlyph: boolean;
+  ThemedIcon: ComponentType<{
+    size?: number;
+    isActive?: boolean;
+    uniProps?: typeof foregroundColorMapping;
+  }> | null;
 }): ReactNode {
   if (errorLevel) {
     return (
@@ -2990,6 +3003,15 @@ function renderExpandableBadgeIcon({
     );
   }
   if (ThemedIcon) {
+    if (isTightGlyph) {
+      return (
+        <ThemedIcon
+          size={OTTO_FACE_ICON_WIDTH}
+          isActive={isRunning}
+          uniProps={isActive ? foregroundColorMapping : mutedForegroundColorMapping}
+        />
+      );
+    }
     return (
       <View style={LUCIDE_TOOL_ICON_NUDGE_LEFT}>
         <ThemedIcon
@@ -3413,7 +3435,13 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   );
 
   const ThemedIcon = useMemo(() => (icon ? withUnistyles(icon) : null), [icon]);
-  const iconNode = renderExpandableBadgeIcon({ errorLevel, isActive, ThemedIcon });
+  const iconNode = renderExpandableBadgeIcon({
+    errorLevel,
+    isActive,
+    isRunning: isLoading,
+    isTightGlyph: icon ? isTightGlyphToolIcon(icon) : false,
+    ThemedIcon,
+  });
   const iconSlotNode = renderExpandableBadgeIconSlot({
     showChevron: isInteractive && isHovered,
     chevronStyle,

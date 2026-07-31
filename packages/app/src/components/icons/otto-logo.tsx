@@ -75,6 +75,9 @@ function OttoLogoWinkBase({ size = 64, color = "currentColor" }: OttoLogoProps) 
       <Line x1={216} y1={146} x2={216} y2={364} stroke={color} strokeWidth={28} />
       <Line x1={260.91559} y1={162} x2={356.91559} y2={162} stroke={color} strokeWidth={28} />
       <Line x1={296} y1={162} x2={296} y2={364} stroke={color} strokeWidth={28} />
+      {/* Iris first: the lid wedge draws over its top half, so what shows is the
+          iris peeking out from under a half-closed eye. */}
+      <Circle cx={396.91566} cy={280} r={22} fill={color} />
       <Path d="M312.91566 280 A84 84 0 0 1 480.91566 280 Z" fill={color} />
       <Path
         d="M326.91566 280 A70 70 0 0 0 466.91566 280"

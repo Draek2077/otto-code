@@ -6,6 +6,9 @@
     <line x1="260.91559" y1="162" x2="356.91559" y2="162"/>
     <line x1="296" y1="162" x2="296" y2="364"/>
     <g transform="translate(17.272284)">
+      <!-- Iris first: the lid wedge draws over its top half, so what shows is the
+           iris peeking out from under a half-closed eye. -->
+      <circle cx="380" cy="280" r="22" fill="currentColor" stroke="none"/>
       <path d="m 296,280 a 84,84 0 0 1 168,0 z" fill="currentColor" stroke="none"/>
       <path d="m 310,280 a 70,70 0 0 0 140,0"/>
     </g>
