@@ -2,7 +2,7 @@
   lib,
   stdenv,
   buildNpmPackage,
-  nodejs_22,
+  nodejs_24,
   python3,
   makeWrapper,
   copyDesktopItems,
@@ -43,7 +43,7 @@ buildNpmPackage rec {
       && baseName != "release";
   };
 
-  nodejs = nodejs_22;
+  nodejs = nodejs_24;
   inherit (otto) npmDeps;
 
   # Prevent onnxruntime-node's install script from running during automatic

@@ -2,7 +2,7 @@
   lib,
   stdenv,
   buildNpmPackage,
-  nodejs_22,
+  nodejs_24,
   python3,
   makeWrapper,
   # node-pty needs libuv headers on Linux
@@ -47,7 +47,7 @@ buildNpmPackage rec {
       && baseName != ".DS_Store";
   };
 
-  nodejs = nodejs_22;
+  nodejs = nodejs_24;
 
   # Default hash lives in nix/npm-deps.hash (see arg default above).
   # CI auto-updates that file when package-lock.json changes (see .github/workflows/).
