@@ -644,7 +644,11 @@ export function BrainOperationsSection({ serverId }: { serverId: string }) {
   const jobsQuery = useBrainJobs(serverId, enabled);
 
   const jobs = useMemo(() => jobsQuery.data ?? [], [jobsQuery.data]);
-  const busy = jobs.some((job) => job.status === "running");
+  // The brain runs one job at a time (see brain-ops-manager); a download counts,
+  // so ops are disabled while any job runs. Surface which one so the greyed-out
+  // buttons don't read as broken.
+  const runningJob = useMemo(() => jobs.find((job) => job.status === "running") ?? null, [jobs]);
+  const busy = runningJob !== null;
   const opJobs = useMemo(
     () =>
       jobs.filter(
@@ -731,6 +735,18 @@ export function BrainOperationsSection({ serverId }: { serverId: string }) {
           </View>
         )}
 
+        {runningJob ? (
+          <View style={ROW_WITH_BORDER}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>Waiting on a job</Text>
+              <Text style={settingsStyles.rowHint}>
+                “{runningJob.label}” is running. The brain runs one job at a time, so operations are
+                paused until it finishes.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         <OperationRow
           title="Calibrate"
           hint="Measure real KV cache bytes/token so context fit is exact, not a guess."
@@ -782,6 +798,10 @@ const styles = StyleSheet.create((theme) => ({
     textTransform: "uppercase",
     letterSpacing: 0.4,
     marginBottom: theme.spacing[1],
+    // Align the subheading text with the row content below it, which sits at
+    // `spacing[4]` of horizontal padding (rowResponsive). Without this the
+    // heading hangs off the card's left edge while the rows are indented.
+    paddingHorizontal: theme.spacing[4],
   },
   installedTag: {
     flexDirection: "row",
@@ -817,6 +837,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   jobRow: {
     paddingVertical: theme.spacing[2],
+    // Match the horizontal inset of every other row in the card so job
+    // labels, progress bars, and messages line up instead of running edge to
+    // edge.
+    paddingHorizontal: theme.spacing[4],
   },
   jobHeader: {
     flexDirection: "row",

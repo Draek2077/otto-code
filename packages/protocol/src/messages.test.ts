@@ -543,6 +543,21 @@ describe("agent personalities compatibility", () => {
     expect(parsed).not.toHaveProperty("agentPersonalities");
   });
 
+  test("a single-field brain patch does not inject defaults for the other fields", () => {
+    // Regression: MutableBrainConfigSchema.partial() kept every field's default,
+    // so a one-field brain patch expanded to a full defaulted block and the
+    // daemon's deep-merge reset the rest — turning sharing off, wiping the token,
+    // and disabling the server. The patch must carry only what was sent.
+    const parsed = MutableDaemonConfigPatchSchema.parse({ brain: { allowRemoteConfig: true } });
+    expect(parsed.brain).toEqual({ allowRemoteConfig: true });
+  });
+
+  test("a nested brain patch preserves sibling keys (deep-partial, no defaults)", () => {
+    const parsed = MutableDaemonConfigPatchSchema.parse({ brain: { listen: { host: "0.0.0.0" } } });
+    expect(parsed.brain).toEqual({ listen: { host: "0.0.0.0" } });
+    expect(parsed.brain?.listen).not.toHaveProperty("port");
+  });
+
   test("agent.personality.set request/response round-trip through the unions", () => {
     const request = SessionInboundMessageSchema.parse({
       type: "agent.personality.set.request",

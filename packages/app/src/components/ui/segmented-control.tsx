@@ -214,11 +214,18 @@ const styles = StyleSheet.create((theme) => {
       ...geometry.segmentedContainerMd,
     },
     // Wrapped mode: rows of segments, centered, with the same 2px gutter between
-    // lines as between segments.
+    // lines as between segments. `flexShrink: 1` + `minWidth: 0` are load-bearing:
+    // segments never shrink (flexShrink: 0), so unless the container itself is
+    // allowed to shrink below its single-line content width, flexWrap never
+    // engages — the control just overflows and squeezes a neighboring label into
+    // a vertical sliver. Shrinking the container is what forces segments onto new
+    // lines when the row is too narrow.
     containerWrap: {
       flexWrap: "wrap",
       justifyContent: "center",
       rowGap: 2,
+      flexShrink: 1,
+      minWidth: 0,
     },
     containerStretch: {
       alignSelf: "stretch",
