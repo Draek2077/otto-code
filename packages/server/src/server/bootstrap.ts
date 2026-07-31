@@ -821,6 +821,9 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     // omit apiKey (the wire shape requires the field), so it reads as "saved,
     // no credential" rather than dropping the endpoint.
     savedProviderEndpoints: (config.savedProviderEndpoints ?? []).map(withSavedEndpointApiKey),
+    // Connector registry round-trips config.json ⇄ mutable config; absent on
+    // disk reads as "no connectors configured yet".
+    connectors: persistedConfig.daemon?.connectors ?? [],
   };
 
   if (config.terminalProfiles !== undefined) {
@@ -1195,6 +1198,7 @@ export async function createOttoDaemon(
     isDev: config.isDev === true,
     extraClients: config.agentClients,
     modelTierOverrides: daemonConfigStore.get().modelTierOverrides,
+    connectors: daemonConfigStore.get().connectors,
   });
   const initialAgentManagerState = providerSnapshotManager.getAgentManagerProviderState();
   const retainedTranscriptStore = new RetainedTranscriptStore({

@@ -61,12 +61,17 @@ import {
   type OpenAICompatAutoCompact,
   type OpenAICompatReasoningEffort,
 } from "./openai-compat-feature-definitions.js";
-import { OpenAICompatMcpManager, type McpToolBinding } from "./openai-compat-mcp.js";
+import {
+  OpenAICompatMcpManager,
+  resolveEnabledConnectors,
+  type McpToolBinding,
+} from "./openai-compat-mcp.js";
 import { ottoToolPermissionKind } from "./openai-compat-otto-tool-permissions.js";
 import type { McpServerConfig } from "../agent-sdk-types.js";
 import type { ManagedProcessRegistry } from "../../managed-processes/managed-processes.js";
 import { stripInternalOttoMcpServer } from "../runtime-mcp-config.js";
 import type {
+  ConnectorConfig,
   McpToolPermissionMode,
   ProviderCompactionConfig,
 } from "@otto-code/protocol/provider-config";
@@ -528,6 +533,14 @@ export interface OpenAICompatAgentClientOptions {
   ottoToolGroups?: readonly OttoToolGroup[] | null;
   /** Provider-level MCP servers; merged with per-agent config (per-agent wins). */
   mcpServers?: Record<string, McpServerConfig> | null;
+  /**
+   * Daemon-wide connector registry. Connectors are MCP servers surfaced as
+   * named, toggle-able integrations; enabled ones merge into the MCP server set
+   * (per-agent servers still win a name collision) and their disabled tools are
+   * withheld. Provider-neutral in config, but enforced here because this is the
+   * only provider whose MCP tool loop the daemon owns.
+   */
+  connectors?: readonly ConnectorConfig[] | null;
   /** MCP permission strictness in acceptEdits mode; defaults to "always-ask". */
   mcpToolPermissions?: McpToolPermissionMode | null;
   /** Provider-level compaction defaults; per-agent feature values win. */
@@ -1042,6 +1055,7 @@ export class OpenAICompatAgentClient implements AgentClient {
   private readonly env?: Record<string, string>;
   private readonly ottoToolGroups?: readonly OttoToolGroup[] | null;
   private readonly mcpServers: Record<string, McpServerConfig> | null;
+  private readonly connectors: readonly ConnectorConfig[] | null;
   private readonly mcpToolPermissions: McpToolPermissionMode;
   private readonly compaction: ProviderCompactionConfig | null;
   private readonly maxToolRounds: number | null;
@@ -1054,6 +1068,7 @@ export class OpenAICompatAgentClient implements AgentClient {
     this.env = options.env;
     this.ottoToolGroups = options.ottoToolGroups ?? null;
     this.mcpServers = options.mcpServers ?? null;
+    this.connectors = options.connectors ?? null;
     this.mcpToolPermissions = options.mcpToolPermissions ?? "always-ask";
     this.compaction = options.compaction ?? null;
     this.maxToolRounds = options.maxToolRounds ?? null;
@@ -1240,6 +1255,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       ottoTools: launchContext?.ottoTools ?? null,
       ottoToolGroups: this.ottoToolGroups,
       mcpServers: this.mcpServers,
+      connectors: this.connectors,
       mcpToolPermissions: this.mcpToolPermissions,
       compaction: this.compaction,
       maxToolRounds: this.maxToolRounds,
@@ -1272,6 +1288,7 @@ export class OpenAICompatAgentClient implements AgentClient {
       ottoTools: launchContext?.ottoTools ?? null,
       ottoToolGroups: this.ottoToolGroups,
       mcpServers: this.mcpServers,
+      connectors: this.connectors,
       mcpToolPermissions: this.mcpToolPermissions,
       compaction: this.compaction,
       maxToolRounds: this.maxToolRounds,
@@ -1476,6 +1493,7 @@ export class OpenAICompatAgentSession implements AgentSession {
     ottoTools?: OttoToolCatalog | null;
     ottoToolGroups?: readonly OttoToolGroup[] | null;
     mcpServers?: Record<string, McpServerConfig> | null;
+    connectors?: readonly ConnectorConfig[] | null;
     mcpToolPermissions?: McpToolPermissionMode;
     compaction?: ProviderCompactionConfig | null;
     maxToolRounds?: number | null;
@@ -1492,12 +1510,17 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.ottoToolGroups = options.ottoToolGroups ?? null;
     this.mcpToolPermissions = options.mcpToolPermissions ?? "always-ask";
 
-    // Provider-level servers merged with per-agent config; the per-agent entry
-    // wins per server name. The daemon-injected internal "otto" MCP server is
-    // stripped — this provider receives Otto tools natively, and connecting to
+    // Server precedence, lowest to highest: enabled connectors (daemon registry)
+    // < provider-level servers < per-agent config. Per-agent still wins a name
+    // collision. Disabled connectors and disabled tools are already filtered out
+    // by resolveEnabledConnectors. The daemon-injected internal "otto" MCP server
+    // is stripped — this provider receives Otto tools natively, and connecting to
     // it over MCP as well would double them.
+    const { servers: connectorServers, disabledTools: connectorDisabledTools } =
+      resolveEnabledConnectors(options.connectors);
     const perAgentServers = stripInternalOttoMcpServer(options.config).mcpServers;
     const mergedServers: Record<string, McpServerConfig> = {
+      ...connectorServers,
       ...options.mcpServers,
       ...perAgentServers,
     };
@@ -1509,6 +1532,7 @@ export class OpenAICompatAgentSession implements AgentSession {
             cwd: options.config.cwd,
             logger: options.logger,
             managedProcesses: options.managedProcesses ?? null,
+            disabledTools: connectorDisabledTools,
           })
         : null;
     this.modelId = options.config.model ?? null;

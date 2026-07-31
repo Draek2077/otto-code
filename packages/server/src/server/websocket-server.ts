@@ -713,6 +713,11 @@ export class VoiceAssistantWebSocketServer {
       );
       this.agentManager.updateProviderRegistry(nextAgentManagerState);
       this.providerSnapshotManager.setModelTierOverrides(config.modelTierOverrides);
+      // Rebuild the registry so the openai-compat client picks up connector
+      // enable/disable and per-tool edits on the next spawn, without a restart.
+      this.agentManager.updateProviderRegistry(
+        this.providerSnapshotManager.setConnectors(config.connectors),
+      );
       // Applied, not merely recorded: turning code intelligence off has to stop the
       // servers that are already running, or the switch is decoration.
       void this.lspService.applySettings(config.lsp).catch((err: unknown) => {
@@ -1641,6 +1646,8 @@ export class VoiceAssistantWebSocketServer {
         openaiCompatMaxToolRounds: true,
         // COMPAT(mcpToolGroups): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         mcpToolGroups: true,
+        // COMPAT(connectors): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
+        connectors: true,
         // COMPAT(agentBehaviorToggles): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
         agentBehaviorToggles: true,
         // COMPAT(todoReminders): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
