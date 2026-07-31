@@ -9,6 +9,7 @@ import type {
   BrowserAutomationExecuteRequest,
   BrowserAutomationNetworkLogEntry,
   BrowserAutomationNetworkRequestEntry,
+  BrowserAutomationTabInfo,
 } from "@otto-code/protocol/browser-automation/rpc-schemas";
 import { waitForActionableTarget, type ActionabilityResult } from "./actionability.js";
 import { BrowserSnapshotEngine } from "./snapshot-engine.js";
@@ -238,12 +239,14 @@ async function capturePaintedViewport(contents: TabContents): Promise<TabImage> 
   return runPaintedPixelCapture(contents, () => contents.capturePage({ stayHidden: false }));
 }
 
+type TabInfo = BrowserAutomationTabInfo;
+
 function tabInfoFromContents(
   browserId: string,
   contents: TabContents,
   activeBrowserId: string | null,
   workspaceId: string | null,
-) {
+): TabInfo {
   return {
     browserId,
     ...(workspaceId ? { workspaceId } : {}),
@@ -253,6 +256,30 @@ function tabInfoFromContents(
     isLoading: contents.isLoading(),
     canGoBack: contents.canGoBack(),
     canGoForward: contents.canGoForward(),
+    status: "ready",
+  };
+}
+
+/**
+ * A registered tab whose webview we cannot talk to right now. It still gets a
+ * row: dropping it is what makes a tab the user is looking at read as "closed",
+ * which is how callers end up opening a duplicate. `url`/`title` are empty
+ * because only the live webview knows them; `status` says why.
+ */
+function tabInfoWithoutContents(
+  browserId: string,
+  activeBrowserId: string | null,
+  workspaceId: string | null,
+  status: "starting" | "detached",
+): TabInfo {
+  return {
+    browserId,
+    ...(workspaceId ? { workspaceId } : {}),
+    url: "",
+    title: "",
+    isActive: activeBrowserId === browserId,
+    isLoading: false,
+    status,
   };
 }
 
@@ -569,20 +596,24 @@ function executeListTabs(
     ? registry.listRegisteredBrowserIdsForWorkspace(workspaceId)
     : registry.listRegisteredBrowserIds();
   const activeBrowserId = workspaceId ? registry.getWorkspaceActiveBrowserId(workspaceId) : null;
-  const tabs: Array<ReturnType<typeof tabInfoFromContents>> = [];
+  const tabs: TabInfo[] = [];
 
+  // Every registered tab gets a row, always. A tab whose contents are missing or
+  // destroyed is reported with a status rather than omitted: silently dropping
+  // it made an on-screen tab indistinguishable from one that never existed, and
+  // callers (preview_start, agents) reacted by opening another one.
   for (const browserId of browserIds) {
+    const tabWorkspaceId = registry.getBrowserWorkspaceId(browserId);
     const contents = registry.getTabContents(browserId);
-    if (contents && !contents.isDestroyed()) {
-      tabs.push(
-        tabInfoFromContents(
-          browserId,
-          contents,
-          activeBrowserId,
-          registry.getBrowserWorkspaceId(browserId),
-        ),
-      );
+    if (!contents) {
+      tabs.push(tabInfoWithoutContents(browserId, activeBrowserId, tabWorkspaceId, "starting"));
+      continue;
     }
+    if (contents.isDestroyed()) {
+      tabs.push(tabInfoWithoutContents(browserId, activeBrowserId, tabWorkspaceId, "detached"));
+      continue;
+    }
+    tabs.push(tabInfoFromContents(browserId, contents, activeBrowserId, tabWorkspaceId));
   }
 
   return { requestId, ok: true, result: { command: "list_tabs", tabs } };
@@ -2377,7 +2408,15 @@ function resolveTabTarget(input: {
 
   const contents = registry.getTabContents(browserId);
   if (!contents) {
-    return fail(requestId, "browser_tab_not_found", `No browser tab found for ID: ${browserId}`);
+    // Registered but its webview has not attached yet. browser_list_tabs reports
+    // this tab as `starting`, so the answer is "wait and use the SAME id", never
+    // "open another tab" — hence retryable.
+    return fail(
+      requestId,
+      "browser_tab_not_found",
+      `Browser tab ${browserId} is registered but its view is not attached yet. Retry the same browserId shortly.`,
+      true,
+    );
   }
 
   if (contents.isDestroyed()) {

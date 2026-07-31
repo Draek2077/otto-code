@@ -348,6 +348,16 @@ export const BrowserAutomationTabInfoSchema = z.object({
   isLoading: z.boolean().default(false),
   canGoBack: z.boolean().optional(),
   canGoForward: z.boolean().optional(),
+  // Whether the tab's webview is attached and drivable. Reported explicitly so
+  // that "not drivable" is never expressed by leaving the tab OUT of the list:
+  // a tab the user can see on screen must always appear, or callers conclude it
+  // was closed and open a replacement. `starting` = registered, webview not
+  // attached yet; `detached` = it was attached and its contents are gone (a
+  // pane that stopped compositing looks like this). `url`/`title` are empty for
+  // both, because only the live webview knows them.
+  // COMPAT(browserTabStatus): added in v0.7.5; absent ⇒ "ready", which is how
+  // every pre-0.7.5 host behaved. Drop the gate when floor >= v0.7.5.
+  status: z.enum(["starting", "ready", "detached"]).optional(),
 });
 
 export const BrowserAutomationListTabsResultSchema = z.object({
@@ -708,6 +718,7 @@ export type BrowserAutomationColorScheme = z.infer<typeof BrowserAutomationColor
 export type BrowserAutomationCommandName = z.infer<typeof BrowserAutomationCommandNameSchema>;
 export type BrowserAutomationCommand = z.infer<typeof BrowserAutomationCommandSchema>;
 export type BrowserAutomationResult = z.infer<typeof BrowserAutomationResultSchema>;
+export type BrowserAutomationTabInfo = z.infer<typeof BrowserAutomationTabInfoSchema>;
 export type BrowserAutomationConsoleLogEntry = z.infer<
   typeof BrowserAutomationConsoleLogEntrySchema
 >;

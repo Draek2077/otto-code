@@ -191,7 +191,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "List browser tabs",
       description:
-        "List open Otto browser tabs for this agent's workspace across connected browser automation hosts. Use returned browserId values with tab-scoped tools.",
+        "List open Otto browser tabs for this agent's workspace across connected browser automation hosts. Use returned browserId values with tab-scoped tools. " +
+        "Every tab that exists is listed: status 'starting' or 'detached' means the tab is on screen but not drivable yet, so wait and reuse that browserId instead of opening another tab.",
       inputSchema: {},
     },
     async () => {

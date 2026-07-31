@@ -477,7 +477,12 @@ async function waitForBrowserRegistration(params: {
       command: { command: "list_tabs", args: {} },
     });
     if (payload.ok && payload.result.command === "list_tabs") {
-      if (payload.result.tabs.some((tab) => tab.browserId === params.browserId)) {
+      // Presence alone is no longer the signal: list_tabs now reports a tab from
+      // the moment it is registered, including while its webview is attaching.
+      // Wait for `ready`. An absent status means a pre-0.7.5 host, which only
+      // listed attached tabs, so presence there already meant ready.
+      const tab = payload.result.tabs.find((entry) => entry.browserId === params.browserId);
+      if (tab && (tab.status ?? "ready") === "ready") {
         return true;
       }
     }
