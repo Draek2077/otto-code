@@ -109,11 +109,27 @@ function sameOrigin(a: string, b: string): boolean {
   }
 }
 
+/**
+ * Three outcomes, kept distinct on purpose. Collapsing them into "null" is what
+ * made a tab the user was looking at read as closed, so `ensurePreviewTab`
+ * opened another one beside it:
+ *
+ * - `present` — the tab exists. It may still be attaching (`ready: false`),
+ *   which is emphatically NOT a reason to open a replacement.
+ * - `absent` — the host answered and the tab genuinely is not there.
+ * - `unavailable` — we could not ask (broker error, no browser host attached).
+ *   Unknown is not the same as gone; never create on this.
+ */
+type BoundTabLookup =
+  | { kind: "present"; url: string; ready: boolean }
+  | { kind: "absent" }
+  | { kind: "unavailable" };
+
 async function findBoundTab(
   broker: Pick<BrowserToolsBroker, "execute">,
   context: PreviewBrokerContext,
   browserId: string,
-): Promise<{ url: string } | null> {
+): Promise<BoundTabLookup> {
   try {
     const payload = await broker.execute({
       ...context,
@@ -121,12 +137,17 @@ async function findBoundTab(
     });
     if (payload.ok && payload.result.command === "list_tabs") {
       const tab = payload.result.tabs.find((entry) => entry.browserId === browserId);
-      return tab ? { url: tab.url ?? "" } : null;
+      if (!tab) {
+        return { kind: "absent" };
+      }
+      // COMPAT(browserTabStatus): a pre-0.7.5 host only listed attached tabs, so
+      // an absent status means the tab is ready. Drop when floor >= v0.7.5.
+      return { kind: "present", url: tab.url ?? "", ready: (tab.status ?? "ready") === "ready" };
     }
   } catch {
-    // Treat lookup failures as "tab not found" — the open path reports errors.
+    // Fall through: an error tells us nothing about whether the tab exists.
   }
-  return null;
+  return { kind: "unavailable" };
 }
 
 /**
@@ -157,7 +178,22 @@ async function ensurePreviewTab(params: {
   const bound = manager.boundTab(server.serverId);
   if (bound) {
     const existing = await findBoundTab(broker, context, bound);
-    if (existing) {
+    if (existing.kind === "unavailable") {
+      // We could not see the tab list. Hand back the tab we already have rather
+      // than opening a second one on the strength of a failed lookup.
+      return {
+        browserId: bound,
+        note: `Could not reach the browser host to check the preview tab — reusing the bound tab ${bound}.`,
+      };
+    }
+    if (existing.kind === "present") {
+      if (!existing.ready) {
+        // Still attaching. It is on screen; its url is simply not readable yet.
+        return {
+          browserId: bound,
+          note: `The preview tab is still opening — use this browserId, it will be drivable shortly.`,
+        };
+      }
       if (sameOrigin(existing.url, server.url)) {
         return { browserId: bound, tabUrl: existing.url };
       }

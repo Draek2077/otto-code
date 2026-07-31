@@ -34,7 +34,7 @@ function newTabPayload(browserId: string): BrowserToolsResponsePayload {
 }
 
 function listTabsPayload(
-  tabs: Array<{ browserId: string; url: string }>,
+  tabs: Array<{ browserId: string; url: string; status?: "starting" | "ready" | "detached" }>,
 ): BrowserToolsResponsePayload {
   return {
     requestId: "req-list-tabs",
@@ -47,7 +47,20 @@ function listTabsPayload(
         title: "Tab",
         isActive: true,
         isLoading: false,
+        ...(tab.status ? { status: tab.status } : {}),
       })),
+    },
+  };
+}
+
+function brokerErrorPayload(): BrowserToolsResponsePayload {
+  return {
+    requestId: "req-broker-error",
+    ok: false,
+    error: {
+      code: "browser_timeout",
+      message: "The browser host did not respond",
+      retryable: true,
     },
   };
 }
@@ -196,6 +209,42 @@ describe("preview_start tab binding", () => {
     expect(browser.browserId).toBe(TAB_B);
     expect(browser.note).toContain("previous preview tab was closed");
     expect(harness.bindings).toEqual([{ serverId: "srv_test", browserId: TAB_B }]);
+  });
+
+  // The bug this guards: the tab is on screen, its webview is simply not
+  // attached yet, and preview_start used to answer that by opening a second one.
+  test("reuses a bound tab that is still starting instead of opening another", async () => {
+    const harness = createHarness({
+      boundBrowserId: TAB_A,
+      respond: (input) =>
+        input.command.command === "list_tabs"
+          ? listTabsPayload([{ browserId: TAB_A, url: "", status: "starting" }])
+          : newTabPayload(TAB_B),
+    });
+
+    const result = await harness.callTool("preview_start", { name: "sample" });
+
+    const browser = structuredResult(result).browser as { browserId: string; note?: string };
+    expect(browser.browserId).toBe(TAB_A);
+    expect(browser.note).toContain("still opening");
+    expect(harness.brokerCalls.map((call) => call.command.command)).toEqual(["list_tabs"]);
+    expect(harness.bindings).toEqual([]);
+  });
+
+  test("reuses the bound tab when the browser host cannot be reached", async () => {
+    const harness = createHarness({
+      boundBrowserId: TAB_A,
+      respond: (input) =>
+        input.command.command === "list_tabs" ? brokerErrorPayload() : newTabPayload(TAB_B),
+    });
+
+    const result = await harness.callTool("preview_start", { name: "sample" });
+
+    const browser = structuredResult(result).browser as { browserId: string; note?: string };
+    expect(browser.browserId).toBe(TAB_A);
+    expect(browser.note).toContain("reusing the bound tab");
+    expect(harness.brokerCalls.map((call) => call.command.command)).toEqual(["list_tabs"]);
+    expect(harness.bindings).toEqual([]);
   });
 
   test("still reports server success when no Otto browser host is connected", async () => {

@@ -160,6 +160,23 @@ What this buys you, concretely:
   an agent opens a second, detached tab pointed at the same dev server instead
   of reusing the bound one — tool descriptions alone can't guarantee that, so
   the daemon enforces it.
+- **A tab that exists is always listed, even when it isn't drivable.**
+  `browser_list_tabs` reports every registered tab and carries a `status`:
+  `ready` (webview attached), `starting` (registered, attaching), `detached`
+  (its contents are gone, which is what a pane that stopped compositing looks
+  like). `url` and `title` are empty for the last two, because only the live
+  webview knows them. This exists because the opposite was worse: the host used
+  to drop non-attached tabs from the array entirely, so a preview tab sitting
+  on screen in front of the user was indistinguishable from one that had never
+  existed. `ensurePreviewTab` read that absence as "closed" and opened a second
+  tab beside the first, and agents did the same by hand. Absence now means
+  absence. A tab-scoped call against a `starting` tab fails **retryably**, with
+  the instruction to reuse that same `browserId`, never to open another.
+- **`preview_start` never opens a replacement on a failed lookup.**
+  `findBoundTab` distinguishes `present` / `absent` / `unavailable`. Only a
+  successful listing that genuinely lacks the id may reopen. A broker error or
+  a detached browser host means _unknown_, and unknown returns the bound tab
+  with a note rather than creating anything.
 - **Restored preview tabs don't silently reconnect to a stale server.** On
   app/workspace restore, a preview tab's status resets to `idle`; whether it
   auto-restarts the dev server or waits for the user to click "Start" is the

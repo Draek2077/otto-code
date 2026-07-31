@@ -287,11 +287,16 @@ class FakeTab implements TabContents {
 }
 
 class FakeRegistry implements BrowserRegistry {
-  private readonly tabs = new Map<string, { workspaceId: string; tab: FakeTab }>();
+  private readonly tabs = new Map<string, { workspaceId: string; tab: FakeTab | null }>();
   private readonly activeBrowserIdsByWorkspace = new Map<string, string>();
 
   public register(browserId: string, workspaceId: string, tab: FakeTab): void {
     this.tabs.set(browserId, { workspaceId, tab });
+  }
+
+  /** A tab that exists and is on screen, but whose webview has not attached. */
+  public registerWithoutContents(browserId: string, workspaceId: string): void {
+    this.tabs.set(browserId, { workspaceId, tab: null });
   }
 
   public setActiveBrowser(workspaceId: string, browserId: string): void {
@@ -510,6 +515,7 @@ describe("executeAutomationCommand", () => {
             isLoading: false,
             canGoBack: true,
             canGoForward: false,
+            status: "ready",
           },
           {
             browserId: BROWSER_B,
@@ -520,13 +526,16 @@ describe("executeAutomationCommand", () => {
             isLoading: false,
             canGoBack: true,
             canGoForward: false,
+            status: "ready",
           },
         ],
       },
     });
   });
 
-  test("list tabs filters destroyed tabs out of the visible tab list", () => {
+  // A dropped row is indistinguishable from a tab that never existed, which is
+  // how callers ended up opening a duplicate beside a tab already on screen.
+  test("list tabs reports a destroyed tab as detached instead of dropping it", () => {
     const liveTab = new FakeTab(1, "https://a.test", "A");
     const destroyedTab = new FakeTab(2, "https://dead.test", "Dead");
     destroyedTab.destroyed = true;
@@ -555,9 +564,66 @@ describe("executeAutomationCommand", () => {
             isLoading: false,
             canGoBack: true,
             canGoForward: false,
+            status: "ready",
+          },
+          {
+            browserId: BROWSER_B,
+            workspaceId: WORKSPACE_A,
+            url: "",
+            title: "",
+            isActive: false,
+            isLoading: false,
+            status: "detached",
           },
         ],
       },
+    });
+  });
+
+  test("list tabs reports a registered tab with no attached view as starting", () => {
+    const registry = new FakeRegistry();
+    registry.registerWithoutContents(BROWSER_A, WORKSPACE_A);
+
+    const result = executeAutomationCommand(
+      automationRequest({ command: "list_tabs", args: {} }, { requestId: "req-starting" }),
+      registry,
+    );
+
+    expect(result).toEqual({
+      requestId: "req-starting",
+      ok: true,
+      result: {
+        command: "list_tabs",
+        tabs: [
+          {
+            browserId: BROWSER_A,
+            workspaceId: WORKSPACE_A,
+            url: "",
+            title: "",
+            isActive: false,
+            isLoading: false,
+            status: "starting",
+          },
+        ],
+      },
+    });
+  });
+
+  test("a tab whose view has not attached yet fails retryably, not as not-found", async () => {
+    const registry = new FakeRegistry();
+    registry.registerWithoutContents(BROWSER_A, WORKSPACE_A);
+
+    const result = await executeAutomationCommand(
+      automationRequest(
+        { command: "snapshot", args: { browserId: BROWSER_A } },
+        { requestId: "req-attaching" },
+      ),
+      registry,
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "browser_tab_not_found", retryable: true },
     });
   });
 
