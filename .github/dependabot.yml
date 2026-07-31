@@ -18,6 +18,13 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(ci)"
+    ignore:
+      # gradle/actions v6 moves caching into gradle-actions-caching, a proprietary
+      # component under Gradle's commercial Terms of Use. We hold at v5, which is
+      # Node 24 native and MIT. Revisit only as a deliberate licensing decision.
+      - dependency-name: gradle/actions
+        update-types:
+          - version-update:semver-major
     groups:
       # Majors land on their own so the release notes actually get read; everything else
       # rides in one PR that CI either passes or doesn't.
