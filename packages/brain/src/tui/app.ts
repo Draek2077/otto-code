@@ -8,10 +8,11 @@ import {
   planDelete,
   deleteModelFiles,
   listRepoQuants,
+  searchModels,
   downloadRepoFiles,
   resolveHfToken,
 } from "../models/index.js";
-import type { DiskUsage, QuantOption, RepoQuants } from "../models/index.js";
+import type { DiskUsage, QuantOption, RepoQuants, ModelSearchResult } from "../models/index.js";
 import * as profiles from "../config/profiles.js";
 import { loadBrainConfig, loadProfilesStore, saveProfilesStore } from "../config/index.js";
 import * as vram from "../vram.js";
@@ -72,11 +73,20 @@ interface PickerQuant extends QuantOption {
 
 /** The quant-download picker: a modal list of a repo's available quants. */
 interface PickerState {
-  model: Model;
+  model: Model | null;
   repo: string;
   loading: boolean;
   options: PickerQuant[];
   mmproj: RepoQuants["mmproj"];
+  index: number;
+}
+
+/** The Hugging Face search modal: type a query, then browse GGUF repos. */
+interface SearchState {
+  query: string;
+  input: boolean;
+  loading: boolean;
+  results: ModelSearchResult[];
   index: number;
 }
 
@@ -272,6 +282,7 @@ export class App {
   filterMode = false;
   confirming: ConfirmState | null = null;
   picker: PickerState | null = null;
+  search: SearchState | null = null;
   disk: DiskUsage | null = null;
   detach?: () => void;
   ticker?: NodeJS.Timeout;
@@ -523,6 +534,7 @@ export class App {
     if (this.filterMode) return this.onFilterKey(key);
     if (this.confirming) return this.onConfirmKey(key);
     if (this.picker) return this.onPickerKey(key);
+    if (this.search) return this.onSearchKey(key);
 
     // Esc always returns to the standard view from logs / help / bench.
     if (key === "escape" && this.viewMode !== "standard") {
@@ -594,6 +606,9 @@ export class App {
         break;
       case "g":
         void this.beginDownload();
+        break;
+      case "f":
+        this.beginSearch();
         break;
       case "D":
         this.beginDelete();
@@ -825,6 +840,12 @@ export class App {
       this.setStatus("cannot determine the Hugging Face repo for this model", "warn");
       return;
     }
+    await this.openPicker(repo, model);
+  }
+
+  /** Open the quant picker for a repo (an installed model, or one from search). */
+  async openPicker(repo: string, model: Model | null): Promise<void> {
+    this.search = null;
     this.picker = { model, repo, loading: true, options: [], mmproj: null, index: 0 };
     this.draw();
     await this.guard("list quants", async () => {
@@ -848,6 +869,141 @@ export class App {
       this.picker = null;
       this.draw();
     });
+  }
+
+  // ----------------------------------------------------------- HF model search
+
+  /** A direct owner/repo the query names, so a known repo can be opened without
+   * a round trip. Null unless the query looks like a repo path. */
+  directRepo(query: string): string | null {
+    const q = query.trim();
+    return /^[\w.-]+\/[\w.-]+$/.test(q) ? q : null;
+  }
+
+  beginSearch(): void {
+    this.search = { query: "", input: true, loading: false, results: [], index: 0 };
+    this.draw();
+  }
+
+  onSearchKey(key: string): void {
+    const search = this.search;
+    if (!search) return;
+
+    if (search.input) {
+      if (key === "escape") {
+        this.search = null;
+      } else if (key === "enter") {
+        void this.runSearch();
+      } else if (key === "backspace") {
+        search.query = search.query.slice(0, -1);
+      } else if (key === "space") {
+        search.query += " ";
+      } else if (key.length === 1 && key >= " ") {
+        search.query += key;
+      }
+      this.draw();
+      return;
+    }
+
+    // Browsing results. Index 0 is the "open this repo directly" row when the
+    // query looks like owner/repo.
+    const direct = this.directRepo(search.query);
+    const total = (direct ? 1 : 0) + search.results.length;
+    if (key === "escape") {
+      search.input = true;
+    } else if (key === "up") {
+      search.index = Math.max(0, search.index - 1);
+    } else if (key === "down") {
+      search.index = Math.min(Math.max(0, total - 1), search.index + 1);
+    } else if (key === "enter" && total > 0) {
+      const repo =
+        direct && search.index === 0
+          ? direct
+          : search.results[search.index - (direct ? 1 : 0)]?.repo;
+      if (repo) void this.openPicker(repo, null);
+      return;
+    }
+    this.draw();
+  }
+
+  async runSearch(): Promise<void> {
+    const search = this.search;
+    if (!search || !search.query.trim()) return;
+    search.loading = true;
+    search.input = false;
+    this.draw();
+    await this.guard("search", async () => {
+      const token = resolveHfToken(loadBrainConfig());
+      const results = await searchModels(search.query.trim(), { limit: 30, token });
+      if (this.search) {
+        this.search.results = results;
+        this.search.loading = false;
+        this.search.index = 0;
+        this.draw();
+      }
+    }).catch(() => {
+      if (this.search) {
+        this.search.loading = false;
+        this.draw();
+      }
+    });
+  }
+
+  drawSearch(cols: number): void {
+    const search = this.search;
+    if (!search) return;
+    const inner = Math.min(cols - 4, 78);
+    const rows: string[] = [];
+
+    if (search.input) {
+      rows.push(
+        `${style.grey}query${style.reset} ${search.query}${style.brightCyan}▏${style.reset}`,
+      );
+      rows.push("");
+      rows.push(
+        `${style.grey}Type a model name, or an exact owner/repo to open it directly.${style.reset}`,
+      );
+    } else if (search.loading) {
+      rows.push(`${style.grey}searching Hugging Face…${style.reset}`);
+    } else {
+      const direct = this.directRepo(search.query);
+      let i = 0;
+      const line = (selected: boolean, text: string): string =>
+        selected
+          ? `${style.inverse}${pad(text.replace(/\x1b\[[0-9;]*m/g, ""), inner)}${style.reset}`
+          : text;
+      if (direct) {
+        rows.push(line(search.index === 0, `▶ open ${direct} directly`));
+        i = 1;
+      }
+      if (!search.results.length && !direct) {
+        rows.push(`${style.yellow}no GGUF models matched${style.reset}`);
+      }
+      for (let r = 0; r < search.results.length; r += 1) {
+        const m = search.results[r];
+        const dl = m.downloads >= 1000 ? `${Math.round(m.downloads / 1000)}k` : String(m.downloads);
+        const text =
+          `${pad(truncate(m.repo, inner - 20), inner - 20)} ` +
+          `${style.grey}${dl.padStart(6)} dl  ${String(m.likes).padStart(4)}♥${m.gated ? " gated" : ""}${style.reset}`;
+        rows.push(line(search.index === i, text));
+        i += 1;
+      }
+    }
+
+    const footer = search.input
+      ? `${style.grey}enter search · esc cancel${style.reset}`
+      : `${style.grey}↑↓ select · enter view quants · esc edit query${style.reset}`;
+    const lines = [this.header(cols), ""];
+    lines.push(
+      ...box({
+        title: "Search Hugging Face for models",
+        lines: rows,
+        innerWidth: inner,
+        footer,
+        accent: style.brightCyan,
+      }),
+    );
+    this.renderFitted(lines);
   }
 
   onPickerKey(key: string): void {
@@ -1245,6 +1401,10 @@ export class App {
     }
     if (this.picker) {
       this.drawPicker(cols);
+      return;
+    }
+    if (this.search) {
+      this.drawSearch(cols);
       return;
     }
 
@@ -1782,6 +1942,7 @@ export class App {
     item("c", "calibrate — measure real VRAM per token");
     item("w", "sweep — find the best reasoning budget");
     section("Manage models");
+    item("f", "find on Hugging Face — search and add a new model");
     item("g", "get a quant — pick Q4/Q5/Q6… to download for this repo");
     item("D", "delete the selected model (frees disk, asks to confirm)");
     section("Views");
@@ -1879,6 +2040,7 @@ export class App {
           ["m", "max ctx"],
           ["c", "calibrate"],
           ["w", "sweep"],
+          ["f", "find on HF"],
           ["g", "get quant"],
           ["D", "delete"],
           ["b", "benchmarks"],
