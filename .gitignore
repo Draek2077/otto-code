@@ -58,6 +58,10 @@ tsconfig.tsbuildinfo
 # Testing
 coverage/
 
+# Otto Brain benchmark run artifacts (results + transcripts), written to
+# packages/brain/results at runtime. Machine-local, not source.
+packages/brain/results/
+
 # Playwright
 test-results/
 **/test-results/
