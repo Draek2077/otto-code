@@ -1,6 +1,6 @@
 import { usedBytes } from "../gpu.js";
 import * as vram from "../vram.js";
-import { Supervisor } from "../service/supervisor.js";
+import { DEFAULT_INTERNAL_PORT, Supervisor } from "../service/supervisor.js";
 
 import type { Model, Runtime } from "../types.js";
 import type { Profile } from "../config/schema.js";
@@ -61,7 +61,7 @@ export async function calibrate({
   model,
   profile,
   samples = DEFAULT_SAMPLES,
-  internalPort = 8082,
+  internalPort = DEFAULT_INTERNAL_PORT + 1,
   onProgress = () => {},
 }: CalibrateOptions): Promise<CalibrationMeasurement> {
   if (samples.length < 2) throw new Error("calibration needs at least two context sizes");

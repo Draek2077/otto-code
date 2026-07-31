@@ -1,6 +1,6 @@
 import { request } from "node:http";
 
-import { Supervisor } from "../service/supervisor.js";
+import { DEFAULT_INTERNAL_PORT, Supervisor } from "../service/supervisor.js";
 
 import type { Model, Runtime } from "../types.js";
 import type { Profile } from "../config/schema.js";
@@ -197,7 +197,7 @@ export async function sweep({
   budgets = DEFAULT_BUDGETS,
   maxTokens = 8192,
   temperature = 0.7,
-  internalPort = 8083,
+  internalPort = DEFAULT_INTERNAL_PORT + 2,
   onProgress = () => {},
 }: SweepOptions): Promise<SweepReport> {
   const results: SweepResult[] = [];
