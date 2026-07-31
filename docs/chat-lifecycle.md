@@ -68,6 +68,10 @@ Order is what a FIFO means, so the queue supports three edits: **take one back**
 
 Re-order is exposed as per-row **move earlier / move later** controls rather than drag-and-drop. The track is a two-to-three-row stack pinned above the composer on phone, tablet, and web; a drag gesture there competes with the scroll and the keyboard for a list that is almost never long enough to need one, and buttons are the affordance that works identically on all three. Both are complete — any order is reachable either way.
 
+The two arrows are stacked in a half-height column rather than sitting side by side as full-size round buttons: the pair then reads as one order control instead of two actions competing with edit and send-now, and the column stacks to the same height as the round buttons beside it so the row does not grow. Rows at the ends of the queue keep the arrow they cannot use, rendered disabled, so every row's controls stay on the same grid.
+
+**Send all** rides on the **head row only**, and only when more than one message waits. It runs the whole queue now, as one turn, which is exactly what the drain would do when the turn in flight ends; the client takes every entry back in order and joins them the same way `mergeSteerQueueBatch` does, so "Send all" and a natural drain produce the identical prompt. It confirms the interrupt first when the agent is running, like send-now does, and entries the drain beat it to are simply skipped. A single queued message needs no such button because its own send-now already is one.
+
 The daemon re-resolves the entry by id and **clamps** the destination rather than rejecting it, because the client is rendering a snapshot that may already be one drain stale; a move that lands at the end of a shorter queue is what the user meant. `moved: false` (already drained, or already there) is not an error — the authoritative order arrives on the agent snapshot regardless.
 
 ### Interrupts the provider did not fully honour
@@ -271,6 +275,14 @@ The two sources are deliberately different, and that split is the provider-neutr
 The header aggregate deliberately sums **tokens only**. A tool-use total would silently shrink whenever rows are cleared (only `cumulativeTokens` survives a clear, via the tally below), and a number that quietly drops is worse than no number.
 
 Completed subagents **tidy themselves without being destroyed**: terminal rows move into a collapsed **"Completed (N)"** group at the bottom of the track, keeping their frozen name and final token total, while the active list shows only in-flight subagents. A manual **"Clear all completed"** gesture archives every terminal row at once (never a running one). Nothing is destroyed until the user clears it or the parent is archived (which cascades), so cost and transcript survive the tidy.
+
+### Foreground vs backgrounded runs, and what an interrupt actually stops
+
+An observed row is either **foreground** (its work happens inside the parent's turn, so the provider's interrupt teardown takes it down with the turn) or **backgrounded** (the provider handed back a launch ack and the run keeps reporting on its own). A Workflow run is always backgrounded; a Task/Agent is backgrounded whenever the CLI chose to background it. Both kinds sit side by side in the same track and look identical, so the distinction has to ride on the wire: `ObservedSubagentUpdate.backgrounded`, projected onto the agent snapshot as `backgrounded` (`COMPAT(backgroundedObservedSubagents)`, absent ⇒ foreground).
+
+The provider is the only layer that can tell them apart, and it does it with the same condition its interrupt teardown uses (`flushPendingToolCalls`): a run still in the tool-use cache is foreground; a Workflow, or a run whose `tool_result` already came back while it kept reporting, is backgrounded. The daemon **latches** the flag (nothing re-attaches a backgrounded run to a turn) and **inherits it down the tree** — a row nested under a backgrounded run survives whatever its ancestor survives.
+
+This is what makes the interrupting-send confirmation honest. Sending to a busy chat interrupts its turn, and the dialog counts what that interrupt really stops: live **foreground** observed rows only. Backgrounded runs keep going, and attended `create_agent` children are their own chats that the parent's interrupt never touches, so counting either made the dialog claim to stop work it does not reach. `countLiveObservedSubagents` (`packages/app/src/components/interrupt-subagents-warning.ts`) is the one gate; when it returns zero the send goes through with no prompt at all.
 
 ### Auto-clear completed subagents
 

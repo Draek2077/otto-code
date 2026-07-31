@@ -143,6 +143,7 @@ export const ru: TranslationResources = {
       dropFilesHere: "Перетащите файлы сюда",
       editQueuedMessage: "Изменить сообщение в очереди",
       sendQueuedMessageNow: "Отправить сообщение в очереди сейчас",
+      sendAllQueuedMessages: "Отправить все",
       moveQueuedMessageUp: "Переместить сообщение в очереди раньше",
       moveQueuedMessageDown: "Переместить сообщение в очереди позже",
       openImage: "Открыть прикрепленное изображение",
@@ -187,7 +188,7 @@ export const ru: TranslationResources = {
     interruptSubagentsWarning: {
       title: "Прервать работающие субагенты?",
       message:
-        "Прерывание остановит работающие субагенты и рабочие процессы: {{count}}. Остановленную работу нельзя возобновить.",
+        "Прерывание остановит субагентов, работающих в рамках этого хода: {{count}}. Остановленную работу нельзя возобновить. На то, что выполняется в фоне, это не влияет.",
       confirm: "Всё равно прервать",
       cancel: "Отмена",
       suppress: "Больше не спрашивать",

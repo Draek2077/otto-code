@@ -142,6 +142,7 @@ export const ar: TranslationResources = {
       dropFilesHere: "أفلت الملفات هنا",
       editQueuedMessage: "تحرير الرسالة في قائمة الانتظار",
       sendQueuedMessageNow: "إرسال رسالة في قائمة الانتظار الآن",
+      sendAllQueuedMessages: "إرسال الكل",
       moveQueuedMessageUp: "نقل الرسالة في قائمة الانتظار إلى الأعلى",
       moveQueuedMessageDown: "نقل الرسالة في قائمة الانتظار إلى الأسفل",
       openImage: "فتح مرفق الصورة",
@@ -186,7 +187,7 @@ export const ar: TranslationResources = {
     interruptSubagentsWarning: {
       title: "مقاطعة الوكلاء الفرعيين قيد التشغيل؟",
       message:
-        "ستؤدي المقاطعة إلى إيقاف {{count}} من الوكلاء الفرعيين/سير العمل قيد التشغيل. لا يمكن استئناف العمل المتوقف.",
+        "ستؤدي المقاطعة إلى إيقاف الوكلاء الفرعيين العاملين ضمن هذا الدور ({{count}}). لا يمكن استئناف عملهم. أما ما يعمل في الخلفية فلن يتأثر.",
       confirm: "مقاطعة على أي حال",
       cancel: "إلغاء",
       suppress: "عدم السؤال مرة أخرى",

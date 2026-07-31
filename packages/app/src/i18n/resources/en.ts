@@ -143,6 +143,7 @@ export const en = {
       dropFilesHere: "Drop files here",
       editQueuedMessage: "Edit queued message",
       sendQueuedMessageNow: "Send queued message now",
+      sendAllQueuedMessages: "Send all",
       moveQueuedMessageUp: "Move queued message earlier",
       moveQueuedMessageDown: "Move queued message later",
       openImage: "Open image attachment",
@@ -187,7 +188,7 @@ export const en = {
     interruptSubagentsWarning: {
       title: "Interrupt running subagents?",
       message:
-        "Interrupting will stop {{count}} running subagents/workflows. Stopped work cannot be resumed.",
+        "Interrupting stops sub-agents running inside this turn ({{count}}). Their work cannot be resumed. Anything running in the background is unaffected.",
       confirm: "Interrupt anyway",
       cancel: "Cancel",
       suppress: "Don't ask again",

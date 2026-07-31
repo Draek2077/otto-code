@@ -143,6 +143,7 @@ export const ptBR: TranslationResources = {
       dropFilesHere: "Solte arquivos aqui",
       editQueuedMessage: "Editar mensagem na fila",
       sendQueuedMessageNow: "Enviar mensagem da fila agora",
+      sendAllQueuedMessages: "Enviar tudo",
       moveQueuedMessageUp: "Mover mensagem da fila para antes",
       moveQueuedMessageDown: "Mover mensagem da fila para depois",
       openImage: "Abrir anexo de imagem",
@@ -187,7 +188,7 @@ export const ptBR: TranslationResources = {
     interruptSubagentsWarning: {
       title: "Interromper os subagentes em execução?",
       message:
-        "Interromper vai parar {{count}} subagentes/fluxos de trabalho em execução. O trabalho interrompido não pode ser retomado.",
+        "Interromper para os subagentes em execução dentro deste turno ({{count}}). O trabalho deles não pode ser retomado. O que está em execução em segundo plano não é afetado.",
       confirm: "Interromper mesmo assim",
       cancel: "Cancelar",
       suppress: "Não perguntar novamente",

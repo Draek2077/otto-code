@@ -142,6 +142,7 @@ export const es: TranslationResources = {
       dropFilesHere: "Suelta los archivos aquí",
       editQueuedMessage: "Editar mensaje en cola",
       sendQueuedMessageNow: "Enviar mensaje en cola ahora",
+      sendAllQueuedMessages: "Enviar todo",
       moveQueuedMessageUp: "Mover el mensaje en cola antes",
       moveQueuedMessageDown: "Mover el mensaje en cola después",
       openImage: "Abrir imagen adjunta",
@@ -186,7 +187,7 @@ export const es: TranslationResources = {
     interruptSubagentsWarning: {
       title: "¿Interrumpir los subagentes en ejecución?",
       message:
-        "Interrumpir detendrá {{count}} subagentes/flujos de trabajo en ejecución. El trabajo detenido no se puede reanudar.",
+        "Interrumpir detiene los subagentes que se ejecutan dentro de este turno ({{count}}). Su trabajo no se puede reanudar. Lo que se ejecuta en segundo plano no se ve afectado.",
       confirm: "Interrumpir de todos modos",
       cancel: "Cancelar",
       suppress: "No volver a preguntar",
