@@ -41,6 +41,15 @@ const MODEL_MIN_WIDTH = 24;
 const CACHE_CYCLE = ["q4_0", "q5_1", "q8_0", "f16"];
 const REASONING_CYCLE = [0, 512, 1024, 1536, 3072, -1];
 
+// Capability nudges for the model-list ordering only - NOT the displayed score.
+// Small and bounded so they reorder near-ties: a vision/thinking model edges
+// ahead of a comparable one, but never beats a materially higher benchmark score
+// (a 70% vision model stays below a 99% one). MTP is excluded on purpose - it is
+// a performance potential, not a capability, and shows no benefit on local
+// hardware; draft models likewise do not help, so nothing boosts for them.
+const VISION_RANK_BONUS = 0.03;
+const THINKING_RANK_BONUS = 0.02;
+
 type Tone = "info" | "good" | "warn" | "bad";
 type Focus = "models" | "config";
 type ViewMode = "standard" | "logs" | "help" | "bench";
@@ -434,21 +443,32 @@ export class App {
     );
   }
 
+  /** Small, bounded ordering nudge for more-capable models (vision, thinking). */
+  capabilityBonus(model: Model): number {
+    return (
+      (model.mmprojPath ? VISION_RANK_BONUS : 0) +
+      (model.metadata?.reasoning || model.thinking ? THINKING_RANK_BONUS : 0)
+    );
+  }
+
   get visible(): Model[] {
     let list = this.catalog;
     if (this.filter) {
       const needle = this.filter.toLowerCase();
       list = list.filter((m) => m.displayName.toLowerCase().includes(needle));
     }
-    // Offer the models in the order they rank: best known benchmark first, then
-    // any not-yet-benchmarked models by name.
+    // Order: best known benchmark first (nudged up slightly for vision/thinking),
+    // then any not-yet-benchmarked models by capability and name.
     return [...list].sort((a, b) => {
       const ra = this.rankOf(a);
       const rb = this.rankOf(b);
-      if (ra && rb) return rb.overall - ra.overall;
+      if (ra && rb) {
+        return rb.overall + this.capabilityBonus(b) - (ra.overall + this.capabilityBonus(a));
+      }
       if (ra) return -1;
       if (rb) return 1;
-      return a.displayName.localeCompare(b.displayName);
+      const bonus = this.capabilityBonus(b) - this.capabilityBonus(a);
+      return bonus !== 0 ? bonus : a.displayName.localeCompare(b.displayName);
     });
   }
 
