@@ -561,6 +561,39 @@ describe("bottom anchor controller driver", () => {
     expect(harness.driver.getSnapshot().mode).toBe("detached");
   });
 
+  it("detaches from a sustained drag while the agent is still streaming", () => {
+    const harness = createDriverHarness();
+    harness.scrollToBottom.mockImplementation(() => {
+      harness.context.measurementState.offsetY = 0;
+    });
+
+    // A streaming agent re-sticks on every flush, so there is a verification in
+    // flight when the reader puts a finger down. It must not save the anchor.
+    harness.driver.prepareForStickyContentChange();
+    expect(harness.driver.getSnapshot()).toMatchObject({
+      mode: "sticky-bottom",
+      pendingVerification: { requestId: null },
+    });
+
+    harness.context.nearBottom = false;
+    harness.context.measurementState.offsetY = 18;
+    harness.driver.handleScrollNearBottomChange({ nextIsNearBottom: false, scrollDelta: 18 });
+    expect(harness.driver.getSnapshot().mode).toBe("sticky-bottom");
+
+    harness.context.measurementState.offsetY = 40;
+    harness.driver.handleScrollNearBottomChange({ nextIsNearBottom: false, scrollDelta: 22 });
+
+    expect(harness.driver.getSnapshot().mode).toBe("detached");
+
+    // And once detached, further growth issues no scroll command at all.
+    harness.scrollToBottom.mockClear();
+    harness.driver.prepareForStickyContentChange();
+    harness.driver.handleContentSizeChange({ previousContentHeight: 1200, contentHeight: 1600 });
+    harness.scheduler.flushAll();
+
+    expect(harness.scrollToBottom).not.toHaveBeenCalled();
+  });
+
   it("keeps initial native content growth anchored before layout scroll events arrive", () => {
     const harness = createDriverHarness({
       transportBehavior: {
@@ -721,7 +754,8 @@ describe("controller helper predicates", () => {
       __private__.shouldDetachFromScrollAway({
         mode: "sticky-bottom",
         nextIsNearBottom: false,
-        scrollDelta: 0,
+        awayScrollAccumulationPx: 0,
+        awayScrollEventStreak: 0,
         hasPendingRequest: true,
         hasPendingVerification: false,
         hasUnverifiedStickyMeasurementChange: false,
@@ -732,7 +766,8 @@ describe("controller helper predicates", () => {
       __private__.shouldDetachFromScrollAway({
         mode: "sticky-bottom",
         nextIsNearBottom: false,
-        scrollDelta: 0,
+        awayScrollAccumulationPx: 0,
+        awayScrollEventStreak: 0,
         hasPendingRequest: false,
         hasPendingVerification: true,
         hasUnverifiedStickyMeasurementChange: false,
@@ -743,7 +778,8 @@ describe("controller helper predicates", () => {
       __private__.shouldDetachFromScrollAway({
         mode: "sticky-bottom",
         nextIsNearBottom: false,
-        scrollDelta: 0,
+        awayScrollAccumulationPx: 0,
+        awayScrollEventStreak: 0,
         hasPendingRequest: false,
         hasPendingVerification: false,
         hasUnverifiedStickyMeasurementChange: true,
@@ -754,7 +790,8 @@ describe("controller helper predicates", () => {
       __private__.shouldDetachFromScrollAway({
         mode: "sticky-bottom",
         nextIsNearBottom: false,
-        scrollDelta: 0,
+        awayScrollAccumulationPx: 0,
+        awayScrollEventStreak: 0,
         hasPendingRequest: false,
         hasPendingVerification: false,
         hasUnverifiedStickyMeasurementChange: false,
@@ -762,16 +799,45 @@ describe("controller helper predicates", () => {
     ).toBe(true);
   });
 
-  it("treats a large scroll delta as user detach even during an unverified sticky change", () => {
+  it("treats sustained scrolling away as user detach even during an unverified sticky change", () => {
     expect(
       __private__.shouldDetachFromScrollAway({
         mode: "sticky-bottom",
         nextIsNearBottom: false,
-        scrollDelta: 48,
+        awayScrollAccumulationPx: 48,
+        awayScrollEventStreak: 2,
         hasPendingRequest: false,
-        hasPendingVerification: false,
+        hasPendingVerification: true,
         hasUnverifiedStickyMeasurementChange: true,
       }),
     ).toBe(true);
+  });
+
+  it("does not treat a single large layout jump as user detach", () => {
+    expect(
+      __private__.shouldDetachFromScrollAway({
+        mode: "sticky-bottom",
+        nextIsNearBottom: false,
+        awayScrollAccumulationPx: 240,
+        awayScrollEventStreak: 1,
+        hasPendingRequest: false,
+        hasPendingVerification: true,
+        hasUnverifiedStickyMeasurementChange: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps an explicit anchor request winning over a sustained drag", () => {
+    expect(
+      __private__.shouldDetachFromScrollAway({
+        mode: "sticky-bottom",
+        nextIsNearBottom: false,
+        awayScrollAccumulationPx: 240,
+        awayScrollEventStreak: 6,
+        hasPendingRequest: true,
+        hasPendingVerification: false,
+        hasUnverifiedStickyMeasurementChange: false,
+      }),
+    ).toBe(false);
   });
 });

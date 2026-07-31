@@ -400,8 +400,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const [expandedInlineToolCallIds, setExpandedInlineToolCallIds] = useState<Set<string>>(
       new Set(),
     );
-    // While the reader is scrolled away from the bottom, freeze the boundary
-    // between mounted and virtualized history. Left free, it advances on its own
+    // While the app is not following the output, because the reader took the
+    // scroll position however few pixels they moved it, freeze the boundary between
+    // mounted and virtualized history. Left free, it advances on its own
     // as the agent streams, and the turn it hands to the virtualizer collapses
     // from measured heights to estimates in one frame — which clamps scrollTop
     // and throws the reader back toward the top of the chat. Pin it at whatever

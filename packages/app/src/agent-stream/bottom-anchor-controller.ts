@@ -109,6 +109,10 @@ interface CreateBottomAnchorControllerDriverInput {
 const MAX_VERIFICATION_RETRIES = 3;
 const WEB_PARTIAL_VIRTUALIZED_CONFIRMATION_DELAY_FRAMES = 1;
 const USER_SCROLL_AWAY_DELTA_PX = 24;
+// One jump, however large, is not a gesture: the first layout pass of a native
+// list delivers exactly that with no finger involved. A hand on the screen keeps
+// producing scroll events, so require a second one before believing it.
+const MIN_USER_SCROLL_AWAY_EVENTS = 2;
 
 function scheduleAnimationFrameWithDelay(input: {
   callback: () => void;
@@ -243,6 +247,15 @@ function createBottomAnchorControllerDriver(
   let lastRouteRequestKey: string | null = null;
   let stickyMeasurementRevision = 0;
   let lastVerifiedStickyMeasurementRevision = 0;
+  // How far, and over how many scroll events, the view has moved away from the
+  // bottom in one unbroken run. Reset the moment it comes back.
+  let awayScrollAccumulationPx = 0;
+  let awayScrollEventStreak = 0;
+
+  const resetAwayScrollTracking = () => {
+    awayScrollAccumulationPx = 0;
+    awayScrollEventStreak = 0;
+  };
 
   const setBlockedReason = (nextBlockedReason: BottomAnchorBlockedReason | null) => {
     if (blockedReason === nextBlockedReason) {
@@ -442,6 +455,7 @@ function createBottomAnchorControllerDriver(
 
   const createRequest = (request: BottomAnchorRouteRequest | BottomAnchorLocalRequest) => {
     cancelPendingAttempt();
+    resetAwayScrollTracking();
     const nextRequest: BottomAnchorRequest = {
       id: requestSequence + 1,
       agentId: request.agentId,
@@ -479,6 +493,7 @@ function createBottomAnchorControllerDriver(
       pendingRequest = null;
       blockedReason = null;
       cancelPendingAttempt();
+      resetAwayScrollTracking();
       stickyMeasurementRevision = 0;
       lastVerifiedStickyMeasurementRevision = 0;
       mode = "sticky-bottom";
@@ -571,6 +586,12 @@ function createBottomAnchorControllerDriver(
     },
     handleScrollNearBottomChange(params) {
       const { nextIsNearBottom, scrollDelta } = params;
+      if (nextIsNearBottom) {
+        resetAwayScrollTracking();
+      } else if (Math.abs(scrollDelta) >= 1) {
+        awayScrollAccumulationPx += Math.abs(scrollDelta);
+        awayScrollEventStreak += 1;
+      }
       if (
         nextIsNearBottom &&
         mode === "sticky-bottom" &&
@@ -584,7 +605,8 @@ function createBottomAnchorControllerDriver(
         __private__.shouldDetachFromScrollAway({
           mode,
           nextIsNearBottom,
-          scrollDelta,
+          awayScrollAccumulationPx,
+          awayScrollEventStreak,
           hasPendingRequest: pendingRequest !== null,
           hasPendingVerification: pendingVerification !== null,
           hasUnverifiedStickyMeasurementChange,
@@ -653,19 +675,33 @@ export const __private__ = {
   shouldDetachFromScrollAway(input: {
     mode: BottomAnchorMode;
     nextIsNearBottom: boolean;
-    scrollDelta: number;
+    awayScrollAccumulationPx: number;
+    awayScrollEventStreak: number;
     hasPendingRequest: boolean;
     hasPendingVerification: boolean;
     hasUnverifiedStickyMeasurementChange: boolean;
   }): boolean {
-    const scrolledAwayIntentionally = Math.abs(input.scrollDelta) >= USER_SCROLL_AWAY_DELTA_PX;
-    return (
-      input.mode === "sticky-bottom" &&
-      !input.nextIsNearBottom &&
-      !input.hasPendingRequest &&
-      !input.hasPendingVerification &&
-      (!input.hasUnverifiedStickyMeasurementChange || scrolledAwayIntentionally)
-    );
+    if (input.mode !== "sticky-bottom" || input.nextIsNearBottom) {
+      return false;
+    }
+    // An explicit anchor request (route entry, the jump button, a message just
+    // sent) still wins: it is the user asking for the bottom.
+    if (input.hasPendingRequest) {
+      return false;
+    }
+    // Sustained movement away from the bottom is a hand on the screen, and it
+    // outranks anything the app has queued for itself. Gating it on pending
+    // verification made the transcript impossible to scroll away from mid-turn:
+    // a streaming agent re-sticks on nearly every flush, so there was almost
+    // always a verification in flight, and the list snapped back under the
+    // reader's finger.
+    if (
+      input.awayScrollEventStreak >= MIN_USER_SCROLL_AWAY_EVENTS &&
+      input.awayScrollAccumulationPx >= USER_SCROLL_AWAY_DELTA_PX
+    ) {
+      return true;
+    }
+    return !input.hasPendingVerification && !input.hasUnverifiedStickyMeasurementChange;
   },
 };
 
