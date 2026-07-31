@@ -124,7 +124,6 @@ const CODEX_NON_ORIGINATING_APP_SERVER_CLIENT_INFO = {
   title: "Codex App Server Daemon",
   version: "0.0.0",
 } as const;
-const ASSISTANT_MESSAGE_BOUNDARY_MARKDOWN = "\n\n---\n\n";
 const MAX_PENDING_SUB_AGENT_THREADS = 32;
 const MAX_PENDING_SUB_AGENT_NOTIFICATIONS_PER_THREAD = 128;
 // COMPAT(codexLegacyCollabAgentToolCall): Codex <0.143 emits this shape. Added in
@@ -3102,7 +3101,6 @@ export class CodexAppServerAgentSession implements AgentSession {
   private pendingReasoning = new Map<string, string[]>();
   private pendingCommandOutputDeltas = new Map<string, string[]>();
   private pendingFileChangeOutputDeltas = new Map<string, string[]>();
-  private pendingAssistantMessageBoundary = false;
   private terminalCommandByProcessId = new Map<string, string>();
   private pendingUnlabeledTerminalInteractions = new Set<string>();
   private emittedTerminalInteractionKeys = new Set<string>();
@@ -3690,8 +3688,6 @@ export class CodexAppServerAgentSession implements AgentSession {
 
   async run(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult> {
     let currentAssistantMessageId: string | null = null;
-    let currentAssistantMessageHasBoundary = false;
-    let hasAssistantMessage = false;
     return runProviderTurn({
       prompt,
       runOptions: options,
@@ -3700,31 +3696,17 @@ export class CodexAppServerAgentSession implements AgentSession {
       getSessionId: async () => (await this.getRuntimeInfo()).sessionId ?? "",
       reduceFinalText: ({ current, item }) => {
         if (item.type === "assistant_message") {
-          const hasPreviousAssistantMessage = hasAssistantMessage;
-          hasAssistantMessage = true;
           const isNewMessage =
             item.messageId === undefined || item.messageId !== currentAssistantMessageId;
           if (isNewMessage) {
             currentAssistantMessageId = item.messageId ?? null;
-            currentAssistantMessageHasBoundary =
-              hasPreviousAssistantMessage &&
-              item.text.startsWith(ASSISTANT_MESSAGE_BOUNDARY_MARKDOWN);
           }
-          const finalTextItem = currentAssistantMessageHasBoundary
-            ? {
-                ...item,
-                text: item.text.startsWith(ASSISTANT_MESSAGE_BOUNDARY_MARKDOWN)
-                  ? item.text.slice(ASSISTANT_MESSAGE_BOUNDARY_MARKDOWN.length)
-                  : item.text,
-              }
-            : item;
           return isNewMessage
-            ? finalTextItem.text
-            : appendOrReplaceGrowingAssistantMessage({ current, item: finalTextItem });
+            ? item.text
+            : appendOrReplaceGrowingAssistantMessage({ current, item });
         }
         if (item.type === "tool_call" && item.detail.type === "plan") {
           currentAssistantMessageId = null;
-          currentAssistantMessageHasBoundary = false;
           return item.detail.text;
         }
         return current;
@@ -4976,22 +4958,20 @@ export class CodexAppServerAgentSession implements AgentSession {
         this.emitSubAgentActivityUpdate(subAgentCallId, "running");
         return;
       }
-      const isFirstDeltaForItem = prev.length === 0;
+      // A second Codex assistant item in one turn already lands as its own
+      // stream row with its own bubble group, so the reader gets a normal
+      // inter-bubble gap. Nothing is injected into the model's text to mark
+      // the seam: a synthetic `---` renders as a full-width rule and follows
+      // the text into copies and retained transcripts.
       this.emitEvent({
         type: "timeline",
         provider: CODEX_PROVIDER,
         item: {
           type: "assistant_message",
           messageId: parsed.itemId,
-          text:
-            isFirstDeltaForItem && this.pendingAssistantMessageBoundary
-              ? `${ASSISTANT_MESSAGE_BOUNDARY_MARKDOWN}${parsed.delta}`
-              : parsed.delta,
+          text: parsed.delta,
         },
       });
-      if (isFirstDeltaForItem) {
-        this.pendingAssistantMessageBoundary = false;
-      }
       return;
     }
     if (parsed.kind === "reasoning_delta") {
@@ -5105,7 +5085,6 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.pendingReasoning.clear();
     this.pendingCommandOutputDeltas.clear();
     this.pendingFileChangeOutputDeltas.clear();
-    this.pendingAssistantMessageBoundary = false;
     this.warnedIncompleteEditToolCallIds.clear();
     this.unpairedCompactionNotificationCompletions = 0;
     this.unpairedCompactionItemCompletions = 0;
@@ -5405,9 +5384,6 @@ export class CodexAppServerAgentSession implements AgentSession {
       return;
     }
     if (this.consumeStreamedTextCompletion(timelineItem, itemId)) {
-      if (timelineItem.type === "assistant_message") {
-        this.pendingAssistantMessageBoundary = true;
-      }
       if (itemId) {
         this.emittedItemCompletedIds.add(itemId);
         this.emittedItemStartedIds.delete(itemId);
@@ -5429,12 +5405,8 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
     const imageItems = mcpToolResultImagesToTimeline(parsed.item);
     this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: timelineItem });
-    if (timelineItem.type === "assistant_message") {
-      this.pendingAssistantMessageBoundary = true;
-    }
     for (const imageItem of imageItems) {
       this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: imageItem });
-      this.pendingAssistantMessageBoundary = true;
     }
     if (itemId) {
       this.emittedItemCompletedIds.add(itemId);
