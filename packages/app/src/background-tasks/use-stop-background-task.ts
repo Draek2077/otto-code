@@ -31,6 +31,10 @@ export function useStopBackgroundTask(input: UseStopBackgroundTaskInput): (taskI
             client
               ? client.stopBackgroundShellTask(parent, id)
               : Promise.reject(new Error(t("backgroundTasks.daemonUnavailable"))),
+          clearBackgroundShellTasks: (parent, ids) =>
+            client
+              ? client.clearBackgroundShellTasks(parent, ids)
+              : Promise.reject(new Error(t("backgroundTasks.daemonUnavailable"))),
           reportError: (error) => {
             toast.error(toErrorMessage(error));
           },

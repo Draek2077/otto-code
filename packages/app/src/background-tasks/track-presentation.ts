@@ -40,19 +40,19 @@ export interface PartitionedBackgroundTaskRows {
 }
 
 /**
- * Split rows into the active list and the two collapsed terminal groups. Rows
- * in `pinnedIds` stay active even when terminal: the track pins a row the user
- * just stopped so it doesn't instantly vanish into a collapsed group under
- * their pointer. Mirrors subagents/track-presentation.ts's partitionSubagentRows.
+ * Split rows into the active list and the two collapsed terminal groups.
+ * Status is the only input: the track once also pinned a row the user had just
+ * stopped into the active list so it wouldn't vanish under their pointer, which
+ * left terminal rows counted as active until the header was toggled — a
+ * cancelled-limbo group in all but name. An explicit stop now clears the row
+ * outright (see stop-background-task.ts), so there is nothing left to pin.
  */
 export function partitionBackgroundTaskRows(
   rows: readonly BackgroundShellTaskRow[],
-  pinnedIds?: ReadonlySet<string>,
 ): PartitionedBackgroundTaskRows {
   const partitioned: PartitionedBackgroundTaskRows = { active: [], completed: [], failed: [] };
   for (const row of rows) {
-    const group = pinnedIds?.has(row.id) ? "active" : resolveBackgroundTaskRowGroup(row);
-    partitioned[group].push(row);
+    partitioned[resolveBackgroundTaskRowGroup(row)].push(row);
   }
   return partitioned;
 }
@@ -144,10 +144,6 @@ function formatGroupCount(count: number, state: string): string {
  * uses) so the header reads as a summary of the groups below it rather than a
  * third framing. "3 background tasks · 1 running" said nothing about what the
  * other two were, and folding failures into "completed" said something wrong.
- *
- * "active" rather than "running" on purpose: a row the user just stopped is
- * pinned active until the track re-partitions, so calling the group running
- * would be wrong.
  */
 export function formatHeaderLabel({
   active,

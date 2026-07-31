@@ -128,12 +128,14 @@ describe("partitionBackgroundTaskRows", () => {
     expect(failed.map((r) => r.id)).toEqual(["c"]);
   });
 
-  it("keeps a pinned id active even when terminal", () => {
+  it("never files a terminal row as active", () => {
+    // No pinning: a terminal row belongs to a terminal group the moment it is
+    // terminal, so nothing can sit in the active list claiming to be running.
     const rows = [row({ id: "a", status: "idle" }), row({ id: "b", status: "error" })];
-    const { active, completed, failed } = partitionBackgroundTaskRows(rows, new Set(["a", "b"]));
-    expect(active.map((r) => r.id)).toEqual(["a", "b"]);
-    expect(completed).toEqual([]);
-    expect(failed).toEqual([]);
+    const { active, completed, failed } = partitionBackgroundTaskRows(rows);
+    expect(active).toEqual([]);
+    expect(completed.map((r) => r.id)).toEqual(["a"]);
+    expect(failed.map((r) => r.id)).toEqual(["b"]);
   });
 });
 

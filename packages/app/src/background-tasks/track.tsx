@@ -56,13 +56,9 @@ export function BackgroundTasksTrack({
   const [expanded, setExpanded] = useState(false);
   const [completedExpanded, setCompletedExpanded] = useState(false);
   const [failedExpanded, setFailedExpanded] = useState(false);
-  // A row the user just stopped stays pinned in the active list instead of
-  // instantly tidying into a collapsed group under their pointer.
-  const [pinnedIds, setPinnedIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const toggleExpanded = useCallback(() => {
     setExpanded((current) => !current);
-    setPinnedIds((pins) => (pins.size > 0 ? new Set<string>() : pins));
   }, []);
   const toggleCompletedExpanded = useCallback(() => {
     setCompletedExpanded((current) => !current);
@@ -71,25 +67,7 @@ export function BackgroundTasksTrack({
     setFailedExpanded((current) => !current);
   }, []);
 
-  const handleStopTask = useCallback(
-    (id: string) => {
-      setPinnedIds((pins) => {
-        if (pins.has(id)) {
-          return pins;
-        }
-        const next = new Set(pins);
-        next.add(id);
-        return next;
-      });
-      onStopTask(id);
-    },
-    [onStopTask],
-  );
-
-  const { active, completed, failed } = useMemo(
-    () => partitionBackgroundTaskRows(rows, pinnedIds),
-    [rows, pinnedIds],
-  );
+  const { active, completed, failed } = useMemo(() => partitionBackgroundTaskRows(rows), [rows]);
   const completedIds = useMemo(() => completed.map((row) => row.id), [completed]);
   const failedIds = useMemo(() => failed.map((row) => row.id), [failed]);
   const handleClearCompleted = useCallback(() => {
@@ -117,8 +95,8 @@ export function BackgroundTasksTrack({
     return null;
   }
 
-  // Summarize the same partition the list renders, so a pinned row is counted
-  // in the group it is actually shown in.
+  // Summarize the same partition the list renders, so every row is counted in
+  // the group it is actually shown in.
   const headerLabel = formatHeaderLabel({ active, completed, failed });
 
   return (
@@ -150,15 +128,12 @@ export function BackgroundTasksTrack({
                 nestedScrollEnabled
               >
                 {active.map((row) => (
-                  // Clear targets *this* row's id, not the bulk group list: a
-                  // pinned row sits in the active list while still being
-                  // terminal, so routing its X through a group handler would
-                  // pass a list that never contains it and the X would do
-                  // nothing.
+                  // Clear targets *this* row's id, never a bulk group list —
+                  // the active list has no group behind it to clear against.
                   <BackgroundTaskTrackRow
                     key={row.id}
                     row={row}
-                    onStopTask={handleStopTask}
+                    onStopTask={onStopTask}
                     onClearTask={onClearTasks}
                   />
                 ))}
@@ -172,7 +147,7 @@ export function BackgroundTasksTrack({
                     testIDPrefix="background-tasks-track-completed"
                     onToggle={toggleCompletedExpanded}
                     onClear={handleClearCompleted}
-                    onStopTask={handleStopTask}
+                    onStopTask={onStopTask}
                     onClearOne={onClearTasks}
                   />
                 ) : null}
@@ -186,7 +161,7 @@ export function BackgroundTasksTrack({
                     testIDPrefix="background-tasks-track-failed"
                     onToggle={toggleFailedExpanded}
                     onClear={handleClearFailed}
-                    onStopTask={handleStopTask}
+                    onStopTask={onStopTask}
                     onClearOne={onClearTasks}
                   />
                 ) : null}
