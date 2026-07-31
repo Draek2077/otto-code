@@ -47,10 +47,49 @@ function deriveFileFromId(id: string): string | undefined {
   return base && base.toLowerCase().endsWith(".gguf") ? base : undefined;
 }
 
+function authHeaders(token?: string | null): Record<string, string> {
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * Stream one HF file to `destPath`, reporting bytes received. Skips (returns
+ * false) if the file already exists. Writes to a `.part` then renames so a
+ * killed download never leaves a truncated file that looks complete.
+ */
+async function streamRepoFile(
+  url: string,
+  destPath: string,
+  label: string,
+  token: string | null | undefined,
+  onProgress: ((p: PullProgress) => void) | undefined,
+  received: { bytes: number },
+): Promise<boolean> {
+  mkdirSync(path.dirname(destPath), { recursive: true });
+  if (existsSync(destPath)) return false;
+
+  const response = await fetch(url, { headers: authHeaders(token) });
+  if (!response.ok || !response.body) {
+    throw new Error(`download failed (${response.status}) for ${url}`);
+  }
+  const totalBytes = Number(response.headers.get("content-length")) || undefined;
+  const body = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
+  body.on("data", (chunk: Buffer) => {
+    received.bytes += chunk.length;
+    onProgress?.({ file: label, receivedBytes: received.bytes, totalBytes });
+  });
+
+  const tmp = `${destPath}.part`;
+  await pipeline(body, createWriteStream(tmp));
+  const { renameSync } = await import("node:fs");
+  renameSync(tmp, destPath);
+  return true;
+}
+
 export interface PullOptions {
   model: CatalogModel;
   destRoot: string;
   file?: string;
+  token?: string | null;
   onProgress?: (progress: PullProgress) => void;
 }
 
@@ -59,31 +98,48 @@ export async function pullModel({
   model,
   destRoot,
   file,
+  token,
   onProgress,
 }: PullOptions): Promise<string> {
   const fileName = resolveFileName(model, file);
   const repoDir = path.join(destRoot, model.hfRepo.replace(/\//g, path.sep));
-  mkdirSync(repoDir, { recursive: true });
   const destPath = path.join(repoDir, fileName);
-
-  if (existsSync(destPath)) return destPath;
-
-  const url = resolveUrl(model.hfRepo, fileName);
-  const response = await fetch(url);
-  if (!response.ok || !response.body) {
-    throw new Error(`download failed (${response.status}) for ${url}`);
-  }
-  const totalBytes = Number(response.headers.get("content-length")) || undefined;
-  let receivedBytes = 0;
-  const body = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
-  body.on("data", (chunk: Buffer) => {
-    receivedBytes += chunk.length;
-    onProgress?.({ file: fileName, receivedBytes, totalBytes });
+  await streamRepoFile(resolveUrl(model.hfRepo, fileName), destPath, fileName, token, onProgress, {
+    bytes: 0,
   });
-
-  const tmp = `${destPath}.part`;
-  await pipeline(body, createWriteStream(tmp));
-  const { renameSync } = await import("node:fs");
-  renameSync(tmp, destPath);
   return destPath;
+}
+
+export interface DownloadFilesOptions {
+  repo: string;
+  /** Repo-relative file paths (a quant's shards, plus any projector). */
+  files: string[];
+  destRoot: string;
+  token?: string | null;
+  onProgress?: (progress: PullProgress) => void;
+}
+
+/**
+ * Download a set of repo-relative files (a chosen quant's shards, plus the shared
+ * projector for a vision repo) under `<destRoot>/<repo>/<path>`, preserving any
+ * subdirectory. Progress accumulates across all files so a multi-shard quant
+ * reports one continuous byte count. Returns the paths actually written.
+ */
+export async function downloadRepoFiles({
+  repo,
+  files,
+  destRoot,
+  token,
+  onProgress,
+}: DownloadFilesOptions): Promise<string[]> {
+  const repoDir = path.join(destRoot, repo.replace(/\//g, path.sep));
+  const received = { bytes: 0 };
+  const written: string[] = [];
+  for (const repoFile of files) {
+    const destPath = path.join(repoDir, ...repoFile.split("/"));
+    const url = `${HF_BASE}/${repo}/resolve/main/${repoFile}`;
+    const wrote = await streamRepoFile(url, destPath, repoFile, token, onProgress, received);
+    if (wrote) written.push(destPath);
+  }
+  return written;
 }

@@ -161,6 +161,10 @@ export const BrainConfigSchema = z
     runtime: RuntimeConfigSchema.default({}),
     // null => managed default ($OTTO_HOME/otto-brain/models), unioned with LM Studio.
     modelsDir: z.string().nullable().default(null),
+    // Hugging Face access token for gated/private repo downloads. Env
+    // HF_TOKEN / HUGGING_FACE_HUB_TOKEN take precedence at read time; this is the
+    // persisted fallback so users can set it once (config set hfToken <token>).
+    hfToken: z.string().nullable().default(null),
     defaultModel: z.string().nullable().default(null),
     // Pin the host to a single model: serve only the default/resident model and
     // refuse completion requests that name a different one, instead of queuing a
