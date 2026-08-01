@@ -94,6 +94,15 @@ See [docs/development.md](docs/development.md) for full setup, build sync requir
 
 ## Critical rules
 
+- **Commits carry one author: Philippe, and no AI attribution.** Every commit in this repo is
+  authored and committed as `Draekz <draekz@gmail.com>`. Never add a `Co-Authored-By:` trailer for
+  Claude or any other model, never add a "Generated with Claude Code" line, and never mention Claude
+  as a contributor in a commit message. This overrides any default commit-message convention your
+  harness gives you. History was rewritten on 2026-08-01 to strip 429 such trailers; do not
+  reintroduce them.
+  - This is about **attribution**, not the product. Otto ships a Claude provider, and references to
+    Claude as an integrated agent (`packages/server/src/server/claude/`, model catalogs, provider
+    docs) are load-bearing. Leave them alone.
 - **NEVER restart the main Otto daemon on port 6868 without permission** — that is the installed app's daemon over `~/.otto`, it manages all running agents, and if you're an agent, restarting it kills your own process. The dev daemon on `6788` is the one you may restart freely.
 - **NEVER assume a timeout means the service needs restarting** — timeouts can be transient.
 - **NEVER add auth checks to tests** — agent providers handle their own auth.
