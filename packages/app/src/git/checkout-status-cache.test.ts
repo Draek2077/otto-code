@@ -42,6 +42,7 @@ function prStatus(overrides: Partial<CheckoutPrStatusPayload> = {}): CheckoutPrS
   return {
     cwd,
     status: {
+      forge: "github",
       url: "https://github.com/otto-code-ai/otto-code/pull/42",
       title: "My PR",
       state: "open",
@@ -58,7 +59,7 @@ function prStatus(overrides: Partial<CheckoutPrStatusPayload> = {}): CheckoutPrS
     error: null,
     requestId: "pr-status-1",
     ...overrides,
-  };
+  } as CheckoutPrStatusPayload;
 }
 
 function checkoutStatusUpdate(

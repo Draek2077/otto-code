@@ -122,12 +122,12 @@ export function SiteFooter({ width = "default" }: SiteFooterProps) {
               GitHub
             </a>
             <a
-              href="https://github.com/getpaseo/paseo"
+              href="https://github.com/Draek2077/otto-code"
               target="_blank"
               rel="noopener noreferrer"
               className="block text-muted-foreground hover:text-foreground transition-colors"
             >
-              Paseo (upstream)
+              Otto (upstream)
             </a>
           </div>
         </div>

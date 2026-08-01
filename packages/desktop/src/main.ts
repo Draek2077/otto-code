@@ -12,6 +12,7 @@ import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import {
   app,
+  autoUpdater as electronAutoUpdater,
   BrowserWindow,
   clipboard,
   Menu,
@@ -22,8 +23,13 @@ import {
   screen,
   session,
   shell,
+  webContents,
 } from "electron";
 import { isForwardableOttoShortcutInput } from "./browser-shortcut-forwarding.js";
+import {
+  getOttoBrowserProfileSession,
+  OTTO_BROWSER_PROFILE_PARTITION,
+} from "./features/browser-profile.js";
 import { createDaemonCommandHandlers, registerDaemonManager } from "./daemon/daemon-manager.js";
 import { parsePassthroughCliArgsFromArgv, runPassthroughCli } from "./daemon/cli/passthrough.js";
 import { closeAllTransportSessions } from "./daemon/local-transport.js";
@@ -59,15 +65,16 @@ import { registerEditorTargetHandlers } from "./features/editor-targets.js";
 import { setupApplicationMenu } from "./features/menu.js";
 import {
   BROWSER_NEW_TAB_REQUEST_EVENT,
+  decideBrowserWindowOpenRequest,
   getOttoBrowserIdForWebContents,
-  getOttoBrowserWebContents,
-  handleBrowserWindowOpenRequest,
+  getOttoBrowserWebContentsForHostWindow,
+  isOttoBrowserWebviewAttach,
   listRegisteredOttoBrowserIds,
-  readBrowserIdFromWebviewAttach,
+  PendingBrowserWindowOpenRequests,
+  prepareOttoBrowserWebContents,
+  registerAttachedOttoBrowser,
   registerBrowserWebviewNavigationGuards,
   unregisterOttoBrowser,
-  registerOttoBrowserWorkspace,
-  registerOttoBrowserWebContents,
   setWorkspaceActiveOttoBrowserId,
 } from "./features/browser-webviews/index.js";
 import {
@@ -90,6 +97,12 @@ import {
   registerVisualizerWebviewSessionGuards,
 } from "./features/visualizer-webview.js";
 import { parseOpenProjectPathFromArgv } from "./open-project-routing.js";
+import {
+  buildAgentDeepLinkRoute,
+  parseAgentDeepLink,
+  type AgentDeepLinkTarget,
+} from "@otto-code/protocol/agent-deep-link";
+import { AgentNavigationInbox, parseAgentDeepLinkFromArgv } from "./agent-navigation.js";
 import { PendingOpenProjectStore } from "./pending-open-project-store.js";
 import { getDesktopSettingsStore } from "./settings/desktop-settings-electron.js";
 import { clampWindowStateToWorkAreas, createWindowStateStore } from "./settings/window-state.js";
@@ -98,12 +111,13 @@ import {
   stopDesktopDaemonViaCli,
 } from "./daemon/daemon-manager.js";
 import {
-  createBeforeQuitHandler,
+  createQuitLifecycle,
   shouldStopDesktopManagedDaemonOnQuit,
   stopDesktopManagedDaemonOnQuitIfNeeded,
   markAppQuitting,
   isAppQuitting,
 } from "./daemon/quit-lifecycle.js";
+import { installAppUpdateOnQuit } from "./features/auto-updater.js";
 import {
   requestQuitConfirmation,
   markQuitPreConfirmed,
@@ -133,7 +147,13 @@ const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
 const APP_SCHEME = "otto";
 const OTTO_DEBUG = process.env.OTTO_DEBUG === "1";
 const DISABLE_SINGLE_INSTANCE_LOCK = process.env.OTTO_DISABLE_SINGLE_INSTANCE_LOCK === "1";
+// A guest can ask to open a new tab before it has registered its browserId.
+// Hold those URLs until registration completes, then replay them.
+const pendingBrowserWindowOpenRequests = new PendingBrowserWindowOpenRequests();
 const APP_NAME = process.env.OTTO_TEST_APP_NAME?.trim() || "Otto";
+// How long a quit waits for the update revalidation, and then for the installer
+// to take over the quit, before exiting hard anyway.
+const UPDATE_QUIT_DEADLINE_MS = 5_000;
 
 const BROWSER_SHORTCUT_EVENT = "otto:event:browser-shortcut";
 const BROWSER_FORWARDED_KEY_EVENT = "otto:event:browser-forwarded-key";
@@ -238,9 +258,30 @@ function registerAppShellContentSecurityPolicy(): void {
   });
 }
 
-function readBrowserWorkspaceInput(
+function getBrowserPopupWindowOptions(
+  mainWindow: BrowserWindow,
+): Electron.BrowserWindowConstructorOptions {
+  return {
+    parent: mainWindow,
+    show: true,
+    autoHideMenuBar: true,
+    webPreferences: {
+      partition: OTTO_BROWSER_PROFILE_PARTITION,
+      nodeIntegration: false,
+      nodeIntegrationInSubFrames: false,
+      nodeIntegrationInWorker: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      webviewTag: false,
+      allowRunningInsecureContent: false,
+    },
+  };
+}
+
+function readAttachedBrowserInput(
   input: unknown,
-): { browserId: string; workspaceId: string } | null {
+): { browserId: string; workspaceId: string; webContentsId: number } | null {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
     return null;
   }
@@ -251,7 +292,18 @@ function readBrowserWorkspaceInput(
   if (typeof record.workspaceId !== "string" || record.workspaceId.trim().length === 0) {
     return null;
   }
-  return { browserId: record.browserId.trim(), workspaceId: record.workspaceId.trim() };
+  if (
+    typeof record.webContentsId !== "number" ||
+    !Number.isInteger(record.webContentsId) ||
+    record.webContentsId <= 0
+  ) {
+    return null;
+  }
+  return {
+    browserId: record.browserId.trim(),
+    workspaceId: record.workspaceId.trim(),
+    webContentsId: record.webContentsId,
+  };
 }
 
 function readActiveBrowserInput(
@@ -269,7 +321,7 @@ function readActiveBrowserInput(
 }
 
 type PendingWebviewAttach =
-  | { kind: "browser"; browserId: string }
+  | { kind: "browser" }
   | { kind: "artifact" }
   | { kind: "widget" }
   | { kind: "visualizer" };
@@ -430,6 +482,13 @@ let pendingOpenProjectPath = parseOpenProjectPathFromArgv({
   isDefaultApp: process.defaultApp,
 });
 
+// Agent deep links (`otto://agent/...`). The OS hands them over either in argv
+// (cold start, and Windows/Linux second-instance) or through 'open-url' (macOS).
+// The inbox holds a target until the renderer says it is mounted, so a link that
+// arrives during cold start is not delivered into a window that cannot route it.
+const agentNavigationInbox = new AgentNavigationInbox();
+let pendingAgentNavigation = parseAgentDeepLinkFromArgv(process.argv);
+
 // Each window pulls its own pending open-project path on mount, keyed by
 // webContents id, so deep-linked windows (second-instance launches, the
 // in-app "Open in new window" action) land on the right project without
@@ -452,6 +511,12 @@ ipcMain.handle("otto:get-pending-open-project", (event) => {
     pendingPath: result,
   });
   return result;
+});
+
+// The renderer announces it can route, and collects any link that arrived while
+// it was still mounting. preload.ts exposes this as the agent-navigation bridge.
+ipcMain.handle("otto:agent-navigation:ready", (event) => {
+  return agentNavigationInbox.windowReady(event.sender.id);
 });
 
 function normalizeBrowserCaptureRect(
@@ -487,10 +552,30 @@ function normalizeBrowserCaptureRect(
   };
 }
 
-ipcMain.handle("otto:browser:register-workspace-browser", (_event, rawInput: unknown) => {
-  const input = readBrowserWorkspaceInput(rawInput);
-  if (input) {
-    registerOttoBrowserWorkspace(input);
+ipcMain.handle("otto:browser:register-attached", (event, rawInput: unknown) => {
+  const input = readAttachedBrowserInput(rawInput);
+  if (!input) {
+    throw new Error("Invalid attached browser registration");
+  }
+  const registered = registerAttachedOttoBrowser({
+    ...input,
+    sender: event.sender,
+    profileSession: getOttoBrowserProfileSession(session),
+    findWebContents: (webContentsId) => webContents.fromId(webContentsId) ?? null,
+  });
+  if (!registered) {
+    throw new Error("Attached browser registration was rejected");
+  }
+  log.info("[browser-webview] registered", {
+    browserId: input.browserId,
+    webContentsId: input.webContentsId,
+    registeredBrowserIds: listRegisteredOttoBrowserIds(),
+  });
+  for (const url of pendingBrowserWindowOpenRequests.take(input.webContentsId)) {
+    event.sender.send(BROWSER_NEW_TAB_REQUEST_EVENT, {
+      sourceBrowserId: input.browserId,
+      url,
+    });
   }
 });
 
@@ -500,14 +585,14 @@ ipcMain.handle("otto:browser:unregister-workspace-browser", (_event, browserId: 
   }
 });
 
-ipcMain.handle("otto:browser:set-workspace-active-browser", (_event, rawInput: unknown) => {
+ipcMain.handle("otto:browser:set-workspace-active-browser", (event, rawInput: unknown) => {
   const input = readActiveBrowserInput(rawInput);
   if (input) {
-    setWorkspaceActiveOttoBrowserId(input);
+    setWorkspaceActiveOttoBrowserId({ ...input, hostWebContentsId: event.sender.id });
   }
 });
 
-ipcMain.handle("otto:browser:open-devtools", (_event, browserId: unknown) => {
+ipcMain.handle("otto:browser:open-devtools", (event, browserId: unknown) => {
   if (typeof browserId !== "string" || browserId.trim().length === 0) {
     const result = {
       ok: false,
@@ -518,7 +603,7 @@ ipcMain.handle("otto:browser:open-devtools", (_event, browserId: unknown) => {
     log.warn("[browser-devtools] open-devtools.invalid", result);
     return result;
   }
-  const contents = getOttoBrowserWebContents(browserId);
+  const contents = getOttoBrowserWebContentsForHostWindow(browserId, event.sender.id);
   if (!contents) {
     const result = {
       ok: false,
@@ -556,37 +641,34 @@ ipcMain.handle("otto:browser:clear-partition", async (_event, browserId: unknown
   await session.fromPartition(partition).clearStorageData();
 });
 
-ipcMain.handle(
-  "otto:browser:capture-element",
-  async (_event, browserId: unknown, rect: unknown) => {
-    if (typeof browserId !== "string" || browserId.trim().length === 0) {
+ipcMain.handle("otto:browser:capture-element", async (event, browserId: unknown, rect: unknown) => {
+  if (typeof browserId !== "string" || browserId.trim().length === 0) {
+    return null;
+  }
+  const contents = getOttoBrowserWebContentsForHostWindow(browserId, event.sender.id);
+  if (!contents || contents.isDestroyed()) {
+    return null;
+  }
+  const captureRect = normalizeBrowserCaptureRect(rect);
+  if (!captureRect) {
+    return null;
+  }
+  try {
+    // capturePage expects an integer rect in CSS pixels relative to the
+    // guest viewport, which matches getBoundingClientRect() on the page.
+    const image = await contents.capturePage(captureRect);
+    if (image.isEmpty()) {
       return null;
     }
-    const contents = getOttoBrowserWebContents(browserId);
-    if (!contents || contents.isDestroyed()) {
-      return null;
-    }
-    const captureRect = normalizeBrowserCaptureRect(rect);
-    if (!captureRect) {
-      return null;
-    }
-    try {
-      // capturePage expects an integer rect in CSS pixels relative to the
-      // guest viewport, which matches getBoundingClientRect() on the page.
-      const image = await contents.capturePage(captureRect);
-      if (image.isEmpty()) {
-        return null;
-      }
-      return image.toDataURL();
-    } catch (error) {
-      log.warn("[browser-capture] capture-element.failed", {
-        browserId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
-  },
-);
+    return image.toDataURL();
+  } catch (error) {
+    log.warn("[browser-capture] capture-element.failed", {
+      browserId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+});
 
 ipcMain.handle("otto:browser:copy-element", (_event, payload: unknown): boolean => {
   if (!payload || typeof payload !== "object") {
@@ -728,6 +810,8 @@ async function createWindow(
   options: {
     pendingOpenProjectPath?: string | null;
     restoreWindowState?: boolean;
+    /** Route to land on instead of "/" — an agent deep link that had no window to focus. */
+    initialRoute?: string | null;
   } = {},
 ): Promise<BrowserWindow> {
   const iconPath = getWindowIconPath();
@@ -779,9 +863,17 @@ async function createWindow(
 
   const webContentsId = mainWindow.webContents.id;
   pendingOpenProjectStore.set(webContentsId, options.pendingOpenProjectPath);
+  // A full-document navigation tears down the renderer's listeners, so the
+  // window stops being deliverable until it reports ready again.
+  mainWindow.webContents.on("did-start-navigation", (_event, _url, isSameDocument, isMainFrame) => {
+    if (isMainFrame && !isSameDocument) {
+      agentNavigationInbox.windowLoading(webContentsId);
+    }
+  });
   mainWindow.on("closed", () => {
     pendingOpenProjectStore.delete(webContentsId);
     clearPendingWindowReveal(webContentsId);
+    agentNavigationInbox.removeWindow(webContentsId);
   });
 
   // Windows/Linux: hide the last visible window to the tray instead of letting it
@@ -874,12 +966,11 @@ async function createWindow(
       registerVisualizerWebviewSessionGuards();
       return;
     }
-    const browserId = readBrowserIdFromWebviewAttach(params);
-    if (!browserId) {
+    if (!isOttoBrowserWebviewAttach(params)) {
       event.preventDefault();
       return;
     }
-    pendingWebviewAttaches.push({ kind: "browser", browserId });
+    pendingWebviewAttaches.push({ kind: "browser" });
     webPreferences.nodeIntegration = false;
     webPreferences.nodeIntegrationInSubFrames = false;
     webPreferences.nodeIntegrationInWorker = false;
@@ -908,14 +999,10 @@ async function createWindow(
       registerVisualizerWebviewDiagnostics(contents);
       return;
     }
-    const browserId = pending?.kind === "browser" ? pending.browserId : null;
-    if (browserId) {
-      registerOttoBrowserWebContents(contents, browserId);
-      log.info("[browser-webview] registered", {
-        browserId,
-        webContentsId: contents.id,
-        registeredBrowserIds: listRegisteredOttoBrowserIds(),
-      });
+    if (pending?.kind === "browser") {
+      // The renderer completes registration over "otto:browser:register-attached"
+      // once it knows this guest's webContentsId; main only primes it here.
+      prepareOttoBrowserWebContents(contents);
     }
     contents.on("before-input-event", (event, input) => {
       if (isBrowserRefreshInput(input)) {
@@ -948,15 +1035,34 @@ async function createWindow(
         });
       }
     });
-    contents.setWindowOpenHandler(({ url }) =>
-      handleBrowserWindowOpenRequest({
+    contents.setWindowOpenHandler(({ url, disposition, frameName, features, postBody }) => {
+      const decision = decideBrowserWindowOpenRequest({
         url,
-        sourceBrowserId: getOttoBrowserIdForWebContents(contents),
-        requestNewTab: (payload) => {
-          mainWindow.webContents.send(BROWSER_NEW_TAB_REQUEST_EVENT, payload);
-        },
-      }),
-    );
+        disposition,
+        frameName,
+        features,
+        hasPostBody: postBody !== undefined && postBody !== null,
+      });
+      if (decision.kind === "deny") {
+        return { action: "deny" };
+      }
+      if (decision.kind === "popup") {
+        return {
+          action: "allow",
+          overrideBrowserWindowOptions: getBrowserPopupWindowOptions(mainWindow),
+        };
+      }
+      const sourceBrowserId = getOttoBrowserIdForWebContents(contents);
+      if (sourceBrowserId) {
+        mainWindow.webContents.send(BROWSER_NEW_TAB_REQUEST_EVENT, {
+          sourceBrowserId,
+          url: decision.url,
+        });
+      } else {
+        pendingBrowserWindowOpenRequests.add(contents.id, decision.url);
+      }
+      return { action: "deny" };
+    });
     contents.on("context-menu", (_contextMenuEvent, params) => {
       showBrowserWebviewContextMenu(mainWindow, contents, params);
     });
@@ -1024,11 +1130,14 @@ async function createWindow(
   if (!app.isPackaged) {
     const { loadReactDevTools } = await import("./features/react-devtools.js");
     await loadReactDevTools();
-    await mainWindow.loadURL(DEV_SERVER_URL);
+    const initialUrl = options.initialRoute
+      ? new URL(options.initialRoute, `${DEV_SERVER_URL}/`).toString()
+      : DEV_SERVER_URL;
+    await mainWindow.loadURL(initialUrl);
     return mainWindow;
   }
 
-  await mainWindow.loadURL(`${APP_SCHEME}://app/`);
+  await mainWindow.loadURL(`${APP_SCHEME}://app${options.initialRoute ?? "/"}`);
   return mainWindow;
 }
 
@@ -1042,8 +1151,83 @@ async function createWindow(
 // `otto://app/`, which fails if the protocol handler isn't registered yet, and
 // a second instance can arrive mid-cold-start.
 let resolveBootstrapComplete: () => void;
+let bootstrapIsComplete = false;
 const bootstrapComplete = new Promise<void>((resolve) => {
   resolveBootstrapComplete = resolve;
+});
+
+let agentNavigationWindowCreation: Promise<BrowserWindow> | null = null;
+
+// Bring an agent link to the front. With no usable window (all closed, or the
+// app was launched by the link itself) this mints one already pointed at the
+// agent route, and serialises concurrent links onto that single creation so a
+// burst of links cannot open a window each.
+function focusExistingWindowOnAgent(target: AgentDeepLinkTarget): void {
+  const windows = BrowserWindow.getAllWindows();
+  const mainWindow =
+    BrowserWindow.getFocusedWindow() ?? windows.find((window) => window.isVisible()) ?? windows[0];
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (!agentNavigationWindowCreation) {
+      const creation = createWindow({
+        initialRoute: buildAgentDeepLinkRoute(target),
+        restoreWindowState: true,
+      });
+      agentNavigationWindowCreation = creation;
+      void creation
+        .catch((error) => log.error("[window] failed to create window for agent link", error))
+        .finally(() => {
+          if (agentNavigationWindowCreation === creation) {
+            agentNavigationWindowCreation = null;
+          }
+        });
+      return;
+    }
+
+    void agentNavigationWindowCreation
+      .then(() => focusExistingWindowOnAgent(target))
+      .catch((error) => log.error("[window] failed to deliver queued agent link", error));
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  mainWindow.show();
+  mainWindow.focus();
+
+  const deliverable = agentNavigationInbox.deliverOrQueue(mainWindow.webContents.id, target);
+  if (deliverable) {
+    mainWindow.webContents.send("otto:event:open-agent", deliverable);
+  }
+}
+
+function receiveAgentDeepLink(input: string): void {
+  const target = parseAgentDeepLink(input);
+  if (!target) {
+    return;
+  }
+
+  if (bootstrapIsComplete) {
+    focusExistingWindowOnAgent(target);
+    return;
+  }
+
+  // Still cold-starting: hold the newest link and let bootstrap deliver it.
+  pendingAgentNavigation = target;
+  void bootstrapComplete.then(() => {
+    if (pendingAgentNavigation !== target) {
+      return undefined;
+    }
+    pendingAgentNavigation = null;
+    focusExistingWindowOnAgent(target);
+    return undefined;
+  });
+}
+
+// macOS delivers links here rather than in argv.
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  receiveAgentDeepLink(url);
 });
 
 function setupSingleInstanceLock(): boolean {
@@ -1059,6 +1243,15 @@ function setupSingleInstanceLock(): boolean {
   }
 
   app.on("second-instance", (_event, commandLine) => {
+    // Windows/Linux deliver a link by relaunching with it in argv. Focusing the
+    // existing window is the whole point, so this returns before the
+    // open-project path below can mint a second one.
+    const agentTarget = parseAgentDeepLinkFromArgv(commandLine);
+    if (agentTarget) {
+      void bootstrapComplete.then(() => focusExistingWindowOnAgent(agentTarget));
+      return;
+    }
+
     log.info("[open-project] second-instance commandLine:", commandLine);
     const openProjectPath = parseOpenProjectPathFromArgv({
       argv: commandLine,
@@ -1237,13 +1430,30 @@ async function bootstrap(): Promise<void> {
   armGpuStartupSentinel();
   armGpuStartupPaintWatchdog();
 
-  // The first window of the session restores and persists saved geometry.
-  await createWindow({ pendingOpenProjectPath, restoreWindowState: true });
+  // The first window of the session restores and persists saved geometry. A
+  // link that launched the app routes straight into it rather than being
+  // delivered afterwards, so the window never paints the default route first.
+  const initialAgentNavigation = pendingAgentNavigation;
+  pendingAgentNavigation = null;
+  await createWindow({
+    initialRoute: initialAgentNavigation ? buildAgentDeepLinkRoute(initialAgentNavigation) : null,
+    pendingOpenProjectPath,
+    restoreWindowState: true,
+  });
   pendingOpenProjectPath = null;
 
   // Protocol + IPC handlers and the first window now exist: release any
   // second-instance launches that arrived during cold start.
+  bootstrapIsComplete = true;
   resolveBootstrapComplete();
+
+  // A link that launched the app (argv) or landed mid-boot routes now that a
+  // window exists to route it into.
+  if (pendingAgentNavigation) {
+    const target = pendingAgentNavigation;
+    pendingAgentNavigation = null;
+    focusExistingWindowOnAgent(target);
+  }
 
   app.on("activate", async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -1253,7 +1463,7 @@ async function bootstrap(): Promise<void> {
 }
 
 void runDesktopStartup({
-  hasPendingOpenProjectPath: Boolean(pendingOpenProjectPath),
+  hasPendingGuiLaunchRequest: Boolean(pendingOpenProjectPath),
   runCliPassthroughIfRequested,
   inheritLoginShellEnv,
   bootstrapGui: bootstrap,
@@ -1345,24 +1555,37 @@ app.on("before-quit", () => {
   markAppQuitting();
 });
 
-app.on(
-  "before-quit",
-  createBeforeQuitHandler({
-    app,
-    closeTransportSessions: closeAllTransportSessions,
-    confirmQuitIfNeeded,
-    stopDesktopManagedDaemonIfNeeded: () =>
-      stopDesktopManagedDaemonOnQuitIfNeeded({
-        settingsStore: getDesktopSettingsStore(),
-        isDesktopManagedDaemonRunning: isDesktopManagedDaemonRunningSync,
-        stopDaemon: () => stopDesktopDaemonViaCli("quit"),
-        showShutdownFeedback: showDaemonShutdownDialog,
-      }),
-    onStopError: (error) => {
-      log.error("[desktop daemon] failed to stop managed daemon on quit", error);
-    },
-  }),
-);
+const quitLifecycle = createQuitLifecycle({
+  app,
+  closeTransportSessions: closeAllTransportSessions,
+  confirmQuitIfNeeded,
+  stopDesktopManagedDaemonIfNeeded: () =>
+    stopDesktopManagedDaemonOnQuitIfNeeded({
+      settingsStore: getDesktopSettingsStore(),
+      isDesktopManagedDaemonRunning: isDesktopManagedDaemonRunningSync,
+      stopDaemon: () => stopDesktopDaemonViaCli("quit"),
+      showShutdownFeedback: showDaemonShutdownDialog,
+    }),
+  installAppUpdateOnQuit: async (signal) => {
+    const settings = await getDesktopSettingsStore().get();
+    return installAppUpdateOnQuit({
+      currentVersion: app.getVersion(),
+      releaseChannel: settings.releaseChannel,
+      signal,
+    });
+  },
+  createUpdateDeadlineSignal: () => AbortSignal.timeout(UPDATE_QUIT_DEADLINE_MS),
+  onStopError: (error) => {
+    log.error("[desktop daemon] failed to stop managed daemon on quit", error);
+  },
+  onUpdateError: (error) => {
+    log.error("[auto-updater] failed to validate downloaded update on quit", error);
+  },
+});
+
+// electron-updater forwards this event through Electron's built-in autoUpdater.
+electronAutoUpdater.on("before-quit-for-update", quitLifecycle.handleBeforeQuitForUpdate);
+app.on("before-quit", quitLifecycle.handleBeforeQuit);
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {

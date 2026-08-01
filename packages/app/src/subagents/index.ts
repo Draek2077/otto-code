@@ -17,5 +17,9 @@ export {
   type RecordClearedInput,
 } from "./cleared-subagent-tokens-store";
 export { useDetachSubagent, type UseDetachSubagentInput } from "./use-detach-subagent";
+export {
+  useHideFinishedProviderSubagents,
+  type UseHideFinishedProviderSubagentsInput,
+} from "./use-hide-finished-provider-subagents";
 export { resolveCloseAgentTabPolicy, type CloseAgentTabPolicy } from "./close-tab-policy";
-export { shouldAutoOpenAgentTab } from "./auto-open-tab-policy";
+export { isWorkspaceRootAgent } from "./workspace-root-policy";

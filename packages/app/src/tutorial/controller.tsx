@@ -41,7 +41,7 @@ export function TutorialController() {
   const projectCount = useSessionStore((s) => {
     let count = 0;
     for (const session of Object.values(s.sessions)) {
-      count += session.workspaces.size + session.emptyProjects.size;
+      count += session.workspaces.size + session.projects.size;
     }
     return count;
   });

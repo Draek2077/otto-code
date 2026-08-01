@@ -64,6 +64,10 @@ export const es: TranslationResources = {
       newAgent: "Nuevo chat",
       openProject: "Abrir proyecto",
       home: "Hogar",
+      workspaces: "Espacios de trabajo",
+      addProject: "Agregar proyecto",
+      modelGroupLabel: "Modelo",
+      modelSearchKeywords: "cambiar modelo modificar modelo establecer modelo seleccionar modelo",
     },
   },
   chatMetrics: {
@@ -158,9 +162,11 @@ export const es: TranslationResources = {
       fileContext: "Contexto de archivo",
       folderContext: "Contexto de carpeta",
       lineContext: "Contexto de línea",
+      addIssueOrPr_mr: "Agregar problema o MR",
     },
     errors: {
       failedToSend: "No se pudo enviar el mensaje",
+      failedToCancel: "No se pudo enviar el mensaje",
       failedToCreateAgent: "No se pudo crear el agente",
       noHostSelected: "Ningún anfitrión seleccionado",
       initialPromptRequired: "Se requiere aviso inicial",
@@ -183,6 +189,8 @@ export const es: TranslationResources = {
       noResults: "No se encontraron resultados.",
       searchPlaceholder: "Problemas de búsqueda y relaciones públicas...",
       title: "Adjuntar problema o PR",
+      searchPlaceholder_mr: "Problemas de búsqueda y MRs...",
+      title_mr: "Adjuntar problema o MR",
     },
     interruptSubagentsWarning: {
       title: "¿Interrumpir los subagentes en ejecución?",
@@ -365,6 +373,7 @@ export const es: TranslationResources = {
     mode: {
       title: "Modo",
       selectWithValue: "Seleccione el modo de agente ({{value}})",
+      searchPlaceholder: "Modos de búsqueda...",
     },
     hints: {
       thinking: "Cambiar esfuerzo",
@@ -424,6 +433,7 @@ export const es: TranslationResources = {
       reconnecting: "Reconectando...",
       archivingTitle: "Agente de archivo...",
       archivingSubtitle: "Espere mientras archivamos este agente.",
+      timelineSyncFailed: "No se pudo actualizar el historial del agente. Reintentando…",
     },
     unavailable: {
       selectedHost: "Anfitrión seleccionado",
@@ -649,6 +659,19 @@ export const es: TranslationResources = {
       missing: "Workspace no encontrado",
       needsHostUpgrade: "Actualiza tu host para restaurar este espacio de trabajo",
       manageHost: "Administrar host",
+      recovery: {
+        archivedTitle: "Espacio de trabajo archivado",
+        restoreDescription:
+          "{{workspaceName}} se archivó y se eliminó su worktree. Restaura la rama {{branch}} para volver a abrirlo.",
+        unarchiveDescription:
+          "{{workspaceName}} está archivado. Desarchívalo para volver a abrirlo.",
+        restoreAction: "Restaurar",
+        unarchiveAction: "Desarchivar",
+        restoringTitle: "Restaurando espacio de trabajo",
+        restoringAction: "Restaurando...",
+        unavailableTitle: "Espacio de trabajo no disponible",
+        checkFailedTitle: "No se pudo comprobar el espacio de trabajo",
+      },
     },
     hoverCard: {
       scriptsAccessibility: "Scripts del Workspace",
@@ -889,6 +912,7 @@ export const es: TranslationResources = {
         close: "Cerca",
         renameTerminal: "Cambiar nombre de terminal",
         renameAgent: "Renombrar chat",
+        copyTerminalId: "Copiar ID del terminal",
       },
       actions: {
         newAgent: "Nuevo chat",
@@ -907,6 +931,7 @@ export const es: TranslationResources = {
         previewDisabledTooltip: "Abre un chat para previsualizar su servidor de desarrollo",
         previewPickServer: "¿Qué servidor iniciar?",
         previewStopServer: "Detener {{name}}",
+        exitFocusMode: "Salir del modo de concentración",
       },
       explorer: {
         open: "Explorador abierto",
@@ -926,6 +951,7 @@ export const es: TranslationResources = {
         reloadingAgent: "Agente de recarga...",
         reloadedAgent: "Agente recargado",
         failedToReloadAgent: "No se pudo recargar el agente",
+        terminalIdCopiedLabel: "ID del terminal",
       },
       confirmations: {
         close: "Cerca",
@@ -955,7 +981,15 @@ export const es: TranslationResources = {
           tabs: "Esto cerrará las pestañas{{tabs}}.",
           agents: "Esto archivará los agentes{{agents}}.",
         },
+        unsavedTitle: "Cambios sin guardar",
+        unsavedMessage:
+          "Esta pestaña tiene cambios sin guardar. Al cerrarla se descartará el borrador.",
+        closeWithoutSaving: "Cerrar sin guardar",
+        closePaneTitle: "¿Cerrar panel?",
+        bulkUnsaved:
+          "{{count}} pestaña(s) tienen cambios sin guardar. Al cerrar se descartarán esos borradores.",
       },
+      modified: "Cambios sin guardar",
     },
     header: {
       actions: {
@@ -984,6 +1018,11 @@ export const es: TranslationResources = {
       actions: {
         run: "Correr",
         view: "Vista",
+        chooseUrl: "Elegir URL",
+        copyUrl: "Copiar URL",
+        openService: "Ver servicio",
+        restart: "Reiniciar",
+        stop: "Detener",
       },
       accessibility: {
         trigger: "Scripts del Workspace",
@@ -991,10 +1030,21 @@ export const es: TranslationResources = {
         viewTerminal: "Ver terminal{{scriptName}}",
         runScript: "Ejecute el script{{scriptName}}",
         script: "Guión{{scriptName}}",
+        openService: "Ver servicio {{scriptName}}",
+        stopScript: "Detener{{scriptName}}",
+        restartScript: "Reiniciar{{scriptName}}",
+        copyUrl: "Copiar URL de{{scriptName}}",
+        chooseUrl: "Elegir URL para {{scriptName}}",
       },
       states: {
         exitCode: "salir de{{code}}",
         startFailed: "No se pudo iniciar{{scriptName}}",
+        stopFailed: "No se pudo detener{{scriptName}}",
+      },
+      routes: {
+        public: "Proxy inverso",
+        otto: "Memorable",
+        direct: "Directa",
       },
     },
     git: {
@@ -1038,6 +1088,9 @@ export const es: TranslationResources = {
           pending: "CreandoPR...",
           success: "PR creado",
           description: "Envía esta rama al remoto y abre un pull request contra {{baseRef}}",
+          label_mr: "Crear MR",
+          pending_mr: "Creando MR...",
+          success_mr: "MR creado",
         },
         mergeBranch: {
           label: "Fusionar en {{baseRef}}",
@@ -1068,6 +1121,11 @@ export const es: TranslationResources = {
           mergeDescription: "Fusiona el pull request con un commit de fusión",
           rebaseDescription:
             "Rebasa los commits del pull request sobre la rama base, sin commit de fusión",
+          squash_mr: "Fusionar MR (squash)",
+          merge_mr: "Fusionar MR (merge)",
+          rebase_mr: "Fusionar MR (rebase)",
+          pending_mr: "Fusionando MR...",
+          success_mr: "MR fusionado",
         },
         autoMerge: {
           enableSquash: "Fusión automática (squash)",
@@ -1134,6 +1192,18 @@ export const es: TranslationResources = {
             "Fusionar PR no está disponible hasta que GitHub informe que la solicitud de extracción está lista para fusionarse",
           autoMergeCannotDisable:
             "La combinación automática está habilitada, pero esta cuenta no puede deshabilitarla",
+          viewPrNoForge:
+            "Ver {{noun}} no está disponible en este momento porque {{brand}} no está conectado",
+          pullAndPushNoIncoming:
+            "Pull and push no está disponible porque no hay cambios entrantes que traer primero",
+          pullAndPushNothingToPush:
+            "Pull and push no está disponible porque no hay nada nuevo que enviar después de pull",
+          createPrNoForge:
+            "Crear {{noun}} no está disponible en este momento porque {{brand}} no está conectado",
+          archiveNotWorktree:
+            "El archivo no está disponible aquí porque este espacio de trabajo no se creó como un árbol de trabajoOtto",
+          mergePrNoForge:
+            "Fusionar {{noun}} no está disponible en este momento porque {{brand}} no está conectado",
         },
         toasts: {
           failedCommit: "No se pudo comprometer",
@@ -1175,6 +1245,7 @@ export const es: TranslationResources = {
           branchRemoteKept: "Se conserva la copia en origin.",
           branchDeleted: "Rama {{branchName}} eliminada.",
         },
+        viewPr_mr: "Ver MR",
       },
       diff: {
         viewChanges: "Ver cambios",
@@ -1230,6 +1301,20 @@ export const es: TranslationResources = {
         basePickerRedetectDescription: "Volver a calcular de qué rama se creó esta",
         basePickerRemoteDescription: "La rama de seguimiento remoto, que puede diferir de la local",
         baseChangeFailed: "No se pudo cambiar la rama base",
+        openChangesTab: "Abrir la pestaña Cambios",
+        closeChangesTab: "Cerrar la pestaña Cambios",
+        previewTooLargeTitle: "Este diff es demasiado grande para previsualizarlo",
+        previewTooLargeDescription: "Reduce la comparación para previsualizarla aquí",
+        commits: {
+          title: "Commits",
+          countLabel: "{{count}} commits del espacio de trabajo",
+          noneAhead: "Aún no hay commits por delante de {{baseRef}}",
+          fileDiffEmpty: "No hay cambios para mostrar",
+          fileDiffError: "Error al cargar el diff del archivo",
+          loading: "Cargando commits…",
+          loadError: "Error al cargar los commits",
+          empty: "Aún no hay commits",
+        },
       },
       commit: {
         messagePlaceholder: "Mensaje del commit",
@@ -1299,13 +1384,16 @@ export const es: TranslationResources = {
       pr: {
         actions: {
           viewPullRequest: "Ver",
+          openOn: "Abrir en {{brand}}",
         },
         sections: {
           checks: "cheques",
           reviews: "Reseñas",
+          pipeline: "Pipeline",
         },
         accessibility: {
           pullRequest: "Solicitud de extracción n.°{{number}}",
+          pullRequest_mr: "Solicitud de fusión !{{number}}",
         },
         states: {
           draft: "Borrador",
@@ -1326,7 +1414,29 @@ export const es: TranslationResources = {
           statusLoadFailed: "No se puede cargar el estado de la solicitud de extracción",
           activityLoadFailed: "No se puede cargar la actividad de solicitud de extracción",
         },
+        empty: {
+          noJobs: "Sin trabajos",
+          loadingPipeline: "Cargando pipeline...",
+          pipelineJobsLoadFailed: "No se pudieron cargar los trabajos del pipeline",
+          allowedToFail: "permitido fallar",
+        },
+        approvals: "{{given}} de {{required}} aprobaciones",
+        thread: {
+          discussion: "Hilo de discusión",
+        },
       },
+      forgeSetup: {
+        installCli: "Instala la CLI de {{cli}} para usar las funciones de {{brand}}.",
+        signIn: "Ejecuta {{command}} para usar las funciones de {{brand}}.",
+        generic: "Configura {{brand}} en este host para usar sus funciones.",
+      },
+    },
+    fileActions: {
+      openFile: "Abrir archivo",
+      copyPath: "Copiar ruta",
+      download: "Descargar",
+      addToChat: "Añadir al chat…",
+      moreActions: "Más acciones",
     },
   },
   sidebar: {
@@ -1341,6 +1451,7 @@ export const es: TranslationResources = {
       home: "Hogar",
       settings: "Ajustes",
       closeSidebar: "Cerrar barra lateral",
+      hosts: "Hosts",
     },
     sections: {
       sessions: "Historial",
@@ -1361,6 +1472,8 @@ export const es: TranslationResources = {
         openNewWindowFailed: "No se pudo abrir una ventana nueva",
         remove: "Eliminar proyecto",
         removing: "Eliminando...",
+        openFolder: "Open in file manager",
+        openFolderFailed: "Couldn't open folder",
       },
       confirmations: {
         removeTitle: "¿Quitar proyecto?",
@@ -1398,6 +1511,10 @@ export const es: TranslationResources = {
         hideFromSidebar: "Ocultar de la barra lateral",
         archiving: "Archivando...",
         hiding: "Ocultación...",
+        showMore: "Mostrar más",
+        showLess: "Mostrar menos",
+        pin: "Anclar arriba",
+        unpin: "Desanclar",
       },
       reopenWorktree: {
         menu: "Reabrir worktree...",
@@ -1428,6 +1545,20 @@ export const es: TranslationResources = {
         hideFailed: "No se pudo ocultar el espacio de trabajo",
         archiveFailed: "No se pudo archivar el espacio de trabajo",
       },
+    },
+    pinned: {
+      title: "Anclados",
+    },
+    help: {
+      trigger: "Ayuda y soporte",
+      sectionHelp: "Ayuda",
+      diagnostics: "Ejecutar diagnóstico",
+      shortcuts: "Atajos de teclado",
+      reportIssue: "Informar de un problema",
+      discord: "Discord",
+      github: "Crear incidencia en GitHub",
+      whatsNew: "Novedades",
+      version: "Otto {{version}}",
     },
   },
   newProject: {
@@ -2681,6 +2812,8 @@ export const es: TranslationResources = {
         confirm: "Vaciar",
       },
     },
+    archiveFinishedAction: "Archivar subagentes finalizados",
+    archiveFinishedTooltip: "Archivar finalizados",
   },
   panels: {
     draft: {
@@ -2703,6 +2836,36 @@ export const es: TranslationResources = {
         actualSize: "Tamaño real",
         fitToWindow: "Ajustar a la ventana",
       },
+      editor: {
+        fileSize: "Tamaño {{size}}",
+        lines: "{{count}} líneas",
+        editorStatus: "Estado del editor: {{status}}",
+        unsavedChanges: "Cambios sin guardar",
+        saving: "Guardando...",
+        saveFailed: "Error al guardar",
+        changedOnDisk: "Cambiado en disco",
+        vimMode: "Modo Vim {{mode}}",
+        cursor: "Línea {{line}}, columna {{column}}",
+        preview: "Vista previa",
+        source: "Código fuente",
+        unavailableTitle: "Archivo no disponible en disco",
+        conflictDescription: "Se conservó el búfer local. Elige qué versión mantener.",
+        overwrite: "Sobrescribir",
+        reload: "Recargar",
+        reloadTitle: "¿Recargar desde el disco?",
+        reloadMessage: "Se perderán tus cambios locales.",
+      },
+    },
+    diff: {
+      changesLabel: "Cambios",
+      changesSubtitle: "Diferencias del árbol de trabajo",
+      commitSubtitle: "Diferencias del commit",
+      uncommittedSubtitle: "Cambios sin confirmar",
+      baseSubtitle: "Comparado con {{baseRef}}",
+      directoryMissing: "No se encontró el directorio de Workspace.",
+      empty: "Sin cambios",
+      loadError: "No se pudieron cargar las diferencias",
+      capabilityMissing: "Actualiza el host para ver las diferencias de los commits.",
     },
   },
   toolCallDetails: {
@@ -2725,6 +2888,8 @@ export const es: TranslationResources = {
     sessionCost: "Costo de la sesión{{cost}}",
     accessibility: "Ventana de contexto{{percentage}}% utilizada",
     tooltip: "Ver uso",
+    used: "{{percentage}}% utilizado",
+    tokens: "Fichas{{used}}/{{max}}",
   },
   review: {
     comment: {
@@ -2775,6 +2940,7 @@ export const es: TranslationResources = {
       permissions: "Permisos",
       diagnostics: "Diagnóstico",
       about: "Acerca de",
+      editor: "Editor",
     },
     hostSections: {
       connections: "Conexiones",
@@ -2883,6 +3049,33 @@ export const es: TranslationResources = {
           zhCN: "中文",
         },
       },
+      browserData: {
+        title: "Datos del navegador",
+        siteData: "Cookies y datos de sitios",
+        description:
+          "Las pestañas del navegador comparten inicios de sesión y datos de sitios en Otto.",
+        clear: "Borrar datos del navegador",
+        clearing: "Borrando...",
+        confirmTitle: "¿Borrar los datos del navegador?",
+        confirmMessage:
+          "Se cerrarán las sesiones de los sitios y se recargarán las pestañas abiertas del navegador.",
+        success: "Datos del navegador borrados.",
+        error: "No se pudieron borrar los datos del navegador.",
+      },
+      autoExpandReasoning: {
+        label: "Siempre expandir razonamiento",
+        description:
+          "Mostrar los bloques de pensamiento y razonamiento del agente totalmente expandidos de forma predeterminada",
+      },
+      toolCallDetail: {
+        label: "Visualización de llamadas a herramientas",
+        description: "Cómo aparecen las llamadas a herramientas en la cronología",
+        accessibilityLabel: "Seleccionar visualización de llamadas a herramientas ({{value}})",
+        options: {
+          overview: "Resumen",
+          detailed: "Detalle completo",
+        },
+      },
     },
     preview: {
       title: "Vista previa",
@@ -2979,6 +3172,8 @@ export const es: TranslationResources = {
           terracotta: "Terracota",
           horizon: "Horizonte",
           powder: "Polvo",
+          light: "Luz",
+          auto: "Sistema",
         },
       },
       agents: {
@@ -3110,6 +3305,9 @@ export const es: TranslationResources = {
         highlightThemeAccessibility: "Tema destacado:{{value}}",
         previewAccessibility: "Vista previa en vivo del tema de sintaxis y fuente del código",
       },
+      detailLevel: {
+        title: "Nivel de detalle",
+      },
     },
     shortcuts: {
       dialogTitle: "Atajos",
@@ -3180,10 +3378,12 @@ export const es: TranslationResources = {
         editorGoToDefinition: "Ir a la definición",
         editorFindReferences: "Buscar referencias",
         editorRenameSymbol: "Renombrar símbolo",
+        switchProject: "Cambiar proyecto",
       },
       helpNotes: {
         showKeyboardShortcuts: "Disponible cuando el foco no está en un campo de texto o terminal.",
       },
+      searchPlaceholder: "Buscar atajos",
     },
     integrations: {
       title: "Integraciones",
@@ -3476,6 +3676,8 @@ export const es: TranslationResources = {
           requestFailedTitle: "La actualización falló",
           requestFailedMessage: "No se pudo actualizar el daemon: {{error}}",
           dialogFailedMessage: "No se pudo abrir el diálogo de confirmación de la actualización.",
+          desktopManagedHint:
+            "Este daemon está administrado por Otto Desktop. Actualiza Otto Desktop en el host.",
         },
         dangerZone: "Zona de peligro",
         remove: {
@@ -3573,6 +3775,8 @@ export const es: TranslationResources = {
         removing: "Eliminando...",
         requiresUpdate: "Actualiza el host para eliminar proveedores.",
         failed: "No se pudo eliminar el proveedor",
+        confirm: "Remove",
+        errorTitle: "Unable to remove provider",
       },
       models: {
         one: "1 modelo",
@@ -3609,6 +3813,11 @@ export const es: TranslationResources = {
         none: "No hay diagnóstico disponible",
         failedToFetch: "No se pudo recuperar el diagnóstico",
         unknownError: "Error desconocido",
+      },
+      actions: {
+        menu: "{{name}} actions",
+        remove: "Remove provider",
+        removing: "Removing...",
       },
     },
     project: {
@@ -3711,6 +3920,11 @@ export const es: TranslationResources = {
         discard: "Descartar",
         keepEditing: "Seguir editando",
       },
+    },
+    editor: {
+      title: "Editor",
+      vimKeybindings: "Atajos de Vim",
+      vimHint: "Se aplica a archivos fuente en web y escritorio.",
     },
   },
   artifacts: {

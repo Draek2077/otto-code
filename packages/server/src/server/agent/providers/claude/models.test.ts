@@ -387,3 +387,26 @@ describe("checkClaudeAutoModeSupport", () => {
     ).toBe(false);
   });
 });
+
+// Carried over from upstream's version of this file. Both cases pass against
+// Otto's manifest and are worth keeping: they are upstream's own assertion that
+// Opus 5 is natively 1M with a single catalog entry, and that `[1m]` on a
+// native-1M id is a retired decoration the normalizer folds away.
+describe("Claude Opus 5 catalog", () => {
+  it("offers a single Opus 5 entry with a 1M context window", () => {
+    const opus5Models = getClaudeModels()
+      .filter((model) => model.id.startsWith("claude-opus-5"))
+      .map(({ id, label, contextWindowMaxTokens }) => ({ id, label, contextWindowMaxTokens }));
+
+    expect(opus5Models).toEqual([
+      { id: "claude-opus-5", label: "Opus 5", contextWindowMaxTokens: 1_000_000 },
+    ]);
+  });
+
+  it("resolves retired and dated Opus 5 IDs to the single catalog entry", () => {
+    expect(findClaudeModel("claude-opus-5[1m]")?.id).toBe("claude-opus-5");
+    expect(findClaudeModel("claude-opus-5-20260724")?.id).toBe("claude-opus-5");
+    expect(findClaudeModel("claude-opus-5-20260724[1m]")?.id).toBe("claude-opus-5");
+    expect(findClaudeModel("claude-opus-5[1m]")?.contextWindowMaxTokens).toBe(1_000_000);
+  });
+});

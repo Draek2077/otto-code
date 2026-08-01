@@ -698,6 +698,28 @@ follows is everything that charter had left._
 
 ### Testing & tooling
 
+- 🟡 **42 files read a Unistyles style proxy at module scope, and the guard that catches it is
+  ratcheted rather than clean.** `docs/unistyles.md` forbids module-level style reads: the value is
+  materialized while the app may still be on the temporary system theme, and a view mounting after
+  the persisted theme lands keeps the stale object. Settings dividers once rendered light inside a
+  dark card for exactly this reason. The Paseo v0.2.5 merge brought a guard test for it
+  (`packages/app/src/styles/unistyles-module-scope.test.ts`), and Otto had 42 pre-existing offenders
+  (106 declarations) listed in `unistyles-module-scope.baseline.json`. The guard fails any _new_
+  offender and any baseline entry that has been fixed but not removed, so the list can only shrink.
+  Draining it means moving each cached array inside the component or a `useMemo` — mechanical, but it
+  wants a look at each use site rather than a bulk rewrite.
+
+- 🟡 **Otto has no diff tab panel, so `working_diff` and `commit_diff` are half-wired.** Both kinds
+  are in the tab-target union with identity builders and tab-menu handling, but
+  `normalizeWorkspaceTabTarget` rejects them and no panel is registered, so opening one yields
+  nothing. Paseo's `diff-panel.tsx` needs a restructured `@/git/diff-pane` exporting
+  SharedDiffView / DiffFilesToolbar / resolveDiffLayout, and Otto's diff-pane carries ~1,900
+  substantive lines theirs lacks (file history, rollback, comments, tree guides), so adopting the tab
+  means merging that file properly. Two skipped tests in `workspace-layout-store.test.ts` and the
+  `DEFERRED(paseoDiffTab)` marker in `panels/register-panels.ts` un-skip together with the fix. The
+  alternative is removing both kinds from the union; leaving both halves as they are is the state
+  that produces the dead tab.
+
 - 🔴 **`send_agent_prompt` reports success for prompts that are silently dropped, and nothing tests
   agent-to-agent flows end to end.** A prompt sent to a busy agent lands in the steer queue; if that
   agent is archived or closed before the queue drains, the entry is discarded with no error, no
@@ -1177,6 +1199,23 @@ Two consequences worth acting on rather than discovering later:
 - **Watch for anything that silently forfeits merge capability.** A concrete instance: a literal NUL
   byte in a string makes git treat the whole file as **binary** — no textual diff, no 3-way merge.
   Use the `"\0"` escape instead. Two files have hit this.
+
+### Tail from the v0.2.5 merge
+
+The merge is green (typecheck, lint and the touched suites), but three things were parked rather
+than resolved, and each is a deliberate choice with a reason:
+
+- **Paseo's diff tab** (`working_diff` / `commit_diff`). Their `diff-panel.tsx` needs a restructured
+  `@/git/diff-pane` that exports `SharedDiffView` / `DiffFilesToolbar` / `resolveDiffLayout`. Otto's
+  `diff-pane` carries ~1.9k lines theirs does not (file history, rollback, comments, tree guides), so
+  adopting the tab means merging that file properly, not taking it wholesale. The tab kinds stay in
+  the union; nothing registers them. See the `DEFERRED(paseoDiffTab)` note in `register-panels.ts`.
+- **~180 files still holding our side of an upstream change.** They were resolved wholesale to ours
+  during the conflict pass, so upstream's edit is gone with no marker and no error. Detect with:
+  compare the working tree against `git show <merge-base>:<file>` for every file in
+  `git diff --numstat <merge-base> v0.2.5`.
+- **Bitbucket Cloud end-to-end.** The provider-neutral `forgeSpecific` envelope replaced Otto's
+  sibling `hosting` block; the types line up but no live Bitbucket run has confirmed it.
 
 ## Deferred indefinitely
 

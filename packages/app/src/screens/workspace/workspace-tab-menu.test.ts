@@ -31,6 +31,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       menuTestIDBase: "workspace-tab-context-agent_123",
       isDeveloperMode: true,
       onCopyResumeCommand,
+      onCopyTerminalId: vi.fn(),
       onCopyAgentId,
       onCopyFilePath,
       onReloadAgent,
@@ -62,6 +63,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       menuTestIDBase: "workspace-tab-context-agent_123",
       isDeveloperMode: false,
       onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath: vi.fn(),
       onReloadAgent: vi.fn(),
@@ -92,6 +94,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       menuTestIDBase: "workspace-tab-menu-agent_123",
       isDeveloperMode: true,
       onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath: vi.fn(),
       onReloadAgent: vi.fn(),
@@ -128,6 +131,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       menuTestIDBase: "workspace-tab-menu-draft_123",
       isDeveloperMode: true,
       onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath: vi.fn(),
       onReloadAgent: vi.fn(),
@@ -157,6 +161,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       menuTestIDBase: "workspace-tab-context-agent_123",
       isDeveloperMode: true,
       onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath: vi.fn(),
       onReloadAgent: vi.fn(),
@@ -187,6 +192,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       menuTestIDBase: "workspace-tab-context-agent_123",
       isDeveloperMode: true,
       onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath: vi.fn(),
       onReloadAgent: vi.fn(),
@@ -206,7 +212,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(onRenameTab).toHaveBeenCalledWith(tab);
   });
 
-  it("includes rename as the first entry for terminal tabs", () => {
+  it("leads with copy terminal id, then rename, for terminal tabs", () => {
     const onRenameTab = vi.fn();
     const terminalTab: WorkspaceTabDescriptor = {
       key: "terminal_abc",
@@ -222,6 +228,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       menuTestIDBase: "workspace-tab-context-terminal_abc",
       isDeveloperMode: true,
       onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath: vi.fn(),
       onReloadAgent: vi.fn(),
@@ -233,7 +240,10 @@ describe("buildWorkspaceTabMenuEntries", () => {
     });
 
     const labels = entries.filter((entry) => entry.kind === "item").map((entry) => entry.label);
-    expect(labels[0]).toBe("Rename");
+    // Copying the terminal id leads, then rename — a terminal tab's identity is
+    // the thing you most often want off it.
+    expect(labels[0]).toBe("Copy terminal id");
+    expect(labels[1]).toBe("Rename");
     expect(labels).not.toContain("Copy resume command");
     expect(labels).not.toContain("Copy agent id");
     expect(labels).not.toContain("Copy file path");
@@ -263,6 +273,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       menuTestIDBase: "workspace-tab-context-file_abc",
       isDeveloperMode: true,
       onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath,
       onReloadAgent: vi.fn(),
@@ -305,6 +316,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
       menuTestIDBase,
       isDeveloperMode: true,
       onCopyResumeCommand: vi.fn(),
+      onCopyTerminalId: vi.fn(),
       onCopyAgentId: vi.fn(),
       onCopyFilePath: vi.fn(),
       onReloadAgent: vi.fn(),
@@ -359,6 +371,7 @@ describe("buildWorkspaceTabMenuEntries move-to-workspace entry", () => {
     menuTestIDBase: "workspace-tab-context-agent_123",
     isDeveloperMode: false,
     onCopyResumeCommand: vi.fn(),
+    onCopyTerminalId: vi.fn(),
     onCopyAgentId: vi.fn(),
     onCopyFilePath: vi.fn(),
     onReloadAgent: vi.fn(),

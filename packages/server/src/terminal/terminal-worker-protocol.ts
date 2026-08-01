@@ -30,6 +30,8 @@ export interface WorkerCreateTerminalOptions {
   env?: Record<string, string>;
   command?: string;
   args?: string[];
+  rows?: number;
+  cols?: number;
   activityToken?: string;
   activityUrl?: string | null;
 }

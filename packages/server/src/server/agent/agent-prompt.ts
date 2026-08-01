@@ -154,12 +154,21 @@ export function startAgentRun(
  * Shared across Session (app/WS), MCP, and CLI so every surface that acts on
  * an archived agent unarchives it the same way.
  */
+export interface AgentUnarchiveController {
+  unarchiveSnapshot(
+    agentId: string,
+    updates?: { workspaceId?: string; labels?: Record<string, string | null> },
+  ): Promise<boolean>;
+  notifyAgentState(agentId: string): void;
+}
+
 export async function unarchiveAgentState(
   _agentStorage: AgentStorage,
-  agentManager: AgentManager,
+  agentManager: AgentUnarchiveController,
   agentId: string,
+  updates?: { workspaceId?: string; labels?: Record<string, string | null> },
 ): Promise<boolean> {
-  const unarchived = await agentManager.unarchiveSnapshot(agentId);
+  const unarchived = await agentManager.unarchiveSnapshot(agentId, updates);
   if (!unarchived) return false;
   agentManager.notifyAgentState(agentId);
   return true;
@@ -319,6 +328,8 @@ export interface SetupFinishNotificationParams {
   agentStorage: AgentStorage;
   childAgentId: string;
   callerAgentId: string;
+  /** Skip the notification when the child is no longer owned by the caller. */
+  requireParentOwnership?: boolean;
   logger: Logger;
 }
 
@@ -339,7 +350,14 @@ function formatFinishNotificationBody(params: FinishNotificationBodyInput): stri
 }
 
 export function setupFinishNotification(params: SetupFinishNotificationParams): void {
-  const { agentManager, agentStorage, childAgentId, callerAgentId, logger } = params;
+  const {
+    agentManager,
+    agentStorage,
+    childAgentId,
+    callerAgentId,
+    requireParentOwnership = false,
+    logger,
+  } = params;
   let hasSeenRunning = false;
   let fired = false;
   let unsubscribe: (() => void) | null = null;
@@ -357,6 +375,9 @@ export function setupFinishNotification(params: SetupFinishNotificationParams): 
     }
 
     const record = await agentStorage.get(childAgentId);
+    if (requireParentOwnership && record?.labels?.["otto.parentAgentId"] !== callerAgentId) {
+      return;
+    }
     const title = record?.title ?? childAgentId;
     const lastAssistantMessage = await agentManager.getLastAssistantMessage(childAgentId);
     const body = formatFinishNotificationBody({

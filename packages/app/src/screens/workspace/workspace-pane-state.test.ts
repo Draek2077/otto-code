@@ -6,7 +6,7 @@ import {
   resolveWorkspaceNewChatPlacement,
 } from "@/screens/workspace/workspace-pane-state";
 import type { WorkspaceLayout } from "@/stores/workspace-layout-store";
-import type { WorkspaceTab } from "@/stores/workspace-tabs-store";
+import type { WorkspaceTab } from "@/workspace-tabs/model";
 
 function createTab(tabId: string, target: WorkspaceTab["target"]): WorkspaceTab {
   return {

@@ -8,7 +8,8 @@
 // on stylesheet order. Code/diff/terminal surfaces carry `data-pmono` (and have their
 // subtree excluded via `:not([data-pmono] *)`) so they keep their monospace font.
 const STYLE_ID = "otto-ui-font";
-const RULE = "#root *:not([data-pmono]):not([data-pmono] *){font-family:var(--otto-ui-font);}";
+const RULE =
+  ":is(#root, #overlay-root) *:not([data-pmono]):not([data-pmono] *){font-family:var(--otto-ui-font);}";
 
 export function applyRootUiFont(uiFontStack: string): void {
   if (typeof document === "undefined") return;

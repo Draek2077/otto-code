@@ -58,12 +58,14 @@ export function getAgentAttachmentPillContent(
         title: t("message.attachments.review"),
         subtitle: getReviewSubtitle(attachment.comments.length, t),
       };
+    case "forge_change_request":
     case "github_pr":
       return {
         icon: attachmentGithubPrIcon,
         title: attachment.title,
         subtitle: `PR #${attachment.number}`,
       };
+    case "forge_issue":
     case "github_issue":
       return {
         icon: attachmentGithubIssueIcon,

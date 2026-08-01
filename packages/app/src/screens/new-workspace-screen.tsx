@@ -37,7 +37,7 @@ import { compactUp } from "@/styles/theme";
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
 import { resolveSpawnPersonalityId } from "@/composer/draft/workspace-tab-core";
-import { useGithubSearchQuery } from "@/git/use-github-search-query";
+import { useForgeSearchQuery } from "@/git/use-forge-search-query";
 import {
   useHostRuntimeClient,
   useHostRuntimeConnectionStatuses,
@@ -86,7 +86,7 @@ import { useProjectIconDataByProjectKey } from "@/projects/project-icons";
 import type { ComposerAttachment, UserComposerAttachment } from "@/attachments/types";
 import { useDraftWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
 import type { MessagePayload } from "@/composer/types";
-import type { AgentAttachment, GitHubSearchItem } from "@otto-code/protocol/messages";
+import type { AgentAttachment, ForgeSearchItem } from "@otto-code/protocol/messages";
 import type { CreateOttoWorktreeInput } from "@otto-code/client/internal/daemon-client";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
@@ -188,7 +188,6 @@ interface PickerOptionData {
 
 interface PickerSelection {
   item: PickerItem;
-  attachedPrNumber: number | null;
 }
 
 const BRANCH_OPTION_PREFIX = "branch:";
@@ -679,7 +678,7 @@ function newWorkspaceHostOptionTestID(serverId: string): string {
 
 function computePickerOptionData(
   branchDetails: ReadonlyArray<{ name: string; committerDate: number }>,
-  prItems: ReadonlyArray<GitHubSearchItem>,
+  prItems: ReadonlyArray<ForgeSearchItem>,
 ): PickerOptionData {
   const idMap = new Map<string, PickerItem>();
 
@@ -1839,12 +1838,12 @@ export function NewWorkspaceScreen({
     staleTime: 15_000,
   });
 
-  const githubPrSearchQuery = useGithubSearchQuery({
+  const githubPrSearchQuery = useForgeSearchQuery({
     client,
     serverId: selectedServerId,
     cwd: selectedSourceDirectory ?? "",
     query: debouncedPickerSearchQuery,
-    kinds: ["github-pr"],
+    kinds: ["change_request"],
     enabled: pickerQueryEnabled,
   });
 
@@ -1852,8 +1851,10 @@ export function NewWorkspaceScreen({
     () => normalizeBranchDetails(branchSuggestionsQuery.data),
     [branchSuggestionsQuery.data],
   );
-  const githubFeaturesEnabled = githubPrSearchQuery.data?.githubFeaturesEnabled !== false;
-  const prItems: GitHubSearchItem[] = useMemo(() => {
+  // ForgeAuthState replaced the githubFeaturesEnabled boolean: anything other
+  // than "authenticated" means we cannot list change requests.
+  const githubFeaturesEnabled = githubPrSearchQuery.data?.authState !== "unauthenticated";
+  const prItems: ForgeSearchItem[] = useMemo(() => {
     if (!githubFeaturesEnabled) return [];
     return githubPrSearchQuery.data?.items ?? [];
   }, [githubFeaturesEnabled, githubPrSearchQuery.data?.items]);
@@ -1875,22 +1876,20 @@ export function NewWorkspaceScreen({
   }, [selectedItem]);
   const selectPickerItem = useCallback(
     (item: PickerItem) => {
-      const next = syncPickerPrAttachment({
+      // Ownership rides on the attachment now, so the screen no longer tracks
+      // which PR number the picker put there.
+      const nextAttachments = syncPickerPrAttachment({
         attachments: chatDraft.attachments,
-        previousPickerPrNumber: manualPickerSelection?.attachedPrNumber ?? null,
         item,
       });
 
-      setManualPickerSelection({
-        item,
-        attachedPrNumber: next.attachedPrNumber,
-      });
-      if (next.attachments !== chatDraft.attachments) {
-        chatDraft.setAttachments(next.attachments);
+      setManualPickerSelection({ item });
+      if (nextAttachments !== chatDraft.attachments) {
+        chatDraft.setAttachments(nextAttachments);
       }
       setPickerOpen(false);
     },
-    [chatDraft, manualPickerSelection?.attachedPrNumber],
+    [chatDraft],
   );
 
   const handleSelectOption = useCallback(
@@ -2130,7 +2129,7 @@ export function NewWorkspaceScreen({
           ensureWorkspace: ensureWorkspaceForSubmit,
           serverId: selectedServerId,
           navigate: (targetServerId, workspaceId) =>
-            navigateToWorkspace(targetServerId, workspaceId),
+            navigateToWorkspace({ serverId: targetServerId, workspaceId: workspaceId }),
         });
         return;
       }
@@ -2182,7 +2181,7 @@ export function NewWorkspaceScreen({
               if (!existingWorkspace) {
                 // Vanished between the steer resolving it and the user answering
                 // (archived from another client). Nothing to start a chat in.
-                navigateToWorkspace(selectedServerId, workspaceId);
+                navigateToWorkspace({ serverId: selectedServerId, workspaceId: workspaceId });
                 return;
               }
               return runSubmitNewWorkspace(payload, { existingWorkspace });

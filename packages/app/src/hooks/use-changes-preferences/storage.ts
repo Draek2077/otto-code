@@ -16,6 +16,7 @@ const changesPreferencesSchema = z.object({
   wrapLines: z.boolean().optional(),
   hideWhitespace: z.boolean().optional(),
   pinnedToolbarItems: z.array(z.enum(CHANGES_TOOLBAR_ITEM_IDS)).optional(),
+  commitsCollapsed: z.boolean().optional(),
 });
 
 export interface ChangesPreferences {
@@ -24,6 +25,7 @@ export interface ChangesPreferences {
   wrapLines: boolean;
   hideWhitespace: boolean;
   pinnedToolbarItems: ChangesToolbarItemId[];
+  commitsCollapsed: boolean;
 }
 
 export const DEFAULT_CHANGES_PREFERENCES: ChangesPreferences = {
@@ -32,6 +34,7 @@ export const DEFAULT_CHANGES_PREFERENCES: ChangesPreferences = {
   wrapLines: false,
   hideWhitespace: false,
   pinnedToolbarItems: DEFAULT_PINNED_CHANGES_TOOLBAR_ITEMS,
+  commitsCollapsed: true,
 };
 
 export interface KeyValueStorage {

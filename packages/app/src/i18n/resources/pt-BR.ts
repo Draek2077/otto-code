@@ -64,6 +64,10 @@ export const ptBR: TranslationResources = {
       newAgent: "Novo chat",
       openProject: "Abrir projeto",
       home: "Início",
+      workspaces: "Espaços de trabalho",
+      addProject: "Adicionar projeto",
+      modelGroupLabel: "Modelo",
+      modelSearchKeywords: "trocar modelo mudar modelo definir modelo selecionar modelo",
     },
   },
   chatMetrics: {
@@ -159,9 +163,11 @@ export const ptBR: TranslationResources = {
       fileContext: "Contexto de arquivo",
       folderContext: "Contexto de pasta",
       lineContext: "Contexto de linha",
+      addIssueOrPr_mr: "Adicionar issue ou MR",
     },
     errors: {
       failedToSend: "Falha ao enviar mensagem",
+      failedToCancel: "Falha ao enviar mensagem",
       failedToCreateAgent: "Falha ao criar agente",
       noHostSelected: "Nenhum host selecionado",
       initialPromptRequired: "O prompt inicial é obrigatório",
@@ -184,6 +190,8 @@ export const ptBR: TranslationResources = {
       noResults: "Nenhum resultado encontrado.",
       searchPlaceholder: "Buscar issues e PRs...",
       title: "Anexar issue ou PR",
+      searchPlaceholder_mr: "Buscar issues e MRs...",
+      title_mr: "Anexar issue ou MR",
     },
     interruptSubagentsWarning: {
       title: "Interromper os subagentes em execução?",
@@ -366,6 +374,7 @@ export const ptBR: TranslationResources = {
     mode: {
       title: "Modo",
       selectWithValue: "Selecionar modo do agente ({{value}})",
+      searchPlaceholder: "Buscar modos...",
     },
     hints: {
       thinking: "Alterar esforço",
@@ -425,6 +434,7 @@ export const ptBR: TranslationResources = {
       reconnecting: "Reconectando...",
       archivingTitle: "Arquivando agente...",
       archivingSubtitle: "Aguarde enquanto arquivamos este agente.",
+      timelineSyncFailed: "Não foi possível atualizar o histórico do agente. Tentando novamente…",
     },
     unavailable: {
       selectedHost: "Host selecionado",
@@ -650,6 +660,19 @@ export const ptBR: TranslationResources = {
       missing: "Workspace não encontrado",
       needsHostUpgrade: "Atualize o host para restaurar este workspace",
       manageHost: "Gerenciar host",
+      recovery: {
+        archivedTitle: "Workspace arquivado",
+        restoreDescription:
+          "{{workspaceName}} foi arquivado e sua worktree foi removida. Restaure a branch {{branch}} para abri-lo novamente.",
+        unarchiveDescription:
+          "{{workspaceName}} está arquivado. Desarquive-o para abri-lo novamente.",
+        restoreAction: "Restaurar",
+        unarchiveAction: "Desarquivar",
+        restoringTitle: "Restaurando workspace",
+        restoringAction: "Restaurando...",
+        unavailableTitle: "Workspace indisponível",
+        checkFailedTitle: "Não foi possível verificar o workspace",
+      },
     },
     hoverCard: {
       scriptsAccessibility: "Scripts do Workspace",
@@ -889,6 +912,7 @@ export const ptBR: TranslationResources = {
         close: "Fechar",
         renameTerminal: "Renomear terminal",
         renameAgent: "Renomear chat",
+        copyTerminalId: "Copiar ID do terminal",
       },
       actions: {
         newAgent: "Novo chat",
@@ -907,6 +931,7 @@ export const ptBR: TranslationResources = {
         previewDisabledTooltip: "Abra um chat para visualizar seu servidor de desenvolvimento",
         previewPickServer: "Iniciar qual servidor?",
         previewStopServer: "Parar {{name}}",
+        exitFocusMode: "Sair do modo de foco",
       },
       explorer: {
         open: "Abrir explorador",
@@ -926,6 +951,7 @@ export const ptBR: TranslationResources = {
         reloadingAgent: "Recarregando agente...",
         reloadedAgent: "Agente recarregado",
         failedToReloadAgent: "Falha ao recarregar agente",
+        terminalIdCopiedLabel: "ID do terminal",
       },
       confirmations: {
         close: "Fechar",
@@ -955,7 +981,14 @@ export const ptBR: TranslationResources = {
           tabs: "Isso vai fechar {{tabs}} aba(s).",
           agents: "Isso vai arquivar {{agents}} agente(s).",
         },
+        unsavedTitle: "Alterações não salvas",
+        unsavedMessage: "Esta aba tem alterações não salvas. Fechá-la descartará o rascunho.",
+        closeWithoutSaving: "Fechar sem salvar",
+        closePaneTitle: "Fechar painel?",
+        bulkUnsaved:
+          "{{count}} aba(s) têm alterações não salvas. Fechar descartará esses rascunhos.",
       },
+      modified: "Alterações não salvas",
     },
     header: {
       actions: {
@@ -983,6 +1016,11 @@ export const ptBR: TranslationResources = {
       actions: {
         run: "Executar",
         view: "Ver",
+        chooseUrl: "Escolher URL",
+        copyUrl: "Copiar URL",
+        openService: "Ver serviço",
+        restart: "Reiniciar",
+        stop: "Parar",
       },
       accessibility: {
         trigger: "Scripts do Workspace",
@@ -990,10 +1028,21 @@ export const ptBR: TranslationResources = {
         viewTerminal: "Ver terminal de {{scriptName}}",
         runScript: "Executar script {{scriptName}}",
         script: "script {{scriptName}}",
+        openService: "Ver serviço {{scriptName}}",
+        stopScript: "Parar {{scriptName}}",
+        restartScript: "Reiniciar {{scriptName}}",
+        copyUrl: "Copiar URL de {{scriptName}}",
+        chooseUrl: "Escolher URL para {{scriptName}}",
       },
       states: {
         exitCode: "saída {{code}}",
         startFailed: "Falha ao iniciar {{scriptName}}",
+        stopFailed: "Falha ao parar {{scriptName}}",
+      },
+      routes: {
+        public: "Proxy reverso",
+        otto: "Memorable",
+        direct: "Direta",
       },
     },
     git: {
@@ -1038,6 +1087,9 @@ export const ptBR: TranslationResources = {
           pending: "Criando PR...",
           success: "PR criada",
           description: "Envia esta branch ao remoto e abre um pull request contra {{baseRef}}",
+          label_mr: "Criar MR",
+          pending_mr: "Criando MR...",
+          success_mr: "MR criada",
         },
         mergeBranch: {
           label: "Fazer merge em {{baseRef}}",
@@ -1068,6 +1120,11 @@ export const ptBR: TranslationResources = {
           mergeDescription: "Faz merge do pull request com um commit de merge",
           rebaseDescription:
             "Faz rebase dos commits do pull request na branch base, sem commit de merge",
+          squash_mr: "Merge",
+          merge_mr: "Merge",
+          rebase_mr: "Merge",
+          pending_mr: "Fazendo merge da MR...",
+          success_mr: "MR mergeada",
         },
         autoMerge: {
           enableSquash: "Merge automático",
@@ -1127,6 +1184,18 @@ export const ptBR: TranslationResources = {
             "Merge da PR não está disponível até o GitHub informar que a pull request está pronta para merge",
           autoMergeCannotDisable:
             "O merge automático está ativado, mas esta conta não pode desativá-lo",
+          viewPrNoForge:
+            "Ver {{noun}} não está disponível agora porque o {{brand}} não está conectado",
+          pullAndPushNoIncoming:
+            "Pull e push não estão disponíveis porque não há alterações de entrada para puxar primeiro",
+          pullAndPushNothingToPush:
+            "Pull e push não estão disponíveis porque não há nada novo para enviar depois do pull",
+          createPrNoForge:
+            "Criar {{noun}} não está disponível agora porque o {{brand}} não está conectado",
+          archiveNotWorktree:
+            "Arquivar não está disponível aqui porque este workspace não foi criado como um worktree do Otto",
+          mergePrNoForge:
+            "Merge da {{noun}} não está disponível agora porque o {{brand}} não está conectado",
         },
         toasts: {
           failedCommit: "Falha ao fazer commit",
@@ -1168,6 +1237,7 @@ export const ptBR: TranslationResources = {
           branchRemoteKept: "A cópia no origin é mantida.",
           branchDeleted: "Branch {{branchName}} excluída.",
         },
+        viewPr_mr: "Ver MR",
       },
       diff: {
         viewChanges: "Ver alterações",
@@ -1222,6 +1292,20 @@ export const ptBR: TranslationResources = {
         basePickerRedetectDescription: "Calcular novamente de qual branch este foi criado",
         basePickerRemoteDescription: "O branch de rastreamento remoto, que pode diferir do local",
         baseChangeFailed: "Falha ao alterar o branch base",
+        openChangesTab: "Abrir a aba Alterações",
+        closeChangesTab: "Fechar a aba Alterações",
+        previewTooLargeTitle: "Este diff é grande demais para visualizar",
+        previewTooLargeDescription: "Reduza a comparação para visualizá-la aqui",
+        commits: {
+          title: "Commits",
+          countLabel: "{{count}} commits do espaço de trabalho",
+          noneAhead: "Ainda não há commits à frente de {{baseRef}}",
+          fileDiffEmpty: "Nenhuma alteração para exibir",
+          fileDiffError: "Falha ao carregar diff do arquivo",
+          loading: "Carregando commits…",
+          loadError: "Falha ao carregar commits",
+          empty: "Ainda não há commits",
+        },
       },
       commit: {
         messagePlaceholder: "Mensagem do commit",
@@ -1292,13 +1376,16 @@ export const ptBR: TranslationResources = {
       pr: {
         actions: {
           viewPullRequest: "Ver",
+          openOn: "Abrir no {{brand}}",
         },
         sections: {
           checks: "Verificações",
           reviews: "Revisões",
+          pipeline: "Pipeline",
         },
         accessibility: {
           pullRequest: "Pull request nº {{number}}",
+          pullRequest_mr: "Merge request !{{number}}",
         },
         states: {
           draft: "Rascunho",
@@ -1319,7 +1406,29 @@ export const ptBR: TranslationResources = {
           statusLoadFailed: "Não foi possível carregar o status da pull request",
           activityLoadFailed: "Não foi possível carregar a atividade da pull request",
         },
+        empty: {
+          noJobs: "Sem jobs",
+          loadingPipeline: "Carregando pipeline...",
+          pipelineJobsLoadFailed: "Não foi possível carregar os jobs do pipeline",
+          allowedToFail: "permitido falhar",
+        },
+        approvals: "{{given}} de {{required}} aprovações",
+        thread: {
+          discussion: "Tópico de discussão",
+        },
       },
+      forgeSetup: {
+        installCli: "Instale a CLI {{cli}} para usar os recursos do {{brand}}.",
+        signIn: "Execute {{command}} para usar os recursos do {{brand}}.",
+        generic: "Configure o {{brand}} neste host para usar seus recursos.",
+      },
+    },
+    fileActions: {
+      openFile: "Abrir arquivo",
+      copyPath: "Copiar caminho",
+      download: "Baixar",
+      addToChat: "Adicionar ao chat…",
+      moreActions: "Mais ações",
     },
   },
   sidebar: {
@@ -1334,6 +1443,7 @@ export const ptBR: TranslationResources = {
       home: "Início",
       settings: "Configurações",
       closeSidebar: "Fechar barra lateral",
+      hosts: "Hosts",
     },
     sections: {
       sessions: "Histórico",
@@ -1354,6 +1464,8 @@ export const ptBR: TranslationResources = {
         openNewWindowFailed: "Não foi possível abrir uma nova janela",
         remove: "Remover projeto",
         removing: "Removendo...",
+        openFolder: "Open in file manager",
+        openFolderFailed: "Couldn't open folder",
       },
       confirmations: {
         removeTitle: "Remover projeto?",
@@ -1391,6 +1503,10 @@ export const ptBR: TranslationResources = {
         hideFromSidebar: "Ocultar da barra lateral",
         archiving: "Arquivando...",
         hiding: "Ocultando...",
+        showMore: "Mostrar mais",
+        showLess: "Mostrar menos",
+        pin: "Fixar no topo",
+        unpin: "Desafixar",
       },
       reopenWorktree: {
         menu: "Reabrir worktree...",
@@ -1421,6 +1537,20 @@ export const ptBR: TranslationResources = {
         hideFailed: "Falha ao ocultar workspace",
         archiveFailed: "Falha ao arquivar workspace",
       },
+    },
+    pinned: {
+      title: "Fixados",
+    },
+    help: {
+      trigger: "Ajuda e suporte",
+      sectionHelp: "Ajuda",
+      diagnostics: "Executar diagnóstico",
+      shortcuts: "Atalhos de teclado",
+      reportIssue: "Relatar um problema",
+      discord: "Discord",
+      github: "Criar issue no GitHub",
+      whatsNew: "Novidades",
+      version: "Otto {{version}}",
     },
   },
   newProject: {
@@ -2667,6 +2797,8 @@ export const ptBR: TranslationResources = {
         confirm: "Limpar",
       },
     },
+    archiveFinishedAction: "Arquivar subagentes concluídos",
+    archiveFinishedTooltip: "Arquivar concluídos",
   },
   panels: {
     draft: {
@@ -2689,6 +2821,36 @@ export const ptBR: TranslationResources = {
         actualSize: "Tamanho real",
         fitToWindow: "Ajustar à janela",
       },
+      editor: {
+        fileSize: "Tamanho {{size}}",
+        lines: "{{count}} linhas",
+        editorStatus: "Status do editor: {{status}}",
+        unsavedChanges: "Alterações não salvas",
+        saving: "Salvando...",
+        saveFailed: "Falha ao salvar",
+        changedOnDisk: "Alterado no disco",
+        vimMode: "Modo Vim {{mode}}",
+        cursor: "Linha {{line}}, coluna {{column}}",
+        preview: "Prévia",
+        source: "Fonte",
+        unavailableTitle: "Arquivo indisponível no disco",
+        conflictDescription: "O conteúdo local foi preservado. Escolha qual versão manter.",
+        overwrite: "Sobrescrever",
+        reload: "Recarregar",
+        reloadTitle: "Recarregar do disco?",
+        reloadMessage: "Suas alterações locais serão perdidas.",
+      },
+    },
+    diff: {
+      changesLabel: "Alterações",
+      changesSubtitle: "Diff da árvore de trabalho",
+      commitSubtitle: "Diff do commit",
+      uncommittedSubtitle: "Alterações não commitadas",
+      baseSubtitle: "Comparado com {{baseRef}}",
+      directoryMissing: "Diretório do workspace não encontrado.",
+      empty: "Nenhuma alteração",
+      loadError: "Falha ao carregar diff",
+      capabilityMissing: "Atualize o host para ver diffs de commits.",
     },
   },
   toolCallDetails: {
@@ -2711,6 +2873,8 @@ export const ptBR: TranslationResources = {
     sessionCost: "Custo da sessão {{cost}}",
     accessibility: "Janela de contexto {{percentage}}% usada",
     tooltip: "Ver uso",
+    used: "{{percentage}}% usado",
+    tokens: "{{used}} / {{max}} tokens",
   },
   review: {
     comment: {
@@ -2761,6 +2925,7 @@ export const ptBR: TranslationResources = {
       permissions: "Permissões",
       diagnostics: "Diagnósticos",
       about: "Sobre",
+      editor: "Editor",
     },
     hostSections: {
       connections: "Conexões",
@@ -2868,6 +3033,32 @@ export const ptBR: TranslationResources = {
           zhCN: "Chinês simplificado",
         },
       },
+      browserData: {
+        title: "Dados do navegador",
+        siteData: "Cookies e dados de sites",
+        description: "As abas do navegador compartilham logins e dados de sites no Otto.",
+        clear: "Limpar dados do navegador",
+        clearing: "Limpando...",
+        confirmTitle: "Limpar dados do navegador?",
+        confirmMessage:
+          "Você será desconectado dos sites e as abas abertas do navegador serão recarregadas.",
+        success: "Dados do navegador limpos.",
+        error: "Não foi possível limpar os dados do navegador.",
+      },
+      autoExpandReasoning: {
+        label: "Sempre expandir raciocínio",
+        description:
+          "Mostrar os blocos de pensamento e raciocínio do agente totalmente expandidos por padrão",
+      },
+      toolCallDetail: {
+        label: "Exibição de chamadas de ferramentas",
+        description: "Como as chamadas de ferramentas aparecem na linha do tempo",
+        accessibilityLabel: "Selecionar exibição de chamadas de ferramentas ({{value}})",
+        options: {
+          overview: "Resumo",
+          detailed: "Detalhes completos",
+        },
+      },
     },
     preview: {
       title: "Pré-visualização",
@@ -2963,6 +3154,8 @@ export const ptBR: TranslationResources = {
           terracotta: "Terracota",
           horizon: "Horizonte",
           powder: "Pó",
+          light: "Claro",
+          auto: "Sistema",
         },
       },
       agents: {
@@ -3093,6 +3286,9 @@ export const ptBR: TranslationResources = {
         highlightThemeAccessibility: "Tema de destaque: {{value}}",
         previewAccessibility: "Prévia ao vivo do tema de sintaxe e da fonte de código",
       },
+      detailLevel: {
+        title: "Nível de detalhe",
+      },
     },
     shortcuts: {
       dialogTitle: "Atalhos",
@@ -3163,11 +3359,13 @@ export const ptBR: TranslationResources = {
         editorGoToDefinition: "Ir para a definição",
         editorFindReferences: "Buscar referências",
         editorRenameSymbol: "Renomear símbolo",
+        switchProject: "Trocar projeto",
       },
       helpNotes: {
         showKeyboardShortcuts:
           "Disponível quando o foco não está em um campo de texto ou terminal.",
       },
+      searchPlaceholder: "Pesquisar atalhos",
     },
     integrations: {
       title: "Integrações",
@@ -3458,6 +3656,8 @@ export const ptBR: TranslationResources = {
           requestFailedTitle: "Falha na atualização",
           requestFailedMessage: "Falha ao atualizar o daemon: {{error}}",
           dialogFailedMessage: "Não foi possível abrir o diálogo de confirmação da atualização.",
+          desktopManagedHint:
+            "Este daemon é gerenciado pelo Otto Desktop. Atualize o Otto Desktop no host.",
         },
         dangerZone: "Zona de perigo",
         remove: {
@@ -3555,6 +3755,8 @@ export const ptBR: TranslationResources = {
         removing: "Removendo...",
         requiresUpdate: "Atualize o host para remover provedores.",
         failed: "Falha ao remover o provedor",
+        confirm: "Remove",
+        errorTitle: "Unable to remove provider",
       },
       models: {
         one: "1 modelo",
@@ -3591,6 +3793,11 @@ export const ptBR: TranslationResources = {
         none: "Nenhum diagnóstico disponível",
         failedToFetch: "Falha ao buscar diagnóstico",
         unknownError: "Erro desconhecido",
+      },
+      actions: {
+        menu: "{{name}} actions",
+        remove: "Remove provider",
+        removing: "Removing...",
       },
     },
     project: {
@@ -3692,6 +3899,11 @@ export const ptBR: TranslationResources = {
         discard: "Descartar",
         keepEditing: "Continuar editando",
       },
+    },
+    editor: {
+      title: "Editor",
+      vimKeybindings: "Atalhos do Vim",
+      vimHint: "Aplica-se a arquivos-fonte na web e no desktop.",
     },
   },
   artifacts: {

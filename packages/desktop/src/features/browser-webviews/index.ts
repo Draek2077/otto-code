@@ -1,13 +1,18 @@
 import { webContents as allWebContents, type WebContents } from "electron";
+import { OTTO_BROWSER_PROFILE_PARTITION } from "../browser-profile.js";
 import {
   BROWSER_NEW_TAB_REQUEST_EVENT,
-  handleBrowserWindowOpenRequest,
+  decideBrowserWindowOpenRequest,
   isAllowedBrowserWebviewUrl,
+  PendingBrowserWindowOpenRequests,
 } from "./window-open.js";
-import { OttoBrowserWebviewRegistry, type BrowserWorkspaceRegistration } from "./registry.js";
+import { OttoBrowserWebviewRegistry } from "./registry.js";
 
-export { BROWSER_NEW_TAB_REQUEST_EVENT, handleBrowserWindowOpenRequest };
-export type { BrowserWorkspaceRegistration };
+export {
+  BROWSER_NEW_TAB_REQUEST_EVENT,
+  decideBrowserWindowOpenRequest,
+  PendingBrowserWindowOpenRequests,
+};
 
 const browserRegistry = new OttoBrowserWebviewRegistry();
 
@@ -17,44 +22,67 @@ interface BrowserWebContentsIdentity {
 }
 
 interface RegisteredBrowserWebContents extends BrowserWebContentsIdentity {
+  readonly hostWebContents: BrowserWebContentsIdentity | null;
+  readonly session: object;
   setBackgroundThrottling(allowed: boolean): void;
   once(event: "destroyed", listener: () => void): void;
 }
 
-function getBrowserIdFromWebviewPartition(partition: string | undefined): string | null {
-  const prefix = "persist:otto-browser-";
-  if (!partition?.startsWith(prefix)) {
-    return null;
-  }
-  const browserId = partition.slice(prefix.length).trim();
-  return browserId.length > 0 ? browserId : null;
+interface AttachedBrowserRegistration {
+  browserId: string;
+  workspaceId: string;
+  webContentsId: number;
 }
 
-export function readBrowserIdFromWebviewAttach(input: {
-  src?: string;
-  partition?: string;
-}): string | null {
-  if (!isAllowedBrowserWebviewUrl(input.src)) {
-    return null;
-  }
-  return getBrowserIdFromWebviewPartition(input.partition);
+interface RegisterAttachedBrowserInput extends AttachedBrowserRegistration {
+  sender: BrowserWebContentsIdentity;
+  profileSession: object;
+  findWebContents(webContentsId: number): RegisteredBrowserWebContents | null;
+}
+
+export function isOttoBrowserWebviewAttach(input: { src?: string; partition?: string }): boolean {
+  return (
+    isAllowedBrowserWebviewUrl(input.src) && input.partition === OTTO_BROWSER_PROFILE_PARTITION
+  );
 }
 
 export function listRegisteredOttoBrowserIds(): string[] {
-  return browserRegistry
-    .listBrowserIds()
-    .filter((browserId) => getOttoBrowserWebContents(browserId));
+  return browserRegistry.listBrowserIds();
 }
 
-export function registerOttoBrowserWebContents(
-  contents: RegisteredBrowserWebContents,
-  browserId: string,
-): void {
+export function getOttoBrowserWebviewRegistry(): OttoBrowserWebviewRegistry {
+  return browserRegistry;
+}
+
+export function prepareOttoBrowserWebContents(contents: RegisteredBrowserWebContents): void {
+  const webContentsId = contents.id;
   contents.setBackgroundThrottling(false);
-  browserRegistry.registerWebContents({ webContentsId: contents.id, browserId });
   contents.once("destroyed", () => {
-    browserRegistry.unregisterWebContents(contents.id);
+    browserRegistry.unregisterWebContents(webContentsId);
   });
+}
+
+export function registerAttachedOttoBrowser(input: RegisterAttachedBrowserInput): boolean {
+  const guest = input.findWebContents(input.webContentsId);
+  if (
+    !guest ||
+    guest.isDestroyed() ||
+    guest.hostWebContents !== input.sender ||
+    guest.session !== input.profileSession
+  ) {
+    return false;
+  }
+
+  browserRegistry.registerWebContents({
+    webContentsId: input.webContentsId,
+    browserId: input.browserId,
+    hostWebContentsId: input.sender.id,
+  });
+  browserRegistry.registerWorkspace({
+    browserId: input.browserId,
+    workspaceId: input.workspaceId,
+  });
+  return true;
 }
 
 export function getOttoBrowserIdForWebContents(
@@ -66,12 +94,16 @@ export function getOttoBrowserIdForWebContents(
   return browserRegistry.getBrowserIdForWebContents(contents.id);
 }
 
-export function registerOttoBrowserWorkspace(input: BrowserWorkspaceRegistration): void {
-  browserRegistry.registerWorkspace(input);
-}
-
 export function unregisterOttoBrowser(browserId: string): void {
   browserRegistry.unregisterBrowser(browserId);
+}
+
+export function unregisterOttoBrowserFromHost(hostWebContentsId: number, browserId: string): void {
+  browserRegistry.unregisterBrowserFromHost(hostWebContentsId, browserId);
+}
+
+export function unregisterOttoBrowserHost(hostWebContentsId: number): void {
+  browserRegistry.unregisterHostWebContents(hostWebContentsId);
 }
 
 export function getOttoBrowserWorkspaceId(browserId: string): string | null {
@@ -79,12 +111,11 @@ export function getOttoBrowserWorkspaceId(browserId: string): string | null {
 }
 
 export function listRegisteredOttoBrowserIdsForWorkspace(workspaceId: string): string[] {
-  return browserRegistry
-    .listBrowserIdsForWorkspace(workspaceId)
-    .filter((browserId) => getOttoBrowserWebContents(browserId));
+  return browserRegistry.listBrowserIdsForWorkspace(workspaceId);
 }
 
 export function setWorkspaceActiveOttoBrowserId(input: {
+  hostWebContentsId: number;
   workspaceId: string;
   browserId: string | null;
 }): void {
@@ -92,11 +123,24 @@ export function setWorkspaceActiveOttoBrowserId(input: {
 }
 
 export function getWorkspaceActiveOttoBrowserId(workspaceId: string): string | null {
-  return browserRegistry.getWorkspaceActiveBrowserId(workspaceId);
+  return browserRegistry.getMostRecentActiveBrowserIdForWorkspace(workspaceId);
 }
 
-export function getOttoBrowserWebContents(browserId: string): WebContents | null {
-  const contentsId = browserRegistry.getWebContentsIdForBrowser(browserId);
+export function getWorkspaceActiveOttoBrowserIdForHostWindow(
+  workspaceId: string,
+  hostWebContentsId: number,
+): string | null {
+  return browserRegistry.getActiveBrowserIdForWorkspaceInHostWindow(hostWebContentsId, workspaceId);
+}
+
+export function getOttoBrowserWebContentsForHostWindow(
+  browserId: string,
+  hostWebContentsId: number,
+): WebContents | null {
+  const contentsId = browserRegistry.getWebContentsIdForBrowserInHostWindow(
+    hostWebContentsId,
+    browserId,
+  );
   if (contentsId === null) {
     return null;
   }
@@ -108,9 +152,26 @@ export function getOttoBrowserWebContents(browserId: string): WebContents | null
   return null;
 }
 
-export function getMostRecentWorkspaceActiveOttoBrowserWebContents(): WebContents | null {
-  const browserId = browserRegistry.getMostRecentWorkspaceActiveBrowserId();
-  return browserId ? getOttoBrowserWebContents(browserId) : null;
+export function getActiveOttoBrowserWebContentsForHostWindow(
+  hostWebContentsId: number,
+): WebContents | null {
+  const browserId = browserRegistry.getActiveBrowserIdForHostWindow(hostWebContentsId);
+  if (!browserId) {
+    return null;
+  }
+  const contentsId = browserRegistry.getWebContentsIdForBrowserInHostWindow(
+    hostWebContentsId,
+    browserId,
+  );
+  if (contentsId === null) {
+    return null;
+  }
+  const contents = allWebContents.fromId(contentsId);
+  if (contents && !contents.isDestroyed()) {
+    return contents;
+  }
+  browserRegistry.unregisterWebContents(contentsId);
+  return null;
 }
 
 function preventUnsafeBrowserWebviewNavigation(

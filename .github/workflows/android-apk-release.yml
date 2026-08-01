@@ -135,7 +135,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
 
       - name: Install JS dependencies
-        run: npm ci
+        run: node scripts/npm-retry.mjs ci
 
       # What EAS ran as eas-build-post-install. The webview bundles are generated
       # sources: the committed copies go stale, and prebuild does not rebuild them.

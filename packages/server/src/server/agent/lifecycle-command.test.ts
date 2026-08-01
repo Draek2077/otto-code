@@ -45,9 +45,9 @@ class FakeLifecycleAgentManager implements LifecycleAgentManager {
   readonly notifiedAgentIds: string[] = [];
   readonly modeUpdates: Array<{ agentId: string; modeId: string }> = [];
   readonly detachedAgentIds: string[] = [];
-  readonly heldSteerQueueAgentIds: string[] = [];
-  readonly steerQueueSizes = new Map<string, number>();
   inFlightAgentIds = new Set<string>();
+  readonly settledDuringCancellationAgentIds = new Set<string>();
+  readonly rejectedCancellationAgentIds = new Set<string>();
 
   constructor(private readonly storage: FakeLifecycleAgentStorage) {}
 
@@ -59,14 +59,18 @@ class FakeLifecycleAgentManager implements LifecycleAgentManager {
     return this.inFlightAgentIds.has(agentId);
   }
 
-  async cancelAgentRun(agentId: string): Promise<boolean> {
+  async cancelAgentRun(agentId: string) {
     this.cancelledAgentIds.push(agentId);
-    return this.inFlightAgentIds.delete(agentId);
-  }
-
-  holdSteerQueue(agentId: string): number {
-    this.heldSteerQueueAgentIds.push(agentId);
-    return this.steerQueueSizes.get(agentId) ?? 0;
+    if (this.settledDuringCancellationAgentIds.delete(agentId)) {
+      this.inFlightAgentIds.delete(agentId);
+      return { status: "not_running" } as const;
+    }
+    if (this.rejectedCancellationAgentIds.has(agentId)) {
+      return { status: "refused" } as const;
+    }
+    return this.inFlightAgentIds.delete(agentId)
+      ? ({ status: "settled" } as const)
+      : ({ status: "not_running" } as const);
   }
 
   async clearAgentAttention(agentId: string): Promise<void> {
@@ -178,18 +182,19 @@ describe("agent lifecycle commands", () => {
     expect(manager.cancelledAgentIds).toEqual(["agent-1"]);
   });
 
-  test("stopping a run holds the queued messages instead of dropping them", async () => {
+  test("accepts a stop when the run settles during cancellation", async () => {
     const storage = new FakeLifecycleAgentStorage();
     const manager = new FakeLifecycleAgentManager(storage);
     manager.liveAgents.set("agent-1", managedAgent("agent-1", "running"));
     manager.inFlightAgentIds.add("agent-1");
-    manager.steerQueueSizes.set("agent-1", 2);
+    manager.settledDuringCancellationAgentIds.add("agent-1");
 
-    await cancelAgentRunCommand({ agentManager: manager, logger }, "agent-1");
-
-    // Held, not cleared: the messages the user typed survive the stop.
-    expect(manager.heldSteerQueueAgentIds).toEqual(["agent-1"]);
-    expect(manager.steerQueueSizes.get("agent-1")).toBe(2);
+    await expect(
+      cancelAgentRunCommand({ agentManager: manager, logger }, "agent-1"),
+    ).resolves.toEqual({
+      agent: manager.liveAgents.get("agent-1"),
+      cancelled: false,
+    });
   });
 
   test("archives a live agent after canceling and clearing attention", async () => {
@@ -214,6 +219,21 @@ describe("agent lifecycle commands", () => {
     });
     expect(manager.cancelledAgentIds).toEqual(["agent-1"]);
     expect(manager.clearedAttentionAgentIds).toEqual(["agent-1"]);
+    expect(manager.archivedAgentIds).toEqual(["agent-1"]);
+  });
+
+  test("archives a live agent when its graceful cancellation is rejected", async () => {
+    const storage = new FakeLifecycleAgentStorage();
+    const manager = new FakeLifecycleAgentManager(storage);
+    manager.liveAgents.set("agent-1", managedAgent("agent-1", "running"));
+    manager.inFlightAgentIds.add("agent-1");
+    manager.rejectedCancellationAgentIds.add("agent-1");
+    storage.records.set("agent-1", storedAgent("agent-1"));
+
+    await expect(
+      archiveAgentCommand({ agentManager: manager, agentStorage: storage, logger }, "agent-1"),
+    ).resolves.toMatchObject({ agentId: "agent-1" });
+    expect(manager.cancelledAgentIds).toEqual(["agent-1"]);
     expect(manager.archivedAgentIds).toEqual(["agent-1"]);
   });
 

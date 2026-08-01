@@ -53,6 +53,7 @@ type CodeReferencesTarget = Extract<WorkspaceTabTarget, { kind: "codeReferences"
 function useCodeReferencesPanelDescriptor(target: CodeReferencesTarget): PanelDescriptor {
   return {
     label: `References: ${target.symbol}`,
+    tooltip: `References: ${target.symbol} (${target.path}:${target.line})`,
     subtitle: `${target.path}:${target.line}`,
     titleState: "ready",
     icon: Search,

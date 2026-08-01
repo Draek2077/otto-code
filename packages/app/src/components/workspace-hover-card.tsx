@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { Dimensions, Text, View } from "react-native";
+import { forgeToHostingProvider } from "@/git/forge";
 import { useTranslation } from "react-i18next";
 import { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -340,7 +341,7 @@ function WorkspaceHoverCardContent({
               <View style={styles.separator} />
               <ChecksSummaryPressable
                 checks={prHint.checks}
-                provider={prHint.provider}
+                forge={prHint.forge}
                 url={prHint.url}
               />
             </>
@@ -511,11 +512,11 @@ function ChecksSummaryPill({
 
 function ChecksSummaryContent({
   checks,
-  provider,
+  forge,
   hovered,
 }: {
   checks: NonNullable<PrHint["checks"]>;
-  provider: PrHint["provider"];
+  forge: PrHint["forge"];
   hovered: boolean;
 }) {
   const { t } = useTranslation();
@@ -529,7 +530,11 @@ function ChecksSummaryContent({
       {hovered ? (
         <ThemedExternalLink size={12} uniProps={iconUniProps} />
       ) : (
-        <ThemedGitHostingIcon provider={provider} size={12} uniProps={iconUniProps} />
+        <ThemedGitHostingIcon
+          provider={forgeToHostingProvider(forge)}
+          size={12}
+          uniProps={iconUniProps}
+        />
       )}
       <Text style={labelStyle}>{t("workspace.git.pr.sections.checks")}</Text>
       <View style={styles.checksSummaryCounts}>
@@ -543,24 +548,24 @@ function ChecksSummaryContent({
 
 function ChecksSummaryPressable({
   checks,
-  provider,
+  forge,
   url,
 }: {
   checks: NonNullable<PrHint["checks"]>;
-  provider: PrHint["provider"];
+  forge: PrHint["forge"];
   url: string;
 }) {
   const handlePress = useCallback(() => {
-    // "/checks" is a GitHub PR sub-page; Bitbucket has no equivalent path, so
-    // fall back to the PR page itself there.
-    void openLink(provider === "github" ? `${url}/checks` : url);
-  }, [provider, url]);
+    // "/checks" is a GitHub PR sub-page; other forges have no equivalent path,
+    // so fall back to the change-request page itself there.
+    void openLink(forgeToHostingProvider(forge) === "github" ? `${url}/checks` : url);
+  }, [forge, url]);
 
   const renderChildren = useCallback(
     ({ hovered }: { pressed: boolean; hovered?: boolean }) => (
-      <ChecksSummaryContent checks={checks} provider={provider} hovered={Boolean(hovered)} />
+      <ChecksSummaryContent checks={checks} forge={forge} hovered={Boolean(hovered)} />
     ),
-    [checks, provider],
+    [checks, forge],
   );
 
   return (

@@ -1,5 +1,9 @@
 import { existsSync } from "node:fs";
 import pLimit from "p-limit";
+import {
+  GitCommandRuntimeMetricsWindow,
+  type GitCommandRuntimeMetricsSnapshot,
+} from "./git-command-runtime-metrics.js";
 import type { Logger } from "pino";
 import type { ProcessEnvRecord } from "../server/otto-env.js";
 import { getActiveGitCommandObserver } from "../server/git-operation-log.js";
@@ -11,6 +15,7 @@ const DEFAULT_STDERR_LIMIT = 2048;
 
 const gitConcurrency = parseInt(process.env.OTTO_GIT_CONCURRENCY ?? "8", 10) || 8;
 const gitLimit = pLimit(gitConcurrency);
+const gitRuntimeMetrics = new GitCommandRuntimeMetricsWindow(gitConcurrency);
 
 export interface GitCommandOptions {
   cwd: string;
@@ -130,9 +135,11 @@ export function runGitCommand(
   // Captured before the concurrency queue: the thunk may execute in a later
   // async context where the operation-log ALS store is no longer active.
   const commandObserver = getActiveGitCommandObserver();
-  return gitLimit(
+  const runtimeMetric = gitRuntimeMetrics.submit(getGitOperation(args));
+  const promise = gitLimit(
     () =>
       new Promise<GitCommandResult>((resolve, reject) => {
+        gitRuntimeMetrics.start(runtimeMetric);
         const timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
         const maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
         const maxStderrBytes = options.maxStderrBytes ?? DEFAULT_STDERR_LIMIT;
@@ -170,6 +177,9 @@ export function runGitCommand(
 
         let settled = false;
         let metricFinished = false;
+        // Mirrors Paseo's runtime-metrics contract: distinguishes a timeout kill
+        // from an ordinary non-zero exit.
+        let timedOut = false;
         let truncated = false;
         let stdoutBytes = 0;
         let stderrBytes = 0;
@@ -195,9 +205,11 @@ export function runGitCommand(
           if (metricFinished) return;
           metricFinished = true;
           finishGitCommandMetric(metricsState, metric);
+          gitRuntimeMetrics.finish(runtimeMetric, { success: metric.success, timedOut });
         };
 
         const timer = setTimeout(() => {
+          timedOut = true;
           const error = new Error(`Git command timed out after ${timeout}ms: ${command}`);
           child.kill("SIGKILL");
           endObserver(null);
@@ -340,8 +352,21 @@ export function runGitCommand(
         });
       }),
   );
+  gitRuntimeMetrics.observeLimiter(gitLimit.activeCount, gitLimit.pendingCount);
+  return promise;
 }
 
 function formatGitCommand(args: string[]): string {
   return ["git", ...args].join(" ");
+}
+
+export function snapshotGitCommandRuntimeMetrics(): GitCommandRuntimeMetricsSnapshot {
+  return gitRuntimeMetrics.snapshotAndReset({
+    active: gitLimit.activeCount,
+    pending: gitLimit.pendingCount,
+  });
+}
+
+function getGitOperation(args: string[]): string {
+  return args[0] === "-c" ? (args[2] ?? "unknown") : (args[0] ?? "unknown");
 }

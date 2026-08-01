@@ -1,45 +1,48 @@
-import type { AgentProvider } from "@otto-code/protocol/agent-types";
 import {
   buildDeterministicWorkspaceTabId,
   normalizeWorkspaceDraftTabSetup,
   normalizeWorkspaceTabTarget,
   workspaceTabTargetsEqual,
 } from "@/workspace-tabs/identity";
-import type { WorkspaceFileOrigin, WorkspaceFileTabTarget } from "@/workspace/file-open";
+import type {
+  WorkspaceDraftTabSetup as BaseWorkspaceDraftTabSetup,
+  WorkspaceTabTarget as BaseWorkspaceTabTarget,
+} from "@/workspace-tabs/model";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+// COMPAT(workspaceTabsStoreReexport): added in v0.7.6, remove after 2027-02-01.
+// Re-exported so the call sites that import it from this store keep working;
+// Paseo's model owns the implementation. This IS a shim — repointing those
+// imports at `@/workspace-tabs/model` is the cleanup, and until that happens
+// the next upstream merge has this indirection to undo.
+export { buildWorkspaceTabPersistenceKey };
+import type { WorkspaceFileOrigin } from "@/workspace/file-open";
 
-export interface WorkspaceDraftTabSetup {
-  provider: AgentProvider;
-  cwd: string;
-  modeId: string | null;
-  model: string | null;
-  thinkingOptionId: string | null;
-  featureValues: Record<string, unknown>;
+export interface WorkspaceDraftTabSetup extends BaseWorkspaceDraftTabSetup {
   /**
    * Personality identity inherited from the source agent. Without it a fork /
    * "new tab from this agent" opened on a raw model with no identity at all:
    * the rest of this setup becomes the form's `initialValues`, which outrank
-   * device memory, so nothing else could put a personality back. Optional —
+   * device memory, so nothing else could put a personality back. Optional â€”
    * older persisted tabs simply don't carry one.
    */
   personality?: string | null;
 }
 
 export type WorkspaceTabTarget =
+  // Paseo's tab kinds are the base, so their additions (provider_subagent,
+  // working_diff, commit_diff) arrive without us restating them. `draft` is the
+  // one override: Otto's setup carries an inherited personality.
+  | Exclude<BaseWorkspaceTabTarget, { kind: "draft" }>
   | { kind: "draft"; draftId: string; setup?: WorkspaceDraftTabSetup }
-  | { kind: "agent"; agentId: string }
-  | { kind: "terminal"; terminalId: string }
-  | { kind: "browser"; browserId: string }
-  | WorkspaceFileTabTarget
-  | { kind: "setup"; workspaceId: string }
   | { kind: "artifact"; artifactId: string }
   // A git operation's log pane ("Git Commit"/"Git Pull"/"Git Push"). One per
   // operation per workspace; `operation` is the wire operation id.
   | { kind: "gitLog"; operation: string }
-  // The Visualizer tab — a live node-graph of agent orchestration. One per
+  // The Visualizer tab â€” a live node-graph of agent orchestration. One per
   // workspace when `runId` is absent (the page's own session tabs cover
   // per-agent switching). An orchestration Run's "Visualize" action opens a
   // separate, run-scoped tab (`runId` set) restricted to that run's agent set
-  // — one per run per workspace, same as `gitLog`'s one-per-operation shape.
+  // â€” one per run per workspace, same as `gitLog`'s one-per-operation shape.
   | { kind: "visualizer"; runId?: string }
   // Git investigation for one file: commit history, per-commit diff, blame,
   // origin commit. A tab rather than a dialog because it is a two-pane working
@@ -51,11 +54,11 @@ export type WorkspaceTabTarget =
   // Every reference to one symbol, as a results tab. A tab rather than a dialog for the
   // same reason as fileHistory: it is a working surface you navigate FROM and keep open,
   // and a dialog would be dismissed by the very act of visiting a hit. One tab per
-  // (path, line, column) — a second search must not evict the first, or "look at these
+  // (path, line, column) â€” a second search must not evict the first, or "look at these
   // two call sites" becomes impossible.
   | { kind: "codeReferences"; path: string; line: number; column: number; symbol: string }
   // A rename set up as a JOB: the request is taken from the file, and the tab shows the full
-  // dry run — every file and every edit it would make — before anything happens. A tab and
+  // dry run â€” every file and every edit it would make â€” before anything happens. A tab and
   // not an inline rename box, deliberately: an inline box hides project-wide blast radius
   // behind a single keystroke. One per (path, line, column), like references.
   | {
@@ -69,7 +72,7 @@ export type WorkspaceTabTarget =
   // An AI rewrite of one document set up as a JOB, in the same spirit as
   // codeRename: the proposal is shown as a diff against the file as it was, the
   // user keeps the parts they want, and NOTHING is written until Accept. A tab
-  // and not a mode on the editor, deliberately — a diff you decide on wants the
+  // and not a mode on the editor, deliberately â€” a diff you decide on wants the
   // whole frame, and a mode would have to be un-persisted on every reload
   // because the pinned base only exists in memory. One tab per path: refining
   // the same document again supersedes the first job rather than sitting beside
@@ -80,10 +83,10 @@ export type WorkspaceTabTarget =
   // to a file (compacting a memory index means moving detail into the entries
   // it points at). `paths` are rewritable and `paths[0]` names the tab;
   // `references` are read-only context, so a rewrite can be made in the context
-  // of the project without that context becoming editable. All absolute — a
+  // of the project without that context becoming editable. All absolute â€” a
   // context set legitimately spans repo and home files.
   | { kind: "refine"; paths: string[]; references?: string[]; presetId?: string }
-  // Context Management — everything the provider sends before the user types.
+  // Context Management â€” everything the provider sends before the user types.
   // One per workspace: the report is a property of the workspace and its
   // provider, so a second tab would show the same thing.
   | { kind: "contextManagement" }
@@ -117,19 +120,6 @@ function trimNonEmpty(value: string | null | undefined): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-export function buildWorkspaceTabPersistenceKey(input: {
-  serverId: string;
-  workspaceId: string;
-}): string | null {
-  const serverId = trimNonEmpty(input.serverId);
-  const workspaceId = trimNonEmpty(input.workspaceId);
-  if (!serverId || !workspaceId) {
-    return null;
-  }
-  // workspaceId is opaque; do not parse this key back into a path.
-  return `${serverId}:${workspaceId}`;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -564,7 +554,7 @@ function extractMigrationRawSources(persistedState: unknown): MigrationRawSource
   };
 }
 
-// Kinds whose persisted shape is "kind + one required string id field" —
+// Kinds whose persisted shape is "kind + one required string id field" â€”
 // everything except draft (extra setup object), file/editor (its own
 // coercer), and visualizer (runId is optional). A lookup here (rather than
 // another `if (kind === X && typeof raw.field === "string")` branch per
@@ -697,7 +687,7 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
   if (kind === "refine") {
     return coerceRefineTabTarget(raw);
   }
-  // No id field at all — the workspace is the identity.
+  // No id field at all â€” the workspace is the identity.
   if (kind === "contextManagement") {
     return normalizeWorkspaceTabTarget({ kind: "contextManagement" });
   }
@@ -708,7 +698,7 @@ function coerceWorkspaceTabTarget(raw: Record<string, unknown>): WorkspaceTabTar
   return null;
 }
 
-// COMPAT(unifiedFileTab): added 2026-07-09 — persisted "editor" tabs from
+// COMPAT(unifiedFileTab): added 2026-07-09 â€” persisted "editor" tabs from
 // before the editor/preview unification coerce to plain file tabs (the view
 // mode now lives in the file-view store). Drop the "editor" acceptance once
 // stored states predating it are gone (target: 2027-01).

@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getWebsiteCacheContext } from "./cloudflare-cache";
 import { getBlockingColdCache } from "./github-cache";
 
 interface GitHubAsset {
@@ -144,6 +145,7 @@ function isOptionalMacAsset(value: unknown, version: string, arch: "arm64" | "x6
 
 export const getLatestRelease = createServerFn({ method: "GET" }).handler(async () => {
   return getBlockingColdCache({
+    context: getWebsiteCacheContext(),
     key: RELEASE_CACHE_KEY,
     isValue: isReleaseInfo,
     fetchFresh: fetchLatestReadyRelease,

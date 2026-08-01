@@ -51,23 +51,26 @@ describe("codex tool-call mapper", () => {
     });
   });
 
-  it("unwraps shell wrapper strings for commandExecution", () => {
-    const item = expectMapped(
-      mapCodexToolCallFromThreadItem({
-        type: "commandExecution",
-        id: "codex-call-wrapper-string",
-        status: "running",
-        command: '/bin/zsh -lc "echo hello"',
-        cwd: "/tmp/repo",
-      }),
-    );
+  it.each(['/bin/zsh -lc "echo hello"', '/usr/bin/zsh -lc "echo hello"'])(
+    "unwraps zsh wrapper strings for commandExecution: %s",
+    (command) => {
+      const item = expectMapped(
+        mapCodexToolCallFromThreadItem({
+          type: "commandExecution",
+          id: "codex-call-wrapper-string",
+          status: "running",
+          command,
+          cwd: "/tmp/repo",
+        }),
+      );
 
-    expect(item.detail).toEqual({
-      type: "shell",
-      command: "echo hello",
-      cwd: "/tmp/repo",
-    });
-  });
+      expect(item.detail).toEqual({
+        type: "shell",
+        command: "echo hello",
+        cwd: "/tmp/repo",
+      });
+    },
+  );
 
   it("unwraps pwsh wrapper strings for commandExecution on Windows", () => {
     const item = expectMapped(
@@ -231,7 +234,7 @@ describe("codex tool-call mapper", () => {
       id: `activity-${kind}`,
       kind,
       agentThreadId: "child-thread-1",
-      agentPath: "/root/investigator",
+      agentPath: "/root/research/investigator",
     });
 
     expect(item).toEqual({
@@ -242,8 +245,8 @@ describe("codex tool-call mapper", () => {
       error: null,
       detail: {
         type: "sub_agent",
-        subAgentType: "Sub-agent",
-        description: "/root/investigator",
+        subAgentType: "Research / Investigator",
+        description: "research/investigator",
         log: "",
         actions: [],
       },
@@ -261,6 +264,60 @@ describe("codex tool-call mapper", () => {
 
     expect(item).toMatchObject({
       detail: { type: "sub_agent", description: "" },
+    });
+  });
+
+  it("humanizes a subagent task name for display", () => {
+    const item = mapCodexToolCallFromThreadItem({
+      type: "subAgentActivity",
+      id: "activity-human-name",
+      kind: "started",
+      agentThreadId: "child-thread-human-name",
+      agentPath: "/root/hello_one",
+    });
+
+    expect(item).toMatchObject({
+      detail: {
+        type: "sub_agent",
+        subAgentType: "Hello one",
+        description: "hello_one",
+      },
+    });
+  });
+
+  it("uses only the final segment of a subAgentActivity path outside the root namespace", () => {
+    const item = mapCodexToolCallFromThreadItem({
+      type: "subAgentActivity",
+      id: "activity-external-path",
+      kind: "started",
+      agentThreadId: "child-thread-external-path",
+      agentPath: "/tmp/native/investigator",
+    });
+
+    expect(item).toMatchObject({
+      detail: {
+        type: "sub_agent",
+        subAgentType: "Investigator",
+        description: "investigator",
+      },
+    });
+  });
+
+  it("uses only the final segment of a Windows subAgentActivity path", () => {
+    const item = mapCodexToolCallFromThreadItem({
+      type: "subAgentActivity",
+      id: "activity-windows-path",
+      kind: "started",
+      agentThreadId: "child-thread-windows-path",
+      agentPath: "C:\\Users\\dev\\agents\\investigator",
+    });
+
+    expect(item).toMatchObject({
+      detail: {
+        type: "sub_agent",
+        subAgentType: "Investigator",
+        description: "investigator",
+      },
     });
   });
 

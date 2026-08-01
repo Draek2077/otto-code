@@ -1,7 +1,6 @@
 import type {
   AgentAttachment,
-  GitHostingProviderId,
-  GitHubSearchItem,
+  ForgeSearchItem,
   UploadedFileAttachment,
 } from "@otto-code/protocol/messages";
 
@@ -55,6 +54,9 @@ export interface BrowserElementAttachment {
 }
 
 export type PullRequestContextAttachmentKind =
+  | "forge.change_request_comment"
+  | "forge.change_request_review"
+  | "forge.change_request_check"
   | "github.pull_request_comment"
   | "github.pull_request_review"
   | "github.pull_request_check";
@@ -68,6 +70,9 @@ interface PullRequestContextAttachmentFields {
 }
 
 export type PullRequestContextAttachment =
+  | ({ kind: "forge.change_request_comment" } & PullRequestContextAttachmentFields)
+  | ({ kind: "forge.change_request_review" } & PullRequestContextAttachmentFields)
+  | ({ kind: "forge.change_request_check" } & PullRequestContextAttachmentFields)
   | ({ kind: "github.pull_request_comment" } & PullRequestContextAttachmentFields)
   | ({ kind: "github.pull_request_review" } & PullRequestContextAttachmentFields)
   | ({ kind: "github.pull_request_check" } & PullRequestContextAttachmentFields);
@@ -80,21 +85,43 @@ export interface ChatHistoryContextAttachment {
     serverId: string;
     agentId: string;
     boundaryMessageId?: string | null;
+    boundaryCursor?: { epoch: string; seq: number } | null;
     itemCount?: number;
   };
+}
+
+export const NEW_WORKSPACE_PICKER_ATTACHMENT_OWNER = "new-workspace-picker";
+
+export type WorkspaceFileSelection =
+  | { kind: "whole_file" }
+  | { kind: "line_range"; startLine: number; endLine: number };
+
+export interface WorkspaceFileComposerAttachment {
+  kind: "workspace_file";
+  path: string;
+  selection: WorkspaceFileSelection;
 }
 
 export type UserComposerAttachment =
   | { kind: "image"; metadata: AttachmentMetadata }
   | { kind: "file"; attachment: UploadedFileAttachment }
-  // `provider` records which hosting provider served the search item; absent
-  // means GitHub (legacy drafts and GitHub-project searches).
-  | { kind: "github_issue"; item: GitHubSearchItem; provider?: GitHostingProviderId }
-  | { kind: "github_pr"; item: GitHubSearchItem; provider?: GitHostingProviderId };
+  | WorkspaceFileComposerAttachment
+  // `ForgeSearchItem` carries its own `forge` tag, which is what Otto's
+  // separate `provider` field used to record.
+  | { kind: "forge_issue"; item: ForgeSearchItem }
+  | { kind: "forge_change_request"; item: ForgeSearchItem }
+  // COMPAT(githubAttachmentKinds): added in v0.1.106, remove after 2026-12-28 once daemon floor >= v0.1.106
+  | { kind: "github_issue"; item: ForgeSearchItem }
+  | {
+      kind: "github_pr";
+      item: ForgeSearchItem;
+      owner?: typeof NEW_WORKSPACE_PICKER_ATTACHMENT_OWNER;
+    };
 
 /**
  * A workspace file, folder, or specific line the user attached (from the file
- * explorer or project search) as prompt context.
+ * explorer or project search) as prompt context. Distinct from
+ * {@link WorkspaceFileComposerAttachment}, which is the composer-side pill.
  */
 export interface FileContextAttachment {
   kind: "file_context";

@@ -92,6 +92,7 @@ export type UserMessageImageAttachment = AttachmentMetadata;
 export interface UserMessageItem {
   kind: "user_message";
   id: string;
+  clientMessageId?: string;
   text: string;
   timestamp: Date;
   optimistic?: true;
@@ -113,6 +114,7 @@ export interface AssistantMessageItem {
   kind: "assistant_message";
   id: string;
   messageId?: string;
+  timelineCursor?: TimelinePosition;
   text: string;
   timestamp: Date;
   blockGroupId?: string;
@@ -124,6 +126,11 @@ export interface AssistantMessageItem {
    * replace) simply lack this field — the footer omits the token segment then.
    */
   turnUsage?: AgentUsage;
+}
+
+export interface TimelinePosition {
+  epoch: string;
+  seq: number;
 }
 
 export type ThoughtStatus = "loading" | "ready";
@@ -247,6 +254,7 @@ export type StreamUpdateSource = "live" | "canonical";
 interface StreamUpdateOptions {
   source?: StreamUpdateSource;
   reservedItemIds?: ReadonlySet<string>;
+  timelineCursor?: TimelinePosition;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -276,6 +284,7 @@ function markThoughtReady(item: ThoughtItem): ThoughtItem {
 
 function buildUserMessageItem(input: {
   id: string;
+  clientMessageId?: string;
   text: string;
   timestamp: Date;
   optimistic?: UserMessageItem | null;
@@ -284,6 +293,7 @@ function buildUserMessageItem(input: {
     return {
       kind: "user_message",
       id: input.id,
+      ...(input.clientMessageId ? { clientMessageId: input.clientMessageId } : {}),
       text: input.optimistic.text,
       timestamp: input.optimistic.timestamp,
       ...(input.optimistic.images && input.optimistic.images.length > 0
@@ -298,6 +308,7 @@ function buildUserMessageItem(input: {
   return {
     kind: "user_message",
     id: input.id,
+    ...(input.clientMessageId ? { clientMessageId: input.clientMessageId } : {}),
     text: input.text,
     timestamp: input.timestamp,
   };
@@ -317,73 +328,14 @@ export function buildOptimisticUserMessage(input: OptimisticUserMessageInput): U
   };
 }
 
-function hasUserMessage(state: StreamItem[]): boolean {
-  return state.some((item) => item.kind === "user_message");
-}
-
-// Merge the client's local images/attachments onto an existing user row that
-// lacks them. The daemon's canonical user row is text-only — it never
-// round-trips image bytes — so returns null when there is nothing to add (the
-// row already carries them), letting the caller no-op.
-function backfillUserMessageAttachments(
-  existing: UserMessageItem,
-  incoming: UserMessageItem,
-): UserMessageItem | null {
-  const addImages = (existing.images?.length ?? 0) === 0 && (incoming.images?.length ?? 0) > 0;
-  const addAttachments =
-    (existing.attachments?.length ?? 0) === 0 && (incoming.attachments?.length ?? 0) > 0;
-  if (!addImages && !addAttachments) {
-    return null;
-  }
-  return {
-    ...existing,
-    ...(addImages ? { images: incoming.images } : {}),
-    ...(addAttachments ? { attachments: incoming.attachments } : {}),
-  };
-}
-
 export function appendOptimisticUserMessageToStream(params: {
   tail: StreamItem[];
   head: StreamItem[];
   message: UserMessageItem;
   placement: OptimisticUserMessagePlacement;
-  skipIfUserMessageExists?: boolean;
 }): ApplyStreamEventResult {
   const { tail, head, message, placement } = params;
-
-  // A row with our id already landed. In the new-chat path the daemon stamps
-  // the canonical user row with our clientMessageId and it can arrive before
-  // this (deferred) optimistic append runs. That row is text-only, so back-fill
-  // the client's local images/attachments onto it rather than dropping them —
-  // which also keeps the attachment GC from reclaiming the now-referenced bytes.
-  // A no-op when the existing row already carries them (mid-session, where the
-  // optimistic row lands first).
-  const tailIdx = tail.findIndex((item) => item.id === message.id);
-  if (tailIdx >= 0) {
-    const existing = tail[tailIdx];
-    const merged =
-      existing?.kind === "user_message" ? backfillUserMessageAttachments(existing, message) : null;
-    if (!merged) {
-      return { tail, head, changedTail: false, changedHead: false };
-    }
-    const nextTail = [...tail];
-    nextTail[tailIdx] = merged;
-    return { tail: nextTail, head, changedTail: true, changedHead: false };
-  }
-  const headIdx = head.findIndex((item) => item.id === message.id);
-  if (headIdx >= 0) {
-    const existing = head[headIdx];
-    const merged =
-      existing?.kind === "user_message" ? backfillUserMessageAttachments(existing, message) : null;
-    if (!merged) {
-      return { tail, head, changedTail: false, changedHead: false };
-    }
-    const nextHead = [...head];
-    nextHead[headIdx] = merged;
-    return { tail, head: nextHead, changedTail: false, changedHead: true };
-  }
-
-  if (params.skipIfUserMessageExists && (hasUserMessage(tail) || hasUserMessage(head))) {
+  if (tail.some((item) => item.id === message.id) || head.some((item) => item.id === message.id)) {
     return { tail, head, changedTail: false, changedHead: false };
   }
 
@@ -404,11 +356,52 @@ export function appendOptimisticUserMessageToStream(params: {
   };
 }
 
+export function handoffCreatedAgentUserMessageToStream(params: {
+  tail: StreamItem[];
+  head: StreamItem[];
+  message: UserMessageItem;
+}): ApplyStreamEventResult {
+  const { tail, head, message } = params;
+  const items = [...tail, ...head];
+  const userIndex = items.findIndex((item) => item.kind === "user_message");
+  if (userIndex < 0) {
+    return appendOptimisticUserMessageToStream({
+      tail,
+      head,
+      message,
+      placement: "tail",
+    });
+  }
+
+  const userMessage = items[userIndex];
+  if (!userMessage || userMessage.kind !== "user_message" || userMessage.optimistic) {
+    return { tail, head, changedTail: false, changedHead: false };
+  }
+
+  const handedOffMessage = buildUserMessageItem({
+    id: userMessage.id,
+    text: message.text,
+    timestamp: message.timestamp,
+    optimistic: message,
+  });
+  if (userIndex < tail.length) {
+    const nextTail = [...tail];
+    nextTail[userIndex] = handedOffMessage;
+    return { tail: nextTail, head, changedTail: true, changedHead: false };
+  }
+
+  const nextHead = [...head];
+  nextHead[userIndex - tail.length] = handedOffMessage;
+  return { tail, head: nextHead, changedTail: false, changedHead: true };
+}
+
 function appendUserMessage(
   state: StreamItem[],
   text: string,
   timestamp: Date,
+  source: StreamUpdateSource,
   messageId?: string,
+  clientMessageId?: string,
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
   if (!hasContent) {
@@ -418,12 +411,18 @@ function appendUserMessage(
   const chunkSeed = chunk.trim() || chunk;
   const entryId = messageId ?? createUniqueTimelineId(state, "user", chunkSeed, timestamp);
   const optimisticIndex = state.findIndex(
-    (entry) => entry.kind === "user_message" && entry.optimistic,
+    (entry) =>
+      entry.kind === "user_message" &&
+      entry.optimistic &&
+      (clientMessageId !== undefined
+        ? entry.id === clientMessageId
+        : source === "live" || entry.id === messageId || entry.text === chunk),
   );
   const optimistic = optimisticIndex >= 0 ? (state[optimisticIndex] as UserMessageItem) : null;
 
   const nextItem = buildUserMessageItem({
     id: entryId,
+    clientMessageId,
     text: chunk,
     timestamp,
     optimistic,
@@ -450,6 +449,7 @@ function appendAssistantMessage(
   source: StreamUpdateSource,
   messageId?: string,
   reservedItemIds?: ReadonlySet<string>,
+  timelineCursor?: TimelinePosition,
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
   if (!chunk) {
@@ -466,6 +466,7 @@ function appendAssistantMessage(
       ...last,
       text: `${last.text}${chunk}`,
       timestamp,
+      ...(timelineCursor ? { timelineCursor } : {}),
     };
     return [...state.slice(0, -1), updated];
   }
@@ -483,6 +484,7 @@ function appendAssistantMessage(
       ...secondLast,
       text: `${secondLast.text}${chunk}`,
       timestamp,
+      ...(timelineCursor ? { timelineCursor } : {}),
     };
     return [...state.slice(0, -2), updated, last];
   }
@@ -497,6 +499,7 @@ function appendAssistantMessage(
     kind: "assistant_message",
     id: entryId,
     ...(messageId ? { messageId } : {}),
+    ...(timelineCursor ? { timelineCursor } : {}),
     text: chunk,
     timestamp,
   };
@@ -1034,11 +1037,21 @@ function reduceTimelineEvent(
   timestamp: Date,
   source: StreamUpdateSource,
   reservedItemIds?: ReadonlySet<string>,
+  timelineCursor?: TimelinePosition,
 ): StreamItem[] {
   const item = event.item;
   switch (item.type) {
     case "user_message":
-      return finalizeActiveThoughts(appendUserMessage(state, item.text, timestamp, item.messageId));
+      return finalizeActiveThoughts(
+        appendUserMessage(
+          state,
+          item.text,
+          timestamp,
+          source,
+          item.messageId,
+          item.clientMessageId,
+        ),
+      );
     case "assistant_message":
       return finalizeActiveThoughts(
         appendAssistantMessage(
@@ -1048,6 +1061,7 @@ function reduceTimelineEvent(
           source,
           item.messageId,
           reservedItemIds,
+          timelineCursor,
         ),
       );
     case "reasoning":
@@ -1119,7 +1133,14 @@ export function reduceStreamUpdate(
   const source = options?.source ?? "live";
   switch (event.type) {
     case "timeline":
-      return reduceTimelineEvent(state, event, timestamp, source, options?.reservedItemIds);
+      return reduceTimelineEvent(
+        state,
+        event,
+        timestamp,
+        source,
+        options?.reservedItemIds,
+        options?.timelineCursor,
+      );
     case "turn_completed": {
       const finalized = finalizeActiveThoughts(state);
       return event.usage ? stampTurnUsageOnLastAssistant(finalized, event.usage) : finalized;
@@ -1144,11 +1165,12 @@ export function hydrateStreamState(
   events: Array<{
     event: AgentStreamEventPayload;
     timestamp: Date;
+    timelineCursor?: TimelinePosition;
   }>,
   options?: { source?: StreamUpdateSource },
 ): StreamItem[] {
-  const hydrated = events.reduce<StreamItem[]>((state, { event, timestamp }) => {
-    return reduceStreamUpdate(state, event, timestamp, options);
+  const hydrated = events.reduce<StreamItem[]>((state, { event, timestamp, timelineCursor }) => {
+    return reduceStreamUpdate(state, event, timestamp, { ...options, timelineCursor });
   }, []);
 
   return finalizeActiveThoughts(hydrated);
@@ -1432,6 +1454,7 @@ export function applyStreamEvent(params: {
   event: AgentStreamEventPayload;
   timestamp: Date;
   source?: StreamUpdateSource;
+  timelineCursor?: TimelinePosition;
 }): ApplyStreamEventResult {
   const { tail, head, event, timestamp } = params;
   const source = params.source ?? "live";
@@ -1502,7 +1525,11 @@ export function applyStreamEvent(params: {
             ),
           )
         : undefined;
-    const reduced = reduceStreamUpdate(nextHead, event, timestamp, { source, reservedItemIds });
+    const reduced = reduceStreamUpdate(nextHead, event, timestamp, {
+      source,
+      reservedItemIds,
+      timelineCursor: params.timelineCursor,
+    });
     if (reduced !== nextHead) {
       nextHead = reduced;
       changedHead = true;
@@ -1521,7 +1548,10 @@ export function applyStreamEvent(params: {
   }
 
   // For non-streamable kinds or non-timeline events, apply to tail
-  const reduced = reduceStreamUpdate(nextTail, event, timestamp, { source });
+  const reduced = reduceStreamUpdate(nextTail, event, timestamp, {
+    source,
+    timelineCursor: params.timelineCursor,
+  });
   if (reduced !== nextTail) {
     nextTail = reduced;
     changedTail = true;

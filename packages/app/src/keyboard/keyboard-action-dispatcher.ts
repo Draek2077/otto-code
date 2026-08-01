@@ -27,14 +27,17 @@ export type KeyboardActionId =
   | "workspace.pane.move-tab.up"
   | "workspace.pane.move-tab.down"
   | "workspace.pane.close"
+  | "workspace.focus.toggle"
   | "workspace.terminal.new"
   | "sidebar.toggle.right"
   | "sidebar.open.files"
   | "sidebar.open.search"
   | "sidebar.open.changes"
   | "workspace.new"
+  | "workspace.project.pick"
   | "worktree.new"
-  | "workspace.archive";
+  | "workspace.archive"
+  | "workspace.pin";
 
 export type KeyboardActionDefinition =
   | { id: "agent.interrupt"; scope: KeyboardActionScope }
@@ -61,14 +64,17 @@ export type KeyboardActionDefinition =
   | { id: "workspace.pane.move-tab.up"; scope: KeyboardActionScope }
   | { id: "workspace.pane.move-tab.down"; scope: KeyboardActionScope }
   | { id: "workspace.pane.close"; scope: KeyboardActionScope }
+  | { id: "workspace.focus.toggle"; scope: KeyboardActionScope }
   | { id: "workspace.terminal.new"; scope: KeyboardActionScope }
   | { id: "sidebar.toggle.right"; scope: KeyboardActionScope }
   | { id: "sidebar.open.files"; scope: KeyboardActionScope }
   | { id: "sidebar.open.search"; scope: KeyboardActionScope }
   | { id: "sidebar.open.changes"; scope: KeyboardActionScope }
   | { id: "workspace.new"; scope: KeyboardActionScope }
+  | { id: "workspace.project.pick"; scope: KeyboardActionScope }
   | { id: "worktree.new"; scope: KeyboardActionScope }
-  | { id: "workspace.archive"; scope: KeyboardActionScope };
+  | { id: "workspace.archive"; scope: KeyboardActionScope }
+  | { id: "workspace.pin"; scope: KeyboardActionScope };
 
 // Actions that reach developer-only surfaces (the git/search explorer tabs, new
 // terminals, pane splits). In User interface mode they are swallowed at dispatch

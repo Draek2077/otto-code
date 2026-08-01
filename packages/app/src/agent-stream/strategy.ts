@@ -51,9 +51,17 @@ export interface StreamSegmentRenderers {
   renderLiveAuxiliary: () => ReactNode;
 }
 
+export interface StreamHistoryRowRevision {
+  contentById: { has(id: string): boolean };
+  displayStateById: { has(id: string): boolean };
+  globalDisplayState: boolean;
+}
+
 export interface StreamRenderInput {
   agentId: string;
   segments: StreamRenderSegments;
+  historyRowRevision?: StreamHistoryRowRevision;
+  liveHeadRowRevision?: unknown;
   boundary: StreamHistoryBoundary;
   renderers: StreamSegmentRenderers;
   listEmptyComponent: ReactNode;
@@ -64,6 +72,7 @@ export interface StreamRenderInput {
   onNearHistoryStart: () => void;
   isLoadingOlderHistory: boolean;
   hasOlderHistory: boolean;
+  olderHistoryProgressKey: string | null;
   scrollEnabled: boolean;
   listStyle: StyleProp<ViewStyle>;
   baseListContentContainerStyle: StyleProp<ViewStyle>;

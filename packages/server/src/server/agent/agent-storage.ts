@@ -8,6 +8,7 @@ import { AgentFeatureSchema, AgentStatusSchema } from "../messages.js";
 import { toStoredAgentRecord } from "./agent-projections.js";
 import type { ManagedAgent } from "./agent-manager.js";
 import type { AgentSessionConfig } from "./agent-sdk-types.js";
+import { AgentOwnerSchema, daemonExecutionKey, type DaemonAgentOwner } from "./agent-owner.js";
 
 // Frozen personality snapshot as stored on disk. Roles are kept as a loose
 // string array here (not the PersonalityRole enum) so an old record whose role
@@ -108,6 +109,7 @@ const STORED_AGENT_SCHEMA = z.object({
   guardrailDenials: z.number().optional(),
   lastGuardrailDenialAt: z.string().optional(),
   archivedAt: z.string().nullable().optional(),
+  owner: AgentOwnerSchema.optional(),
 });
 
 export type SerializableAgentConfig = Pick<
@@ -152,6 +154,8 @@ function preserveGuardrailFields(
 
 export class AgentStorage {
   private cache: Map<string, StoredAgentRecord> = new Map();
+  private daemonAgentIdsByExecution: Map<string, string> = new Map();
+  private daemonExecutionKeysByAgentId: Map<string, string> = new Map();
   private pathById: Map<string, string> = new Map();
   private pathsById: Map<string, Set<string>> = new Map();
   private pendingWrites: Map<string, Promise<void>> = new Map();
@@ -178,6 +182,34 @@ export class AgentStorage {
   async get(agentId: string): Promise<StoredAgentRecord | null> {
     await this.load();
     return this.cache.get(agentId) ?? null;
+  }
+
+  async findByDaemonExecution(owner: DaemonAgentOwner): Promise<StoredAgentRecord | null> {
+    await this.load();
+    const agentId = this.daemonAgentIdsByExecution.get(daemonExecutionKey(owner));
+    return agentId ? (this.cache.get(agentId) ?? null) : null;
+  }
+
+  private indexOwner(record: StoredAgentRecord): void {
+    this.removeOwnerIndex(record.id);
+    if (record.owner?.kind === "daemon") {
+      const key = daemonExecutionKey(record.owner);
+      const previousAgentId = this.daemonAgentIdsByExecution.get(key);
+      if (previousAgentId && previousAgentId !== record.id) {
+        this.daemonExecutionKeysByAgentId.delete(previousAgentId);
+      }
+      this.daemonAgentIdsByExecution.set(key, record.id);
+      this.daemonExecutionKeysByAgentId.set(record.id, key);
+    }
+  }
+
+  private removeOwnerIndex(agentId: string): void {
+    const key = this.daemonExecutionKeysByAgentId.get(agentId);
+    if (!key) return;
+    if (this.daemonAgentIdsByExecution.get(key) === agentId) {
+      this.daemonAgentIdsByExecution.delete(key);
+    }
+    this.daemonExecutionKeysByAgentId.delete(agentId);
   }
 
   async upsert(record: StoredAgentRecord): Promise<void> {
@@ -277,6 +309,7 @@ export class AgentStorage {
     );
 
     this.cache.delete(agentId);
+    this.removeOwnerIndex(agentId);
     this.pathById.delete(agentId);
     this.pathsById.delete(agentId);
   }
@@ -345,6 +378,8 @@ export class AgentStorage {
 
   private async doLoad(): Promise<StoredAgentRecord[]> {
     this.cache.clear();
+    this.daemonAgentIdsByExecution.clear();
+    this.daemonExecutionKeysByAgentId.clear();
     this.pathById.clear();
     this.pathsById.clear();
 
@@ -409,6 +444,7 @@ export class AgentStorage {
       const { record, filePath } = item;
       records.push(record);
       this.cache.set(record.id, record);
+      this.indexOwner(record);
       this.pathById.set(record.id, filePath);
       this.addIndexedPath(record.id, filePath);
     }

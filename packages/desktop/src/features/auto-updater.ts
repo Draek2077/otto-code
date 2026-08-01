@@ -80,18 +80,12 @@ export function getStagingUserId(): Promise<string> {
   return cachedStagingUserIdPromise;
 }
 
-// AppImages have no install step. electron-updater "installs" by unlinking the
-// running file and mv-ing the downloaded one into place; on app quit it does this
-// via a *blocking* execFileSync(newAppImage, { APPIMAGE_EXIT_AFTER_INSTALL: "true" }).
-// That env var is only honored by AppImageLauncher, so without it the freshly
-// launched process boots the full app and never exits — the quit hangs forever,
-// with the old binary already deleted. We therefore install AppImages only on
-// explicit quitAndInstall (the "Update now" button), which takes the non-blocking
-// spawn path. Every other target keeps auto-install-on-quit, which works there.
-export function shouldAutoInstallOnQuit(input: {
+export function shouldInstallAppUpdateOnQuit(input: {
   platform: NodeJS.Platform;
   isAppImage: boolean;
 }): boolean {
+  // AppImage's no-relaunch install path blocks while launching the replacement
+  // binary, which can hang after the running file has already been replaced.
   return !(input.platform === "linux" && input.isAppImage);
 }
 
@@ -101,10 +95,10 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
   configure(input: AppUpdateRuntimeConfiguration): void {
     autoUpdater.autoDownload = true;
     autoUpdater.autoRunAppAfterInstall = true;
-    autoUpdater.autoInstallOnAppQuit = shouldAutoInstallOnQuit({
-      platform: process.platform,
-      isAppImage: Boolean(process.env.APPIMAGE),
-    });
+    // Otto revalidates the current manifest before explicitly installing on quit.
+    // Electron's built-in handler would install an older download without checking
+    // whether a newer release has superseded it.
+    autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.allowPrerelease = input.releaseChannel === "beta";
     autoUpdater.channel = input.releaseChannel === "beta" ? "beta" : "latest";
     autoUpdater.allowDowngrade = false;
@@ -147,6 +141,7 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
   }
 
   quitAndInstall(isSilent: boolean, isForceRunAfter: boolean): void {
+    autoUpdater.autoRunAppAfterInstall = isForceRunAfter;
     autoUpdater.quitAndInstall(isSilent, isForceRunAfter);
   }
 }
@@ -220,4 +215,25 @@ export async function downloadAndInstallUpdate(
     { currentVersion, releaseChannel },
     onBeforeQuit,
   );
+}
+
+export async function installAppUpdateOnQuit({
+  currentVersion,
+  releaseChannel,
+  signal,
+}: {
+  currentVersion: string;
+  releaseChannel: AppReleaseChannel;
+  signal: AbortSignal;
+}): Promise<boolean> {
+  if (
+    !shouldInstallAppUpdateOnQuit({
+      platform: process.platform,
+      isAppImage: Boolean(process.env.APPIMAGE),
+    })
+  ) {
+    return false;
+  }
+
+  return appUpdateService.installUpdateOnQuit({ currentVersion, releaseChannel, signal });
 }

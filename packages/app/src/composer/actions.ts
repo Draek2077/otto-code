@@ -1,4 +1,4 @@
-import type { GitHostingProviderId, GitHubSearchItem } from "@otto-code/protocol/messages";
+import type { ForgeSearchItem } from "@otto-code/protocol/messages";
 import type {
   AttachmentMetadata,
   ComposerAttachment,
@@ -8,7 +8,10 @@ import {
   isWorkspaceAttachment,
   userAttachmentsOnly,
 } from "@/attachments/workspace-attachment-utils";
-import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
+import {
+  splitComposerAttachmentsForSubmit,
+  type ComposerAttachmentSubmitFormat,
+} from "@/composer/attachments/submit";
 import {
   appendOptimisticUserMessageToStream,
   buildOptimisticUserMessage,
@@ -17,6 +20,7 @@ import {
   type UserMessageItem,
 } from "@/types/stream";
 import type { PickedImageAttachmentInput } from "@/hooks/image-attachment-picker";
+import { i18n } from "@/i18n/i18next";
 
 export interface QueuedComposerMessage {
   id: string;
@@ -89,7 +93,7 @@ export async function pickAndPersistImages(input: {
   return await Promise.all(
     result.map(async (picked) => {
       const fileName = picked.fileName ?? null;
-      const mimeType = picked.mimeType || "image/jpeg";
+      const mimeType = picked.mimeType;
       if (picked.source.kind === "blob") {
         return await input.persister.persistFromBlob({
           blob: picked.source.blob,
@@ -141,12 +145,18 @@ export interface CancelComposerAgentInput {
   isAgentRunning: boolean;
   isCancellingAgent: boolean;
   isConnected: boolean;
+  onCancelFailed: (error: unknown) => void;
 }
 
 export function cancelComposerAgent(input: CancelComposerAgentInput): boolean {
   if (!input.isAgentRunning || input.isCancellingAgent) return false;
   if (!input.isConnected || !input.client) return false;
-  void input.client.cancelAgent(input.agentId);
+  try {
+    void Promise.resolve(input.client.cancelAgent(input.agentId)).catch(input.onCancelFailed);
+  } catch (error) {
+    input.onCancelFailed(error);
+    return false;
+  }
   return true;
 }
 
@@ -155,6 +165,7 @@ export interface DispatchComposerAgentMessageInput {
   agentId: string;
   text: string;
   attachments: ComposerAttachment[];
+  attachmentSubmitFormat?: ComposerAttachmentSubmitFormat;
   encodeImages: (
     images: AttachmentMetadata[],
   ) => Promise<Array<{ data: string; mimeType: string }> | undefined>;
@@ -164,7 +175,9 @@ export interface DispatchComposerAgentMessageInput {
 export async function dispatchComposerAgentMessage(
   input: DispatchComposerAgentMessageInput,
 ): Promise<void> {
-  const wirePayload = splitComposerAttachmentsForSubmit(input.attachments);
+  const wirePayload = splitComposerAttachmentsForSubmit(input.attachments, {
+    format: input.attachmentSubmitFormat,
+  });
   const messageId = generateMessageId();
   const userMessage = buildOptimisticUserMessage({
     id: messageId,
@@ -173,40 +186,50 @@ export async function dispatchComposerAgentMessage(
     images: wirePayload.images,
     attachments: wirePayload.attachments,
   });
-  appendUserMessageToStream(input.agentId, userMessage, input.stream);
-  const imagesData = await input.encodeImages(wirePayload.images);
-  await input.client.sendAgentMessage(input.agentId, input.text, {
-    messageId,
-    images: imagesData ?? [],
-    attachments: wirePayload.attachments,
-  });
+  const rollbackOptimisticMessage = appendUserMessageToStream(
+    input.agentId,
+    userMessage,
+    input.stream,
+  );
+  try {
+    const imagesData = await input.encodeImages(wirePayload.images);
+    await input.client.sendAgentMessage(input.agentId, input.text, {
+      messageId,
+      images: imagesData ?? [],
+      attachments: wirePayload.attachments,
+    });
+  } catch (error) {
+    rollbackOptimisticMessage();
+    throw error;
+  }
 }
 
 function appendUserMessageToStream(
   agentId: string,
   userMessage: UserMessageItem,
   stream: AgentStreamWriter,
-): void {
+): () => void {
   const result = appendOptimisticUserMessageToStream({
     tail: stream.getTail(agentId) ?? [],
     head: stream.getHead(agentId) ?? [],
     message: userMessage,
     placement: "active-head",
   });
-  if (result.changedHead) {
-    stream.setHead((prev) => {
-      const next = new Map(prev);
-      next.set(agentId, result.head);
-      return next;
+  const write = result.changedHead ? stream.setHead : stream.setTail;
+  const items = result.changedHead ? result.head : result.tail;
+  write((prev) => new Map(prev).set(agentId, items));
+
+  return () => {
+    write((prev) => {
+      const current = prev.get(agentId);
+      if (!current) return prev;
+      const nextItems = current.filter(
+        (item) => item.id !== userMessage.id || item.kind !== "user_message" || !item.optimistic,
+      );
+      if (nextItems.length === current.length) return prev;
+      return new Map(prev).set(agentId, nextItems);
     });
-  }
-  if (result.changedTail) {
-    stream.setTail((prev) => {
-      const next = new Map(prev);
-      next.set(agentId, result.tail);
-      return next;
-    });
-  }
+  };
 }
 
 export interface QueueComposerMessageInput {
@@ -298,6 +321,56 @@ export function moveQueuedComposerMessage(input: MoveQueuedComposerMessageInput)
   return true;
 }
 
+export interface SendQueuedComposerMessageNowInput {
+  agentId: string;
+  messageId: string;
+  queue: QueueWriter;
+  submitMessage: (input: { text: string; attachments: ComposerAttachment[] }) => Promise<void>;
+  failedToSendMessage?: string;
+}
+
+export type SendQueuedComposerMessageNowResult =
+  | { status: "missing" }
+  | { status: "submitted" }
+  | { status: "failed"; errorMessage: string };
+
+/**
+ * Send one already-queued message immediately instead of waiting for the turn
+ * to end. Removes it from the queue first so a slow submit cannot send twice,
+ * and puts it back at the head if the submit throws.
+ */
+export async function sendQueuedComposerMessageNow(
+  input: SendQueuedComposerMessageNowInput,
+): Promise<SendQueuedComposerMessageNowResult> {
+  const item = input.queue.read(input.agentId).find((q) => q.id === input.messageId);
+  if (!item) return { status: "missing" };
+  input.queue.write((prev) => {
+    const next = new Map(prev);
+    next.set(
+      input.agentId,
+      (prev.get(input.agentId) ?? []).filter((q) => q.id !== input.messageId),
+    );
+    return next;
+  });
+  try {
+    await input.submitMessage({ text: item.text, attachments: item.attachments });
+    return { status: "submitted" };
+  } catch (error) {
+    input.queue.write((prev) => {
+      const next = new Map(prev);
+      next.set(input.agentId, [item, ...(prev.get(input.agentId) ?? [])]);
+      return next;
+    });
+    return {
+      status: "failed",
+      errorMessage:
+        error instanceof Error
+          ? error.message
+          : (input.failedToSendMessage ?? i18n.t("composer.errors.failedToSend")),
+    };
+  }
+}
+
 export interface OpenComposerAttachmentInput {
   attachment: ComposerAttachment;
   setLightboxMetadata: (metadata: AttachmentMetadata) => void;
@@ -310,7 +383,7 @@ export function openComposerAttachment(input: OpenComposerAttachmentInput): void
     input.setLightboxMetadata(input.attachment.metadata);
     return;
   }
-  if (input.attachment.kind === "file") {
+  if (input.attachment.kind === "file" || input.attachment.kind === "workspace_file") {
     return;
   }
   if (isWorkspaceAttachment(input.attachment)) {
@@ -320,77 +393,81 @@ export function openComposerAttachment(input: OpenComposerAttachmentInput): void
   input.openExternalUrl(input.attachment.item.url);
 }
 
-export function buildGithubAttachment(
-  item: GitHubSearchItem,
-  provider?: GitHostingProviderId,
-): UserComposerAttachment {
-  const providerField = provider && provider !== "github" ? { provider } : {};
-  return item.kind === "pr"
-    ? { kind: "github_pr", item, ...providerField }
-    : { kind: "github_issue", item, ...providerField };
+export function buildForgeAttachment(item: ForgeSearchItem): UserComposerAttachment {
+  return item.kind === "change_request"
+    ? { kind: "forge_change_request", item }
+    : { kind: "forge_issue", item };
 }
 
-function isGithubAttachment(
+function isForgeAttachment(
   attachment: UserComposerAttachment,
-): attachment is Extract<UserComposerAttachment, { kind: "github_issue" } | { kind: "github_pr" }> {
-  return attachment.kind === "github_issue" || attachment.kind === "github_pr";
+): attachment is Extract<
+  UserComposerAttachment,
+  { kind: "forge_issue" | "forge_change_request" | "github_issue" | "github_pr" }
+> {
+  return (
+    attachment.kind === "forge_issue" ||
+    attachment.kind === "forge_change_request" ||
+    // COMPAT(githubAttachmentKinds): added in v0.1.106, remove after 2026-12-28 once daemon floor >= v0.1.106
+    attachment.kind === "github_issue" ||
+    attachment.kind === "github_pr"
+  );
 }
 
-export function toggleGithubAttachment(
+export function toggleForgeAttachment(
   current: UserComposerAttachment[],
-  item: GitHubSearchItem,
-  provider?: GitHostingProviderId,
+  item: ForgeSearchItem,
 ): UserComposerAttachment[] {
   const matches = (attachment: UserComposerAttachment) =>
-    isGithubAttachment(attachment) &&
+    isForgeAttachment(attachment) &&
     attachment.item.kind === item.kind &&
     attachment.item.number === item.number;
   if (current.some(matches)) {
     return current.filter((attachment) => !matches(attachment));
   }
-  return [...current, buildGithubAttachment(item, provider)];
+  return [...current, buildForgeAttachment(item)];
 }
 
 interface ToggleGithubAttachmentFromPickerInput {
   current: UserComposerAttachment[];
-  item: GitHubSearchItem;
-  provider?: GitHostingProviderId;
+  item: ForgeSearchItem;
   markGithubAttachmentRemoved: (attachment: UserComposerAttachment) => void;
 }
 
 export function toggleGithubAttachmentFromPicker({
   current,
   item,
-  provider,
   markGithubAttachmentRemoved,
 }: ToggleGithubAttachmentFromPickerInput): UserComposerAttachment[] {
   const existingAttachment = current.find(
     (attachment) =>
-      isGithubAttachment(attachment) &&
+      isForgeAttachment(attachment) &&
       attachment.item.kind === item.kind &&
       attachment.item.number === item.number,
   );
   if (existingAttachment) {
     markGithubAttachmentRemoved(existingAttachment);
   }
-  return toggleGithubAttachment(current, item, provider);
+  return toggleForgeAttachment(current, item);
 }
 
 export function findGithubItemByOption(
-  items: readonly GitHubSearchItem[],
+  items: readonly ForgeSearchItem[],
   optionId: string,
-): GitHubSearchItem | undefined {
+): ForgeSearchItem | undefined {
   return items.find((candidate) => `${candidate.kind}:${candidate.number}` === optionId);
 }
 
 export function isAttachmentSelectedForGithubItem(
   current: readonly ComposerAttachment[],
-  item: GitHubSearchItem,
+  item: ForgeSearchItem,
 ): boolean {
   return userAttachmentsOnly(current).some(
     (attachment) =>
-      isGithubAttachment(attachment) &&
+      isForgeAttachment(attachment) &&
       attachment.item.kind === item.kind &&
       attachment.item.number === item.number,
   );
 }
+
+export const toggleGithubAttachment = toggleForgeAttachment;

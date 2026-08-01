@@ -352,28 +352,30 @@ function recordsShallowEqual(
   return true;
 }
 
-export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): string {
-  if (target.kind === "draft") {
-    return target.draftId;
-  }
-  if (target.kind === "agent") {
-    return `agent_${target.agentId}`;
-  }
-  if (target.kind === "terminal") {
-    return `terminal_${target.terminalId}`;
-  }
-  if (target.kind === "browser") {
-    return `browser_${target.browserId}`;
-  }
-  if (target.kind === "setup") {
-    return `setup_${target.workspaceId}`;
-  }
-  if (target.kind === "artifact") {
-    return `artifact_${target.artifactId}`;
-  }
-  if (target.kind === "gitLog") {
-    return `gitlog_${target.operation}`;
-  }
+/** Tabs whose identity is a single id the target already carries. */
+const SIMPLE_TAB_ID_BUILDERS: {
+  [K in WorkspaceTabTarget["kind"]]?: (target: Extract<WorkspaceTabTarget, { kind: K }>) => string;
+} = {
+  draft: (target) => target.draftId,
+  agent: (target) => `agent_${target.agentId}`,
+  terminal: (target) => `terminal_${target.terminalId}`,
+  browser: (target) => `browser_${target.browserId}`,
+  setup: (target) => `setup_${target.workspaceId}`,
+  artifact: (target) => `artifact_${target.artifactId}`,
+  gitLog: (target) => `gitlog_${target.operation}`,
+  contextManagement: () => "context-management",
+  orchestrationGraph: (target) => `orchestration-graph_${target.graphId}`,
+  provider_subagent: (target) => `provider-subagent_${target.parentAgentId}_${target.subagentId}`,
+  commit_diff: (target) => `commit-diff_${target.sha}`,
+  working_diff: () => "working-diff",
+  visualizer: (target) => (target.runId ? `visualizer_run_${target.runId}` : "visualizer"),
+};
+
+/**
+ * Job tabs keyed by the source location they were opened from, so a second
+ * request for the same location supersedes the first rather than stacking.
+ */
+function buildJobTabId(target: WorkspaceTabTarget): string | null {
   if (target.kind === "fileHistory") {
     const scope =
       target.startLine !== undefined && target.endLine !== undefined
@@ -393,21 +395,26 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   if (target.kind === "refine") {
     return `refine_${target.paths[0] ?? ""}`;
   }
-  if (target.kind === "visualizer") {
-    return target.runId ? `visualizer_run_${target.runId}` : "visualizer";
+  return null;
+}
+
+export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): string {
+  const simple = SIMPLE_TAB_ID_BUILDERS[target.kind] as
+    | ((value: WorkspaceTabTarget) => string)
+    | undefined;
+  if (simple) {
+    return simple(target);
   }
-  if (target.kind === "contextManagement") {
-    return "context-management";
-  }
-  if (target.kind === "orchestrationGraph") {
-    return `orchestration-graph_${target.graphId}`;
+  const jobId = buildJobTabId(target);
+  if (jobId !== null) {
+    return jobId;
   }
   // Out-of-project files are namespaced by their origin workspace so they never
   // collide with an in-project file of the same relative path (gated-multi-root).
-  if (target.origin) {
+  if (target.kind === "file" && target.origin) {
     return `file_${target.origin.workspaceId}_${target.path}`;
   }
-  return `file_${target.path}`;
+  return `file_${target.kind === "file" ? target.path : ""}`;
 }
 
 function trimNonEmpty(value: string | null | undefined): string | null {

@@ -6,6 +6,12 @@ executableName: Otto
 # line on macOS. Left blank, this field falls back to an empty/Electron-default
 # value, which reads as "unknown origin" in the file's Properties > Details tab.
 copyright: "Copyright © 2026 Draekz. Licensed under AGPL-3.0-or-later."
+# Registers otto:// with the OS so agent deep links reach the app. main.ts
+# handles them via 'open-url' (macOS) and second-instance argv (Windows/Linux).
+protocols:
+  - name: Otto agent link
+    schemes:
+      - otto
 afterPack: ./scripts/after-pack.js
 afterSign: ./scripts/after-sign.js
 directories:

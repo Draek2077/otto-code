@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { Text, View } from "react-native";
+import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
@@ -143,7 +144,13 @@ function TranscriptViewDialogContent({
         // sync timeout) — the record is already stored, so we still render what
         // arrived rather than dead-ending the viewer.
         try {
-          await ensureAgentIsInitialized({ serverId, agentId, client, setAgentInitializing });
+          await ensureAgentIsInitialized({
+            serverId,
+            agentId,
+            client,
+            runtime: getHostRuntimeStore(),
+            setAgentInitializing,
+          });
         } catch {
           // ignore — render whatever timeline made it into the store
         }
@@ -194,7 +201,7 @@ function TranscriptViewDialogContent({
       <AgentStreamView
         agentId={agent.id}
         serverId={serverId}
-        agent={agent}
+        context={agent}
         streamItems={streamItems}
         pendingPermissions={EMPTY_PENDING_PERMISSIONS}
         isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}

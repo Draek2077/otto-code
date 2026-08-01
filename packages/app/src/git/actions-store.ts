@@ -7,10 +7,8 @@ import type {
 } from "@otto-code/protocol/messages";
 import { create } from "zustand";
 import { queryClient as appQueryClient } from "@/data/query-client";
-import {
-  buildWorkspaceTabPersistenceKey,
-  useWorkspaceLayoutStore,
-} from "@/stores/workspace-layout-store";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { useSessionStore } from "@/stores/session-store";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import { useWorkspaceTabsStore } from "@/stores/workspace-tabs-store";
@@ -62,11 +60,19 @@ function resolveClient(serverId: string) {
   return client;
 }
 
-function assertGitHubAutoMergeActionsSupported(serverId: string) {
+type AutoMergeActionsRpc = "forge" | "github";
+
+function resolveAutoMergeActionsRpc(serverId: string): AutoMergeActionsRpc {
   const session = useSessionStore.getState().sessions[serverId];
-  if (session?.serverInfo?.features?.checkoutGithubSetAutoMerge !== true) {
-    throw new Error("Update the host to use GitHub auto-merge actions.");
+  if (session?.serverInfo?.features?.checkoutForgeSetAutoMerge === true) {
+    return "forge";
   }
+  // COMPAT(githubAutoMergeRpc): added in v0.1.106, remove after 2026-12-28 once
+  // all supported clients use checkout.forge.set_auto_merge.*.
+  if (session?.serverInfo?.features?.checkoutGithubSetAutoMerge === true) {
+    return "github";
+  }
+  throw new Error("Update the host to use auto-merge actions.");
 }
 
 function assertCheckoutGitCommitSupported(serverId: string) {
@@ -540,14 +546,19 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
   },
 
   enablePrAutoMerge: async ({ serverId, cwd, method }) => {
-    assertGitHubAutoMergeActionsSupported(serverId);
+    const rpc = resolveAutoMergeActionsRpc(serverId);
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: `enable-pr-auto-merge-${method}`,
       run: async () => {
         const client = resolveClient(serverId);
-        const payload = await client.checkoutGithubSetAutoMerge(cwd, { enabled: true, method });
+        // COMPAT(githubAutoMergeRpc): added in v0.1.106, remove after 2026-12-28 once
+        // all supported clients use checkout.forge.set_auto_merge.*.
+        const payload =
+          rpc === "forge"
+            ? await client.checkoutForgeSetAutoMerge(cwd, { enabled: true, method })
+            : await client.checkoutGithubSetAutoMerge(cwd, { enabled: true, method });
         if (payload.error) {
           throw new Error(payload.error.message);
         }
@@ -556,14 +567,19 @@ export const useCheckoutGitActionsStore = create<CheckoutGitActionsStoreState>()
   },
 
   disablePrAutoMerge: async ({ serverId, cwd }) => {
-    assertGitHubAutoMergeActionsSupported(serverId);
+    const rpc = resolveAutoMergeActionsRpc(serverId);
     await runCheckoutAction({
       serverId,
       cwd,
       actionId: "disable-pr-auto-merge",
       run: async () => {
         const client = resolveClient(serverId);
-        const payload = await client.checkoutGithubSetAutoMerge(cwd, { enabled: false });
+        // COMPAT(githubAutoMergeRpc): added in v0.1.106, remove after 2026-12-28 once
+        // all supported clients use checkout.forge.set_auto_merge.*.
+        const payload =
+          rpc === "forge"
+            ? await client.checkoutForgeSetAutoMerge(cwd, { enabled: false })
+            : await client.checkoutGithubSetAutoMerge(cwd, { enabled: false });
         if (payload.error) {
           throw new Error(payload.error.message);
         }

@@ -2,6 +2,7 @@ import type { z } from "zod";
 
 export interface OttoToolExecutionContext {
   signal?: AbortSignal;
+  sendUpdate?: (update: OttoToolResult) => void;
 }
 
 export interface OttoToolResult {

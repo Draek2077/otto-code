@@ -27,7 +27,7 @@ export async function createProjectPickerFixture(): Promise<ProjectPickerFixture
       projectName: path.basename(projectPath),
       // Fuzzy subsequence of the leaf "otto-desktop-fuzzy-target-<nonce>"
       // (o-t-o-d-f-z-t + nonce). The pre-rebrand fixture used "psodfzt", crafted
-      // for "paseo-desktop-fuzzy-target"; the rebrand renamed the directory but
+      // for "otto-desktop-fuzzy-target"; the rebrand renamed the directory but
       // not this query, so it stopped matching and the E2E search found nothing.
       fuzzyQuery: `otodfzt${nonce}`,
     },

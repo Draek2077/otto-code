@@ -1,6 +1,32 @@
 import { z } from "zod";
 import { GitHostingProviderIdSchema } from "./git-hosting.js";
 
+const TCP_PORT_RANGE_PATTERN = /^(\d{1,5})-(\d{1,5})$/;
+
+// Declared ahead of OttoWorktreeConfigRawSchema because that schema references
+// it: a zod schema is a value, so a later `const` would be in its temporal dead
+// zone at module-evaluation time.
+export const OttoServicePortAllocationSchema = z
+  .object({
+    range: z.string().trim().regex(TCP_PORT_RANGE_PATTERN).optional(),
+    portScript: z.string().trim().min(1).optional(),
+  })
+  .strict()
+  .refine(
+    (value) => value.range !== undefined || value.portScript !== undefined,
+    "Expected range or portScript",
+  )
+  .refine((value) => {
+    if (!value.range) return true;
+    const match = TCP_PORT_RANGE_PATTERN.exec(value.range);
+    if (!match) return false;
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    return start >= 1 && end <= 65_535 && start <= end;
+  }, "Expected an inclusive TCP port range from 1-65535");
+
+export type OttoServicePortAllocation = z.infer<typeof OttoServicePortAllocationSchema>;
+
 export function normalizeLifecycleCommands(commands: unknown): string[] {
   if (typeof commands === "string") {
     return commands.trim().length > 0 ? [commands] : [];
@@ -28,6 +54,7 @@ export const OttoWorktreeConfigRawSchema = z
     setup: OttoLifecycleCommandRawSchema.optional(),
     teardown: OttoLifecycleCommandRawSchema.optional(),
     terminals: z.unknown().optional(),
+    servicePorts: OttoServicePortAllocationSchema.optional(),
   })
   .passthrough();
 

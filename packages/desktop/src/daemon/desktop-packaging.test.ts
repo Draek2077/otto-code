@@ -52,7 +52,7 @@ function createFakeMacBundle(options: { includeHelper: boolean }): {
       helperPath,
       [
         "#!/bin/sh",
-        'printf "helper env=%s/%s\\n" "$ELECTRON_RUN_AS_NODE" "$OTTO_NODE_ENV"',
+        'printf "helper env=%s/%s cli=%s\\n" "$ELECTRON_RUN_AS_NODE" "$OTTO_NODE_ENV" "$OTTO_CLI"',
         'printf "args=%s\\n" "$*"',
         "",
       ].join("\n"),
@@ -89,6 +89,13 @@ describe("desktop packaging", () => {
     expect(config).toContain("!node_modules/@otto-code/server/dist/server/web-ui/**");
   });
 
+  it("registers Otto agent links with the operating system", () => {
+    const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
+
+    expect(config).toContain("name: Otto agent link");
+    expect(config).toContain("- otto");
+  });
+
   // electron-builder packs production dependencies declared in package.json into
   // app.asar. Runtime code in runtime-paths.ts and bin/otto dynamically resolves
   // these workspace packages by string, so static analysis (TypeScript, Knip) cannot
@@ -114,7 +121,7 @@ describe("desktop packaging", () => {
       const result = spawnSync(bundle.shimPath, ["--version"], { encoding: "utf8" });
 
       expect(result.status).toBe(0);
-      expect(result.stdout).toContain("helper env=1/production");
+      expect(result.stdout).toContain(`helper env=1/production cli=${bundle.shimPath}`);
       expect(result.stdout).toContain("node-entrypoint-runner.js");
       expect(result.stdout).toContain("node-script");
       expect(result.stdout).toContain("@otto-code/cli/dist/index.js");

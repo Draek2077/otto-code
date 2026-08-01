@@ -2,14 +2,22 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { isAbsolute, join, resolve } from "path";
 import { z } from "zod";
 
+const ChangeRequestLookupTargetSchema = z.object({
+  headRef: z.string().min(1),
+  headRepositoryOwner: z.string().min(1).optional(),
+  changeRequestNumber: z.number().int().positive().optional(),
+});
+
 const OttoWorktreeMetadataV1Schema = z.object({
   version: z.literal(1),
   baseRefName: z.string().min(1),
+  changeRequestLookupTarget: ChangeRequestLookupTargetSchema.optional(),
 });
 
 const OttoWorktreeMetadataV2Schema = z.object({
   version: z.literal(2),
   baseRefName: z.string().min(1),
+  changeRequestLookupTarget: ChangeRequestLookupTargetSchema.optional(),
   firstAgentBranchAutoName: z
     .discriminatedUnion("status", [
       z.object({
@@ -36,6 +44,8 @@ const OttoWorktreeMetadataSchema = z.union([
 ]);
 
 export type OttoWorktreeMetadata = z.infer<typeof OttoWorktreeMetadataSchema>;
+
+export type OttoWorktreeChangeRequestLookupTarget = z.infer<typeof ChangeRequestLookupTargetSchema>;
 
 function getGitDirForWorktreeRoot(worktreeRoot: string): string {
   const gitPath = join(worktreeRoot, ".git");

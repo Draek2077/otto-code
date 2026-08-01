@@ -1,8 +1,42 @@
 import { describe, expect, it } from "vitest";
 
-import { buildAgentBranchNameSeed, renderPromptAttachmentAsText } from "./prompt-attachments.js";
+import {
+  buildAgentBranchNameSeed,
+  buildAgentPrompt,
+  renderPromptAttachmentAsText,
+} from "./prompt-attachments.js";
 
 describe("prompt attachments", () => {
+  it("places fork history before the new user prompt", () => {
+    const chatHistory = {
+      type: "text" as const,
+      mimeType: "text/plain",
+      contextKind: "chat_history" as const,
+      title: "Chat history",
+      text: "<chat-history-summary>\nPrevious work\n</chat-history-summary>",
+    };
+    const issue = {
+      type: "github_issue" as const,
+      mimeType: "application/github-issue",
+      number: 55,
+      title: "Issue",
+      url: "https://github.com/getpaseo/paseo/issues/55",
+    };
+
+    expect(
+      buildAgentPrompt(
+        "  Take a different approach  ",
+        [{ data: "image-data", mimeType: "image/png" }],
+        [issue, chatHistory],
+      ),
+    ).toEqual([
+      chatHistory,
+      { type: "text", text: "Take a different approach" },
+      { type: "image", data: "image-data", mimeType: "image/png" },
+      issue,
+    ]);
+  });
+
   it("renders github_pr attachments as readable text", () => {
     expect(
       renderPromptAttachmentAsText({
@@ -16,6 +50,66 @@ describe("prompt attachments", () => {
         headRefName: "fix/worktree-race",
       }),
     ).toContain("GitHub PR #123: Fix race in worktree setup");
+  });
+
+  it("renders GitLab change request attachments with MR numbering", () => {
+    expect(
+      renderPromptAttachmentAsText({
+        type: "forge_change_request",
+        mimeType: "application/paseo-forge-change-request",
+        forge: "gitlab",
+        number: 123,
+        title: "Fix race in worktree setup",
+        url: "https://gitlab.com/getpaseo/paseo/-/merge_requests/123",
+        body: "MR body",
+        projectPath: "getpaseo/paseo",
+        baseRefName: "main",
+        headRefName: "fix/worktree-race",
+      }),
+    ).toContain("GitLab MR !123: Fix race in worktree setup");
+  });
+
+  // COMPAT(hostingAttachments): remove with the schemas after 2027-02-01.
+  it("renders legacy hosting_pr attachments instead of throwing", () => {
+    expect(
+      renderPromptAttachmentAsText({
+        type: "hosting_pr",
+        mimeType: "application/otto-hosting-pr",
+        provider: "bitbucket-cloud",
+        number: 7,
+        title: "Add Bitbucket adapter",
+        url: "https://bitbucket.org/acme/app/pull-requests/7",
+        body: "PR body",
+        baseRefName: "main",
+        headRefName: "feature/bitbucket",
+      }),
+    ).toContain("Bitbucket PR #7: Add Bitbucket adapter");
+  });
+
+  it("renders legacy hosting_issue attachments instead of throwing", () => {
+    expect(
+      renderPromptAttachmentAsText({
+        type: "hosting_issue",
+        mimeType: "application/otto-hosting-issue",
+        provider: "github",
+        number: 9,
+        title: "Flaky worktree test",
+        url: "https://github.com/acme/app/issues/9",
+      }),
+    ).toContain("GitHub Issue #9: Flaky worktree test");
+  });
+
+  it("falls back to a neutral label for an unknown hosting provider", () => {
+    expect(
+      renderPromptAttachmentAsText({
+        type: "hosting_pr",
+        mimeType: "application/otto-hosting-pr",
+        provider: "some-future-provider",
+        number: 1,
+        title: "Forward compat",
+        url: "https://example.invalid/1",
+      }),
+    ).toContain("Git PR #1: Forward compat");
   });
 
   it("renders review attachments with compact file, line, comment, and context details", () => {

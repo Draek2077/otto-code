@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { constants, promises as fs, type Stats } from "fs";
+import { constants, promises as fs, type BigIntStats, type Stats } from "fs";
 import type { FileHandle } from "fs/promises";
 import path from "path";
 import { writeFileAtomic } from "../atomic-file.js";
@@ -114,6 +114,22 @@ interface EntryPayloadParams {
   targetPath: string;
   name: string;
   kind: ExplorerEntryKind;
+}
+
+export type ExplorerFileVersion =
+  | {
+      status: "ready";
+      cwd: string;
+      path: string;
+      size: number;
+      modifiedAt: string;
+      revision: string;
+    }
+  | { status: "missing"; cwd: string; path: string }
+  | { status: "error"; cwd: string; path: string; error: string };
+
+function fileRevision(stats: BigIntStats): string {
+  return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}`;
 }
 
 export async function listDirectoryEntries({
@@ -826,4 +842,43 @@ function isLikelyBinary(buffer: Buffer): boolean {
   }
 
   return suspicious / buffer.length > 0.3;
+}
+
+export async function getExplorerFileVersion({
+  root,
+  relativePath,
+}: ReadFileParams): Promise<ExplorerFileVersion> {
+  const cwd = expandUserPath(root);
+  try {
+    const filePath = await resolveScopedPath({ root, relativePath });
+    const stats = await fs.stat(filePath.resolvedPath, { bigint: true });
+    if (!stats.isFile()) {
+      return { status: "error", cwd, path: relativePath, error: "Requested path is not a file" };
+    }
+    return {
+      status: "ready",
+      cwd,
+      path: normalizeRelativePath({ root, targetPath: filePath.requestedPath }),
+      size: Number(stats.size),
+      modifiedAt: stats.mtime.toISOString(),
+      revision: fileRevision(stats),
+    };
+  } catch (error) {
+    if (isMissingEntryError(error)) {
+      return { status: "missing", cwd, path: relativePath };
+    }
+    return {
+      status: "error",
+      cwd,
+      path: relativePath,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function resolveExplorerFilePath({
+  root,
+  relativePath,
+}: ReadFileParams): Promise<string> {
+  return (await resolveScopedPath({ root, relativePath })).resolvedPath;
 }

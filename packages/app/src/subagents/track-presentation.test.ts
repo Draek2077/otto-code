@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { SubagentRow } from "./select";
+import type { OttoSubagentRow, SubagentRow } from "./select";
 import {
   buildSubagentRowPresentationData,
   formatCompactTokenCount,
+  countFinishedSubagents,
   formatHeaderLabel,
   formatSubagentCurrentTool,
   formatSubagentElapsed,
@@ -17,8 +18,9 @@ import {
   sumSubagentTokens,
 } from "./track-presentation";
 
-function row(overrides: Partial<SubagentRow> & Pick<SubagentRow, "id">): SubagentRow {
+function row(overrides: Partial<OttoSubagentRow> & Pick<OttoSubagentRow, "id">): OttoSubagentRow {
   return {
+    kind: "otto",
     id: overrides.id,
     provider: overrides.provider ?? "codex",
     title: overrides.title ?? `Agent ${overrides.id}`,
@@ -329,6 +331,41 @@ describe("formatSubagentElapsed", () => {
   });
 });
 
+describe("countFinishedSubagents", () => {
+  it("counts only terminal provider-owned children", () => {
+    const providerRows: SubagentRow[] = [
+      {
+        kind: "provider",
+        id: "native-running",
+        parentAgentId: "parent",
+        provider: "claude",
+        title: "running",
+        status: "running",
+        requiresAttention: false,
+        createdAt: new Date("2026-04-20T00:00:00.000Z"),
+      },
+      {
+        kind: "provider",
+        id: "native-failed",
+        parentAgentId: "parent",
+        provider: "claude",
+        title: "failed",
+        status: "failed",
+        requiresAttention: true,
+        createdAt: new Date("2026-04-20T00:00:01.000Z"),
+      },
+    ];
+
+    expect(
+      countFinishedSubagents([
+        row({ id: "managed-running", status: "running" }),
+        row({ id: "managed-idle", status: "idle" }),
+        ...providerRows,
+      ]),
+    ).toBe(1);
+  });
+});
+
 describe("resolveRowLabel", () => {
   it("returns null when title is not a string", () => {
     expect(resolveRowLabel(null as unknown as SubagentRow["title"])).toBe(null);
@@ -351,7 +388,9 @@ describe("resolveRowLabel", () => {
 
 describe("buildSubagentRowPresentationData", () => {
   it("namespaces the key with a subagent prefix", () => {
-    expect(buildSubagentRowPresentationData(row({ id: "child-a" })).key).toBe("subagent_child-a");
+    expect(buildSubagentRowPresentationData(row({ id: "child-a" })).key).toBe(
+      "otto_subagent_child-a",
+    );
   });
 
   it("marks the row ready when the title resolves to a real label", () => {

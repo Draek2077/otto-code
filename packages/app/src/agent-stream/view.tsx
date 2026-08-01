@@ -262,13 +262,24 @@ export interface AgentStreamViewHandle {
 export interface AgentStreamViewProps {
   agentId: string;
   serverId?: string;
-  agent: AgentScreenAgent;
+  context: AgentScreenAgent;
   streamItems: StreamItem[];
+  /** Overrides the store's head buffer, for surfaces that own their own stream. */
+  streamHead?: StreamItem[];
   pendingPermissions: Map<string, PendingPermission>;
   routeBottomAnchorRequest?: BottomAnchorRouteRequest | null;
   isAuthoritativeHistoryReady?: boolean;
   toast?: ToastApi | null;
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
+  /** A transcript you can read but not act on (no permission prompts). */
+  readOnly?: boolean;
+  /** Overrides the built-in load-older hook when the caller owns paging. */
+  historyPagination?: {
+    hasOlder: boolean;
+    isLoadingOlder: boolean;
+    progressKey: string | null;
+    onLoadOlder: () => void;
+  };
 }
 
 const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
@@ -368,18 +379,55 @@ function buildForkDraftTabTarget(
   return setup ? { kind: "draft", draftId, setup } : { kind: "draft", draftId };
 }
 
+interface ResolvedHistoryPagination {
+  isLoadingOlder: boolean;
+  hasOlder: boolean;
+  loadOlder: () => void;
+  /** Changes when a page lands, so the list can keep the reader's anchor. */
+  olderHistoryProgressKey: string | null;
+}
+
+/**
+ * History paging is normally this view's own business, but a surface that owns
+ * its stream (a read-only provider-subagent transcript) supplies its own. The
+ * built-in hook still runs either way — hooks cannot be conditional — it is
+ * simply ignored when an override is present.
+ */
+function useResolvedHistoryPagination(input: {
+  serverId: string;
+  agentId: string;
+  toast?: ToastApi | null;
+  override?: AgentStreamViewProps["historyPagination"];
+}): ResolvedHistoryPagination {
+  const own = useLoadOlderAgentHistory({
+    serverId: input.serverId,
+    agentId: input.agentId,
+    toast: input.toast,
+  });
+  const { override } = input;
+  return {
+    isLoadingOlder: override?.isLoadingOlder ?? own.isLoadingOlder,
+    hasOlder: override?.hasOlder ?? own.hasOlder,
+    loadOlder: override?.onLoadOlder ?? own.loadOlder,
+    olderHistoryProgressKey: override?.progressKey ?? null,
+  };
+}
+
 const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamViewProps>(
   function AgentStreamView(
     {
       agentId,
       serverId,
-      agent,
+      context: agent,
       streamItems,
+      streamHead: streamHeadOverride,
       pendingPermissions,
       routeBottomAnchorRequest = null,
       isAuthoritativeHistoryReady = true,
       toast,
       onOpenWorkspaceFile,
+      readOnly = false,
+      historyPagination,
     },
     ref,
   ) {
@@ -423,9 +471,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     useAgentStreamRetention(resolvedServerId, agentId);
 
     const client = useSessionStore((state) => state.sessions[resolvedServerId]?.client ?? null);
-    const streamHead = useSessionStore((state) =>
+    const storeStreamHead = useSessionStore((state) =>
       state.sessions[resolvedServerId]?.agentStreamHead?.get(agentId),
     );
+    const streamHead = streamHeadOverride ?? storeStreamHead;
     const supportsAgentForkContext = useSessionStore(
       (state) => state.sessions[resolvedServerId]?.serverInfo?.features?.agentForkContext === true,
     );
@@ -436,11 +485,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       workspaceId: agent.workspaceId,
       workspaceRoot,
     });
-    const { isLoadingOlder, hasOlder, loadOlder } = useLoadOlderAgentHistory({
-      serverId: resolvedServerId,
-      agentId,
-      toast,
-    });
+    const { isLoadingOlder, hasOlder, loadOlder, olderHistoryProgressKey } =
+      useResolvedHistoryPagination({
+        serverId: resolvedServerId,
+        agentId,
+        toast,
+        override: historyPagination,
+      });
     // Keep entry/exit animations off on Android due to RN dispatchDraw crashes
     // tracked in react-native-reanimated#8422.
     const shouldDisableEntryExitAnimations = Platform.OS === "android";
@@ -957,8 +1008,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
 
     const pendingPermissionItems = useMemo(
-      () => Array.from(pendingPermissions.values()).filter((perm) => perm.agentId === agentId),
-      [pendingPermissions, agentId],
+      () =>
+        // A read-only transcript shows history, not decisions: never surface a
+        // permission prompt the reader has no authority to answer.
+        readOnly
+          ? []
+          : Array.from(pendingPermissions.values()).filter((perm) => perm.agentId === agentId),
+      [pendingPermissions, agentId, readOnly],
     );
 
     const showRunningTurnFooter = agent.status === "running";
@@ -1116,6 +1172,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                   onNearHistoryStart: loadOlder,
                   isLoadingOlderHistory: isLoadingOlder,
                   hasOlderHistory: hasOlder,
+                  olderHistoryProgressKey: olderHistoryProgressKey,
                   scrollEnabled: streamScrollEnabled,
                   listStyle: stylesheet.list,
                   baseListContentContainerStyle: stylesheet.listContentContainer,
@@ -1243,7 +1300,7 @@ function agentStreamViewPropsEqual(
   const reasons: string[] = [];
   if (left.agentId !== right.agentId) reasons.push("agentId");
   if (left.serverId !== right.serverId) reasons.push("serverId");
-  reasons.push(...collectAgentScreenAgentDiffs(left.agent, right.agent));
+  reasons.push(...collectAgentScreenAgentDiffs(left.context, right.context));
   if (left.streamItems !== right.streamItems) reasons.push("streamItems");
   if (left.pendingPermissions !== right.pendingPermissions) reasons.push("pendingPermissions");
   if (

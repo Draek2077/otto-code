@@ -37,7 +37,7 @@ import {
 } from "./test-utils/session-stubs.js";
 import { isPlatform } from "../test-utils/platform.js";
 import type {
-  GitHubCheckDetails,
+  CheckDetails,
   GitHubPullRequestStatusFacts,
   GitHubService,
 } from "../services/github-service.js";
@@ -4316,7 +4316,7 @@ describe("session pull request timeline handling", () => {
       checkRunId: number;
       workflowRunId?: number;
     }> = [];
-    const checkDetails: GitHubCheckDetails = {
+    const checkDetails: CheckDetails = {
       checkRunId: 12345,
       workflowRunId: 456,
       name: "server-tests",
@@ -4334,7 +4334,7 @@ describe("session pull request timeline handling", () => {
       async isAuthenticated() {
         return true;
       },
-      async getGitHubCheckDetails(request) {
+      async getCheckDetails(request) {
         checkDetailRequests.push({
           cwd: request.cwd,
           repoOwner: request.repoOwner,

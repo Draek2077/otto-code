@@ -23,6 +23,7 @@ function useVisualizerPanelDescriptor(): PanelDescriptor {
   const { t } = useTranslation();
   return {
     label: t("workspace.visualizer.tabLabel"),
+    tooltip: t("workspace.visualizer.tabLabel"),
     subtitle: t("workspace.visualizer.subtitle"),
     titleState: "ready",
     icon: Waypoints,

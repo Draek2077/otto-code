@@ -4,10 +4,8 @@ import { createJSONStorage, type StateStorage } from "zustand/middleware";
 import { mountBrowserAutomationHandler } from "./handler";
 import type { DesktopHostBridge } from "@/desktop/host";
 import { useBrowserStore } from "@/stores/browser-store";
-import {
-  buildWorkspaceTabPersistenceKey,
-  useWorkspaceLayoutStore,
-} from "@/stores/workspace-layout-store";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 
 type BrowserAutomationExecuteRequest = Extract<
   SessionOutboundMessage,
@@ -73,10 +71,7 @@ class FakeDaemonClient {
 
 class FakeBrowserBridge {
   public readonly executedRequests: BrowserAutomationExecuteRequest[] = [];
-  public readonly registeredWorkspaceBrowsers: Array<{ browserId: string; workspaceId: string }> =
-    [];
   public readonly unregisteredWorkspaceBrowsers: string[] = [];
-  public readonly clearedPartitions: string[] = [];
   public readonly activeWorkspaceBrowsers: Array<{
     browserId: string | null;
     workspaceId: string;
@@ -94,19 +89,8 @@ class FakeBrowserBridge {
     return this.response ?? currentListTabsPayload(request.requestId);
   };
 
-  public registerWorkspaceBrowser = async (input: {
-    browserId: string;
-    workspaceId: string;
-  }): Promise<void> => {
-    this.registeredWorkspaceBrowsers.push(input);
-  };
-
   public unregisterWorkspaceBrowser = async (browserId: string): Promise<void> => {
     this.unregisteredWorkspaceBrowsers.push(browserId);
-  };
-
-  public clearPartition = async (browserId: string): Promise<void> => {
-    this.clearedPartitions.push(browserId);
   };
 
   public setWorkspaceActiveBrowser = async (input: {
@@ -118,9 +102,17 @@ class FakeBrowserBridge {
 }
 
 class FakeResidentBrowser {
-  public readonly ensuredWebviews: Array<{ browserId: string; url: string }> = [];
+  public readonly ensuredWebviews: Array<{
+    browserId: string;
+    workspaceId: string;
+    url: string;
+  }> = [];
 
-  public ensure = (input: { browserId: string; url: string }): HTMLElement | null => {
+  public ensure = (input: {
+    browserId: string;
+    workspaceId: string;
+    url: string;
+  }): HTMLElement | null => {
     this.ensuredWebviews.push(input);
     return null;
   };
@@ -347,12 +339,13 @@ describe("mountBrowserAutomationHandler", () => {
       }),
     );
     expect(openedTabs[0]?.tabId).not.toBe(previousFocusedTabId);
-    expect(browser.browser.registeredWorkspaceBrowsers).toEqual([
-      { browserId: result.browserId, workspaceId: "wks_workspace_a" },
-    ]);
     expect(browser.browser.activeWorkspaceBrowsers).toEqual([]);
     expect(browser.resident.ensuredWebviews).toEqual([
-      { browserId: result.browserId, url: "https://example.com" },
+      {
+        browserId: result.browserId,
+        workspaceId: "wks_workspace_a",
+        url: "https://example.com",
+      },
     ]);
     expect(browser.browser.executedRequests).toEqual([
       {
@@ -475,7 +468,10 @@ describe("mountBrowserAutomationHandler", () => {
       },
     ]);
     expect(browser.resident.ensuredWebviews).toEqual([
-      expect.objectContaining({ url: "https://example.com" }),
+      expect.objectContaining({
+        workspaceId: "wks_workspace_a",
+        url: "https://example.com",
+      }),
     ]);
   });
 
@@ -549,7 +545,7 @@ describe("mountBrowserAutomationHandler", () => {
     });
   });
 
-  test("browser_close_tab removes the workspace tab, browser record, resident webview, registry entry, and partition", async () => {
+  test("browser_close_tab removes the workspace tab, browser record, resident webview, and registry entry", async () => {
     const browser = new BrowserAutomationHandlerHarness();
     const workspaceKey = buildWorkspaceTabPersistenceKey({
       serverId: "server-1",
@@ -575,7 +571,6 @@ describe("mountBrowserAutomationHandler", () => {
     expect(workspaceBrowserTabs(workspaceKey, result.browserId)).toEqual([]);
     expect(useBrowserStore.getState().browsersById[result.browserId]).toBeUndefined();
     expect(browser.browser.unregisteredWorkspaceBrowsers).toEqual([result.browserId]);
-    expect(browser.browser.clearedPartitions).toEqual([result.browserId]);
     expect(currentBrowserTabs()).toEqual([]);
   });
 

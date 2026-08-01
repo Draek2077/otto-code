@@ -12,7 +12,7 @@ import {
   resolveGitHubRepo,
   type GitHubCommandRunner,
   type GitHubCommandRunnerOptions,
-  type HostingCurrentPullRequestStatus,
+  type CurrentPullRequestStatus,
 } from "./github-service.js";
 import { CheckoutPrStatusResponseSchema } from "@otto-code/protocol/messages";
 
@@ -140,8 +140,8 @@ function currentPullRequestGithubFactsJson(overrides: Record<string, unknown> = 
 }
 
 function createCurrentPullRequestStatus(
-  overrides: Partial<HostingCurrentPullRequestStatus> = {},
-): HostingCurrentPullRequestStatus {
+  overrides: Partial<CurrentPullRequestStatus> = {},
+): CurrentPullRequestStatus {
   return {
     number: 42,
     repoOwner: "acme",
@@ -162,8 +162,8 @@ function createCurrentPullRequestStatus(
 }
 
 function githubStatusFacts(
-  overrides: Partial<NonNullable<HostingCurrentPullRequestStatus["github"]>> = {},
-): NonNullable<HostingCurrentPullRequestStatus["github"]> {
+  overrides: Partial<NonNullable<CurrentPullRequestStatus["github"]>> = {},
+): NonNullable<CurrentPullRequestStatus["github"]> {
   return {
     mergeStateStatus: "CLEAN",
     autoMergeRequest: null,
@@ -1862,13 +1862,13 @@ describe("GitHubService", () => {
       now: () => 100,
     });
 
-    const first = await service.getGitHubCheckDetails({
+    const first = await service.getCheckDetails({
       cwd: "/repo",
       repoOwner: "acme",
       repoName: "repo",
       checkRunId: 12345,
     });
-    const second = await service.getGitHubCheckDetails({
+    const second = await service.getCheckDetails({
       cwd: "/repo",
       repoOwner: "acme",
       repoName: "repo",
@@ -1959,7 +1959,7 @@ describe("GitHubService", () => {
       now: () => 100,
     });
 
-    const details = await service.getGitHubCheckDetails({
+    const details = await service.getCheckDetails({
       cwd: "/repo",
       repoOwner: "acme",
       repoName: "repo",
@@ -2019,7 +2019,7 @@ describe("GitHubService", () => {
       now: () => 100,
     });
 
-    const details = await service.getGitHubCheckDetails({
+    const details = await service.getCheckDetails({
       cwd: "/repo",
       repoOwner: "acme",
       repoName: "repo",
@@ -2057,7 +2057,7 @@ describe("GitHubService", () => {
       now: () => 100,
     });
 
-    const details = await service.getGitHubCheckDetails({
+    const details = await service.getCheckDetails({
       cwd: "/repo",
       repoOwner: "acme",
       repoName: "repo",
@@ -3069,8 +3069,8 @@ describe("GitHubService", () => {
 
   it("type: force true requires a reason", () => {
     // @ts-expect-error force: true requires reason
-    const invalid: GitHubReadOptions = { force: true };
-    const valid: GitHubReadOptions = { force: true, reason: "test" };
+    const invalid: ForgeReadOptions = { force: true };
+    const valid: ForgeReadOptions = { force: true, reason: "test" };
 
     expect(invalid.force).toBe(true);
     expect(valid.reason).toBe("test");

@@ -7,6 +7,7 @@ export type KeyboardFocusScope =
   // owns combos (Mod+B → Go to Definition) that mean nothing in a plain input.
   | "code-editor"
   | "editable"
+  | "browser"
   | "other";
 
 export type MessageInputKeyboardActionKind =
@@ -50,8 +51,10 @@ export type KeyboardActionId =
   | "shortcuts.dialog.toggle"
   | "workspace.terminal.new"
   | "workspace.new"
+  | "workspace.project.pick"
   | "worktree.new"
   | "workspace.archive"
+  | "workspace.pin"
   | "view.toggle.focus"
   | "theme.cycle"
   | "message-input.action"

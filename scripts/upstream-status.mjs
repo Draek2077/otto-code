@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Reports how far Otto has drifted from upstream Paseo since the last merge.
+// Reports how far Otto has drifted from upstream Otto since the last merge.
 //
 // Git already knows *what* we last took — it's `git merge-base HEAD upstream/main`,
 // and it stays accurate as long as upstream is ingested with a real merge (never a
@@ -98,7 +98,9 @@ try {
   baseline = git("merge-base", "HEAD", "upstream/main");
 } catch {
   console.error("Could not resolve `git merge-base HEAD upstream/main`.");
-  console.error("Run `git fetch upstream` first (remote: https://github.com/getpaseo/paseo.git).");
+  console.error(
+    "Run `git fetch upstream` first (remote: https://github.com/Draek2077/otto-code.git).",
+  );
   process.exit(1);
 }
 
@@ -196,7 +198,7 @@ for (const { label, paths } of WATCHLIST) {
 if (!anyHits) console.log("  clear — no upstream work in our differentiated subsystems");
 
 // Upstream deleting or renaming a file we've modified will not auto-resolve, and
-// the rebrand makes it worse: every `paseo-*`-named file we renamed shows up here
+// the rebrand makes it worse: every `otto-*`-named file we renamed shows up here
 // the moment upstream touches it.
 if (deletedButOursChanged.length > 0) {
   heading(

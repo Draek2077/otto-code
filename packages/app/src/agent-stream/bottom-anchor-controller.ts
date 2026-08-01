@@ -68,6 +68,8 @@ interface BottomAnchorControllerDriver {
   resetForAgent: () => void;
   applyRouteRequest: (request: BottomAnchorRouteRequest | null) => void;
   requestLocalAnchor: (request: BottomAnchorLocalRequest) => void;
+  beginUserScroll: () => void;
+  endUserScroll: (params: { isNearBottom: boolean }) => void;
   detachByUser: () => void;
   handleViewportMetricsChange: (params: {
     previousViewportWidth: number;
@@ -247,6 +249,7 @@ function createBottomAnchorControllerDriver(
   let lastRouteRequestKey: string | null = null;
   let stickyMeasurementRevision = 0;
   let lastVerifiedStickyMeasurementRevision = 0;
+  let isUserScrollActive = false;
   // How far, and over how many scroll events, the view has moved away from the
   // bottom in one unbroken run. Reset the moment it comes back.
   let awayScrollAccumulationPx = 0;
@@ -424,10 +427,14 @@ function createBottomAnchorControllerDriver(
       | "viewport_change"
       | "content_size_change"
       | "scroll_near_bottom_change"
+      | "user_scroll_end"
       | "history_readiness_change"
       | "manual_reevaluate"
       | "retry_scroll",
   ) => {
+    if (isUserScrollActive) {
+      return;
+    }
     if (attemptHandle) {
       return;
     }
@@ -496,6 +503,7 @@ function createBottomAnchorControllerDriver(
       resetAwayScrollTracking();
       stickyMeasurementRevision = 0;
       lastVerifiedStickyMeasurementRevision = 0;
+      isUserScrollActive = false;
       mode = "sticky-bottom";
       input.onModeChange("sticky-bottom");
     },
@@ -512,6 +520,38 @@ function createBottomAnchorControllerDriver(
     requestLocalAnchor(request) {
       createRequest(request);
     },
+    beginUserScroll() {
+      isUserScrollActive = true;
+      cancelPendingAttempt();
+    },
+    endUserScroll(params) {
+      isUserScrollActive = false;
+      if (params.isNearBottom) {
+        if (mode === "detached") {
+          setModeInternal("sticky-bottom");
+          pendingVerification = { requestId: null, retries: 0 };
+          evaluate(false, "user_scroll_end");
+          return;
+        }
+        if (pendingRequest) {
+          evaluate(false, "user_scroll_end");
+          return;
+        }
+        if (
+          !input.isNearBottom() ||
+          stickyMeasurementRevision !== lastVerifiedStickyMeasurementRevision
+        ) {
+          pendingVerification = { requestId: null, retries: 0 };
+          evaluate(false, "user_scroll_end");
+          return;
+        }
+        markStickyMeasurementVerified();
+        return;
+      }
+      if (mode === "sticky-bottom") {
+        this.detachByUser();
+      }
+    },
     detachByUser() {
       if (mode === "detached") {
         return;
@@ -525,6 +565,9 @@ function createBottomAnchorControllerDriver(
         params.previousViewportHeight !== params.viewportHeight
       ) {
         markStickyMeasurementChanged();
+      }
+      if (isUserScrollActive) {
+        return;
       }
       const shouldRestick = __private__.shouldRestickOnViewportChange({
         mode,
@@ -543,6 +586,9 @@ function createBottomAnchorControllerDriver(
     handleContentSizeChange(params) {
       if (params.previousContentHeight !== params.contentHeight) {
         markStickyMeasurementChanged();
+      }
+      if (isUserScrollActive) {
+        return;
       }
       const shouldRestick = __private__.shouldRestickOnContentChange({
         mode,
@@ -573,6 +619,9 @@ function createBottomAnchorControllerDriver(
         return;
       }
       markStickyMeasurementChanged();
+      if (isUserScrollActive) {
+        return;
+      }
       if (!pendingRequest) {
         pendingVerification = { requestId: null, retries: 0 };
         if (attemptHandle) {
@@ -586,11 +635,18 @@ function createBottomAnchorControllerDriver(
     },
     handleScrollNearBottomChange(params) {
       const { nextIsNearBottom, scrollDelta } = params;
+      // Otto: accumulate away-from-bottom movement BEFORE upstream's active-scroll
+      // guard. Detach is decided from the scroll event (docs/chat-scrolling.md), and
+      // an active user scroll is exactly when that evidence accrues, so returning
+      // early first would stop the detach signal from ever building.
       if (nextIsNearBottom) {
         resetAwayScrollTracking();
       } else if (Math.abs(scrollDelta) >= 1) {
         awayScrollAccumulationPx += Math.abs(scrollDelta);
         awayScrollEventStreak += 1;
+      }
+      if (isUserScrollActive) {
+        return;
       }
       if (
         nextIsNearBottom &&
@@ -772,6 +828,12 @@ export function useBottomAnchorController(input: {
     mode,
     requestLocalAnchor(request: BottomAnchorLocalRequest) {
       driverRef.current?.requestLocalAnchor(request);
+    },
+    beginUserScroll() {
+      driverRef.current?.beginUserScroll();
+    },
+    endUserScroll(params: { isNearBottom: boolean }) {
+      driverRef.current?.endUserScroll(params);
     },
     detachByUser() {
       driverRef.current?.detachByUser();

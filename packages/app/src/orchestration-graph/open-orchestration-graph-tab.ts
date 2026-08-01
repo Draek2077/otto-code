@@ -42,6 +42,6 @@ export function openOrchestrationGraphTab(input: OpenOrchestrationGraphTabInput)
   useWorkspaceLayoutStore
     .getState()
     .openTabFocused(workspaceKey, target, { insertAfterFocusedTab: true });
-  navigateToWorkspace(input.serverId, input.workspaceId);
+  navigateToWorkspace({ serverId: input.serverId, workspaceId: input.workspaceId });
   return true;
 }

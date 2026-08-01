@@ -1,47 +1,49 @@
-import type {
-  AgentAttachment,
-  GitHostingProviderId,
-  GitHubSearchItem,
-} from "@otto-code/protocol/messages";
+import type { AgentAttachment, ForgeSearchItem } from "@otto-code/protocol/messages";
 
-export function buildGitHubAttachmentFromSearchItem(
-  item: GitHubSearchItem | null,
-  options?: { provider?: GitHostingProviderId },
+export function buildForgeAttachmentFromSearchItem(
+  item: ForgeSearchItem | null,
 ): AgentAttachment | null {
   if (!item) {
     return null;
   }
 
-  // Non-GitHub items become provider-tagged hosting attachments. Only new
-  // daemons (gitHostingProviders feature) produce non-GitHub search items,
-  // so the receiving daemon always understands the hosting_* kinds.
-  const provider = options?.provider;
-  if (provider && provider !== "github") {
-    if (item.kind === "pr") {
-      return {
-        type: "hosting_pr",
-        mimeType: "application/otto-hosting-pr",
-        provider,
-        number: item.number,
-        title: item.title,
-        url: item.url,
-        ...(item.body ? { body: item.body } : {}),
-        ...(item.baseRefName ? { baseRefName: item.baseRefName } : {}),
-        ...(item.headRefName ? { headRefName: item.headRefName } : {}),
-      };
-    }
+  if (item.kind === "change_request") {
     return {
-      type: "hosting_issue",
-      mimeType: "application/otto-hosting-issue",
-      provider,
+      type: "forge_change_request",
+      mimeType: "application/otto-forge-change-request",
+      forge: item.forge ?? "github",
       number: item.number,
       title: item.title,
       url: item.url,
       ...(item.body ? { body: item.body } : {}),
+      ...(item.projectPath ? { projectPath: item.projectPath } : {}),
+      ...(item.baseRefName ? { baseRefName: item.baseRefName } : {}),
+      ...(item.headRefName ? { headRefName: item.headRefName } : {}),
     };
   }
 
-  if (item.kind === "pr") {
+  return {
+    type: "forge_issue",
+    mimeType: "application/otto-forge-issue",
+    forge: item.forge ?? "github",
+    number: item.number,
+    title: item.title,
+    url: item.url,
+    ...(item.body ? { body: item.body } : {}),
+    ...(item.projectPath ? { projectPath: item.projectPath } : {}),
+  };
+}
+
+export const buildGitHubAttachmentFromSearchItem = buildForgeAttachmentFromSearchItem;
+
+export function buildLegacyGitHubAttachmentFromSearchItem(
+  item: ForgeSearchItem | null,
+): AgentAttachment | null {
+  if (!item) {
+    return null;
+  }
+
+  if (item.kind === "change_request") {
     return {
       type: "github_pr",
       mimeType: "application/github-pr",

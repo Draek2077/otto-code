@@ -44,6 +44,11 @@ const NO_PENDING_ARCHIVE_IDS: ReadonlySet<string> = new Set();
  * would stop work it does not touch. See docs/chat-lifecycle.md.
  */
 function isStoppedByParentInterrupt(row: SubagentRow): boolean {
+  // Provider-reported rows are a projection of the parent's own run, not a
+  // separate runtime an interrupt could stop.
+  if (row.kind !== "otto") {
+    return false;
+  }
   return row.attend === "observed" && !row.backgrounded && isSubagentRowRunning(row.status);
 }
 

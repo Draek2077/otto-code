@@ -525,6 +525,7 @@ export function loadConfig(
     listen,
     listenAutoWidenedForWsl,
     ottoHome,
+    desktopManaged: env.OTTO_DESKTOP_MANAGED === "1",
     worktreesRoot: resolveWorktreesRoot(ottoHome, persisted),
     corsAllowedOrigins: resolveCorsAllowedOrigins(env, persisted),
     hostnames,

@@ -128,6 +128,10 @@ export const DEFAULT_MOUNTED_WORKSPACE_LIMIT = 5;
 export const MIN_MOUNTED_WORKSPACE_LIMIT = 2;
 export const MAX_MOUNTED_WORKSPACE_LIMIT = 12;
 
+export type ToolCallDetailLevel = "overview" | "detailed";
+
+const VALID_TOOL_CALL_DETAIL_LEVELS = new Set<ToolCallDetailLevel>(["overview", "detailed"]);
+
 export interface AppSettings {
   colorSchemeMode: ColorSchemeMode;
   lightTheme: LightThemeName;
@@ -457,6 +461,10 @@ export interface AppSettings {
   // resolveFeatureEnabled), so new features default on and existing devices are
   // unaffected. Device-local presentation only. Keyed by FeatureId.
   featureEnabled: Partial<Record<FeatureId, boolean>>;
+  /** How much of a tool call the transcript expands by default. */
+  toolCallDetailLevel: ToolCallDetailLevel;
+  /** Vim keybindings in the file editor. */
+  vimKeybindings: boolean;
 }
 
 export type VisualizerRenderQuality = "performance" | "balanced" | "sharp" | "native";
@@ -582,6 +590,8 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   visualizerPipX: 1,
   visualizerPipY: 0,
   featureEnabled: {},
+  toolCallDetailLevel: "detailed",
+  vimKeybindings: false,
 };
 export const DEFAULT_APP_SETTINGS: Settings = {
   ...DEFAULT_CLIENT_SETTINGS,
@@ -1207,6 +1217,15 @@ function pickVisualizerPipSettings(stored: Partial<AppSettings>): Partial<AppSet
   }
   if (typeof stored.visualizerPipY === "number" && Number.isFinite(stored.visualizerPipY)) {
     result.visualizerPipY = clampUnit(stored.visualizerPipY);
+  }
+  if (typeof stored.vimKeybindings === "boolean") {
+    result.vimKeybindings = stored.vimKeybindings;
+  }
+  if (
+    typeof stored.toolCallDetailLevel === "string" &&
+    VALID_TOOL_CALL_DETAIL_LEVELS.has(stored.toolCallDetailLevel as ToolCallDetailLevel)
+  ) {
+    result.toolCallDetailLevel = stored.toolCallDetailLevel as ToolCallDetailLevel;
   }
   return result;
 }

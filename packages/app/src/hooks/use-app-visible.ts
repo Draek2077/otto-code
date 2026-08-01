@@ -1,72 +1,65 @@
 import { useSyncExternalStore } from "react";
 import { AppState } from "react-native";
-import { getIsAppInForeground } from "@/utils/app-visibility";
+import { getIsAppActivelyVisible, getIsAppVisible } from "@/utils/app-visibility";
 import { isWeb } from "@/constants/platform";
 
-type AppStateSubscription = ReturnType<typeof AppState.addEventListener>;
-
-let current = getIsAppInForeground();
-const listeners = new Set<() => void>();
-let appStateSubscription: AppStateSubscription | null = null;
+let visible = getIsAppVisible();
+let activelyVisible = getIsAppActivelyVisible();
+const visibilityListeners = new Set<() => void>();
+const activeVisibilityListeners = new Set<() => void>();
 
 function notify(): void {
-  const next = getIsAppInForeground();
-  if (next === current) {
-    return;
+  const nextVisible = getIsAppVisible();
+  if (nextVisible !== visible) {
+    visible = nextVisible;
+    for (const listener of visibilityListeners) listener();
   }
-  current = next;
-  for (const listener of listeners) {
-    listener();
+
+  const nextActivelyVisible = getIsAppActivelyVisible();
+  if (nextActivelyVisible !== activelyVisible) {
+    activelyVisible = nextActivelyVisible;
+    for (const listener of activeVisibilityListeners) listener();
   }
 }
 
-/**
- * Platform listeners are owned by the store, not by each consumer: when several
- * panes mounted their own, one unmounting called `removeEventListener` with the
- * shared `notify` reference and tore the listeners down for everyone still
- * mounted — leaving `current` frozen at whatever it last saw.
- */
-function startListening(): void {
-  appStateSubscription = AppState.addEventListener("change", notify);
-  if (isWeb && typeof document !== "undefined") {
-    document.addEventListener("visibilitychange", notify);
-    window.addEventListener("focus", notify);
-    window.addEventListener("blur", notify);
-  }
+// Track visibility for the app's whole lifetime, not per consumer: transitions that happen while
+// no consumer is mounted must still be reflected in the snapshot the next consumer reads, or a
+// component mounting right after a focus change acts on stale visibility.
+// AppState needs no environment guard of its own — react-native-web's implementation already
+// no-ops when there is no DOM, unlike the raw document/window listeners below.
+AppState.addEventListener("change", notify);
+if (isWeb && typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", notify);
+  window.addEventListener("focus", notify);
+  window.addEventListener("blur", notify);
 }
 
-function stopListening(): void {
-  appStateSubscription?.remove();
-  appStateSubscription = null;
-  if (isWeb && typeof document !== "undefined") {
-    document.removeEventListener("visibilitychange", notify);
-    window.removeEventListener("focus", notify);
-    window.removeEventListener("blur", notify);
-  }
+function subscribeToVisibility(listener: () => void): () => void {
+  visibilityListeners.add(listener);
+  return () => visibilityListeners.delete(listener);
 }
 
-function subscribe(listener: () => void): () => void {
-  if (listeners.size === 0) {
-    startListening();
-  }
-  listeners.add(listener);
-  // `current` only advances while something is subscribed, so a visibility
-  // change that happened with no consumers mounted left it stale — and a
-  // consumer that mounts onto a stale `false` waits for an event that already
-  // fired. Re-read on every subscribe so mounting is its own sync point.
-  notify();
-  return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) {
-      stopListening();
-    }
-  };
+function subscribeToActiveVisibility(listener: () => void): () => void {
+  activeVisibilityListeners.add(listener);
+  return () => activeVisibilityListeners.delete(listener);
 }
 
-function getSnapshot(): boolean {
-  return current;
+function getVisibilitySnapshot(): boolean {
+  return visible;
+}
+
+function getActiveVisibilitySnapshot(): boolean {
+  return activelyVisible;
 }
 
 export function useAppVisible(): boolean {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return useSyncExternalStore(subscribeToVisibility, getVisibilitySnapshot, getVisibilitySnapshot);
+}
+
+export function useAppActivelyVisible(): boolean {
+  return useSyncExternalStore(
+    subscribeToActiveVisibility,
+    getActiveVisibilitySnapshot,
+    getActiveVisibilitySnapshot,
+  );
 }

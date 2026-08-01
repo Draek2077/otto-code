@@ -7306,7 +7306,7 @@ function createPrCheckoutGitHubService(params: { headRef: string }): GitHubServi
       truncated: false,
       error: null,
     }),
-    getGitHubCheckDetails: async ({ checkRunId, workflowRunId }) => ({
+    getCheckDetails: async ({ checkRunId, workflowRunId }) => ({
       checkRunId,
       workflowRunId: workflowRunId ?? null,
       name: "test",

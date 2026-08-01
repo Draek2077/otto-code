@@ -102,6 +102,7 @@ export function toStoredAgentRecord(
     unattended: agent.unattended,
     guardrailDenials: agent.guardrailDenials,
     lastGuardrailDenialAt: agent.lastGuardrailDenialAt,
+    owner: agent.owner,
   } satisfies StoredAgentRecord;
 }
 

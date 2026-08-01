@@ -705,9 +705,10 @@ export function DropdownMenuSeparator({
 export function DropdownMenuHint({
   children,
   testID,
-}: PropsWithChildren<{ testID?: string }>): ReactElement {
+  style,
+}: PropsWithChildren<{ testID?: string; style?: StyleProp<ViewStyle> }>): ReactElement {
   return (
-    <View style={styles.hintContainer} testID={testID}>
+    <View style={style ? [styles.hintContainer, style] : styles.hintContainer} testID={testID}>
       <Text style={styles.hintText}>{children}</Text>
     </View>
   );

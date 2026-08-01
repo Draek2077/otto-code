@@ -61,6 +61,7 @@ function useFileHistoryPanelDescriptor(target: FileHistoryTarget): PanelDescript
   const hasRange = target.startLine !== undefined && target.endLine !== undefined;
   return {
     label: fileHistoryTabTitle(target),
+    tooltip: target.path,
     subtitle: hasRange
       ? t("gitFileHistory.scopeLines", { start: target.startLine, end: target.endLine })
       : target.path,

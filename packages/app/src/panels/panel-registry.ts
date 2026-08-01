@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
+import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 
 export interface PanelIconProps {
@@ -10,6 +10,7 @@ export interface PanelIconProps {
 export interface PanelDescriptor {
   label: string;
   subtitle: string;
+  tooltip: string;
   titleState: "ready" | "loading";
   icon: ComponentType<PanelIconProps>;
   statusBucket: SidebarStateBucket | null;
@@ -30,6 +31,7 @@ export interface PanelDescriptor {
 export interface PanelDescriptorContext {
   serverId: string;
   workspaceId: string;
+  tabId: string;
 }
 
 export interface PanelRegistration<
@@ -41,6 +43,10 @@ export interface PanelRegistration<
     target: Extract<WorkspaceTabTarget, { kind: K }>,
     context: PanelDescriptorContext,
   ): PanelDescriptor;
+  /**
+   * Job tabs (rename, refine, artifact) hold work that closing would discard.
+   * Resolve false to keep the tab open. Panels without unsaved state omit this.
+   */
   confirmClose?(
     target: Extract<WorkspaceTabTarget, { kind: K }>,
     context: PanelDescriptorContext,

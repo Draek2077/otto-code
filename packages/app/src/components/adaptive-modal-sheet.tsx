@@ -12,7 +12,13 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import type { LayoutChangeEvent, PressableStateCallbackType, TextInputProps } from "react-native";
+import type {
+  LayoutChangeEvent,
+  PressableStateCallbackType,
+  StyleProp,
+  TextInputProps,
+  ViewStyle,
+} from "react-native";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { getOverlayRoot, OVERLAY_Z } from "../lib/overlay-root";
@@ -226,6 +232,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[4],
   },
   bottomSheetStaticContent: {
+    flex: 1,
+    minHeight: 0,
+  },
+  bottomSheetVisibleScroll: {
     flex: 1,
     minHeight: 0,
   },
@@ -528,6 +538,10 @@ export interface AdaptiveModalSheetProps {
   children: ReactNode;
   /** Sticky footer rendered below the scrollable content. */
   footer?: ReactNode;
+  /** Extra style for the footer container (padding/background tweaks). */
+  footerContainerStyle?: StyleProp<ViewStyle>;
+  /** Extra style for the scrollable content container. */
+  contentContainerStyle?: StyleProp<ViewStyle>;
   /**
    * Fixed slot rendered between the header and the scrollable content — e.g. a
    * tab strip that must stay visible while the content scrolls.
@@ -544,6 +558,11 @@ export interface AdaptiveModalSheetProps {
    */
   desktopHeight?: number;
   scrollable?: boolean;
+  /**
+   * Make the scroll area fill the current snap point rather than sizing to its
+   * content, so a taller snap does not leave the sheet short.
+   */
+  sizeContentToCurrentSnapPoint?: boolean;
   presentation?: "push" | "replace";
   /**
    * Render the themed desktop-web scrollbar over the scroll area instead of the
@@ -566,12 +585,15 @@ export function AdaptiveModalSheet({
   onDismiss,
   children,
   footer,
+  footerContainerStyle,
+  contentContainerStyle,
   subHeader,
   snapPoints,
   testID,
   desktopMaxWidth,
   desktopHeight,
   scrollable = true,
+  sizeContentToCurrentSnapPoint = false,
   presentation,
   webScrollbar = true,
   contentPadding = true,
@@ -645,30 +667,33 @@ export function AdaptiveModalSheet({
   const bottomSheetContentStyle = useMemo(
     () => [
       styles.bottomSheetContent,
+      contentContainerStyle,
       compactSafeAreaPadding.contentPaddingBottom != null
         ? { paddingBottom: compactSafeAreaPadding.contentPaddingBottom }
         : null,
     ],
-    [compactSafeAreaPadding.contentPaddingBottom],
+    [compactSafeAreaPadding.contentPaddingBottom, contentContainerStyle],
   );
   const bottomSheetStaticContentStyle = useMemo(
     () => [
       styles.bottomSheetStaticContent,
+      contentContainerStyle,
       contentPadding ? styles.staticContentSpacing : null,
       compactSafeAreaPadding.contentPaddingBottom != null
         ? { paddingBottom: compactSafeAreaPadding.contentPaddingBottom }
         : null,
     ],
-    [contentPadding, compactSafeAreaPadding.contentPaddingBottom],
+    [contentPadding, compactSafeAreaPadding.contentPaddingBottom, contentContainerStyle],
   );
   const footerStyle = useMemo(
     () => [
       styles.footer,
+      footerContainerStyle,
       compactSafeAreaPadding.footerPaddingBottom != null
         ? { paddingBottom: compactSafeAreaPadding.footerPaddingBottom }
         : null,
     ],
-    [compactSafeAreaPadding.footerPaddingBottom],
+    [compactSafeAreaPadding.footerPaddingBottom, footerContainerStyle],
   );
   const handleIndicatorStyle = useMemo(
     () => ({ backgroundColor: theme.colors.palette.zinc[600] }),
@@ -797,7 +822,11 @@ export function AdaptiveModalSheet({
           <View style={styles.bottomSheetScrollContainer}>
             <BottomSheetScrollView
               ref={mobileScrollRef as unknown as Ref<never>}
-              style={BOTTOM_SHEET_SCROLL_STYLE}
+              style={
+                sizeContentToCurrentSnapPoint
+                  ? [BOTTOM_SHEET_SCROLL_STYLE, styles.bottomSheetVisibleScroll]
+                  : BOTTOM_SHEET_SCROLL_STYLE
+              }
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               onLayout={mobileScrollRegion.onLayout}

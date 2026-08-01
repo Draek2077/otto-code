@@ -79,7 +79,7 @@ interface RecordedGitMutationCalls {
   notifyGitMutation: Array<{
     cwd: string;
     reason: string;
-    options?: { invalidateGithub?: boolean };
+    options?: { invalidateForge?: boolean };
   }>;
   checkoutExistingBranch: Array<{ cwd: string; branch: string }>;
 }
@@ -190,7 +190,7 @@ function createGitSnapshot(
       hasRemote: false,
       diffStat: null,
     },
-    github: { featuresEnabled: false, pullRequest: null, error: null },
+    forge: { featuresEnabled: false, pullRequest: null, error: null },
   };
 }
 
@@ -395,7 +395,7 @@ describe("CheckoutSession", () => {
       });
 
       expect(snapshotCalls).toEqual([
-        { cwd: "/repo", options: { force: true, includeGitHub: true, reason: "manual-refresh" } },
+        { cwd: "/repo", options: { force: true, includeForge: true, reason: "manual-refresh" } },
       ]);
       expect(refreshedCwds).toEqual(["/repo"]);
       expect(emitted).toEqual([
@@ -697,7 +697,7 @@ describe("CheckoutSession", () => {
 
       expect(hostCalls.renameCurrentBranch).toEqual([{ cwd: "/repo", branch: "feature-renamed" }]);
       expect(gitMutationCalls.notifyGitMutation).toEqual([
-        { cwd: "/repo", reason: "rename-branch", options: { invalidateGithub: true } },
+        { cwd: "/repo", reason: "rename-branch", options: { invalidateForge: true } },
       ]);
       expect(refreshedCwds).toEqual(["/repo"]);
       expect(hostCalls.handleWorkspaceGitBranchSnapshot).toEqual([
@@ -1105,15 +1105,15 @@ describe("CheckoutSession", () => {
     });
   });
 
-  describe("github search", () => {
-    it("returns search results and the github-features flag", async () => {
+  describe("forge search", () => {
+    it("returns search results and the github-features flag on the legacy channel", async () => {
       const { checkout, emitted } = makeCheckoutSession({
         github: {
           searchIssuesAndPrs: async () => ({ items: [], githubFeaturesEnabled: false }),
         },
       });
 
-      await checkout.handleGitHubSearchRequest({
+      await checkout.handleForgeSearchRequest({
         type: "github_search_request",
         cwd: "/repo",
         query: "fix",
@@ -1123,14 +1123,124 @@ describe("CheckoutSession", () => {
       expect(emitted).toEqual([
         {
           type: "github_search_response",
-          payload: {
+          payload: expect.objectContaining({
             items: [],
+            featuresEnabled: false,
             githubFeaturesEnabled: false,
             error: null,
             requestId: "gs1",
+          }),
+        },
+      ]);
+    });
+
+    it("relabels change requests as prs for the legacy channel only", async () => {
+      const item = {
+        kind: "change_request" as const,
+        number: 12,
+        title: "Fix",
+        url: "https://example.invalid/12",
+        state: "open",
+        body: null,
+        labels: [],
+      };
+      const { checkout, emitted } = makeCheckoutSession({
+        github: {
+          searchIssuesAndPrs: async () => ({
+            items: [item],
+            featuresEnabled: true,
+            authState: "authenticated",
+          }),
+        },
+      });
+
+      await checkout.handleForgeSearchRequest({
+        type: "github_search_request",
+        cwd: "/repo",
+        query: "fix",
+        requestId: "gs2",
+      });
+
+      expect(emitted[0]).toMatchObject({
+        type: "github_search_response",
+        payload: { items: [{ ...item, kind: "pr" }] },
+      });
+    });
+
+    // The daemon advertises `forgeSearch`, so this is the path the app takes.
+    it("answers a forge search request on the forge channel", async () => {
+      const { checkout, emitted } = makeCheckoutSession({
+        github: {
+          searchIssuesAndPrs: async () => ({
+            items: [],
+            featuresEnabled: true,
+            authState: "authenticated",
+          }),
+        },
+      });
+
+      await checkout.handleForgeSearchRequest({
+        type: "forge.search.request",
+        cwd: "/repo",
+        query: "fix",
+        requestId: "fs1",
+      });
+
+      expect(emitted).toEqual([
+        {
+          type: "forge.search.response",
+          payload: {
+            items: [],
+            authState: "authenticated",
+            error: null,
+            requestId: "fs1",
           },
         },
       ]);
+    });
+  });
+
+  describe("forge check details", () => {
+    // The daemon advertises `forgeCheckDetails`, so this is the path the app
+    // takes; answering on the github channel hangs the client until timeout.
+    it("answers a forge check-details request on the forge channel", async () => {
+      const { checkout, emitted } = makeCheckoutSession({
+        github: {
+          getCheckDetails: async () => null,
+        },
+      });
+
+      await checkout.handleCheckoutForgeGetCheckDetailsRequest({
+        type: "checkout.forge.get_check_details.request",
+        cwd: "/repo",
+        checkRunId: 5,
+        requestId: "cd1",
+      });
+
+      expect(emitted[0]).toMatchObject({
+        type: "checkout.forge.get_check_details.response",
+        payload: { cwd: "/repo", success: true, requestId: "cd1" },
+      });
+    });
+
+    it("answers the legacy github request on the github channel", async () => {
+      const { checkout, emitted } = makeCheckoutSession({
+        github: {
+          getCheckDetails: async () => null,
+        },
+      });
+
+      await checkout.handleCheckoutForgeGetCheckDetailsRequest({
+        type: "checkout.github.get_check_details.request",
+        cwd: "/repo",
+        checkRunId: 5,
+        requestId: "cd2",
+      });
+
+      expect(emitted[0]).toMatchObject({
+        type: "checkout.github.get_check_details.response",
+        payload: { cwd: "/repo", success: true, requestId: "cd2" },
+      });
     });
   });
 });

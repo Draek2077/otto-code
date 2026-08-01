@@ -6,7 +6,7 @@ import { join, resolve as resolvePath } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   createGitHubService,
-  type HostingCurrentPullRequestStatus,
+  type CurrentPullRequestStatus,
   type GitHubService,
 } from "../services/github-service.js";
 import {
@@ -858,7 +858,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     });
     const getCurrentPullRequestStatus = github.getCurrentPullRequestStatus.bind(github);
     github.getCurrentPullRequestStatus = vi.fn(
-      async (options): Promise<HostingCurrentPullRequestStatus | null> => {
+      async (options): Promise<CurrentPullRequestStatus | null> => {
         githubReadCalls.push({ reason: options.reason, tickMs: nowMs });
         return getCurrentPullRequestStatus(options);
       },
@@ -965,7 +965,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     });
     const getCurrentPullRequestStatus = github.getCurrentPullRequestStatus.bind(github);
     github.getCurrentPullRequestStatus = vi.fn(
-      async (options): Promise<HostingCurrentPullRequestStatus | null> => {
+      async (options): Promise<CurrentPullRequestStatus | null> => {
         githubReadCalls.push({ reason: options.reason, tickMs: nowMs });
         return getCurrentPullRequestStatus(options);
       },

@@ -65,6 +65,12 @@ export function resolveChatMaxWidth(chatWidth: ChatWidth): number | undefined {
       return MAX_CONTENT_WIDTH;
   }
 }
+// Settings uses the canonical desktop list + detail layout. Its sidebar and
+// detail target must fit together before it can share width with app navigation.
+export const SETTINGS_DESKTOP_SIDEBAR_WIDTH = 320;
+export const SETTINGS_DESKTOP_DETAIL_MIN_WIDTH = 400;
+export const SETTINGS_DESKTOP_SPLIT_MIN_WIDTH =
+  SETTINGS_DESKTOP_SIDEBAR_WIDTH + SETTINGS_DESKTOP_DETAIL_MIN_WIDTH;
 
 // Desktop app constants for macOS traffic light buttons
 // These buttons (close/minimize/maximize) overlay the top-left corner

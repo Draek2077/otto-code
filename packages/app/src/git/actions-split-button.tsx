@@ -1,11 +1,6 @@
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useCallback, useMemo } from "react";
-import {
-  View,
-  Text,
-  ActivityIndicator,
-  Pressable,
-  type PressableStateCallbackType,
-} from "react-native";
+import { View, Text, Pressable, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ChevronDown, Info, MoreVertical } from "@/components/icons/material-icons";
 import { useTranslation } from "react-i18next";
@@ -178,7 +173,7 @@ export function GitActionsSplitButton({
             accessibilityLabel={gitActions.primary.label}
           >
             {gitActions.primary.status === "pending" ? (
-              <ActivityIndicator
+              <LoadingSpinner
                 size="small"
                 color={theme.colors.foreground}
                 style={styles.splitButtonSpinnerOnly}

@@ -48,7 +48,7 @@ import { startGitCommandMetrics, stopGitCommandMetrics } from "./run-git-command
 import {
   GitHubCommandError,
   GitHubCliMissingError,
-  type HostingCurrentPullRequestStatus,
+  type CurrentPullRequestStatus,
   type GitHubService,
 } from "../services/github-service.js";
 import {
@@ -105,7 +105,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function createGitHubServiceForStatus(
-  status: HostingCurrentPullRequestStatus | null,
+  status: CurrentPullRequestStatus | null,
   options?: { onStatus?: () => void },
 ): GitHubService {
   return {
@@ -137,7 +137,7 @@ function createGitHubServiceForStatus(
   };
 }
 
-function createPullRequestStatus(overrides?: Partial<HostingCurrentPullRequestStatus>) {
+function createPullRequestStatus(overrides?: Partial<CurrentPullRequestStatus>) {
   return {
     url: "https://github.com/otto-code-ai/otto-code/pull/123",
     title: "Ship feature",
@@ -159,7 +159,7 @@ interface RequestedPullRequestTarget {
 
 interface RecordingPullRequestTargetsOptions {
   requestedTargets: RequestedPullRequestTarget[];
-  statusOverrides?: Partial<HostingCurrentPullRequestStatus>;
+  statusOverrides?: Partial<CurrentPullRequestStatus>;
 }
 
 function createGitHubServiceRecordingPullRequestTargets(
@@ -2213,6 +2213,7 @@ const x = 1;
     );
 
     expect(status).toEqual({
+      authState: "authenticated",
       githubFeaturesEnabled: true,
       status: {
         number: 123,
@@ -2663,6 +2664,7 @@ const x = 1;
 
       expect(fresh.status?.url).toContain("/pull/123");
       expect(cleared).toEqual({
+        authState: "authenticated",
         githubFeaturesEnabled: true,
         status: null,
       });

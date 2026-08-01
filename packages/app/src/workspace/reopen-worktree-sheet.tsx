@@ -126,7 +126,7 @@ export function ReopenWorktreeSheet({
       useSessionStore.getState().mergeWorkspaces(serverId, [workspace]);
       onClose();
       onWorkspacePress?.();
-      navigateToWorkspace(serverId, workspace.id);
+      navigateToWorkspace({ serverId: serverId, workspaceId: workspace.id });
     },
     onError: (error) => {
       toast.error(

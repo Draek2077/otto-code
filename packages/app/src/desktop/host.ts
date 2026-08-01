@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import { getElectronHost } from "@/desktop/electron/host";
+import type { BrowserKeyboardPolicy } from "@/keyboard/browser-shortcuts";
 import type { SessionInboundMessage, SessionOutboundMessage } from "@otto-code/protocol/messages";
 
 type BrowserAutomationExecuteRequest = Extract<
@@ -24,6 +25,7 @@ export interface DesktopDialogOpenOptions {
   title?: string;
   defaultPath?: string;
   directory?: boolean;
+  createDirectory?: boolean;
   multiple?: boolean;
   filters?: Array<{
     name: string;
@@ -65,13 +67,15 @@ export interface DesktopEditorTargetDescriptor {
   id: string;
   label: string;
   kind: "editor" | "file-manager";
+  icon: { kind: "image"; dataUrl: string } | { kind: "symbol"; name: "folder" | "terminal" };
 }
 
 export interface DesktopEditorOpenTargetInput {
   editorId: string;
-  path: string;
-  cwd?: string;
-  mode?: "open" | "reveal";
+  workspacePath: string;
+  filePath?: string;
+  line?: number;
+  column?: number;
 }
 
 export interface DesktopEditorBridge {
@@ -85,23 +89,27 @@ export interface DesktopWebUtilsBridge {
 
 export interface DesktopMenuBridge {
   showContextMenu?: (input?: { kind?: "terminal"; hasSelection?: boolean }) => Promise<void>;
+  setCapturingShortcut?: (capturing: boolean) => Promise<void>;
 }
 
 export interface DesktopWindowControlsOverlayUpdate {
   height?: number;
   backgroundColor?: string;
   foregroundColor?: string;
+  trafficLightOffsetY?: number;
 }
 
 export interface DesktopWindowBridge {
   label?: string;
   toggleMaximize?: () => Promise<void>;
+  setFullscreen?: (fullscreen: boolean) => Promise<void>;
   isFullscreen?: () => Promise<boolean>;
   updateWindowControls?: (update: DesktopWindowControlsOverlayUpdate) => Promise<void>;
   onResized?: <TEvent = unknown>(
     handler: (event: TEvent) => void,
   ) => Promise<() => void> | (() => void);
   setBadgeCount?: (count?: number) => Promise<void>;
+  /** Flash/highlight the tray icon while a chat needs the user. Otto-only. */
   setTrayAttention?: (active: boolean) => Promise<void>;
   onDragDropEvent?: <TEvent = unknown>(
     handler: (event: TEvent) => void,
@@ -110,37 +118,45 @@ export interface DesktopWindowBridge {
 
 export interface DesktopWindowModuleBridge {
   openNew?: (options?: { pendingOpenProjectPath?: string | null }) => Promise<void>;
+  /** Tells main the renderer has painted, so it can reveal the window. */
+  signalReady?: () => void;
   getCurrentWindow?: () => DesktopWindowBridge;
-  // Renderer → main: "my first durable screen is ready to be shown." Main defers
-  // revealing the window until this fires (or a fallback timeout), so slow
-  // software rendering can't expose the boot transient. Optional so an older
-  // desktop shell without the handler is a no-op, not a crash.
-  signalReady?: () => Promise<void>;
 }
 
 export interface DesktopEventsBridge {
   on?: (event: string, handler: (payload: unknown) => void) => Promise<() => void> | (() => void);
 }
 
-export interface DesktopBrowserShortcutEvent {
-  browserId?: string;
-  action: "focus-url";
+export interface DesktopAgentNavigationBridge {
+  ready?: () => Promise<{ serverId: string; agentId: string } | null>;
 }
+
+export type DesktopBrowserShortcutEvent =
+  | { browserId?: string; action: "focus-url" }
+  | { browserId: string; action: "new-tab" };
 
 export interface DesktopBrowserNewTabRequestEvent {
   sourceBrowserId: string;
   url: string;
 }
 
+export interface DesktopAttachedBrowserRegistration {
+  browserId: string;
+  workspaceId: string;
+  webContentsId: number;
+}
+
 export interface DesktopBrowserBridge {
-  registerWorkspaceBrowser?: (input: { browserId: string; workspaceId: string }) => Promise<void>;
+  setShortcutPolicy?: (input: BrowserKeyboardPolicy) => Promise<void>;
+  readonly profilePartition?: string;
+  registerAttachedBrowser?: (input: DesktopAttachedBrowserRegistration) => Promise<void>;
   unregisterWorkspaceBrowser?: (browserId: string) => Promise<void>;
   setWorkspaceActiveBrowser?: (input: {
     workspaceId: string;
     browserId: string | null;
   }) => Promise<void>;
   openDevTools?: (browserId: string) => Promise<unknown>;
-  clearPartition?: (browserId: string) => Promise<void>;
+  clearProfile?: (legacyBrowserIds: string[]) => Promise<void>;
   executeAutomationCommand?: (
     request: BrowserAutomationExecuteRequest,
   ) => Promise<BrowserAutomationExecuteResponse["payload"]>;
@@ -161,6 +177,7 @@ export interface DesktopHostBridge {
   platform?: string;
   invoke?: DesktopInvokeBridge["invoke"];
   getPendingOpenProject?: () => Promise<string | null>;
+  agentNavigation?: DesktopAgentNavigationBridge;
   events?: DesktopEventsBridge;
   window?: DesktopWindowModuleBridge;
   dialog?: DesktopDialogBridge;

@@ -3,6 +3,7 @@ import type {
   CheckoutPrStatusResponse,
   PullRequestTimelineResponse,
 } from "@otto-code/protocol/messages";
+import { isPipelineActiveStatus, mapPipelineStatus } from "@/git/forges/gitlab";
 import {
   deriveAvatarColor,
   formatAge,
@@ -33,8 +34,9 @@ const githubStatus: CheckoutPrStatus["github"] = {
 };
 
 const baseStatus: CheckoutPrStatus = {
+  forge: "github",
   number: 42,
-  url: "https://github.com/otto-code-ai/otto-code/pull/42",
+  url: "https://github.com/Draek2077/otto-code/pull/42",
   title: "Wire PR pane data",
   state: "open",
   baseRefName: "main",
@@ -74,7 +76,7 @@ describe("mapPrPaneData", () => {
     const data = mapPrPaneData(
       status({
         number: undefined,
-        url: "https://github.com/otto-code-ai/otto-code/pull/1284",
+        url: "https://github.com/Draek2077/otto-code/pull/1284",
       }),
       timeline({ prNumber: 1284 }),
     );
@@ -85,7 +87,7 @@ describe("mapPrPaneData", () => {
   it("returns null when status has no number and no parseable PR URL", () => {
     expect(
       mapPrPaneData(
-        status({ number: undefined, url: "https://github.com/otto-code-ai/otto-code" }),
+        status({ number: undefined, url: "https://github.com/Draek2077/otto-code" }),
         null,
       ),
     ).toBeNull();
@@ -172,7 +174,7 @@ describe("mapPrPaneData", () => {
           {
             name: "server-tests",
             status: "failure",
-            url: "https://github.com/otto-code-ai/otto-code/actions/runs/456/job/789",
+            url: "https://github.com/Draek2077/otto-code/actions/runs/456/job/789",
             checkRunId: 12345,
             workflowRunId: 456,
           },
@@ -186,10 +188,29 @@ describe("mapPrPaneData", () => {
         provider: "github",
         name: "server-tests",
         status: "failure",
-        url: "https://github.com/otto-code-ai/otto-code/actions/runs/456/job/789",
-        github: { checkRunId: 12345, workflowRunId: 456 },
+        url: "https://github.com/Draek2077/otto-code/actions/runs/456/job/789",
+        detailRef: { checkRunId: 12345, workflowRunId: 456 },
       },
     ]);
+  });
+
+  it("keeps a workflowRunId-only detail ref so Gitea Actions rows stay fetchable", () => {
+    const data = mapPrPaneData(
+      status({
+        forge: "gitea",
+        checks: [
+          {
+            name: "e2e",
+            status: "failure",
+            url: "https://gitea.com/acme/repo/actions/runs/7001",
+            workflowRunId: 7001,
+          },
+        ],
+      }),
+      baseTimeline,
+    );
+
+    expect(data?.checks[0]?.detailRef).toEqual({ workflowRunId: 7001 });
   });
 
   it("preserves timeline item order while mapping mixed reviews and comments", () => {
@@ -236,7 +257,7 @@ describe("mapPrPaneData", () => {
             avatarUrl: "https://avatars.githubusercontent.com/u/3?v=4",
             body: "This should include line context.",
             createdAt: Date.UTC(2026, 0, 1, 11, 0, 0),
-            url: "https://github.com/otto-code-ai/otto-code/pull/42#discussion_r1",
+            url: "https://github.com/Draek2077/otto-code/pull/42#discussion_r1",
             location: {
               path: "packages/app/src/git/pull-request-panel/data.ts",
               line: 24,
@@ -262,7 +283,7 @@ describe("mapPrPaneData", () => {
         avatarUrl: "https://avatars.githubusercontent.com/u/3?v=4",
         body: "This should include line context.",
         age: "1h ago",
-        url: "https://github.com/otto-code-ai/otto-code/pull/42#discussion_r1",
+        url: "https://github.com/Draek2077/otto-code/pull/42#discussion_r1",
         location: {
           path: "packages/app/src/git/pull-request-panel/data.ts",
           line: 24,
@@ -273,6 +294,56 @@ describe("mapPrPaneData", () => {
         },
       },
     ]);
+  });
+
+  it("maps a top-level threadId onto general (non-file) discussion comments", () => {
+    const data = mapPrPaneData(
+      baseStatus,
+      timeline({
+        items: [
+          {
+            id: "note-1",
+            kind: "comment",
+            author: "reviewer-a",
+            body: "Can you clarify the rollout?",
+            createdAt: Date.UTC(2026, 0, 1, 11, 0, 0),
+            url: "https://gitlab.example.com/group/project/-/merge_requests/42#note_1",
+            threadId: "disc-1",
+          },
+        ],
+      }),
+      Date.UTC(2026, 0, 1, 12, 0, 0),
+      "gitlab",
+    );
+
+    expect(data?.activity).toHaveLength(1);
+    expect(data?.activity[0]).toMatchObject({ id: "note-1", threadId: "disc-1" });
+    expect(data?.activity[0].location).toBeUndefined();
+  });
+
+  it("maps thread-level resolution onto general (non-file) discussion comments", () => {
+    const data = mapPrPaneData(
+      baseStatus,
+      timeline({
+        items: [
+          {
+            id: "note-2",
+            kind: "comment",
+            author: "reviewer-a",
+            body: "Resolved general discussion.",
+            createdAt: Date.UTC(2026, 0, 1, 11, 0, 0),
+            url: "https://gitlab.example.com/group/project/-/merge_requests/42#note_2",
+            threadId: "disc-2",
+            threadIsResolved: true,
+          },
+        ],
+      }),
+      Date.UTC(2026, 0, 1, 12, 0, 0),
+      "gitlab",
+    );
+
+    expect(data?.activity[0]).toMatchObject({ id: "note-2", threadIsResolved: true });
+    expect(data?.activity[0].location).toBeUndefined();
   });
 
   it("filters empty commented reviews but keeps blocking review states", () => {
@@ -391,6 +462,23 @@ describe("mapPrPaneData", () => {
     expect(mapPrPaneData(baseStatus, baseTimeline)?.awaitingReviewers).toEqual([]);
   });
 
+  it("defaults the forge to github and omits the project path when neither is supplied", () => {
+    const data = mapPrPaneData(baseStatus, baseTimeline);
+    expect(data?.forge).toBe("github");
+    expect(data?.projectPath).toBeUndefined();
+  });
+
+  it("carries the resolved forge and the nested project path for GitLab", () => {
+    const data = mapPrPaneData(
+      status({ projectPath: "group/subgroup/repo" }),
+      baseTimeline,
+      undefined,
+      "gitlab",
+    );
+    expect(data?.forge).toBe("gitlab");
+    expect(data?.projectPath).toBe("group/subgroup/repo");
+  });
+
   it("rejects stale timeline activity when the timeline PR number differs from status", () => {
     const data = mapPrPaneData(
       baseStatus,
@@ -411,6 +499,169 @@ describe("mapPrPaneData", () => {
     );
 
     expect(data?.activity).toEqual([]);
+  });
+
+  it("passes the forge native facts through for pane contributions to derive surfaces", () => {
+    const gitlabFacts = {
+      forge: "gitlab" as const,
+      detailedMergeStatus: "mergeable",
+      hasConflicts: false,
+      blockingDiscussionsResolved: true,
+      approvalsRequired: 2,
+      approvalsGiven: 1,
+      pipelineStatus: "running",
+      pipelineId: 306,
+      pipelineUrl: "https://gitlab.com/group/repo/-/pipelines/306",
+      mergeWhenPipelineSucceeds: false,
+    };
+    const data = mapPrPaneData(
+      status({
+        url: "https://gitlab.com/group/repo/-/merge_requests/7",
+        github: undefined,
+        forgeSpecific: gitlabFacts,
+      }),
+      baseTimeline,
+      undefined,
+      "gitlab",
+    );
+
+    expect(data?.forgeSpecific).toEqual({ ...gitlabFacts, mergeStatus: null });
+  });
+
+  it("omits forgeSpecific when the status carries no native facts", () => {
+    expect(mapPrPaneData(baseStatus, baseTimeline)?.forgeSpecific).toBeUndefined();
+  });
+
+  it("omits forgeSpecific when no registered forge schema accepts it", () => {
+    const data = mapPrPaneData(
+      status({ forgeSpecific: { forge: "gitlab", approvalsRequired: "two" } }),
+      baseTimeline,
+    );
+
+    expect(data?.forgeSpecific).toBeUndefined();
+  });
+
+  it("surfaces Gitea aggregate CI status as a check row", () => {
+    const data = mapPrPaneData(
+      status({
+        forge: "gitea",
+        url: "https://gitea.com/group/repo/pulls/7",
+        github: undefined,
+        forgeSpecific: {
+          forge: "gitea",
+          mergeable: true,
+          hasMerged: false,
+          ciStatus: "success",
+        },
+      }),
+      baseTimeline,
+      undefined,
+      "gitea",
+    );
+
+    expect(data?.checks).toEqual([
+      {
+        provider: "gitea",
+        name: "CI",
+        status: "success",
+        url: "https://gitea.com/group/repo/pulls/7",
+      },
+    ]);
+  });
+
+  it("keeps Forgejo branding for aggregate Gitea-family CI status", () => {
+    const data = mapPrPaneData(
+      status({
+        forge: "forgejo",
+        url: "https://forgejo.example.com/group/repo/pulls/7",
+        github: undefined,
+        forgeSpecific: {
+          forge: "gitea",
+          mergeable: true,
+          hasMerged: false,
+          ciStatus: "failure",
+        },
+      }),
+      baseTimeline,
+      undefined,
+      "forgejo",
+    );
+
+    expect(data?.checks).toEqual([
+      {
+        provider: "forgejo",
+        name: "CI",
+        status: "failure",
+        url: "https://forgejo.example.com/group/repo/pulls/7",
+      },
+    ]);
+  });
+
+  it("carries the resolved forge brand and activity provider for GitLab", () => {
+    const data = mapPrPaneData(
+      status({
+        url: "https://gitlab.com/group/repo/-/merge_requests/7",
+        github: undefined,
+        forgeSpecific: {
+          forge: "gitlab",
+          detailedMergeStatus: "mergeable",
+          hasConflicts: false,
+          blockingDiscussionsResolved: true,
+          approvalsRequired: 2,
+          approvalsGiven: 1,
+          pipelineStatus: null,
+          pipelineId: null,
+          pipelineUrl: null,
+          mergeWhenPipelineSucceeds: false,
+        },
+      }),
+      timeline({
+        items: [
+          {
+            id: "note-1",
+            kind: "comment",
+            author: "reviewer",
+            body: "Looks good",
+            createdAt: 1000,
+            url: "https://gitlab.com/group/repo/-/merge_requests/7#note_1",
+          },
+        ],
+      }),
+      2000,
+      "gitlab",
+    );
+    expect(data?.provider).toEqual({ id: "gitlab", label: "GitLab" });
+    expect(data?.activity[0]?.provider).toBe("gitlab");
+  });
+});
+
+describe("mapPipelineStatus", () => {
+  it("maps GitLab and neutral pipeline statuses onto check statuses", () => {
+    expect(mapPipelineStatus("success")).toBe("success");
+    expect(mapPipelineStatus("passed")).toBe("success");
+    expect(mapPipelineStatus("failed")).toBe("failure");
+    expect(mapPipelineStatus("canceled")).toBe("skipped");
+    expect(mapPipelineStatus("skipped")).toBe("skipped");
+    expect(mapPipelineStatus("manual")).toBe("pending");
+    expect(mapPipelineStatus("running")).toBe("pending");
+    expect(mapPipelineStatus("pending")).toBe("pending");
+    expect(mapPipelineStatus("created")).toBe("pending");
+    expect(mapPipelineStatus("waiting_for_resource")).toBe("pending");
+    expect(mapPipelineStatus("preparing")).toBe("pending");
+    expect(mapPipelineStatus("scheduled")).toBe("pending");
+    expect(mapPipelineStatus("anything-else")).toBe("pending");
+  });
+
+  it("marks running and queued pipeline statuses as live for polling", () => {
+    expect(isPipelineActiveStatus("running")).toBe(true);
+    expect(isPipelineActiveStatus("pending")).toBe(true);
+    expect(isPipelineActiveStatus("created")).toBe(true);
+    expect(isPipelineActiveStatus("waiting_for_resource")).toBe(true);
+    expect(isPipelineActiveStatus("preparing")).toBe(true);
+    expect(isPipelineActiveStatus("scheduled")).toBe(true);
+    expect(isPipelineActiveStatus("success")).toBe(false);
+    expect(isPipelineActiveStatus("failed")).toBe(false);
+    expect(isPipelineActiveStatus("canceled")).toBe(false);
   });
 });
 

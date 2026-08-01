@@ -137,7 +137,14 @@ export default function ProjectSettingsScreen({
 }: ProjectSettingsScreenProps) {
   const { projects } = useProjects();
   const project = useMemo(
-    () => projects.find((entry) => entry.projectKey === projectKey),
+    // Paseo routes project settings by projectId; older entries are keyed by
+    // projectKey. Match either so both route shapes resolve.
+    () =>
+      projects.find(
+        (entry) =>
+          entry.projectKey === projectKey ||
+          entry.hosts.some((host) => host.projectId === projectKey),
+      ),
     [projects, projectKey],
   );
   const editableHosts = useMemo(() => filterEditableHosts(project), [project]);

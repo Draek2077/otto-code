@@ -235,6 +235,9 @@ describe("selectSubagentsForParent", () => {
         createdAt,
         updatedAt: AGENT_TIMESTAMP,
         attend: "observed",
+        // Rows are a union tagged on `kind`: "otto" for agents Otto owns,
+        // "provider" for provider-reported children. See docs/upstream-merges.md.
+        kind: "otto",
       },
     ]);
     expect(Object.keys(rows[0] ?? {}).sort()).toEqual([
@@ -245,6 +248,7 @@ describe("selectSubagentsForParent", () => {
       "cumulativeUsage",
       "currentTool",
       "id",
+      "kind",
       "personalityName",
       "personalitySpinner",
       "provider",

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentAttachment, GitHubSearchItem } from "@otto-code/protocol/messages";
+import type { AgentAttachment, ForgeSearchItem } from "@otto-code/protocol/messages";
 import type {
   AttachmentMetadata,
   ComposerAttachment,
@@ -17,6 +17,7 @@ import {
   pickAndPersistImages,
   queueComposerMessage,
   removeComposerAttachmentAtIndex,
+  sendQueuedComposerMessageNow,
   toggleGithubAttachment,
   toggleGithubAttachmentFromPicker,
   type AgentStreamWriter,
@@ -37,7 +38,7 @@ const imageMetadata: AttachmentMetadata = {
   createdAt: 1,
 };
 
-const issueItem: GitHubSearchItem = {
+const issueItem: ForgeSearchItem = {
   kind: "issue",
   number: 101,
   title: "Fix composer attachments",
@@ -49,8 +50,8 @@ const issueItem: GitHubSearchItem = {
   headRefName: null,
 };
 
-const prItem: GitHubSearchItem = {
-  kind: "pr",
+const prItem: ForgeSearchItem = {
+  kind: "change_request",
   number: 202,
   title: "Refactor composer attachments",
   url: "https://github.com/acme/otto/pull/202",
@@ -226,6 +227,7 @@ describe("cancelComposerAgent", () => {
     isAgentRunning: boolean;
     isCancellingAgent: boolean;
     isConnected: boolean;
+    onCancelFailed: (error: unknown) => void;
   } {
     const canceledIds: string[] = [];
     return {
@@ -239,6 +241,7 @@ describe("cancelComposerAgent", () => {
       isAgentRunning: true,
       isCancellingAgent: false,
       isConnected: true,
+      onCancelFailed: () => undefined,
     };
   }
 
@@ -247,6 +250,24 @@ describe("cancelComposerAgent", () => {
     const result = cancelComposerAgent(input);
     expect(result).toBe(true);
     expect(input.client.canceledIds).toEqual(["agent"]);
+  });
+
+  it("reports a rejected cancel so the composer can leave its canceling state", async () => {
+    const cancellationError = new Error("Provider rejected the interrupt");
+    const failures: unknown[] = [];
+    const input = baseInput();
+    input.client.cancelAgent = async () => {
+      throw cancellationError;
+    };
+
+    const result = cancelComposerAgent({
+      ...input,
+      onCancelFailed: (error: unknown) => failures.push(error),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(result).toBe(true);
+    expect(failures).toEqual([cancellationError]);
   });
 
   it("does nothing when the agent is not running", () => {
@@ -300,7 +321,11 @@ describe("pickAndPersistImages", () => {
     const persister = createFakePersister();
     const result = await pickAndPersistImages({
       pickImages: async () => [
-        { source: { kind: "file_uri", uri: "/tmp/x.jpg" }, mimeType: null, fileName: null },
+        {
+          source: { kind: "file_uri", uri: "/tmp/x.jpg" },
+          mimeType: "image/jpeg",
+          fileName: null,
+        },
       ],
       persister,
     });
@@ -312,6 +337,26 @@ describe("pickAndPersistImages", () => {
 });
 
 describe("dispatchComposerAgentMessage", () => {
+  it("removes the optimistic prompt when the host rejects it", async () => {
+    const rejection = new Error("Host rejected prompt");
+    const client = createFakeSendClient({ rejection });
+    const stream = createFakeStream();
+
+    await expect(
+      dispatchComposerAgentMessage({
+        client,
+        agentId: "agent",
+        text: "rejected prompt",
+        attachments: [],
+        encodeImages: passthroughEncodeImages,
+        stream,
+      }),
+    ).rejects.toBe(rejection);
+
+    expect(stream.head.get("agent")).toBeUndefined();
+    expect(stream.tail.get("agent") ?? []).toEqual([]);
+  });
+
   it("sends text + image data + structured attachments and appends user_message to the tail when head is empty", async () => {
     const client = createFakeSendClient();
     const stream = createFakeStream();
@@ -336,8 +381,9 @@ describe("dispatchComposerAgentMessage", () => {
     expect(call.options.images).toEqual([{ data: image.id, mimeType: image.mimeType }]);
     expect(call.options.attachments).toEqual([
       {
-        type: "github_pr",
-        mimeType: "application/github-pr",
+        type: "forge_change_request",
+        mimeType: "application/otto-forge-change-request",
+        forge: "github",
         number: 202,
         title: "Refactor composer attachments",
         url: "https://github.com/acme/otto/pull/202",
@@ -357,6 +403,34 @@ describe("dispatchComposerAgentMessage", () => {
     expect(userMessage.attachments).toEqual(call.options.attachments);
     expect(userMessage.id).toBe(call.options.messageId);
     expect(userMessage.optimistic).toBe(true);
+  });
+
+  it("can send legacy GitHub attachment payloads for old daemons", async () => {
+    const client = createFakeSendClient();
+    const stream = createFakeStream();
+
+    await dispatchComposerAgentMessage({
+      client,
+      agentId: "agent",
+      text: "send old attachment",
+      attachments: [{ kind: "forge_change_request", item: prItem }],
+      attachmentSubmitFormat: "legacy-github",
+      encodeImages: passthroughEncodeImages,
+      stream,
+    });
+
+    expect(client.calls[0].options.attachments).toEqual([
+      {
+        type: "github_pr",
+        mimeType: "application/github-pr",
+        number: 202,
+        title: "Refactor composer attachments",
+        url: "https://github.com/acme/otto/pull/202",
+        body: "PR body",
+        baseRefName: "main",
+        headRefName: "composer-attachments",
+      },
+    ]);
   });
 
   it("appends to the existing head when one is present", async () => {
@@ -527,6 +601,67 @@ describe("editQueuedComposerMessage", () => {
   });
 });
 
+describe("sendQueuedComposerMessageNow", () => {
+  it("returns missing without submitting when the message id is gone", async () => {
+    const queue = createFakeQueue();
+    const submitted: Array<{ text: string; attachments: ComposerAttachment[] }> = [];
+    const result = await sendQueuedComposerMessageNow({
+      agentId: "agent",
+      messageId: "msg-1",
+      queue,
+      submitMessage: async (input) => {
+        submitted.push(input);
+      },
+    });
+    expect(result).toEqual({ status: "missing" });
+    expect(submitted).toEqual([]);
+  });
+
+  it("removes the queued entry and submits its text + attachments", async () => {
+    const review = reviewWorkspaceAttachment("Queued for send.");
+    const queue = createFakeQueue(
+      new Map([["agent", [{ id: "msg-1", text: "send me", attachments: [review] }]]]),
+    );
+    const submitted: Array<{ text: string; attachments: ComposerAttachment[] }> = [];
+    const result = await sendQueuedComposerMessageNow({
+      agentId: "agent",
+      messageId: "msg-1",
+      queue,
+      submitMessage: async (input) => {
+        submitted.push(input);
+      },
+    });
+    expect(result).toEqual({ status: "submitted" });
+    expect(queue.state.get("agent")).toEqual([]);
+    expect(submitted).toEqual([{ text: "send me", attachments: [review] }]);
+  });
+
+  it("restores the queued entry to the front and surfaces the error message on failure", async () => {
+    const queue = createFakeQueue(
+      new Map([
+        [
+          "agent",
+          [
+            { id: "msg-1", text: "first", attachments: [] },
+            { id: "msg-2", text: "second", attachments: [] },
+          ],
+        ],
+      ]),
+    );
+    const result = await sendQueuedComposerMessageNow({
+      agentId: "agent",
+      messageId: "msg-1",
+      queue,
+      submitMessage: async () => {
+        throw new Error("network down");
+      },
+    });
+    expect(result).toEqual({ status: "failed", errorMessage: "network down" });
+    const state = queue.state.get("agent");
+    expect(state?.map((m) => m.id)).toEqual(["msg-1", "msg-2"]);
+  });
+});
+
 describe("removeComposerAttachmentAtIndex", () => {
   it("removes an image attachment and asks the persister to delete the underlying metadata", () => {
     const image = imageWithId("img-remove");
@@ -612,12 +747,12 @@ describe("openComposerAttachment", () => {
 describe("toggleGithubAttachment", () => {
   it("appends a GitHub issue when not already attached", () => {
     const next = toggleGithubAttachment([], issueItem);
-    expect(next).toEqual([{ kind: "github_issue", item: issueItem }]);
+    expect(next).toEqual([{ kind: "forge_issue", item: issueItem }]);
   });
 
   it("appends a GitHub PR when not already attached", () => {
     const next = toggleGithubAttachment([], prItem);
-    expect(next).toEqual([{ kind: "github_pr", item: prItem }]);
+    expect(next).toEqual([{ kind: "forge_change_request", item: prItem }]);
   });
 
   it("removes an existing GitHub item with the same kind+number", () => {
@@ -630,12 +765,12 @@ describe("toggleGithubAttachment", () => {
       { kind: "github_issue", item: issueItem },
       { kind: "github_pr", item: prItem },
     ];
-    const otherIssue: GitHubSearchItem = { ...issueItem, number: 999 };
+    const otherIssue: ForgeSearchItem = { ...issueItem, number: 999 };
     const next = toggleGithubAttachment(start, otherIssue);
     expect(next).toEqual([
       { kind: "github_issue", item: issueItem },
       { kind: "github_pr", item: prItem },
-      { kind: "github_issue", item: otherIssue },
+      { kind: "forge_issue", item: otherIssue },
     ]);
   });
 });
@@ -665,7 +800,7 @@ describe("toggleGithubAttachmentFromPicker", () => {
       markGithubAttachmentRemoved,
     });
 
-    expect(next).toEqual([{ kind: "github_issue", item: issueItem }]);
+    expect(next).toEqual([{ kind: "forge_issue", item: issueItem }]);
     expect(markGithubAttachmentRemoved).not.toHaveBeenCalled();
   });
 });
@@ -673,8 +808,8 @@ describe("toggleGithubAttachmentFromPicker", () => {
 describe("findGithubItemByOption / isAttachmentSelectedForGithubItem", () => {
   it("locates items via their composite kind:number id", () => {
     expect(findGithubItemByOption([issueItem, prItem], "issue:101")).toBe(issueItem);
-    expect(findGithubItemByOption([issueItem, prItem], "pr:202")).toBe(prItem);
-    expect(findGithubItemByOption([issueItem], "pr:404")).toBeUndefined();
+    expect(findGithubItemByOption([issueItem, prItem], "change_request:202")).toBe(prItem);
+    expect(findGithubItemByOption([issueItem], "change_request:404")).toBeUndefined();
   });
 
   it("recognizes when an attachment list already contains a matching GitHub item", () => {

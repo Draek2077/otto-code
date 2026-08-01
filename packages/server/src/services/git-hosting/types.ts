@@ -1,25 +1,30 @@
 import type { GitHostingCapabilities, GitHostingProviderId } from "@otto-code/protocol/messages";
-import type { HostingCurrentPullRequestStatus, GitHubService } from "../github-service.js";
+import type {
+  CreateHostingRepositoryOptions,
+  ForgeService,
+  HostingOwnerSummary,
+  HostingRepositoryCreateResult,
+  HostingRepositorySummary,
+  ListHostingRepositoriesOptions,
+} from "../github-service.js";
 
-// A git hosting service is the existing GitHubService shape (every method
-// already takes a cwd) tagged with which provider it is and what it can do.
-// The GitHub implementation adapts the gh-CLI service; Bitbucket Cloud is a
-// native REST implementation. Consumers that don't care about the provider
-// keep depending on the untagged shape.
-export interface GitHostingService extends GitHubService {
+// A git hosting service is Paseo's provider-neutral ForgeService (every method
+// already takes a cwd) tagged with which provider it is and what it can do,
+// plus Otto's host-level repository operations. It deliberately does NOT extend
+// GitHubService: that interface carries GitHub-only members (searchRepositories
+// against a checkout), and a Bitbucket adapter has no business implementing
+// them. The GitHub implementation adapts the gh-CLI service; Bitbucket Cloud is
+// a native REST implementation.
+export interface GitHostingService extends ForgeService {
   readonly providerId: GitHostingProviderId;
   readonly capabilities: GitHostingCapabilities;
-}
-
-// Short neutral synonym for the provider-agnostic PR status shape (defined as
-// HostingCurrentPullRequestStatus in github-service.ts).
-export type CurrentPullRequestStatus = HostingCurrentPullRequestStatus;
-
-export interface BitbucketPullRequestStatusFacts {
-  mergeStrategiesAllowed: string[];
-  defaultMergeStrategy: string | null;
-  approvalCount: number;
-  changesRequestedCount: number;
+  // Host-level, cwd-free. Optional: a provider without the matching capability
+  // omits them entirely rather than throwing at call time.
+  listRepositories?(options: ListHostingRepositoriesOptions): Promise<HostingRepositorySummary[]>;
+  listOwners?(): Promise<HostingOwnerSummary[]>;
+  createRepository?(
+    options: CreateHostingRepositoryOptions,
+  ): Promise<HostingRepositoryCreateResult>;
 }
 
 export const GITHUB_CAPABILITIES: GitHostingCapabilities = {

@@ -48,6 +48,7 @@ type CodeRenameTarget = Extract<WorkspaceTabTarget, { kind: "codeRename" }>;
 function useCodeRenamePanelDescriptor(target: CodeRenameTarget): PanelDescriptor {
   return {
     label: `Rename: ${target.symbol}`,
+    tooltip: `Rename: ${target.symbol} → ${target.newName}`,
     subtitle: `→ ${target.newName}`,
     titleState: "ready",
     // Pencil, not SquarePen: SquarePen is the chat/draft tab's icon, so a rename job sitting

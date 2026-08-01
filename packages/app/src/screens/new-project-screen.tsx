@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { HEADER_INNER_HEIGHT, MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { useHostRuntimeClient, useHosts } from "@/runtime/host-runtime";
-import { normalizeEmptyProjectDescriptor, useSessionStore } from "@/stores/session-store";
+import { normalizeProjectDescriptor, useSessionStore } from "@/stores/session-store";
 import { useOpenProject } from "@/hooks/use-open-project";
 import type { Theme } from "@/styles/theme";
 import { DirectoryField } from "@/screens/new-project/directory-field";
@@ -72,7 +72,7 @@ export function NewProjectScreen({ serverId: serverIdProp }: NewProjectScreenPro
 
   const client = useHostRuntimeClient(selectedServerId);
   const openProject = useOpenProject(selectedServerId);
-  const addEmptyProject = useSessionStore((state) => state.addEmptyProject);
+  const upsertProject = useSessionStore((state) => state.upsertProject);
   const setHasHydratedWorkspaces = useSessionStore((state) => state.setHasHydratedWorkspaces);
 
   const hosting = useNewProjectHosting({
@@ -177,7 +177,7 @@ export function NewProjectScreen({ serverId: serverIdProp }: NewProjectScreenPro
 
     // The same store update project.add performs, so the new project shows up
     // in the sidebar without waiting for a workspace refetch.
-    addEmptyProject(selectedServerId, normalizeEmptyProjectDescriptor(payload.project));
+    upsertProject(selectedServerId, normalizeProjectDescriptor(payload.project));
     setHasHydratedWorkspaces(selectedServerId, true);
     // A freshly scaffolded project has no workspace yet, so routing to one lands
     // on "Workspace not found". Hand off to New workspace with the project
@@ -191,7 +191,7 @@ export function NewProjectScreen({ serverId: serverIdProp }: NewProjectScreenPro
       }) as Href,
     );
   }, [
-    addEmptyProject,
+    upsertProject,
     capabilities,
     client,
     form,

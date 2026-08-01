@@ -54,6 +54,7 @@ function useBrowserPanelDescriptor(target: {
 
   return {
     label: getBrowserLabel({ title: browser?.title ?? "", url }),
+    tooltip: url,
     subtitle: url,
     titleState: "ready",
     icon,

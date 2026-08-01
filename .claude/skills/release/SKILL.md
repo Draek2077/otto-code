@@ -76,7 +76,7 @@ npm run release:patch         # release:check → version:all:patch (bump+commit
 
 The `v*` tag push triggers, in **your** repo: `Desktop Release`, `Android APK Release`, `Android Play Release` (AAB → Play internal track), `Docker`, `Deploy App` (web app), `Release Notes Sync`. `Deploy Website` runs when the GitHub release publishes (stable only).
 
-- **`gh` defaults to upstream Paseo here — always pass `--repo Draek2077/otto-code`** — for the one-off checks below, or when the user asks about a specific failure later.
+- **`gh` defaults to upstream Otto here — always pass `--repo Draek2077/otto-code`** — for the one-off checks below, or when the user asks about a specific failure later.
 - macOS desktop jobs **run and produce unsigned artifacts** (they no longer skip for want of Apple signing — changed as of 0.6.6). A red mac job is a **real failure**, not an expected skip. Unsigned means a Gatekeeper warning on first open; that is the known trade, not a defect.
 - Spot-check once, if at all: `npm view @otto-code/cli version` shows the new version on `latest`.
 

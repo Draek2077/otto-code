@@ -4,6 +4,7 @@ import { generateLocalPairingOffer, loadConfig, resolveOttoHome } from "@otto-co
 import { tryConnectToDaemon } from "../../utils/client.js";
 import { resolveLocalDaemonState, resolveTcpHostFromListen } from "./local-daemon.js";
 import { addJsonOption } from "../../utils/command-options.js";
+import { formatPairingInstructions } from "../../output/pairing.js";
 
 interface PairOptions {
   home?: string;
@@ -97,6 +98,11 @@ function outputPairingResult(
     return;
   }
 
-  const qrBlock = pairing.qr ? `${pairing.qr}\n` : "";
-  process.stdout.write(`\nScan to pair:\n${qrBlock}${pairing.url}\n`);
+  process.stdout.write(
+    formatPairingInstructions({
+      url: pairing.url,
+      qr: pairing.qr,
+      columns: process.stdout.columns,
+    }),
+  );
 }

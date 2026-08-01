@@ -7,6 +7,7 @@ function useContextManagementPanelDescriptor(): PanelDescriptor {
   const { t } = useTranslation();
   return {
     label: t("workspace.contextManagement.tabLabel"),
+    tooltip: t("workspace.contextManagement.tabLabel"),
     subtitle: t("workspace.contextManagement.subtitle"),
     titleState: "ready",
     // Not Gauge — that reads as Metrics, which owns it in the stats nav and settings.

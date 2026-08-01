@@ -211,7 +211,7 @@ test.describe("Composer attachments", () => {
       });
 
       await openNewWorkspaceComposer(page, {
-        projectKey: workspace.projectId,
+        projectKey: workspace.projectKey,
         projectDisplayName: workspace.projectDisplayName,
       });
 
@@ -298,7 +298,7 @@ test.describe("Composer attachments", () => {
       });
 
       await openNewWorkspaceComposer(page, {
-        projectKey: workspace.projectId,
+        projectKey: workspace.projectKey,
         projectDisplayName: workspace.projectDisplayName,
       });
       // The seeded workspace already occupies this project's checkout, and a second *visible*

@@ -13,7 +13,7 @@ import { Text, View } from "react-native";
 import { Brain, Folder, GitBranch } from "@/components/icons/material-icons";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@otto-code/protocol/agent-types";
-import type { ScheduleSummary } from "@otto-code/protocol/schedule/types";
+import type { ScheduleCadence, ScheduleSummary } from "@otto-code/protocol/schedule/types";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { ComboboxItem } from "@/components/ui/combobox";
@@ -101,6 +101,15 @@ function formatMaxRunsHint(raw: string): string {
 // protocol sentinel. The entry itself is built by the shared form producer
 // (useFormRolePersonality → buildTeamRoleEntry); this const is the local id.
 const TEAM_SCHEDULER_ENTRY_ID = "__team-scheduler__";
+
+function requireCronCadence(
+  cadence: Extract<ScheduleCadence, { type: "cron" }> | undefined,
+): Extract<ScheduleCadence, { type: "cron" }> {
+  if (!cadence) {
+    throw new Error("Choose a cron cadence before creating this schedule");
+  }
+  return cadence;
+}
 
 function resolveCreateServerId(input: {
   mode: "create" | "edit";
@@ -353,18 +362,91 @@ function OpenScheduleFormSheet({
   ]);
 
   const submitAgentTarget = useCallback(async (): Promise<boolean> => {
-    if (!schedule) {
+    if (!schedule || !state.submitCadence) {
       return false;
     }
     await updateSchedule({
       id: schedule.id,
-      name: state.name.trim() || null,
-      prompt: state.prompt.trim(),
       cadence: state.submitCadence,
-      maxRuns: parseMaxRuns(state.maxRuns),
     });
     return true;
-  }, [schedule, state.maxRuns, state.name, state.prompt, state.submitCadence, updateSchedule]);
+  }, [schedule, state.submitCadence, updateSchedule]);
+
+  const submitScheduleEdit = useCallback(
+    async (input: {
+      provider: NonNullable<typeof state.selectedProvider>;
+      cwd: string;
+      maxRuns: ReturnType<typeof parseMaxRuns>;
+      personalityBinding: ReturnType<
+        NonNullable<typeof personality.resolveSubmitPersonality>
+      > | null;
+    }): Promise<boolean> => {
+      if (!schedule) {
+        return false;
+      }
+      await updateSchedule({
+        id: schedule.id,
+        name: state.name.trim() || null,
+        prompt: state.prompt.trim(),
+        ...(state.submitCadence ? { cadence: state.submitCadence } : {}),
+        newAgentConfig: {
+          provider: input.provider,
+          model: state.selectedModel || null,
+          // Always null: schedule runs are unattended and there is no mode
+          // field anymore. Explicit null (not omission) so editing a schedule
+          // clears any mode stored by an older client — a stored attended
+          // mode would fail the run at its first approval prompt.
+          modeId: null,
+          thinkingOptionId: state.selectedThinkingOptionId || null,
+          // Explicit null clears a binding the user removed in the picker.
+          personality: input.personalityBinding,
+          cwd: input.cwd,
+          ...(state.submitArchiveOnFinish !== undefined
+            ? { archiveOnFinish: state.submitArchiveOnFinish }
+            : {}),
+          ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
+        },
+        maxRuns: input.maxRuns,
+      });
+      return true;
+    },
+    [schedule, state, updateSchedule],
+  );
+
+  const submitScheduleCreate = useCallback(
+    async (input: {
+      provider: NonNullable<typeof state.selectedProvider>;
+      cwd: string;
+      maxRuns: ReturnType<typeof parseMaxRuns>;
+      personalityBinding: ReturnType<
+        NonNullable<typeof personality.resolveSubmitPersonality>
+      > | null;
+    }): Promise<boolean> => {
+      await createSchedule({
+        prompt: state.prompt.trim(),
+        name: state.name.trim() || undefined,
+        cadence: requireCronCadence(state.submitCadence),
+        target: {
+          type: "new-agent",
+          config: {
+            provider: input.provider,
+            cwd: input.cwd,
+            model: state.selectedModel || undefined,
+            thinkingOptionId: state.selectedThinkingOptionId || undefined,
+            ...(input.personalityBinding ? { personality: input.personalityBinding } : {}),
+            ...(state.submitArchiveOnFinish !== undefined
+              ? { archiveOnFinish: state.submitArchiveOnFinish }
+              : {}),
+            ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
+            title: state.name.trim() || undefined,
+          },
+        },
+        ...(input.maxRuns != null ? { maxRuns: input.maxRuns } : {}),
+      });
+      return true;
+    },
+    [createSchedule, state],
+  );
 
   const submitNewAgent = useCallback(async (): Promise<boolean> => {
     const provider = state.selectedProvider;
@@ -374,59 +456,24 @@ function OpenScheduleFormSheet({
     }
 
     await persistPreferences();
-    const maxRuns = parseMaxRuns(state.maxRuns);
-    const personalityBinding = personality.resolveSubmitPersonality?.() ?? null;
-    if (mode === "edit" && schedule) {
-      await updateSchedule({
-        id: schedule.id,
-        name: state.name.trim() || null,
-        prompt: state.prompt.trim(),
-        cadence: state.submitCadence,
-        newAgentConfig: {
-          provider,
-          model: state.selectedModel || null,
-          // Always null: schedule runs are unattended and there is no mode
-          // field anymore. Explicit null (not omission) so editing a schedule
-          // clears any mode stored by an older client — a stored attended
-          // mode would fail the run at its first approval prompt.
-          modeId: null,
-          thinkingOptionId: state.selectedThinkingOptionId || null,
-          // Explicit null clears a binding the user removed in the picker.
-          personality: personalityBinding,
-          cwd,
-          ...(state.submitArchiveOnFinish !== undefined
-            ? { archiveOnFinish: state.submitArchiveOnFinish }
-            : {}),
-          ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
-        },
-        maxRuns,
-      });
-      return true;
-    }
-
-    await createSchedule({
-      prompt: state.prompt.trim(),
-      name: state.name.trim() || undefined,
-      cadence: state.submitCadence,
-      target: {
-        type: "new-agent",
-        config: {
-          provider,
-          cwd,
-          model: state.selectedModel || undefined,
-          thinkingOptionId: state.selectedThinkingOptionId || undefined,
-          ...(personalityBinding ? { personality: personalityBinding } : {}),
-          ...(state.submitArchiveOnFinish !== undefined
-            ? { archiveOnFinish: state.submitArchiveOnFinish }
-            : {}),
-          ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
-          title: state.name.trim() || undefined,
-        },
-      },
-      ...(maxRuns != null ? { maxRuns } : {}),
-    });
-    return true;
-  }, [createSchedule, mode, persistPreferences, personality, schedule, state, updateSchedule]);
+    const submitInput = {
+      provider,
+      cwd,
+      maxRuns: parseMaxRuns(state.maxRuns),
+      personalityBinding: personality.resolveSubmitPersonality?.() ?? null,
+    };
+    return mode === "edit" && schedule
+      ? await submitScheduleEdit(submitInput)
+      : await submitScheduleCreate(submitInput);
+  }, [
+    mode,
+    persistPreferences,
+    personality,
+    schedule,
+    state,
+    submitScheduleCreate,
+    submitScheduleEdit,
+  ]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) {
@@ -448,10 +495,12 @@ function OpenScheduleFormSheet({
     void handleSubmit();
   }, [handleSubmit]);
 
-  const header = useMemo<SheetHeader>(
-    () => ({ title: mode === "edit" ? "Edit schedule" : "New schedule" }),
-    [mode],
-  );
+  const header = useMemo<SheetHeader>(() => {
+    if (mode !== "edit") {
+      return { title: "New schedule" };
+    }
+    return { title: schedule?.target.type === "agent" ? "Edit heartbeat" : "Edit schedule" };
+  }, [mode, schedule?.target.type]);
 
   const footer = useMemo(
     () => (
@@ -486,7 +535,6 @@ function OpenScheduleFormSheet({
       onClose={onClose}
       onDismiss={onDismiss}
       footer={footer}
-      webScrollbar
       testID="schedule-form-sheet"
     >
       <ScheduleFormFields
@@ -585,6 +633,21 @@ function ScheduleFormFields({
   personality,
 }: ScheduleFormFieldsProps): ReactElement {
   const maxRunsHint = formatMaxRunsHint(state.maxRuns);
+  if (state.targetKind === "agent") {
+    return (
+      <>
+        <ScheduleAgentTargetField label={agentTargetLabel} size={controlSize} />
+        <CadenceEditor
+          value={state.cadence}
+          onChange={model.setCadence}
+          error={cadenceError ?? undefined}
+          size={controlSize}
+        />
+        {state.submitError ? <Text style={styles.submitError}>{state.submitError}</Text> : null}
+      </>
+    );
+  }
+
   return (
     <>
       <Field label="Name">
@@ -623,7 +686,7 @@ function ScheduleFormFields({
         model={model}
         state={state}
         providerSnapshot={providerSnapshot}
-        agentTargetLabel={agentTargetLabel}
+        agentTargetLabel={null}
         controlSize={controlSize}
         mutationServerId={mutationServerId}
         personality={personality}

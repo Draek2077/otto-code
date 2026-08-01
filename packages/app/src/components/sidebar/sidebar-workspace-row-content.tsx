@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
+import { forgeToHostingProvider } from "@/git/forge";
 import { ActivityIndicator, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Globe, SquareTerminal } from "@/components/icons/material-icons";
@@ -124,7 +125,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
           {workspace.prHint ? (
             <View style={styles.workspacePrBadgeRow}>
               <PrBadge hint={workspace.prHint} />
-              <ChecksBadge checks={workspace.prHint.checks} provider={workspace.prHint.provider} />
+              <ChecksBadge checks={workspace.prHint.checks} forge={workspace.prHint.forge} />
             </View>
           ) : null}
         </View>
@@ -210,19 +211,17 @@ function WorkspaceStatusIndicator({
   return <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-done" />;
 }
 
-function ChecksBadge({
-  checks,
-  provider,
-}: {
-  checks: PrHint["checks"];
-  provider: PrHint["provider"];
-}) {
+function ChecksBadge({ checks, forge }: { checks: PrHint["checks"]; forge: PrHint["forge"] }) {
   if (!checks || checks.length === 0) return null;
   const failed = checks.filter((check) => check.status === "failure").length;
   if (failed === 0) return null;
   return (
     <View style={checksBadgeStyles.badge}>
-      <ThemedGitHostingIcon provider={provider} size={10} uniProps={redColorMapping} />
+      <ThemedGitHostingIcon
+        provider={forgeToHostingProvider(forge)}
+        size={10}
+        uniProps={redColorMapping}
+      />
       <Text style={checksBadgeStyles.text}>{failed} failed</Text>
     </View>
   );

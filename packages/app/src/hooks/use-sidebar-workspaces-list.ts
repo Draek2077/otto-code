@@ -205,7 +205,7 @@ export function useSidebarWorkspacesList(options?: {
           store.setWorkspaces(serverId, next);
           // Keep parents with no workspaces yet, so a manual refresh doesn't drop
           // a freshly-added project from the sidebar.
-          store.setEmptyProjects(serverId, emptyProjects);
+          store.setProjects(serverId, emptyProjects);
           store.setHasHydratedWorkspaces(serverId, true);
         } catch (error) {
           console.error("[WorkspaceFetch][sidebar-refresh] failed", {

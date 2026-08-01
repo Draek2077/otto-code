@@ -64,6 +64,10 @@ export const zhCN: TranslationResources = {
       newAgent: "新建对话",
       openProject: "打开项目",
       home: "首页",
+      workspaces: "工作区",
+      addProject: "添加 project",
+      modelGroupLabel: "模型",
+      modelSearchKeywords: "切换模型 更改模型 设置模型 选择模型",
     },
   },
   chatMetrics: {
@@ -157,9 +161,11 @@ export const zhCN: TranslationResources = {
       fileContext: "文件上下文",
       folderContext: "文件夹上下文",
       lineContext: "行上下文",
+      addIssueOrPr_mr: "添加 issue 或 MR",
     },
     errors: {
       failedToSend: "发送消息失败",
+      failedToCancel: "发送消息失败",
       failedToCreateAgent: "创建 Agent 失败",
       noHostSelected: "未选择 Host",
       initialPromptRequired: "初始 prompt 必填",
@@ -182,6 +188,8 @@ export const zhCN: TranslationResources = {
       noResults: "没有结果。",
       searchPlaceholder: "搜索 issues 和 PRs...",
       title: "附加 issue 或 PR",
+      searchPlaceholder_mr: "搜索 issues 和 MRs...",
+      title_mr: "附加 issue 或 MR",
     },
     interruptSubagentsWarning: {
       title: "中断正在运行的子智能体？",
@@ -359,6 +367,7 @@ export const zhCN: TranslationResources = {
     mode: {
       title: "模式",
       selectWithValue: "选择 Agent mode（{{value}}）",
+      searchPlaceholder: "搜索 modes...",
     },
     hints: {
       thinking: "更改推理强度",
@@ -418,6 +427,7 @@ export const zhCN: TranslationResources = {
       reconnecting: "正在重连...",
       archivingTitle: "正在归档 Agent...",
       archivingSubtitle: "请稍候，我们正在归档这个 Agent。",
+      timelineSyncFailed: "无法刷新代理历史记录。正在重试…",
     },
     unavailable: {
       selectedHost: "选中的 Host",
@@ -635,6 +645,18 @@ export const zhCN: TranslationResources = {
       missing: "Workspace 未找到",
       needsHostUpgrade: "更新你的 Host 以恢复此 workspace",
       manageHost: "管理 Host",
+      recovery: {
+        archivedTitle: "Workspace 已归档",
+        restoreDescription:
+          "{{workspaceName}} 已归档，其 worktree 已移除。恢复分支 {{branch}} 以重新打开。",
+        unarchiveDescription: "{{workspaceName}} 已归档。取消归档以重新打开。",
+        restoreAction: "恢复",
+        unarchiveAction: "取消归档",
+        restoringTitle: "正在恢复 workspace",
+        restoringAction: "正在恢复...",
+        unavailableTitle: "Workspace 不可用",
+        checkFailedTitle: "无法检查 workspace",
+      },
     },
     hoverCard: {
       scriptsAccessibility: "Workspace 脚本",
@@ -873,6 +895,7 @@ export const zhCN: TranslationResources = {
         close: "关闭",
         renameTerminal: "重命名 Terminal",
         renameAgent: "重命名对话",
+        copyTerminalId: "复制 Terminal ID",
       },
       actions: {
         newAgent: "新建对话",
@@ -891,6 +914,7 @@ export const zhCN: TranslationResources = {
         previewDisabledTooltip: "打开聊天以预览其开发服务器",
         previewPickServer: "启动哪个服务器?",
         previewStopServer: "停止 {{name}}",
+        exitFocusMode: "退出专注模式",
       },
       explorer: {
         open: "打开 explorer",
@@ -910,6 +934,7 @@ export const zhCN: TranslationResources = {
         reloadingAgent: "正在重新加载 Agent...",
         reloadedAgent: "已重新加载 Agent",
         failedToReloadAgent: "重新加载 Agent 失败",
+        terminalIdCopiedLabel: "Terminal ID",
       },
       confirmations: {
         close: "关闭",
@@ -937,7 +962,13 @@ export const zhCN: TranslationResources = {
           tabs: "这会关闭 {{tabs}} 个标签。",
           agents: "这会归档 {{agents}} 个 Agent。",
         },
+        unsavedTitle: "未保存的更改",
+        unsavedMessage: "此标签页有尚未保存的更改。关闭将丢弃草稿。",
+        closeWithoutSaving: "不保存并关闭",
+        closePaneTitle: "关闭面板？",
+        bulkUnsaved: "{{count}} 个标签页有未保存的更改。关闭将丢弃这些草稿。",
       },
+      modified: "未保存的更改",
     },
     header: {
       actions: {
@@ -965,6 +996,11 @@ export const zhCN: TranslationResources = {
       actions: {
         run: "运行",
         view: "查看",
+        chooseUrl: "选择 URL",
+        copyUrl: "复制 URL",
+        openService: "查看服务",
+        restart: "重启",
+        stop: "停止",
       },
       accessibility: {
         trigger: "Workspace 脚本",
@@ -972,10 +1008,21 @@ export const zhCN: TranslationResources = {
         viewTerminal: "查看 {{scriptName}} Terminal",
         runScript: "运行 {{scriptName}} script",
         script: "{{scriptName}} 脚本",
+        openService: "查看 {{scriptName}} 服务",
+        stopScript: "停止 {{scriptName}}",
+        restartScript: "重启 {{scriptName}}",
+        copyUrl: "复制 {{scriptName}} 的 URL",
+        chooseUrl: "选择 {{scriptName}} 的 URL",
       },
       states: {
         exitCode: "退出码 {{code}}",
         startFailed: "启动 {{scriptName}} 失败",
+        stopFailed: "停止 {{scriptName}} 失败",
+      },
+      routes: {
+        public: "反向代理",
+        otto: "Memorable",
+        direct: "直接地址",
       },
     },
     git: {
@@ -1018,6 +1065,9 @@ export const zhCN: TranslationResources = {
           pending: "正在创建 PR...",
           success: "PR 已创建",
           description: "将此分支推送到远程，并针对 {{baseRef}} 创建 pull request",
+          label_mr: "创建 MR",
+          pending_mr: "正在创建 MR...",
+          success_mr: "MR 已创建",
         },
         mergeBranch: {
           label: "合并到 {{baseRef}}",
@@ -1046,6 +1096,11 @@ export const zhCN: TranslationResources = {
           squashDescription: "将 pull request 的提交压缩为一个后合并",
           mergeDescription: "使用合并提交合并该 pull request",
           rebaseDescription: "将 pull request 的提交变基到基础分支，不产生合并提交",
+          squash_mr: "Merge MR (squash)",
+          merge_mr: "Merge MR (merge)",
+          rebase_mr: "Merge MR (rebase)",
+          pending_mr: "正在 merge MR...",
+          success_mr: "MR 已 merge",
         },
         autoMerge: {
           enableSquash: "自动合并（squash）",
@@ -1086,6 +1141,12 @@ export const zhCN: TranslationResources = {
           mergePrQueue: "此处无法 merge PR，因为此 repository 使用 merge queue",
           mergePrNotReady: "GitHub 报告 pull request 可 merge 后才能 merge PR",
           autoMergeCannotDisable: "Auto-merge 已启用，但此账号无法禁用",
+          viewPrNoForge: "当前无法查看 {{noun}}，因为 {{brand}} 未连接",
+          pullAndPushNoIncoming: "无法 pull 并 push，因为没有需要先 pull 的传入变更",
+          pullAndPushNothingToPush: "无法 pull 并 push，因为 pull 之后没有新的内容可发送",
+          createPrNoForge: "当前无法创建 {{noun}}，因为 {{brand}} 未连接",
+          archiveNotWorktree: "此处无法归档，因为此 workspace 不是作为 Otto worktree 创建的",
+          mergePrNoForge: "当前无法 merge {{noun}}，因为 {{brand}} 未连接",
         },
         toasts: {
           failedCommit: "Commit 失败",
@@ -1125,6 +1186,7 @@ export const zhCN: TranslationResources = {
           branchRemoteKept: "保留 origin 上的副本。",
           branchDeleted: "已删除分支 {{branchName}}。",
         },
+        viewPr_mr: "查看 MR",
       },
       diff: {
         viewChanges: "查看更改",
@@ -1179,6 +1241,20 @@ export const zhCN: TranslationResources = {
         basePickerRedetectDescription: "重新判定当前分支是从哪个分支创建的",
         basePickerRemoteDescription: "远程跟踪分支，可能与本地不同",
         baseChangeFailed: "更改基线分支失败",
+        openChangesTab: "打开“更改”标签页",
+        closeChangesTab: "关闭“更改”标签页",
+        previewTooLargeTitle: "此 diff 过大，无法预览",
+        previewTooLargeDescription: "缩小比较范围即可在此预览",
+        commits: {
+          title: "提交",
+          countLabel: "{{count}} 个工作区提交",
+          noneAhead: "尚无领先于 {{baseRef}} 的提交",
+          fileDiffEmpty: "没有可显示的更改",
+          fileDiffError: "加载文件差异失败",
+          loading: "正在加载提交…",
+          loadError: "加载提交失败",
+          empty: "暂无提交",
+        },
       },
       commit: {
         messagePlaceholder: "提交信息",
@@ -1245,13 +1321,16 @@ export const zhCN: TranslationResources = {
       pr: {
         actions: {
           viewPullRequest: "查看",
+          openOn: "在 {{brand}} 上打开",
         },
         sections: {
           checks: "检查",
           reviews: "评审",
+          pipeline: "流水线",
         },
         accessibility: {
           pullRequest: "Pull request #{{number}}",
+          pullRequest_mr: "合并请求 !{{number}}",
         },
         states: {
           draft: "草稿",
@@ -1272,7 +1351,29 @@ export const zhCN: TranslationResources = {
           statusLoadFailed: "无法加载 Pull Request 状态",
           activityLoadFailed: "无法加载 Pull Request 活动",
         },
+        empty: {
+          noJobs: "无作业",
+          loadingPipeline: "正在加载流水线...",
+          pipelineJobsLoadFailed: "无法加载流水线作业",
+          allowedToFail: "允许失败",
+        },
+        approvals: "{{given}} / {{required}} 批准",
+        thread: {
+          discussion: "讨论主题",
+        },
       },
+      forgeSetup: {
+        installCli: "安装 {{cli}} CLI 以使用 {{brand}} 功能。",
+        signIn: "运行 {{command}} 以使用 {{brand}} 功能。",
+        generic: "在此主机上设置 {{brand}} 以使用其功能。",
+      },
+    },
+    fileActions: {
+      openFile: "打开文件",
+      copyPath: "复制路径",
+      download: "下载",
+      addToChat: "添加到聊天…",
+      moreActions: "更多操作",
     },
   },
   sidebar: {
@@ -1287,6 +1388,7 @@ export const zhCN: TranslationResources = {
       home: "首页",
       settings: "设置",
       closeSidebar: "关闭侧边栏",
+      hosts: "Hosts",
     },
     sections: {
       sessions: "历史",
@@ -1306,6 +1408,8 @@ export const zhCN: TranslationResources = {
         openNewWindowFailed: "无法打开新窗口",
         remove: "移除 project",
         removing: "正在移除...",
+        openFolder: "Open in file manager",
+        openFolderFailed: "Couldn't open folder",
       },
       confirmations: {
         removeTitle: "移除 project？",
@@ -1342,6 +1446,10 @@ export const zhCN: TranslationResources = {
         hideFromSidebar: "从侧边栏隐藏",
         archiving: "正在归档...",
         hiding: "正在隐藏...",
+        showMore: "显示更多",
+        showLess: "收起",
+        pin: "置顶",
+        unpin: "取消置顶",
       },
       reopenWorktree: {
         menu: "重新打开 worktree...",
@@ -1371,6 +1479,20 @@ export const zhCN: TranslationResources = {
         hideFailed: "隐藏 workspace 失败",
         archiveFailed: "归档工作区失败",
       },
+    },
+    pinned: {
+      title: "已置顶",
+    },
+    help: {
+      trigger: "帮助与支持",
+      sectionHelp: "帮助",
+      diagnostics: "运行诊断",
+      shortcuts: "键盘快捷键",
+      reportIssue: "报告问题",
+      discord: "Discord",
+      github: "创建 GitHub Issue",
+      whatsNew: "新功能",
+      version: "Otto {{version}}",
     },
   },
   newProject: {
@@ -2583,6 +2705,8 @@ export const zhCN: TranslationResources = {
         confirm: "清理",
       },
     },
+    archiveFinishedAction: "归档已完成的 subagent",
+    archiveFinishedTooltip: "归档已完成项",
   },
   panels: {
     draft: {
@@ -2605,6 +2729,36 @@ export const zhCN: TranslationResources = {
         actualSize: "实际大小",
         fitToWindow: "适应窗口",
       },
+      editor: {
+        fileSize: "文件大小 {{size}}",
+        lines: "{{count}} 行",
+        editorStatus: "编辑器状态 {{status}}",
+        unsavedChanges: "未保存的更改",
+        saving: "正在保存...",
+        saveFailed: "保存失败",
+        changedOnDisk: "磁盘上的文件已更改",
+        vimMode: "Vim 模式 {{mode}}",
+        cursor: "第 {{line}} 行，第 {{column}} 列",
+        preview: "预览",
+        source: "源代码",
+        unavailableTitle: "磁盘上的文件不可用",
+        conflictDescription: "本地内容已保留。请选择要保留的版本。",
+        overwrite: "覆盖",
+        reload: "重新加载",
+        reloadTitle: "从磁盘重新加载？",
+        reloadMessage: "本地更改将丢失。",
+      },
+    },
+    diff: {
+      changesLabel: "更改",
+      changesSubtitle: "工作区差异",
+      commitSubtitle: "提交差异",
+      uncommittedSubtitle: "未提交的更改",
+      baseSubtitle: "与 {{baseRef}} 比较",
+      directoryMissing: "未找到 workspace 目录。",
+      empty: "没有更改",
+      loadError: "加载差异失败",
+      capabilityMissing: "请更新主机以查看提交差异。",
     },
   },
   toolCallDetails: {
@@ -2627,6 +2781,8 @@ export const zhCN: TranslationResources = {
     sessionCost: "会话费用 {{cost}}",
     accessibility: "上下文窗口已使用 {{percentage}}%",
     tooltip: "查看用量",
+    used: "已使用 {{percentage}}%",
+    tokens: "{{used}} / {{max}} tokens",
   },
   review: {
     comment: {
@@ -2676,6 +2832,7 @@ export const zhCN: TranslationResources = {
       permissions: "权限",
       diagnostics: "诊断",
       about: "关于",
+      editor: "编辑器",
     },
     hostSections: {
       connections: "连接",
@@ -2780,6 +2937,30 @@ export const zhCN: TranslationResources = {
           zhCN: "简体中文",
         },
       },
+      browserData: {
+        title: "浏览器数据",
+        siteData: "Cookie 和网站数据",
+        description: "浏览器标签页在 Otto 中共享登录状态和网站数据。",
+        clear: "清除浏览器数据",
+        clearing: "正在清除...",
+        confirmTitle: "清除浏览器数据？",
+        confirmMessage: "网站帐号将退出登录，打开的浏览器标签页将重新加载。",
+        success: "浏览器数据已清除。",
+        error: "无法清除浏览器数据。",
+      },
+      autoExpandReasoning: {
+        label: "始终展开推理过程",
+        description: "默认情况下完全展开 AI 的思考和推理过程",
+      },
+      toolCallDetail: {
+        label: "工具调用显示",
+        description: "工具调用在时间线中的显示方式",
+        accessibilityLabel: "选择工具调用显示方式（{{value}}）",
+        options: {
+          overview: "摘要",
+          detailed: "完整详情",
+        },
+      },
     },
     preview: {
       title: "预览",
@@ -2875,6 +3056,8 @@ export const zhCN: TranslationResources = {
           terracotta: "赤陶",
           horizon: "地平线",
           powder: "粉霜",
+          light: "Light",
+          auto: "系统",
         },
       },
       agents: {
@@ -3004,6 +3187,9 @@ export const zhCN: TranslationResources = {
         highlightThemeAccessibility: "高亮主题：{{value}}",
         previewAccessibility: "语法主题和代码字体的实时预览",
       },
+      detailLevel: {
+        title: "详细程度",
+      },
     },
     shortcuts: {
       dialogTitle: "快捷键",
@@ -3074,10 +3260,12 @@ export const zhCN: TranslationResources = {
         editorGoToDefinition: "转到定义",
         editorFindReferences: "查找引用",
         editorRenameSymbol: "重命名符号",
+        switchProject: "切换项目",
       },
       helpNotes: {
         showKeyboardShortcuts: "焦点不在文本输入框或终端内时可用。",
       },
+      searchPlaceholder: "搜索快捷键",
     },
     integrations: {
       title: "集成",
@@ -3355,6 +3543,7 @@ export const zhCN: TranslationResources = {
           requestFailedTitle: "更新失败",
           requestFailedMessage: "无法更新守护进程：{{error}}",
           dialogFailedMessage: "无法打开更新确认对话框。",
+          desktopManagedHint: "此 Daemon 由 Otto Desktop 管理。请在 Host 上更新 Otto Desktop。",
         },
         dangerZone: "危险区域",
         remove: {
@@ -3449,6 +3638,8 @@ export const zhCN: TranslationResources = {
         removing: "正在移除...",
         requiresUpdate: "请更新 Host 以移除 Provider。",
         failed: "移除 Provider 失败",
+        confirm: "Remove",
+        errorTitle: "Unable to remove provider",
       },
       models: {
         one: "1 个 Model",
@@ -3485,6 +3676,11 @@ export const zhCN: TranslationResources = {
         none: "没有可用诊断",
         failedToFetch: "获取诊断失败",
         unknownError: "未知错误",
+      },
+      actions: {
+        menu: "{{name}} actions",
+        remove: "Remove provider",
+        removing: "Removing...",
       },
     },
     project: {
@@ -3585,6 +3781,11 @@ export const zhCN: TranslationResources = {
         discard: "放弃",
         keepEditing: "继续编辑",
       },
+    },
+    editor: {
+      title: "编辑器",
+      vimKeybindings: "Vim 键位",
+      vimHint: "适用于网页和桌面端的源文件。",
     },
   },
   artifacts: {

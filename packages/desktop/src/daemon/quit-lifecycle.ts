@@ -63,12 +63,43 @@ export async function stopDesktopManagedDaemonOnQuitIfNeeded(
   return true;
 }
 
-export function createBeforeQuitHandler({
+interface QuitLifecycle {
+  handleBeforeQuit(event: BeforeQuitEvent): void;
+  handleBeforeQuitForUpdate(): void;
+}
+
+interface DeferredUpdateQuit {
+  promise: Promise<boolean>;
+  resolve(): void;
+}
+
+function waitForUpdateDeadline(signal: AbortSignal): Promise<boolean> {
+  if (signal.aborted) {
+    return Promise.resolve(false);
+  }
+
+  return new Promise((resolve) => {
+    signal.addEventListener("abort", () => resolve(false), { once: true });
+  });
+}
+
+function createDeferredUpdateQuit(): DeferredUpdateQuit {
+  let resolvePromise!: (started: boolean) => void;
+  const promise = new Promise<boolean>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return { promise, resolve: () => resolvePromise(true) };
+}
+
+export function createQuitLifecycle({
   app,
   closeTransportSessions,
   confirmQuitIfNeeded,
   stopDesktopManagedDaemonIfNeeded,
+  installAppUpdateOnQuit,
+  createUpdateDeadlineSignal,
   onStopError,
+  onUpdateError,
 }: {
   app: BeforeQuitApp;
   closeTransportSessions: () => void;
@@ -77,37 +108,83 @@ export function createBeforeQuitHandler({
   // confirmed.
   confirmQuitIfNeeded: () => Promise<boolean>;
   stopDesktopManagedDaemonIfNeeded: () => Promise<boolean>;
+  // Resolves true once a downloaded update has been revalidated and handed to
+  // the installer, which re-fires the quit itself.
+  installAppUpdateOnQuit: (signal: AbortSignal) => Promise<boolean>;
+  createUpdateDeadlineSignal: () => AbortSignal;
   onStopError: (error: unknown) => void;
-}): (event: BeforeQuitEvent) => void {
+  onUpdateError: (error: unknown) => void;
+}): QuitLifecycle {
   // We always preventDefault on first quit so we can run the async stop
   // decision, then call app.exit(0) — which bypasses Electron's
   // close → window-all-closed → will-quit chain. The window-all-closed
   // listener is a darwin no-op (macOS convention) and would otherwise
   // veto a re-fired app.quit().
+  //
+  // The exception is a pending update. `autoInstallOnAppQuit` is off (see
+  // features/auto-updater.ts — Otto revalidates the manifest rather than
+  // installing a download a newer release has superseded), so the install only
+  // happens if this runs it. Exiting hard before the installer has taken over
+  // is what left downloaded updates permanently uninstalled.
   let quitting = false;
+  let quittingForUpdate = false;
+  const updateQuit = createDeferredUpdateQuit();
 
-  return (event) => {
+  function handleBeforeQuit(event: BeforeQuitEvent): void {
     closeTransportSessions();
-    if (quitting) return;
+    if (quittingForUpdate) return;
+    if (quitting) {
+      // MacUpdater's no-relaunch path calls app.quit() without emitting
+      // before-quit-for-update. A second quit is equivalent handoff evidence.
+      updateQuit.resolve();
+      return;
+    }
     quitting = true;
     event.preventDefault();
 
-    void confirmQuitIfNeeded()
-      .catch(() => true) // never block quitting on a confirmation-plumbing failure
-      .then((confirmed) => {
-        if (!confirmed) {
-          quitting = false;
-          unmarkAppQuitting();
+    void (async () => {
+      // Never block quitting on a confirmation-plumbing failure.
+      const confirmed = await confirmQuitIfNeeded().catch(() => true);
+      if (!confirmed) {
+        quitting = false;
+        unmarkAppQuitting();
+        return;
+      }
+
+      try {
+        await stopDesktopManagedDaemonIfNeeded();
+      } catch (error) {
+        onStopError(error);
+      }
+
+      const signal = createUpdateDeadlineSignal();
+      const updateInstallation = installAppUpdateOnQuit(signal).catch((error) => {
+        onUpdateError(error);
+        return false;
+      });
+      const installingUpdate = await Promise.race([
+        updateInstallation,
+        waitForUpdateDeadline(signal),
+      ]);
+      if (installingUpdate) {
+        const handoffStarted = await Promise.race([
+          updateQuit.promise,
+          waitForUpdateDeadline(createUpdateDeadlineSignal()),
+        ]);
+        if (handoffStarted) {
           return;
         }
+      }
 
-        return stopDesktopManagedDaemonIfNeeded()
-          .catch((error) => {
-            onStopError(error);
-          })
-          .finally(() => {
-            app.exit(0);
-          });
-      });
+      app.exit(0);
+    })();
+  }
+
+  return {
+    handleBeforeQuit,
+    handleBeforeQuitForUpdate() {
+      quittingForUpdate = true;
+      updateQuit.resolve();
+    },
   };
 }

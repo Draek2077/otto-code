@@ -341,27 +341,42 @@ function healActiveAgentTeamId(config: MutableDaemonConfig): MutableDaemonConfig
   return { ...config, agentTeams: { ...section, activeTeamId: null } };
 }
 
+/**
+ * A patch can ask for a provider's config to be deleted two ways, and both are
+ * in the schema: Otto's `providers: { id: null }` sentinel, and upstream's
+ * `removeProviders: [id]` list. The app sends the list
+ * (`screens/settings/providers-section.tsx`), the snapshot manager already
+ * reads it (`provider-snapshot-manager.ts:144`), and `removeProviders` is not a
+ * config field, so it is pruned from the patch here rather than being merged
+ * into the stored config.
+ */
 function extractProviderRemovals(patch: MutableDaemonConfigPatch): {
   patch: MutableDaemonConfigPatch;
   removedProviderIds: string[];
 } {
-  const providers = patch.providers;
-  if (!providers) {
-    return { patch, removedProviderIds: [] };
+  const { removeProviders: removeProviderIds, ...patchWithoutRemovals } = patch;
+  const providers = patchWithoutRemovals.providers;
+  const removedProviderIds = Array.from(
+    new Set([
+      ...(removeProviderIds ?? []),
+      ...Object.entries(providers ?? {})
+        .filter(([, value]) => value === null)
+        .map(([providerId]) => providerId),
+    ]),
+  );
+  if (removedProviderIds.length === 0) {
+    return { patch: patchWithoutRemovals, removedProviderIds };
   }
 
-  const removedProviderIds = Object.entries(providers)
-    .filter(([, value]) => value === null)
-    .map(([providerId]) => providerId);
-  if (removedProviderIds.length === 0) {
-    return { patch, removedProviderIds };
+  if (!providers) {
+    return { patch: patchWithoutRemovals, removedProviderIds };
   }
 
   const remainingProviders = Object.fromEntries(
     Object.entries(providers).filter(([, value]) => value !== null),
   );
   return {
-    patch: { ...patch, providers: remainingProviders },
+    patch: { ...patchWithoutRemovals, providers: remainingProviders },
     removedProviderIds,
   };
 }

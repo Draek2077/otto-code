@@ -1,6 +1,21 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { BrowserKeyboardPolicy } from "./features/browser-keyboard/index.js";
+
+// This preload runs in Electron's sandbox and is tsc-compiled (not bundled), so it MUST
+// NOT emit any runtime module load other than "electron" — a require() of a local or
+// third-party module throws and aborts the preload before exposeInMainWorld runs, leaving
+// window.ottoDesktop undefined (the 0.1.108 regression, #2103). Keep this literal in sync
+// with OTTO_BROWSER_PROFILE_PARTITION in features/browser-profile.ts; preload-sandbox.test.ts
+// guards both the no-local-import rule and this drift. Type-only imports are fine (erased at emit).
+const OTTO_BROWSER_PROFILE_PARTITION = "persist:otto-browser";
 
 type EventHandler = (payload: unknown) => void;
+
+interface AttachedBrowserRegistration {
+  browserId: string;
+  workspaceId: string;
+  webContentsId: number;
+}
 
 contextBridge.exposeInMainWorld("ottoDesktop", {
   platform: process.platform,
@@ -8,6 +23,13 @@ contextBridge.exposeInMainWorld("ottoDesktop", {
     ipcRenderer.invoke("otto:invoke", command, args),
   getPendingOpenProject: () =>
     ipcRenderer.invoke("otto:get-pending-open-project") as Promise<string | null>,
+  agentNavigation: {
+    ready: () =>
+      ipcRenderer.invoke("otto:agent-navigation:ready") as Promise<{
+        serverId: string;
+        agentId: string;
+      } | null>,
+  },
   events: {
     on: (event: string, handler: EventHandler): Promise<() => void> => {
       const listener = (_ipcEvent: Electron.IpcRendererEvent, payload: unknown) => {
@@ -25,11 +47,14 @@ contextBridge.exposeInMainWorld("ottoDesktop", {
     signalReady: () => ipcRenderer.invoke("otto:window:signalReady"),
     getCurrentWindow: () => ({
       toggleMaximize: () => ipcRenderer.invoke("otto:window:toggleMaximize"),
+      setFullscreen: (fullscreen: boolean) =>
+        ipcRenderer.invoke("otto:window:setFullscreen", fullscreen),
       isFullscreen: () => ipcRenderer.invoke("otto:window:isFullscreen"),
       updateWindowControls: (update: {
         height?: number;
         backgroundColor?: string;
         foregroundColor?: string;
+        trafficLightOffsetY?: number;
       }) => ipcRenderer.invoke("otto:window:updateWindowControls", update),
       onResized: (handler: EventHandler): (() => void) => {
         const listener = (_ipcEvent: Electron.IpcRendererEvent, payload: unknown) => {
@@ -64,9 +89,10 @@ contextBridge.exposeInMainWorld("ottoDesktop", {
     listTargets: () => ipcRenderer.invoke("otto:editor:listTargets"),
     openTarget: (input: {
       editorId: string;
-      path: string;
-      cwd?: string;
-      mode?: "open" | "reveal";
+      workspacePath: string;
+      filePath?: string;
+      line?: number;
+      column?: number;
     }) => ipcRenderer.invoke("otto:editor:openTarget", input),
   },
   webUtils: {
@@ -75,18 +101,23 @@ contextBridge.exposeInMainWorld("ottoDesktop", {
   menu: {
     showContextMenu: (input?: Record<string, unknown>) =>
       ipcRenderer.invoke("otto:menu:showContextMenu", input),
+    setCapturingShortcut: (capturing: boolean) =>
+      ipcRenderer.invoke("otto:menu:set-capturing-shortcut", capturing),
   },
   browser: {
-    registerWorkspaceBrowser: (input: { browserId: string; workspaceId: string }) =>
-      ipcRenderer.invoke("otto:browser:register-workspace-browser", input),
+    setShortcutPolicy: (input: BrowserKeyboardPolicy) =>
+      ipcRenderer.invoke("otto:browser:set-shortcut-policy", input),
+    profilePartition: OTTO_BROWSER_PROFILE_PARTITION,
+    registerAttachedBrowser: (input: AttachedBrowserRegistration) =>
+      ipcRenderer.invoke("otto:browser:register-attached", input),
     unregisterWorkspaceBrowser: (browserId: string) =>
       ipcRenderer.invoke("otto:browser:unregister-workspace-browser", browserId),
     setWorkspaceActiveBrowser: (input: { workspaceId: string; browserId: string | null }) =>
       ipcRenderer.invoke("otto:browser:set-workspace-active-browser", input),
     openDevTools: (browserId: string) =>
       ipcRenderer.invoke("otto:browser:open-devtools", browserId),
-    clearPartition: (browserId: string) =>
-      ipcRenderer.invoke("otto:browser:clear-partition", browserId),
+    clearProfile: (legacyBrowserIds: string[]) =>
+      ipcRenderer.invoke("otto:browser:clear-profile", legacyBrowserIds),
     executeAutomationCommand: (request: Record<string, unknown>) =>
       ipcRenderer.invoke("otto:browser:execute-automation-command", request),
     captureElement: (

@@ -2743,6 +2743,8 @@ interface ExpandableBadgeProps {
   // mostly worked — not a failed run. Undefined means nothing failed.
   errorLevel?: ExpandableBadgeErrorLevel;
   isLastInSequence?: boolean;
+  /** Drops the attached-border treatment while expanded. */
+  borderlessWhenExpanded?: boolean;
   disableOuterSpacing?: boolean;
   // Grouped contexts (ActionGroup) space rows with a parent `gap` instead of
   // per-row margins, so they also opt out of the expanded bottom margin.
@@ -3180,6 +3182,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   isLoading = false,
   errorLevel,
   isLastInSequence = false,
+  borderlessWhenExpanded = false,
   disableOuterSpacing,
   disableExpandedSpacing = false,
   effectActivity = "other",
@@ -3377,9 +3380,9 @@ export const ExpandableBadge = memo(function ExpandableBadge({
     () => [
       expandableBadgeStylesheet.pressable,
       isPressed && isInteractive ? expandableBadgeStylesheet.pressablePressed : null,
-      isExpanded && expandableBadgeStylesheet.pressableExpanded,
+      isExpanded && !borderlessWhenExpanded && expandableBadgeStylesheet.pressableExpanded,
     ],
-    [isExpanded, isInteractive, isPressed],
+    [borderlessWhenExpanded, isExpanded, isInteractive, isPressed],
   );
 
   const accessibilityState = useMemo(

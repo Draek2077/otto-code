@@ -29,7 +29,9 @@ export function settingsViewRoute(view: SettingsView): SettingsRoute | null {
     case "projects":
       return buildProjectsSettingsRoute();
     case "project":
-      return view.projectKey ? buildProjectSettingsRoute(view.projectKey) : null;
+      return view.serverId && view.projectId
+        ? buildProjectSettingsRoute(view.serverId, view.projectId)
+        : null;
     case "root":
       return null;
   }

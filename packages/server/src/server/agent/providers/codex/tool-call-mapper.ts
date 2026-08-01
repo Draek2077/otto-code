@@ -141,7 +141,7 @@ const CodexCommandExecutionItemSchema = z
     error: z.unknown().optional(),
     command: CodexCommandValueSchema.optional(),
     cwd: z.string().optional(),
-    aggregatedOutput: z.string().optional(),
+    aggregatedOutput: z.string().nullable().optional(),
     exitCode: z.number().nullable().optional(),
   })
   .passthrough();
@@ -221,7 +221,9 @@ const CodexThreadItemSchema = z.discriminatedUnion("type", [
 
 function maybeUnwrapShellWrapperCommand(command: string): string {
   const trimmed = command.trim();
-  const unixWrapperMatch = trimmed.match(/^(?:\/bin\/)?(?:zsh|bash|sh)\s+-(?:lc|c)\s+([\s\S]+)$/);
+  const unixWrapperMatch = trimmed.match(
+    /^(?:(?:\/[^/\s]+)*\/)?(?:zsh|bash|sh)\s+-(?:lc|c)\s+([\s\S]+)$/,
+  );
   if (unixWrapperMatch) {
     const candidate = unixWrapperMatch[1]?.trim() ?? "";
     if (!candidate) {
@@ -692,7 +694,7 @@ function mapCommandExecutionItem(
   item: z.infer<typeof CodexCommandExecutionItemSchema>,
 ): CodexNormalizedToolCallEnvelope {
   const command = normalizeCommandExecutionCommand(item.command);
-  const parsedOutput = extractCodexShellOutput(item.aggregatedOutput);
+  const parsedOutput = extractCodexShellOutput(item.aggregatedOutput ?? undefined);
   const input = toNullableObject({
     ...(command !== undefined ? { command } : {}),
     ...(item.cwd !== undefined ? { cwd: item.cwd } : {}),
@@ -991,6 +993,24 @@ function mapCollabAgentToolCallItem(
 function mapSubAgentActivityItem(
   item: z.infer<typeof CodexSubAgentActivityItemSchema>,
 ): ToolCallTimelineItem {
+  let nativeName = item.agentPath;
+  if (nativeName === "/root") {
+    nativeName = "";
+  } else if (nativeName.startsWith("/root/")) {
+    nativeName = nativeName.slice("/root/".length);
+  } else if (/[\\/]/.test(nativeName)) {
+    nativeName = nativeName.slice(
+      Math.max(nativeName.lastIndexOf("/"), nativeName.lastIndexOf("\\")) + 1,
+    );
+  }
+  const description = nativeName;
+  nativeName = nativeName
+    .split("/")
+    .map((segment) => segment.replace(/[_-]+/g, " ").trim())
+    .filter(Boolean)
+    .map((segment) => segment[0]?.toUpperCase() + segment.slice(1))
+    .join(" / ");
+  nativeName ||= "Sub-agent";
   return {
     type: "tool_call",
     callId: item.id,
@@ -999,8 +1019,8 @@ function mapSubAgentActivityItem(
     error: null,
     detail: {
       type: "sub_agent",
-      subAgentType: "Sub-agent",
-      description: item.agentPath,
+      subAgentType: nativeName,
+      description,
       log: "",
       actions: [],
     },

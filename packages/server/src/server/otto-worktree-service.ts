@@ -7,11 +7,8 @@ import {
   createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
 } from "./workspace-registry.js";
-import {
-  classifyDirectoryForProjectMembership,
-  deriveProjectGroupingName,
-  generateWorkspaceId,
-} from "./workspace-registry-model.js";
+import { deriveProjectGroupingName, generateWorkspaceId } from "./workspace-registry-model.js";
+import { classifyDirectoryForProjectMembership } from "./workspace-registry-bootstrap-legacy.js";
 import {
   createWorktreeCore,
   type CreateWorktreeCoreDeps,
@@ -32,6 +29,9 @@ import type { FirstAgentContext } from "@otto-code/protocol/messages";
 
 export interface CreateOttoWorktreeInput extends CreateWorktreeCoreInput {
   projectId?: string;
+  // Otto names a worktree workspace at creation time (agent-provided or
+  // user-typed) rather than deriving it from the branch alone.
+  title?: string | null;
 }
 
 export interface CreateOttoWorktreeResult {
@@ -56,6 +56,9 @@ export interface AttemptFirstAgentBranchAutoNameResult {
 }
 
 export interface CreateOttoWorktreeDeps extends CreateWorktreeCoreDeps {
+  // Otto's workspace provisioning service, used to unarchive/seed records the
+  // worktree lands in. Optional so test harnesses need not wire it.
+  workspaceProvisioning?: unknown;
   projectRegistry: Pick<ProjectRegistry, "get" | "upsert">;
   workspaceRegistry: Pick<WorkspaceRegistry, "get" | "list" | "upsert">;
   workspaceGitService: WorkspaceGitService;
@@ -206,6 +209,7 @@ function resolveIntentBaseBranch(intent: WorktreeCreationIntent): string | null 
   switch (intent.kind) {
     case "branch-off":
       return normalizeBaseRefName(intent.baseBranch);
+    case "checkout-change-request":
     case "checkout-github-pr":
       return normalizeBaseRefName(intent.baseRefName);
     case "checkout-branch":

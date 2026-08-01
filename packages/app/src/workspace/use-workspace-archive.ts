@@ -12,10 +12,8 @@ import {
 } from "@/git/worktree-archive-warning";
 import type { WorktreeArchiveBranchDetection } from "@otto-code/protocol/messages";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
-import {
-  buildWorkspaceTabPersistenceKey,
-  useWorkspaceLayoutStore,
-} from "@/stores/workspace-layout-store";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { useWorkspaceTabsStore } from "@/stores/workspace-tabs-store";
 import { confirmDialogWithCheckbox } from "@/utils/confirm-dialog";
 import { archiveWorkspaceOptimistically } from "@/workspace/workspace-archive";

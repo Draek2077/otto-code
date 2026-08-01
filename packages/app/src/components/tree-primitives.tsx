@@ -12,6 +12,8 @@ import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 // indentation, guide lines, and chevron. Keep those here so the two trees can't
 // drift apart.
 export const TREE_INDENT_PER_LEVEL = 16;
+/** Shared vertical padding for file-tree rows, so diff and explorer rows align. */
+export const WORKSPACE_FILE_ROW_VERTICAL_PADDING = SPACING[1.5];
 
 // Length of the horizontal tick that branches off the deepest rail into a nested
 // row. Kept just short of the row's own content padding (8px in the explorer and

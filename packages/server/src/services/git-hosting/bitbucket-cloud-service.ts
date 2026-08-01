@@ -2,29 +2,31 @@ import { z } from "zod";
 import { parseBitbucketCloudRemoteUrl } from "@otto-code/protocol/git-remote";
 import type { GitHostingCapabilities } from "@otto-code/protocol/messages";
 import type {
-  GetGitHubCheckDetailsOptions,
-  GetGitHubPullRequestOptions,
-  GetGitHubPullRequestTimelineOptions,
-  GitHubCheckDetails,
-  HostingCurrentPullRequestStatus,
-  GitHubIssueSummary,
-  GitHubPullRequestCheckoutTarget,
-  GitHubPullRequestCreateResult,
-  HostingPullRequestSummary,
-  GitHubPullRequestTimeline,
-  GitHubPullRequestTimelineError,
-  GitHubSearchResult,
+  GetCheckDetailsOptions,
+  GetPullRequestOptions,
+  GetPullRequestTimelineOptions,
+  CheckDetails,
+  CurrentPullRequestStatus,
+  IssueSummary,
+  PullRequestCheckoutTarget,
+  PullRequestCreateResult,
+  PullRequestSummary,
+  PullRequestTimeline,
+  PullRequestTimelineError,
+  SearchResult,
   HostingOwnerSummary,
   HostingRepositorySummary,
-  ListGitHubIssuesOptions,
-  ListHostingPullRequestsOptions,
+  ListIssuesOptions,
+  ListPullRequestsOptions,
   PullRequestCheck,
   PullRequestChecksStatus,
   PullRequestCheckStatus,
   PullRequestReviewDecision,
   PullRequestTimelineItem,
-  SearchGitHubIssuesAndPrsOptions,
+  SearchIssuesAndPrsOptions,
 } from "../github-service.js";
+import { normalizeForgeSearchKinds } from "../forge-service.js";
+import type { BitbucketForgeSpecificStatusFacts } from "./bitbucket-facts.js";
 import { createHostingHttpClient, type HostingHttpClient } from "./hosting-http-client.js";
 import { createHostingRequestCache } from "./request-cache.js";
 import { createPullRequestStatusPoller, type PullRequestStatusPoller } from "./status-poller.js";
@@ -32,7 +34,6 @@ import {
   BITBUCKET_CLOUD_CAPABILITIES,
   GitHostingRequestError,
   GitHostingUnsupportedCapabilityError,
-  type BitbucketPullRequestStatusFacts,
   type GitHostingService,
 } from "./types.js";
 
@@ -388,7 +389,7 @@ export function sanitizeBitbucketQueryTerm(term: string): string {
   return term.replace(/["\\]/gu, " ").trim();
 }
 
-function pullRequestSummaryFrom(pr: BitbucketPullRequest): HostingPullRequestSummary {
+function pullRequestSummaryFrom(pr: BitbucketPullRequest): PullRequestSummary {
   const mapped = mapPullRequestState(pr.state);
   return {
     number: pr.id,
@@ -403,7 +404,7 @@ function pullRequestSummaryFrom(pr: BitbucketPullRequest): HostingPullRequestSum
   };
 }
 
-function timelineErrorFrom(error: unknown): GitHubPullRequestTimelineError {
+function timelineErrorFrom(error: unknown): PullRequestTimelineError {
   if (error instanceof GitHostingRequestError) {
     if (error.status === 404) {
       return { kind: "not_found", message: error.message };
@@ -672,7 +673,7 @@ export function createBitbucketCloudService(
   async function buildCurrentStatus(params: {
     identity: BitbucketRepoIdentity;
     pr: BitbucketPullRequest;
-  }): Promise<HostingCurrentPullRequestStatus> {
+  }): Promise<CurrentPullRequestStatus> {
     const { identity, pr } = params;
     const mapped = mapPullRequestState(pr.state);
     const checks = await fetchChecksForCommit({
@@ -683,7 +684,11 @@ export function createBitbucketCloudService(
       approved: participant.approved,
       state: participant.state,
     }));
-    const bitbucket: BitbucketPullRequestStatusFacts = {
+    // Paseo carries per-forge merge facts in the tagged `forgeSpecific`
+    // envelope rather than a sibling field per provider, so Bitbucket's facts
+    // ride there too. See bitbucket-facts.ts for the guard consumers use.
+    const forgeSpecific: BitbucketForgeSpecificStatusFacts = {
+      forge: "bitbucket",
       mergeStrategiesAllowed: ["merge", "squash"],
       defaultMergeStrategy: "merge",
       approvalCount: participants.filter((participant) => participant.approved).length,
@@ -706,7 +711,7 @@ export function createBitbucketCloudService(
       checks,
       checksStatus: computeBitbucketChecksStatus(checks),
       reviewDecision: computeBitbucketReviewDecision(participants),
-      bitbucket,
+      forgeSpecific,
     };
   }
 
@@ -714,7 +719,7 @@ export function createBitbucketCloudService(
     providerId: "bitbucket-cloud",
     capabilities,
 
-    listPullRequests(input: ListHostingPullRequestsOptions): Promise<HostingPullRequestSummary[]> {
+    listPullRequests(input: ListPullRequestsOptions): Promise<PullRequestSummary[]> {
       return cache.cached({
         cwd: input.cwd,
         method: "listPullRequests",
@@ -732,13 +737,13 @@ export function createBitbucketCloudService(
       });
     },
 
-    listIssues(_input: ListGitHubIssuesOptions): Promise<GitHubIssueSummary[]> {
+    listIssues(_input: ListIssuesOptions): Promise<IssueSummary[]> {
       // Bitbucket Cloud's native issue tracker is deprecated; capability is
       // false and search never requests issues for this provider.
       return Promise.resolve([]);
     },
 
-    getPullRequest(input: GetGitHubPullRequestOptions): Promise<HostingPullRequestSummary> {
+    getPullRequest(input: GetPullRequestOptions): Promise<PullRequestSummary> {
       return cache.cached({
         cwd: input.cwd,
         method: "getPullRequest",
@@ -752,14 +757,12 @@ export function createBitbucketCloudService(
       });
     },
 
-    async getPullRequestHeadRef(input: GetGitHubPullRequestOptions): Promise<string> {
+    async getPullRequestHeadRef(input: GetPullRequestOptions): Promise<string> {
       const pullRequest = await api.getPullRequest(input);
       return pullRequest.headRefName;
     },
 
-    getPullRequestCheckoutTarget(
-      input: GetGitHubPullRequestOptions,
-    ): Promise<GitHubPullRequestCheckoutTarget> {
+    getPullRequestCheckoutTarget(input: GetPullRequestOptions): Promise<PullRequestCheckoutTarget> {
       return cache.cached({
         cwd: input.cwd,
         method: "getPullRequestCheckoutTarget",
@@ -788,7 +791,7 @@ export function createBitbucketCloudService(
 
     getCurrentPullRequestStatus(input) {
       return cache
-        .cached<HostingCurrentPullRequestStatus | null>({
+        .cached<CurrentPullRequestStatus | null>({
           cwd: input.cwd,
           method: "getCurrentPullRequestStatus",
           args: { headRef: input.headRef, headRepositoryOwner: input.headRepositoryOwner },
@@ -834,9 +837,7 @@ export function createBitbucketCloudService(
         });
     },
 
-    getPullRequestTimeline(
-      input: GetGitHubPullRequestTimelineOptions,
-    ): Promise<GitHubPullRequestTimeline> {
+    getPullRequestTimeline(input: GetPullRequestTimelineOptions): Promise<PullRequestTimeline> {
       return cache.cached({
         cwd: input.cwd,
         method: "getPullRequestTimeline",
@@ -874,7 +875,7 @@ export function createBitbucketCloudService(
       });
     },
 
-    getGitHubCheckDetails(_input: GetGitHubCheckDetailsOptions): Promise<GitHubCheckDetails> {
+    getCheckDetails(_input: GetCheckDetailsOptions): Promise<CheckDetails> {
       // Capability-gated off; the RPC handler never routes here. Fail loudly
       // if something bypasses the gate.
       return Promise.reject(
@@ -887,10 +888,10 @@ export function createBitbucketCloudService(
       );
     },
 
-    async searchIssuesAndPrs(input: SearchGitHubIssuesAndPrsOptions): Promise<GitHubSearchResult> {
-      const kinds = input.kinds ?? ["github-issue", "github-pr"];
-      if (!kinds.includes("github-pr")) {
-        return { items: [], githubFeaturesEnabled: true };
+    async searchIssuesAndPrs(input: SearchIssuesAndPrsOptions): Promise<SearchResult> {
+      const kinds = normalizeForgeSearchKinds(input.kinds);
+      if (!kinds.includes("change_request")) {
+        return { items: [], featuresEnabled: true, authState: "authenticated" };
       }
       const prs = input.force
         ? await api.listPullRequests({
@@ -907,7 +908,8 @@ export function createBitbucketCloudService(
           });
       return {
         items: prs.map((pr) => ({
-          kind: "pr" as const,
+          kind: "change_request" as const,
+          forge: "bitbucket",
           number: pr.number,
           title: pr.title,
           url: pr.url,
@@ -918,23 +920,18 @@ export function createBitbucketCloudService(
           headRefName: pr.headRefName,
           updatedAt: pr.updatedAt,
         })),
-        githubFeaturesEnabled: true,
+        featuresEnabled: true,
+        authState: "authenticated",
       };
     },
 
-    async createPullRequest(input): Promise<GitHubPullRequestCreateResult> {
-      const [workspace, slug] = input.repo.split("/");
-      if (!workspace || !slug) {
-        throw new GitHostingRequestError({
-          method: "POST",
-          path: "/pullrequests",
-          status: null,
-          detail: `invalid repository "${input.repo}"`,
-        });
-      }
+    async createPullRequest(input): Promise<PullRequestCreateResult> {
+      // Paseo's CreatePullRequestOptions carries no `repo`: every adapter
+      // resolves the target from the checkout's remote, so Bitbucket does too.
+      const identity = await requireIdentity(input.cwd);
       const raw = await http.request({
         method: "POST",
-        path: `/repositories/${encodeURIComponent(workspace)}/${encodeURIComponent(slug)}/pullrequests`,
+        path: `${repoPath(identity)}/pullrequests`,
         body: {
           title: input.title,
           source: { branch: { name: input.head } },

@@ -113,6 +113,26 @@ function scheduleOnHost(input: {
   };
 }
 
+function heartbeatOnHost(cadence: ScheduleSummary["cadence"]): TestSchedule {
+  return {
+    id: "heartbeat-host-a",
+    serverId: "host-a",
+    serverName: "Host A",
+    name: "Babysit",
+    prompt: "Check status",
+    cadence,
+    target: { type: "agent", agentId: "agent-1" },
+    status: "active",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z",
+    nextRunAt: "2026-07-02T00:00:00.000Z",
+    lastRunAt: null,
+    pausedAt: null,
+    expiresAt: null,
+    maxRuns: null,
+  };
+}
+
 function providerSnapshot(models: AgentModelDefinition[]): { entries: ProviderSnapshotEntry[] } {
   return {
     entries: [
@@ -408,7 +428,7 @@ describe("schedule form model", () => {
     });
   });
 
-  it("normalizes interval cadences to cron cadences when opening the form", () => {
+  it("displays a representable legacy interval without submitting a cadence change", () => {
     const form = open({
       mode: "edit",
       schedule: scheduleOnHost({
@@ -431,9 +451,12 @@ describe("schedule form model", () => {
       expression: "* * * * *",
       timezone: "Europe/Madrid",
     });
+    form.setName("Renamed without touching cadence");
+
+    expect(form.getState().submitCadence).toBeUndefined();
   });
 
-  it("preserves an edited schedule's interval cadence until the cadence changes", () => {
+  it("does not rewrite an unrepresentable legacy interval until cadence changes", () => {
     const originalCadence = { type: "every" as const, everyMs: 90 * 60_000 };
     const form = open({
       mode: "edit",
@@ -460,7 +483,7 @@ describe("schedule form model", () => {
 
     form.setName("Renamed without touching cadence");
 
-    expect(form.getState().submitCadence).toEqual(originalCadence);
+    expect(form.getState().submitCadence).toBeUndefined();
 
     form.setCadence({
       type: "cron",
@@ -472,6 +495,28 @@ describe("schedule form model", () => {
       type: "cron",
       expression: "0 9 * * *",
       timezone: "Europe/Madrid",
+    });
+  });
+
+  it("requires a cron choice before updating a legacy heartbeat", () => {
+    const form = open({
+      mode: "edit",
+      schedule: heartbeatOnHost({ type: "every", everyMs: 90 * 60_000 }),
+      defaults: {
+        serverId: null,
+        projectTargets: PROJECT_TARGETS,
+        preferences: {},
+        timezone: "Europe/Madrid",
+      },
+    });
+
+    expect(form.getState()).toMatchObject({ targetKind: "agent", canSubmit: false });
+
+    form.setCadence({ type: "cron", expression: "0 9 * * *", timezone: "Europe/Madrid" });
+
+    expect(form.getState()).toMatchObject({
+      submitCadence: { type: "cron", expression: "0 9 * * *", timezone: "Europe/Madrid" },
+      canSubmit: true,
     });
   });
 
@@ -559,6 +604,28 @@ describe("schedule form model", () => {
           testID: "schedule-project-option-project-c",
         },
       ],
+    });
+  });
+
+  it("hydrates an edited schedule's project label when its host targets arrive", () => {
+    const form = open({
+      mode: "edit",
+      schedule: scheduleOnHost({
+        serverId: "host-b",
+        serverName: "Host B",
+        cwd: "/repo/b",
+        model: "model-b",
+      }),
+      defaults: { serverId: null, projectTargets: [], preferences: {} },
+    });
+
+    expect(form.getState().projectDisplay).toEqual({ label: "/repo/b" });
+
+    form.applyProjectTargets(PROJECT_TARGETS);
+
+    expect(form.getState()).toMatchObject({
+      projectDisplay: { label: "Project B" },
+      selectedProjectOptionId: buildProjectOptionId("host-b", "project-b"),
     });
   });
 

@@ -89,6 +89,33 @@ function formatListenTarget(listenTarget: ListenTarget | null): string | null {
   return listenTarget.path;
 }
 
+export async function fanOutReconciledWorkspaceUpdates(input: {
+  sessions: Iterable<{
+    syncWorkspaceGitObserversForExternalWorkspaceIds(workspaceIds: Iterable<string>): Promise<void>;
+    emitWorkspaceUpdatesForExternalWorkspaceIds(workspaceIds: Iterable<string>): Promise<void>;
+  }>;
+  workspaceIds: readonly string[];
+  logger: Pick<Logger, "warn">;
+}): Promise<void> {
+  await Promise.all(
+    Array.from(input.sessions, async (session) => {
+      try {
+        await session.syncWorkspaceGitObserversForExternalWorkspaceIds(input.workspaceIds);
+      } catch (error) {
+        input.logger.warn(
+          { err: error },
+          "Failed to sync workspace Git observers after reconciliation",
+        );
+      }
+      try {
+        await session.emitWorkspaceUpdatesForExternalWorkspaceIds(input.workspaceIds);
+      } catch (error) {
+        input.logger.warn({ err: error }, "Failed to emit workspace updates after reconciliation");
+      }
+    }),
+  );
+}
+
 import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
 import { createGitHubHostingService } from "../services/git-hosting/github-hosting-service.js";
 import { createGitHostingResolver } from "../services/git-hosting/resolver.js";
@@ -101,6 +128,7 @@ import {
 } from "./otto-worktree-service.js";
 import { revealScheduleRunWorkspace } from "./schedule-workspace-reveal.js";
 import { createOttoWorktreeWorkflow } from "./worktree-session.js";
+import { createWorkspaceProvisioningService } from "./session/workspace-provisioning/workspace-provisioning-service.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
 import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.js";
@@ -202,6 +230,7 @@ import {
   DEFAULT_ATTACHMENT_IMAGE_MAX_TOTAL_MB,
 } from "./agent/providers/provider-image-output.js";
 import { startMaterializedImageHousekeeping } from "./materialized-image-housekeeping.js";
+import { releaseWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
 import { ScriptHealthMonitor } from "./script-health-monitor.js";
 import { createScriptStatusEmitter } from "./script-status-projection.js";
 import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
@@ -227,6 +256,18 @@ import {
   createAgentCommand,
   type CreateAgentCommandDependencies,
 } from "./agent/create-agent/create.js";
+import { archiveAgentCommand, cancelAgentRunCommand } from "./agent/lifecycle-command.js";
+import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
+import {
+  HubRelationshipController,
+  type HubRelationshipClock,
+  type HubRelationshipRetryPolicy,
+} from "./hub/relationship-controller.js";
+import {
+  DirectHubRelationshipRemote,
+  type HubRelationshipRemote,
+} from "./hub/relationship-remote.js";
+import { DaemonExecutions } from "./hub/daemon-executions.js";
 
 const MAX_MCP_DEBUG_BATCH_ITEMS = 10;
 const REDACTED_LOG_VALUE = "[redacted]";
@@ -391,6 +432,9 @@ export interface OttoDaemonConfig {
   listen: string;
   /** True when `listen` was defaulted to 0.0.0.0 because the daemon detected it's running under WSL. */
   listenAutoWidenedForWsl?: boolean;
+  daemonVersion?: string;
+  /** True when the desktop app owns this daemon's lifecycle rather than the CLI. */
+  desktopManaged?: boolean;
   ottoHome: string;
   worktreesRoot?: string;
   corsAllowedOrigins: string[];
@@ -485,6 +529,13 @@ export interface OttoDaemon {
   start(): Promise<void>;
   stop(): Promise<void>;
   getListenTarget(): ListenTarget | null;
+}
+
+export interface OttoDaemonDependencies {
+  hubRelationshipRemote?: HubRelationshipRemote;
+  hubRelationshipClock?: HubRelationshipClock;
+  hubRelationshipRetryPolicy?: HubRelationshipRetryPolicy;
+  createHubDaemonId?: () => string;
 }
 
 function createBootstrapManagedProcessRegistry(
@@ -836,11 +887,12 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
 export async function createOttoDaemon(
   config: OttoDaemonConfig,
   rootLogger: Logger,
+  dependencies: OttoDaemonDependencies = {},
 ): Promise<OttoDaemon> {
   const logger = rootLogger.child({ module: "bootstrap" });
   const bootstrapStart = performance.now();
   const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
-  const daemonVersion = resolveDaemonVersion(import.meta.url);
+  const daemonVersion = config.daemonVersion ?? resolveDaemonVersion(import.meta.url);
   const daemonConfigStore = new DaemonConfigStore(
     config.ottoHome,
     createInitialMutableDaemonConfig(config),
@@ -934,7 +986,7 @@ export async function createOttoDaemon(
     serviceProxy,
     onChange: createScriptStatusEmitter({
       sessions: () =>
-        wsServer?.listActiveSessions().map((session) => ({
+        wsServer?.listTrustedSessions().map((session) => ({
           emit: (message) => session.emitServerMessage(message),
         })) ?? [],
       serviceProxy,
@@ -1166,7 +1218,7 @@ export async function createOttoDaemon(
     ottoHome: config.ottoHome,
     worktreesRoot: config.worktreesRoot,
     deps: {
-      github,
+      forgeOverrides: { github },
       resolveHostingForCwd: async (cwd) => {
         const resolved = await gitHostingResolver.resolveForCwd(cwd);
         return {
@@ -1176,6 +1228,14 @@ export async function createOttoDaemon(
         };
       },
     },
+  });
+
+  const workspaceProvisioning = createWorkspaceProvisioningService({
+    serverId,
+    projectRegistry,
+    workspaceRegistry,
+    workspaceGitService,
+    logger,
   });
   // Personality memory. Constructed here because AgentManager needs it below to
   // inject each personality's accrued lessons at spawn, and it needs the git
@@ -1247,26 +1307,30 @@ export async function createOttoDaemon(
   });
   logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
   await projectLinkStore.initialize();
+  const teardownArchivedWorkspaceRuntime = (workspaceId: string): void => {
+    scriptRuntimeStore.removeForWorkspace(workspaceId);
+    releaseWorkspaceServicePortPlan(workspaceId);
+  };
   const workspaceReconciliation = new WorkspaceReconciliationService({
+    serverId,
     projectRegistry,
     workspaceRegistry,
     logger,
     workspaceGitService,
+    onProjectUpdate: (update) => wsServer?.publishProjectUpdate(update),
+    onWorkspaceArchived: teardownArchivedWorkspaceRuntime,
+    onWorkspacesChanged: async (workspaceIds) => {
+      await fanOutReconciledWorkspaceUpdates({
+        sessions: wsServer?.listTrustedSessions() ?? [],
+        workspaceIds,
+        logger,
+      });
+    },
   });
-  void (async () => {
-    try {
-      const result = await workspaceReconciliation.runOnce();
-      logger.info(
-        {
-          elapsed: elapsed(),
-          changeCount: result.changesApplied.length,
-        },
-        "Workspace registries reconciled",
-      );
-    } catch (error) {
-      logger.error({ err: error }, "Background workspace reconciliation failed");
-    }
-  })();
+  await workspaceReconciliation.start();
+  void workspaceReconciliation.reconcileNow().catch((error) => {
+    logger.warn({ err: error }, "Initial workspace reconciliation failed");
+  });
   await chatService.initialize();
   logger.info({ elapsed: elapsed() }, "Chat service initialized");
   const checkoutDiffManager = new CheckoutDiffManager({
@@ -1275,18 +1339,12 @@ export async function createOttoDaemon(
     workspaceGitService,
   });
   const archiveWorkspaceRecordExternal = async (workspaceId: string) => {
-    const sessions = wsServer?.listActiveSessions() ?? [];
-    if (sessions.length > 0) {
-      await Promise.all(
-        sessions.map((session) => session.archiveWorkspaceRecordForExternalMutation(workspaceId)),
-      );
-      return;
-    }
-
-    await archivePersistedWorkspaceRecord({
+    const existingWorkspace = await archivePersistedWorkspaceRecord({
       workspaceId,
       workspaceRegistry,
     });
+    if (!existingWorkspace || existingWorkspace.archivedAt) return;
+    teardownArchivedWorkspaceRuntime(workspaceId);
   };
   // external path→workspace adapter, not ownership: archive-by-path requests that
   // arrive with a worktree path and no workspaceId (old clients / CLI).
@@ -1327,24 +1385,27 @@ export async function createOttoDaemon(
         workspaceId: workspace.workspaceId,
         cwd: workspace.cwd,
         kind: workspace.kind,
+        worktreeRoot: workspace.worktreeRoot,
+        isOttoOwnedWorktree: workspace.isOttoOwnedWorktree,
+        mainRepoRoot: workspace.mainRepoRoot,
       }));
   };
   const markWorkspaceArchivingExternal = (workspaceIds: Iterable<string>, archivingAt: string) => {
     const workspaceIdList = Array.from(workspaceIds);
-    for (const session of wsServer?.listActiveSessions() ?? []) {
+    for (const session of wsServer?.listTrustedSessions() ?? []) {
       session.markWorkspaceArchivingForExternalMutation(workspaceIdList, archivingAt);
     }
   };
   const clearWorkspaceArchivingExternal = (workspaceIds: Iterable<string>) => {
     const workspaceIdList = Array.from(workspaceIds);
-    for (const session of wsServer?.listActiveSessions() ?? []) {
+    for (const session of wsServer?.listTrustedSessions() ?? []) {
       session.clearWorkspaceArchivingForExternalMutation(workspaceIdList);
     }
   };
   const emitWorkspaceUpdatesExternal = async (workspaceIds: Iterable<string>) => {
     const workspaceIdList = Array.from(workspaceIds);
     await Promise.all(
-      (wsServer?.listActiveSessions() ?? []).map((session) =>
+      (wsServer?.listTrustedSessions() ?? []).map((session) =>
         session.emitWorkspaceUpdatesForExternalWorkspaceIds(workspaceIdList),
       ),
     );
@@ -1401,7 +1462,6 @@ export async function createOttoDaemon(
     }),
     gitMutation: createGitMutationService({
       workspaceGitService,
-      github,
       logger,
     }),
     emitWorkspaceUpdateForCwd: emitWorkspaceUpdateForCwdExternal,
@@ -1460,12 +1520,13 @@ export async function createOttoDaemon(
             projectRegistry,
             workspaceRegistry,
             workspaceGitService,
+            workspaceProvisioning,
           });
         },
         warmWorkspaceGitData: async (workspace) => {
           await Promise.all(
             wsServer
-              ?.listActiveSessions()
+              ?.listTrustedSessions()
               .map((session) => session.warmWorkspaceGitDataForWorkspace(workspace)) ?? [],
           );
         },
@@ -1505,6 +1566,77 @@ export async function createOttoDaemon(
   };
   const createAgent = (input: Parameters<typeof createAgentCommand>[1]) =>
     createAgentCommand(createAgentCommandDependencies, input);
+  const archiveWorkspaceByIdExternal = (workspaceId: string, requestId: string) =>
+    archiveByScope(
+      {
+        ottoHome: config.ottoHome,
+        ottoWorktreesBaseRoot: config.worktreesRoot,
+        github,
+        workspaceGitService,
+        agentManager,
+        agentStorage,
+        findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
+        listActiveWorkspaces: listActiveWorkspacesExternal,
+        archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
+        emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
+        markWorkspaceArchiving: markWorkspaceArchivingExternal,
+        clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
+        killTerminalsForWorkspace: (workspaceIdToKill) =>
+          killTerminalsForWorkspace({ terminalManager, sessionLogger: logger }, workspaceIdToKill),
+        sessionLogger: logger,
+      },
+      { scope: { kind: "workspace", workspaceId }, requestId },
+    );
+  const hubAgentLifecycle = new CreateAgentLifecycleDispatch({
+    ottoHome: config.ottoHome,
+    worktreesRoot: config.worktreesRoot,
+    agentManager,
+    agentStorage,
+    github,
+    workspaceGitService,
+    createOttoWorktreeWorkflow: createOttoWorktreeForTools,
+    archiveAgentForClose: (agentId) =>
+      archiveAgentCommand({ agentManager, agentStorage, logger }, agentId),
+    findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
+    listActiveWorkspaces: listActiveWorkspacesExternal,
+    archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
+    emit: emitExternalSessionMessage,
+    emitAgentRemove: () => undefined,
+    emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
+    markWorkspaceArchiving: markWorkspaceArchivingExternal,
+    clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
+    killTerminalsForWorkspace: (workspaceId) =>
+      killTerminalsForWorkspace({ terminalManager, sessionLogger: logger }, workspaceId),
+    logger,
+  });
+  const hubRelationships = new HubRelationshipController({
+    ottoHome: config.ottoHome,
+    serverId,
+    daemonPublicKey: daemonKeyPair.publicKeyB64,
+    logger,
+    remote: dependencies.hubRelationshipRemote ?? new DirectHubRelationshipRemote(),
+    clock: dependencies.hubRelationshipClock,
+    retryPolicy: dependencies.hubRelationshipRetryPolicy,
+    createDaemonId: dependencies.createHubDaemonId,
+    attachSocket: async (socket, options) => {
+      if (!wsServer) throw new Error("WebSocket server is not running");
+      await wsServer.attachHubSocket(socket, options);
+    },
+    createExecutionAgents: (daemonId) =>
+      new DaemonExecutions({
+        daemonId,
+        agentManager,
+        agentStorage,
+        createAgent,
+        interruptAgent: (agentId) => cancelAgentRunCommand({ agentManager, logger }, agentId),
+        archiveAgent: (agentId) =>
+          archiveAgentCommand({ agentManager, agentStorage, logger }, agentId),
+        listActiveWorkspaces: listActiveWorkspacesExternal,
+        archiveWorkspace: archiveWorkspaceByIdExternal,
+        cleanupFailedCreate: (input) =>
+          hubAgentLifecycle.cleanupCreatedWorktreeAfterFailedAgentCreate(input),
+      }),
+  });
 
   const loopService = new LoopService({
     ottoHome: config.ottoHome,
@@ -2072,6 +2204,7 @@ export async function createOttoDaemon(
                 listen: formatListenTarget(boundListenTarget ?? listenTarget),
                 worktreesRoot: config.worktreesRoot,
                 appBaseUrl: config.appBaseUrl,
+                desktopManaged: config.desktopManaged === true,
                 relay: {
                   enabled: relayEnabled,
                   endpoint: relayEndpoint,
@@ -2100,6 +2233,7 @@ export async function createOttoDaemon(
               },
               graphStore,
             );
+            await hubRelationships.start();
 
             wsServer.setPersonalityStatsProvider(() => personalityStatsStore.get());
             wsServer.setPersonalityMemoryService(personalityMemory);
@@ -2186,6 +2320,8 @@ export async function createOttoDaemon(
   };
 
   const stop = async () => {
+    await hubRelationships.stop();
+    workspaceReconciliation.dispose();
     scriptHealthMonitor.stop();
     stopMaterializedImageHousekeeping();
     // Freeze both ingress and registration before taking the agent closure snapshot.

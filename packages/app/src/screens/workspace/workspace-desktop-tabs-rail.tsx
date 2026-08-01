@@ -56,6 +56,7 @@ interface WorkspaceDesktopTabsRailProps {
   onNavigateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
+  onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyFilePath: (path: string) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
@@ -140,6 +141,7 @@ export function WorkspaceDesktopTabsRail({
   onNavigateTab,
   onCloseTab,
   onCopyResumeCommand,
+  onCopyTerminalId,
   onCopyAgentId,
   onCopyFilePath,
   onReloadAgent,
@@ -242,6 +244,7 @@ export function WorkspaceDesktopTabsRail({
   const tabMenuLabels = useMemo<WorkspaceTabMenuLabels>(
     () => ({
       copyResumeCommand: t("workspace.tabs.menu.copyResumeCommand"),
+      copyTerminalId: t("workspace.tabs.menu.copyTerminalId"),
       copyAgentId: t("workspace.tabs.menu.copyAgentId"),
       copyFilePath: t("workspace.tabs.menu.copyFilePath"),
       rename: t("workspace.tabs.menu.rename"),
@@ -331,6 +334,7 @@ export function WorkspaceDesktopTabsRail({
           normalizedServerId={normalizedServerId}
           normalizedWorkspaceId={normalizedWorkspaceId}
           onCopyResumeCommand={onCopyResumeCommand}
+          onCopyTerminalId={onCopyTerminalId}
           onCopyAgentId={onCopyAgentId}
           onCopyFilePath={onCopyFilePath}
           onReloadAgent={onReloadAgent}
@@ -364,6 +368,7 @@ export function WorkspaceDesktopTabsRail({
       onCopyAgentId,
       onCopyFilePath,
       onCopyResumeCommand,
+      onCopyTerminalId,
       onNavigateTab,
       onReloadAgent,
       onRenameTab,

@@ -1,7 +1,7 @@
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import {
-  type EmptyProjectDescriptor,
-  normalizeEmptyProjectDescriptor,
+  type ProjectDescriptor,
+  normalizeProjectDescriptor,
   normalizeWorkspaceDescriptor,
   type WorkspaceDescriptor,
 } from "@/stores/session-store";
@@ -16,10 +16,10 @@ export interface FetchWorkspaceDescriptorsResult {
   /**
    * Project parents with no active workspaces. The daemon only rides these on
    * the first page of `fetchWorkspaces`, so a freshly-added project that has no
-   * workspace yet shows up here and nowhere else — drop it and the project is
+   * workspace yet shows up here and nowhere else â€” drop it and the project is
    * invisible to anything that derives projects from workspaces alone.
    */
-  emptyProjects: EmptyProjectDescriptor[];
+  emptyProjects: ProjectDescriptor[];
 }
 
 export async function fetchAllWorkspaceDescriptors(input: {
@@ -27,7 +27,7 @@ export async function fetchAllWorkspaceDescriptors(input: {
   sort: FetchWorkspacesSort;
 }): Promise<FetchWorkspaceDescriptorsResult> {
   const workspaces: WorkspaceDescriptor[] = [];
-  const emptyProjects = new Map<string, EmptyProjectDescriptor>();
+  const emptyProjects = new Map<string, ProjectDescriptor>();
   let cursor: string | null = null;
 
   while (true) {
@@ -37,7 +37,7 @@ export async function fetchAllWorkspaceDescriptors(input: {
     });
     workspaces.push(...payload.entries.map((entry) => normalizeWorkspaceDescriptor(entry)));
     for (const project of payload.emptyProjects ?? []) {
-      const descriptor = normalizeEmptyProjectDescriptor(project);
+      const descriptor = normalizeProjectDescriptor(project);
       emptyProjects.set(descriptor.projectId, descriptor);
     }
     if (!payload.pageInfo.hasMore || !payload.pageInfo.nextCursor) {

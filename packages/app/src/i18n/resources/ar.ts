@@ -64,6 +64,10 @@ export const ar: TranslationResources = {
       newAgent: "محادثة جديدة",
       openProject: "مشروع مفتوح",
       home: "بيت",
+      workspaces: "مساحات العمل",
+      addProject: "إضافة مشروع",
+      modelGroupLabel: "النموذج",
+      modelSearchKeywords: "تبديل النموذج تغيير النموذج تعيين النموذج اختيار النموذج",
     },
   },
   chatMetrics: {
@@ -158,9 +162,11 @@ export const ar: TranslationResources = {
       fileContext: "سياق ملف",
       folderContext: "سياق مجلد",
       lineContext: "سياق سطر",
+      addIssueOrPr_mr: "أضف مشكلة أو MR",
     },
     errors: {
       failedToSend: "فشل في إرسال الرسالة",
+      failedToCancel: "فشل في إرسال الرسالة",
       failedToCreateAgent: "فشل في إنشاء الوكيل",
       noHostSelected: "لم يتم تحديد مضيف",
       initialPromptRequired: "مطلوب موجه الأولي",
@@ -183,6 +189,8 @@ export const ar: TranslationResources = {
       noResults: "لم يتم العثور على نتائج.",
       searchPlaceholder: "بحث القضايا والعلاقات العامة...",
       title: "إرفاق المشكلة أو PR",
+      searchPlaceholder_mr: "بحث القضايا و MR...",
+      title_mr: "إرفاق المشكلة أو MR",
     },
     interruptSubagentsWarning: {
       title: "مقاطعة الوكلاء الفرعيين قيد التشغيل؟",
@@ -361,6 +369,7 @@ export const ar: TranslationResources = {
     mode: {
       title: "وضع",
       selectWithValue: "حدد وضع الوكيل ({{value}})",
+      searchPlaceholder: "أوضاع البحث...",
     },
     hints: {
       thinking: "تغيير الجهد",
@@ -420,6 +429,7 @@ export const ar: TranslationResources = {
       reconnecting: "جارٍ إعادة الاتصال...",
       archivingTitle: "وكيل الارشيف...",
       archivingSubtitle: "الرجاء الانتظار بينما نقوم بأرشفة هذا الوكيل.",
+      timelineSyncFailed: "تعذر تحديث سجل الوكيل. جارٍ إعادة المحاولة…",
     },
     unavailable: {
       selectedHost: "المضيف المختار",
@@ -639,6 +649,18 @@ export const ar: TranslationResources = {
       missing: "لم يتم العثور على Workspace",
       needsHostUpgrade: "قم بتحديث مضيفك لاستعادة مساحة العمل هذه",
       manageHost: "إدارة المضيف",
+      recovery: {
+        archivedTitle: "مساحة العمل مؤرشفة",
+        restoreDescription:
+          "تمت أرشفة {{workspaceName}} وإزالة شجرة العمل الخاصة بها. استعد الفرع {{branch}} لفتحها مجددًا.",
+        unarchiveDescription: "{{workspaceName}} مؤرشفة. ألغِ أرشفتها لفتحها مجددًا.",
+        restoreAction: "استعادة",
+        unarchiveAction: "إلغاء الأرشفة",
+        restoringTitle: "جارٍ استعادة مساحة العمل",
+        restoringAction: "جارٍ الاستعادة...",
+        unavailableTitle: "مساحة العمل غير متاحة",
+        checkFailedTitle: "تعذر التحقق من مساحة العمل",
+      },
     },
     hoverCard: {
       scriptsAccessibility: "سكربتات Workspace",
@@ -878,6 +900,7 @@ export const ar: TranslationResources = {
         close: "يغلق",
         renameTerminal: "إعادة تسمية المحطة",
         renameAgent: "إعادة تسمية المحادثة",
+        copyTerminalId: "نسخ معرف المحطة",
       },
       actions: {
         newAgent: "محادثة جديدة",
@@ -896,6 +919,7 @@ export const ar: TranslationResources = {
         previewDisabledTooltip: "افتح محادثة لمعاينة خادم التطوير الخاص بها",
         previewPickServer: "ما الخادم الذي تريد تشغيله؟",
         previewStopServer: "إيقاف {{name}}",
+        exitFocusMode: "إنهاء وضع التركيز",
       },
       explorer: {
         open: "افتح المستكشف",
@@ -915,6 +939,7 @@ export const ar: TranslationResources = {
         reloadingAgent: "وكيل إعادة التحميل...",
         reloadedAgent: "وكيل إعادة تحميل",
         failedToReloadAgent: "فشل في إعادة تحميل الوكيل",
+        terminalIdCopiedLabel: "معرف المحطة",
       },
       confirmations: {
         close: "يغلق",
@@ -944,7 +969,15 @@ export const ar: TranslationResources = {
           tabs: "سيؤدي هذا إلى إغلاق علامة التبويب (علامات التبويب){{tabs}}.",
           agents: "سيؤدي هذا إلى أرشفة وكيل (وكلاء){{agents}}.",
         },
+        unsavedTitle: "تغييرات غير محفوظة",
+        unsavedMessage:
+          "تحتوي علامة التبويب هذه على تغييرات غير محفوظة. سيؤدي إغلاقها إلى تجاهل المسودة.",
+        closeWithoutSaving: "إغلاق بدون حفظ",
+        closePaneTitle: "إغلاق اللوحة؟",
+        bulkUnsaved:
+          "تحتوي {{count}} علامة تبويب على تغييرات غير محفوظة. سيؤدي الإغلاق إلى تجاهل المسودات.",
       },
+      modified: "تغييرات غير محفوظة",
     },
     header: {
       actions: {
@@ -972,6 +1005,11 @@ export const ar: TranslationResources = {
       actions: {
         run: "يجري",
         view: "منظر",
+        chooseUrl: "اختيار الرابط",
+        copyUrl: "نسخ الرابط",
+        openService: "عرض الخدمة",
+        restart: "إعادة التشغيل",
+        stop: "إيقاف",
       },
       accessibility: {
         trigger: "سكربتات Workspace",
@@ -979,10 +1017,21 @@ export const ar: TranslationResources = {
         viewTerminal: "عرض محطة{{scriptName}}",
         runScript: "قم بتشغيل البرنامج النصي{{scriptName}}",
         script: "البرنامج النصي{{scriptName}}",
+        openService: "عرض خدمة {{scriptName}}",
+        stopScript: "إيقاف{{scriptName}}",
+        restartScript: "إعادة تشغيل{{scriptName}}",
+        copyUrl: "نسخ عنوان URL لـ{{scriptName}}",
+        chooseUrl: "اختيار رابط {{scriptName}}",
       },
       states: {
         exitCode: "الخروج من{{code}}",
         startFailed: "فشل بدء تشغيل{{scriptName}}",
+        stopFailed: "فشل إيقاف{{scriptName}}",
+      },
+      routes: {
+        public: "الوكيل العكسي",
+        otto: "Memorable",
+        direct: "مباشر",
       },
     },
     git: {
@@ -1026,6 +1075,9 @@ export const ar: TranslationResources = {
           pending: "إنشاء PR...",
           success: "تم إنشاء PR",
           description: "يدفع هذا الفرع إلى الريموت ويفتح pull request مقابل {{baseRef}}",
+          label_mr: "إنشاء MR",
+          pending_mr: "إنشاء MR...",
+          success_mr: "تم إنشاء MR",
         },
         mergeBranch: {
           label: "دمج في {{baseRef}}",
@@ -1055,6 +1107,11 @@ export const ar: TranslationResources = {
           mergeDescription: "يدمج الـ pull request باستخدام merge commit",
           rebaseDescription:
             "يعيد ترتيب commits الخاصة بالـ pull request فوق الفرع الأساسي، بلا merge commit",
+          squash_mr: "دمج MR (squash)",
+          merge_mr: "دمج MR (merge)",
+          rebase_mr: "دمج MR (rebase)",
+          pending_mr: "دمج MR...",
+          success_mr: "تم دمج MR",
         },
         autoMerge: {
           enableSquash: "دمج تلقائي (squash)",
@@ -1098,6 +1155,12 @@ export const ar: TranslationResources = {
           mergePrQueue: "دمج PR غير متاح هنا لأن هذا المستودع يستخدم قائمة انتظار دمج",
           mergePrNotReady: "دمج PR غير متاح حتى يبلغ GitHub أن طلب السحب جاهز للدمج",
           autoMergeCannotDisable: "تم تمكين الدمج التلقائي، ولكن لا يمكن لهذا الحساب تعطيله",
+          viewPrNoForge: "عرض {{noun}} غير متاح الآن لأن {{brand}} غير متصل",
+          pullAndPushNoIncoming: "السحب والدفع غير متاحين لأنه لا توجد تغييرات واردة للسحب أولاً",
+          pullAndPushNothingToPush: "السحب والدفع غير متاحين لأنه لا يوجد شيء جديد لإرساله بعد السحب",
+          createPrNoForge: "إنشاء {{noun}} غير متاح حاليًا لأن {{brand}} غير متصل",
+          archiveNotWorktree: "الأرشيف غير متاح هنا لأنه لم يتم إنشاء مساحة العمل هذه كشجرة عمل Otto",
+          mergePrNoForge: "دمج {{noun}} غير متاح الآن لأن {{brand}} غير متصل",
         },
         toasts: {
           failedCommit: "فشل في الالتزام",
@@ -1137,6 +1200,7 @@ export const ar: TranslationResources = {
           branchRemoteKept: "يتم الاحتفاظ بالنسخة على origin.",
           branchDeleted: "تم حذف الفرع {{branchName}}.",
         },
+        viewPr_mr: "عرض MR",
       },
       diff: {
         viewChanges: "عرض التغييرات",
@@ -1191,6 +1255,20 @@ export const ar: TranslationResources = {
         basePickerRedetectDescription: "تحديد الفرع الذي أُنشئ منه هذا الفرع من جديد",
         basePickerRemoteDescription: "فرع التتبع البعيد، وقد يختلف عن المحلي",
         baseChangeFailed: "تعذر تغيير الفرع الأساسي",
+        openChangesTab: "فتح علامة تبويب التغييرات",
+        closeChangesTab: "إغلاق علامة تبويب التغييرات",
+        previewTooLargeTitle: "هذا الفرق كبير جدًا بحيث لا يمكن معاينته",
+        previewTooLargeDescription: "ضيّق نطاق المقارنة لمعاينتها هنا",
+        commits: {
+          title: "الإيداعات",
+          countLabel: "{{count}} من إيداعات مساحة العمل",
+          noneAhead: "لا توجد إيداعات متقدمة على {{baseRef}} بعد",
+          fileDiffEmpty: "لا توجد تغييرات لعرضها",
+          fileDiffError: "تعذّر تحميل فروق الملف",
+          loading: "جارٍ تحميل الإيداعات…",
+          loadError: "تعذّر تحميل الإيداعات",
+          empty: "لا توجد إيداعات بعد",
+        },
       },
       commit: {
         messagePlaceholder: "رسالة الـ commit",
@@ -1260,13 +1338,16 @@ export const ar: TranslationResources = {
       pr: {
         actions: {
           viewPullRequest: "عرض",
+          openOn: "فتح على {{brand}}",
         },
         sections: {
           checks: "الشيكات",
           reviews: "التعليقات",
+          pipeline: "خط المعالجة",
         },
         accessibility: {
           pullRequest: "سحب الطلب #{{number}}",
+          pullRequest_mr: "طلب دمج !{{number}}",
         },
         states: {
           draft: "مسودة",
@@ -1287,7 +1368,29 @@ export const ar: TranslationResources = {
           statusLoadFailed: "غير قادر على تحميل حالة طلب السحب",
           activityLoadFailed: "غير قادر على تحميل نشاط طلب السحب",
         },
+        empty: {
+          noJobs: "لا توجد مهام",
+          loadingPipeline: "جارٍ تحميل خط المعالجة...",
+          pipelineJobsLoadFailed: "تعذر تحميل مهام خط المعالجة",
+          allowedToFail: "مسموح بالفشل",
+        },
+        approvals: "{{given}} من {{required}} موافقات",
+        thread: {
+          discussion: "سلسلة المناقشة",
+        },
       },
+      forgeSetup: {
+        installCli: "ثبّت واجهة سطر الأوامر {{cli}} لاستخدام ميزات {{brand}}.",
+        signIn: "نفّذ {{command}} لاستخدام ميزات {{brand}}.",
+        generic: "قم بإعداد {{brand}} على هذا المضيف لاستخدام ميزاته.",
+      },
+    },
+    fileActions: {
+      openFile: "افتح الملف",
+      copyPath: "نسخ المسار",
+      download: "تحميل",
+      addToChat: "إضافة إلى الدردشة…",
+      moreActions: "المزيد من الإجراءات",
     },
   },
   sidebar: {
@@ -1302,6 +1405,7 @@ export const ar: TranslationResources = {
       home: "بيت",
       settings: "إعدادات",
       closeSidebar: "إغلاق الشريط الجانبي",
+      hosts: "المضيفون",
     },
     sections: {
       sessions: "السجل",
@@ -1322,6 +1426,8 @@ export const ar: TranslationResources = {
         openNewWindowFailed: "تعذّر فتح نافذة جديدة",
         remove: "إزالة المشروع",
         removing: "جارٍ الإزالة...",
+        openFolder: "Open in file manager",
+        openFolderFailed: "Couldn't open folder",
       },
       confirmations: {
         removeTitle: "هل تريد إزالة المشروع؟",
@@ -1359,6 +1465,10 @@ export const ar: TranslationResources = {
         hideFromSidebar: "إخفاء من الشريط الجانبي",
         archiving: "أرشفة...",
         hiding: "إخفاء...",
+        showMore: "عرض المزيد",
+        showLess: "عرض أقل",
+        pin: "تثبيت في الأعلى",
+        unpin: "إلغاء التثبيت",
       },
       reopenWorktree: {
         menu: "إعادة فتح شجرة العمل...",
@@ -1389,6 +1499,20 @@ export const ar: TranslationResources = {
         hideFailed: "فشل في إخفاء مساحة العمل",
         archiveFailed: "فشل في أرشفة مساحة العمل",
       },
+    },
+    pinned: {
+      title: "المثبتة",
+    },
+    help: {
+      trigger: "المساعدة والدعم",
+      sectionHelp: "المساعدة",
+      diagnostics: "تشغيل التشخيص",
+      shortcuts: "اختصارات لوحة المفاتيح",
+      reportIssue: "الإبلاغ عن مشكلة",
+      discord: "Discord",
+      github: "إنشاء مشكلة على GitHub",
+      whatsNew: "ما الجديد",
+      version: "Otto {{version}}",
     },
   },
   newProject: {
@@ -2616,6 +2740,8 @@ export const ar: TranslationResources = {
         confirm: "مسح",
       },
     },
+    archiveFinishedAction: "أرشفة الوكلاء الفرعيين المكتملين",
+    archiveFinishedTooltip: "أرشفة المكتملين",
   },
   panels: {
     draft: {
@@ -2638,6 +2764,36 @@ export const ar: TranslationResources = {
         actualSize: "الحجم الفعلي",
         fitToWindow: "ملاءمة النافذة",
       },
+      editor: {
+        fileSize: "حجم الملف {{size}}",
+        lines: "{{count}} سطر",
+        editorStatus: "حالة المحرر {{status}}",
+        unsavedChanges: "تغييرات غير محفوظة",
+        saving: "جارٍ الحفظ...",
+        saveFailed: "فشل الحفظ",
+        changedOnDisk: "تغيّر على القرص",
+        vimMode: "وضع Vim ‏{{mode}}",
+        cursor: "السطر {{line}}، العمود {{column}}",
+        preview: "معاينة",
+        source: "المصدر",
+        unavailableTitle: "الملف غير متاح على القرص",
+        conflictDescription: "تم الاحتفاظ بالمحتوى المحلي. اختر الإصدار الذي تريد إبقاءه.",
+        overwrite: "استبدال",
+        reload: "إعادة تحميل",
+        reloadTitle: "إعادة التحميل من القرص؟",
+        reloadMessage: "ستفقد تغييراتك المحلية.",
+      },
+    },
+    diff: {
+      changesLabel: "التغييرات",
+      changesSubtitle: "فروقات شجرة العمل",
+      commitSubtitle: "فروقات الالتزام",
+      uncommittedSubtitle: "تغييرات غير ملتزم بها",
+      baseSubtitle: "مقارنة مع {{baseRef}}",
+      directoryMissing: "لم يتم العثور على دليل Workspace.",
+      empty: "لا توجد تغييرات",
+      loadError: "فشل تحميل الفروقات",
+      capabilityMissing: "حدّث المضيف لعرض فروقات الالتزامات.",
     },
   },
   toolCallDetails: {
@@ -2660,6 +2816,8 @@ export const ar: TranslationResources = {
     sessionCost: "تكلفة الجلسة{{cost}}",
     accessibility: "تم استخدام نافذة السياق{{percentage}}%",
     tooltip: "عرض الاستخدام",
+    used: "تم استخدام{{percentage}}%",
+    tokens: "رموز{{used}}/{{max}}",
   },
   review: {
     comment: {
@@ -2709,6 +2867,7 @@ export const ar: TranslationResources = {
       permissions: "الأذونات",
       diagnostics: "التشخيص",
       about: "عن",
+      editor: "المحرر",
     },
     hostSections: {
       connections: "اتصالات",
@@ -2814,6 +2973,30 @@ export const ar: TranslationResources = {
           zhCN: "中文",
         },
       },
+      browserData: {
+        title: "بيانات المتصفح",
+        siteData: "ملفات تعريف الارتباط وبيانات المواقع",
+        description: "تتشارك علامات تبويب المتصفح تسجيلات الدخول وبيانات المواقع عبر Otto.",
+        clear: "مسح بيانات المتصفح",
+        clearing: "جارٍ المسح...",
+        confirmTitle: "هل تريد مسح بيانات المتصفح؟",
+        confirmMessage: "سيتم تسجيل خروجك من المواقع وإعادة تحميل علامات تبويب المتصفح المفتوحة.",
+        success: "تم مسح بيانات المتصفح.",
+        error: "تعذر مسح بيانات المتصفح.",
+      },
+      autoExpandReasoning: {
+        label: "عرض التفكير دائماً",
+        description: "إظهار تفكير الوكيل وخطوات الاستدلال بشكل كامل بشكل افتراضي",
+      },
+      toolCallDetail: {
+        label: "عرض استدعاءات الأدوات",
+        description: "كيفية ظهور استدعاءات الأدوات في المخطط الزمني",
+        accessibilityLabel: "حدد عرض استدعاءات الأدوات ({{value}})",
+        options: {
+          overview: "ملخص",
+          detailed: "التفاصيل الكاملة",
+        },
+      },
     },
     preview: {
       title: "المعاينة",
@@ -2909,6 +3092,8 @@ export const ar: TranslationResources = {
           terracotta: "طين محروق",
           horizon: "الأفق",
           powder: "مسحوق",
+          light: "ضوء",
+          auto: "نظام",
         },
       },
       agents: {
@@ -3039,6 +3224,9 @@ export const ar: TranslationResources = {
         highlightThemeAccessibility: "تسليط الضوء على الموضوع:{{value}}",
         previewAccessibility: "معاينة مباشرة لموضوع بناء الجملة وخط التعليمات البرمجية",
       },
+      detailLevel: {
+        title: "مستوى التفاصيل",
+      },
     },
     shortcuts: {
       dialogTitle: "الاختصارات",
@@ -3109,10 +3297,12 @@ export const ar: TranslationResources = {
         editorGoToDefinition: "الانتقال إلى التعريف",
         editorFindReferences: "البحث عن المراجع",
         editorRenameSymbol: "إعادة تسمية الرمز",
+        switchProject: "تبديل المشروع",
       },
       helpNotes: {
         showKeyboardShortcuts: "متاح عندما لا يكون التركيز في حقل نص أو محطة طرفية.",
       },
+      searchPlaceholder: "البحث في الاختصارات",
     },
     integrations: {
       title: "التكامل",
@@ -3397,6 +3587,7 @@ export const ar: TranslationResources = {
           requestFailedTitle: "فشل التحديث",
           requestFailedMessage: "تعذّر تحديث الـ daemon: {{error}}",
           dialogFailedMessage: "تعذّر فتح مربع حوار تأكيد التحديث.",
+          desktopManagedHint: "يدير Otto Desktop هذا البرنامج الخفي. حدّث Otto Desktop على المضيف.",
         },
         dangerZone: "منطقة الخطر",
         remove: {
@@ -3493,6 +3684,8 @@ export const ar: TranslationResources = {
         removing: "جارٍ الإزالة...",
         requiresUpdate: "حدِّث المضيف لإزالة الموفرين.",
         failed: "فشلت إزالة الموفر",
+        confirm: "Remove",
+        errorTitle: "Unable to remove provider",
       },
       models: {
         one: "1 نموذج",
@@ -3529,6 +3722,11 @@ export const ar: TranslationResources = {
         none: "لا يوجد تشخيص متاح",
         failedToFetch: "فشل جلب التشخيص",
         unknownError: "خطأ غير معروف",
+      },
+      actions: {
+        menu: "{{name}} actions",
+        remove: "Remove provider",
+        removing: "Removing...",
       },
     },
     project: {
@@ -3629,6 +3827,11 @@ export const ar: TranslationResources = {
         discard: "تجاهل",
         keepEditing: "متابعة التحرير",
       },
+    },
+    editor: {
+      title: "المحرر",
+      vimKeybindings: "اختصارات Vim",
+      vimHint: "تنطبق على ملفات المصدر في الويب وسطح المكتب.",
     },
   },
   artifacts: {

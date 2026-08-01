@@ -130,6 +130,7 @@ export interface ProviderSnapshotEntry {
   provider: AgentProvider;
   status: ProviderStatus;
   enabled: boolean;
+  source?: "builtin" | "custom";
   error?: string;
   models?: AgentModelDefinition[];
   modes?: AgentMode[];
@@ -236,6 +237,8 @@ export type AgentPromptContentBlock =
 export type AgentPromptInput = string | AgentPromptContentBlock[];
 
 export interface AgentRunOptions {
+  /** Composer-side id of the message that started this run, echoed back on the timeline. */
+  clientMessageId?: string;
   outputSchema?: unknown;
   resumeFrom?: AgentPersistenceHandle;
   maxThinkingTokens?: number;
@@ -466,7 +469,7 @@ export interface CompactionTimelineItem {
 }
 
 export type AgentTimelineItem =
-  | { type: "user_message"; text: string; messageId?: string }
+  | { type: "user_message"; text: string; messageId?: string; clientMessageId?: string }
   | { type: "assistant_message"; text: string; messageId?: string }
   | { type: "reasoning"; text: string }
   | ToolCallTimelineItem
@@ -580,6 +583,13 @@ export type AgentStreamEvent =
       type: "background_shell_task_updated";
       provider: AgentProvider;
       update: BackgroundShellTaskUpdate;
+    }
+  // Paseo's provider-subagent ingestion: the provider telling us about children
+  // it spawned itself, folded into the ProviderSubagentStore by AgentManager.
+  | {
+      type: "provider_subagent";
+      provider: AgentProvider;
+      event: import("./provider-subagents/store.js").ProviderSubagentInputEvent;
     };
 
 /**
@@ -774,6 +784,7 @@ export interface ImportedProviderSession {
   config: AgentSessionConfig;
   persistence: AgentPersistenceHandle;
   timeline: ImportedTimelineEntry[];
+  providerSubagentEvents?: Extract<AgentStreamEvent, { type: "provider_subagent" }>[];
 }
 
 export interface AgentSessionConfig {
@@ -1045,6 +1056,17 @@ export type FetchCatalogOptions =
 export interface ProviderCatalog {
   models: AgentModelDefinition[];
   modes: AgentMode[];
+  defaultModeId?: string | null;
+}
+
+export interface AgentResumeSessionOptions {
+  /** Defaults to interactive. History loading may be read-only for archived native sessions. */
+  purpose?: "interactive" | "history";
+}
+
+export interface ResolveAgentDefaultModeInput {
+  config: AgentSessionConfig;
+  env?: Record<string, string>;
 }
 
 export interface AgentClient {
@@ -1059,6 +1081,7 @@ export interface AgentClient {
     handle: AgentPersistenceHandle,
     overrides?: Partial<AgentSessionConfig>,
     launchContext?: AgentLaunchContext,
+    options?: AgentResumeSessionOptions,
   ): Promise<AgentSession>;
   /**
    * Discover models and modes together. Implementations may use one upstream
@@ -1067,6 +1090,7 @@ export interface AgentClient {
    * The registry is responsible for merging configured model overrides.
    */
   fetchCatalog(options: FetchCatalogOptions): Promise<ProviderCatalog>;
+  resolveDefaultModeId?(input: ResolveAgentDefaultModeInput): Promise<string | undefined>;
   /**
    * One-shot, tool-less structured-text completion for internal metadata
    * generation. Bypasses `createSession` entirely — no agent lifecycle, no tool

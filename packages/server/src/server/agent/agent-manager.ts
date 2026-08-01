@@ -99,7 +99,7 @@ import {
   AGENT_STREAM_COALESCE_DEFAULT_WINDOW_MS,
   AgentStreamCoalescer,
 } from "./agent-stream-coalescer.js";
-import { ForegroundRunState, type ForegroundTurnWaiter } from "./foreground-run-state.js";
+import { AgentRunState, type ForegroundTurnWaiter } from "./agent-run-state.js";
 import {
   createSteerQueueEntry,
   mergeSteerQueueBatch,
@@ -122,6 +122,12 @@ import { unwrapSpokenInput } from "../voice-config.js";
 import { stripInternalOttoMcpServer, withRuntimeOttoMcpServer } from "./runtime-mcp-config.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
 import type { OttoToolCatalogFactory } from "./tools/types.js";
+import type { AgentOwner } from "./agent-owner.js";
+import {
+  ProviderSubagentStore,
+  type ProviderSubagentDescriptor,
+  type ProviderSubagentStoreEvent,
+} from "./provider-subagents/store.js";
 
 const RELOAD_SESSION_CLOSE_TIMEOUT_MS = 3_000;
 const INTERRUPT_SESSION_TIMEOUT_MS = 2_000;
@@ -138,6 +144,20 @@ const STORED_AGENT_CAPABILITIES: AgentCapabilityFlags = {
 };
 
 type TimeoutResult = "completed" | "timed_out";
+
+export class AgentRunCancellationError extends Error {
+  constructor(agentId: string, action: "reload" | "replace" | "rewind" | "stop") {
+    super(
+      `Cannot ${action} agent ${agentId} because its active run cancellation was not acknowledged`,
+    );
+    this.name = "AgentRunCancellationError";
+  }
+}
+
+export type AgentRunCancellationResult =
+  | { status: "not_running" }
+  | { status: "settled" }
+  | { status: "refused" };
 
 export class AgentManagerShuttingDownError extends Error {
   constructor() {
@@ -239,6 +259,10 @@ export type AgentManagerEvent =
   // A synthetic snapshot for an observed subagent (no ManagedAgent runtime).
   // Forwarded to clients like a normal agent update. See projects/observed-subagents/observed-subagents.md.
   | { type: "observed_agent_state"; payload: AgentSnapshotPayload }
+  // Paseo's provider-reported subagents. Distinct from Otto's observed
+  // subagents above: those are registry projections Otto synthesizes, these are
+  // the provider telling us about children it spawned itself.
+  | { type: "provider_subagent"; event: ProviderSubagentStoreEvent }
   // The full current set of background shell tasks for a parent agent
   // changed. Not Agent-shaped — forwarded to clients as background_shell_tasks_changed.
   | {
@@ -333,6 +357,7 @@ export interface CreateAgentOptions {
   initialTitle?: string | null;
   // undefined is an explicit decision: the agent never appears in the sidebar.
   workspaceId: string | undefined;
+  owner?: AgentOwner;
 }
 
 export interface AgentManagerOptions {
@@ -820,6 +845,7 @@ interface ManagedAgentBase {
    * Null/undefined for legacy agents created before ownership stamping.
    */
   workspaceId?: string;
+  owner?: AgentOwner;
   capabilities: AgentCapabilityFlags;
   config: AgentSessionConfig;
   runtimeInfo?: AgentRuntimeInfo;
@@ -984,6 +1010,7 @@ export type ManagedAgent =
 
 export interface AgentMetricsSnapshot {
   total: number;
+  subscriptionCount: number;
   byLifecycle: Record<string, number>;
   withActiveForegroundTurn: number;
   timelineStats: {
@@ -1205,7 +1232,7 @@ export class AgentManager {
   private readonly timelineStore = new InMemoryAgentTimelineStore();
   private readonly agentsAwaitingInitialSnapshotPersist = new Set<string>();
   private readonly sessionEventTails = new Map<string, Promise<void>>();
-  private readonly foregroundRuns = new ForegroundRunState();
+  private readonly foregroundRuns = new AgentRunState();
   private readonly subscribers = new Set<SubscriptionRecord>();
   private readonly idFactory: () => string;
   private readonly registry?: AgentStorage;
@@ -1220,6 +1247,9 @@ export class AgentManager {
   // so fetchTimeline can serve them like an observed subagent (no ManagedAgent,
   // no requireAgent throw).
   private readonly retainedTimelineIds = new Set<string>();
+  // Paseo's provider-subagent projection, keyed by parent agent id.
+  private readonly providerSubagents = new ProviderSubagentStore();
+  private readonly inFlightAgentCloses = new Map<string, Promise<void>>();
   private readonly previousStatuses = new Map<string, AgentLifecycleStatus>();
   // Signature of the last stale todo list we fired an idle reconcile pass for,
   // per agent. Guards against a nag loop: an unchanged stale list (the agent
@@ -1509,6 +1539,7 @@ export class AgentManager {
 
     return {
       total: this.agents.size,
+      subscriptionCount: this.subscribers.size,
       byLifecycle,
       withActiveForegroundTurn,
       timelineStats: {
@@ -1976,6 +2007,56 @@ export class AgentManager {
     return payloads;
   }
 
+  subscriptionCount(): number {
+    return this.subscribers.size;
+  }
+
+  listProviderSubagents(parentAgentId: string): ProviderSubagentDescriptor[] {
+    this.requirePublicAgent(parentAgentId);
+    return this.providerSubagents.list(parentAgentId);
+  }
+
+  getProviderSubagent(
+    parentAgentId: string,
+    subagentId: string,
+  ): ProviderSubagentDescriptor | null {
+    this.requirePublicAgent(parentAgentId);
+    return this.providerSubagents.get(parentAgentId, subagentId);
+  }
+
+  fetchProviderSubagentTimeline(
+    parentAgentId: string,
+    subagentId: string,
+    options?: AgentTimelineFetchOptions,
+  ): AgentTimelineFetchResult {
+    this.requirePublicAgent(parentAgentId);
+    return this.providerSubagents.fetchTimeline(parentAgentId, subagentId, options);
+  }
+
+  /**
+   * Drop everything retained for an agent id: its committed timeline and any
+   * provider-subagent projection hanging off it.
+   */
+  async deleteAgentState(agentId: string): Promise<void> {
+    this.discardRetainedAgentState(agentId);
+    await this.deleteCommittedTimeline(agentId);
+  }
+
+  private discardRetainedAgentState(agentId: string): void {
+    this.timelineStore.delete(agentId);
+    for (const event of this.providerSubagents.deleteParent(agentId)) {
+      this.dispatch({ type: "provider_subagent", event });
+    }
+  }
+
+  private requirePublicAgent(id: string): LiveManagedAgent {
+    const agent = this.requireAgent(id);
+    if (agent.internal) {
+      throw new Error(`Unknown agent '${agent.id}'`);
+    }
+    return agent;
+  }
+
   createAgent(
     config: AgentSessionConfig,
     agentId: string | undefined,
@@ -2084,6 +2165,8 @@ export class AgentManager {
       lastUserMessageAt?: Date | null;
       labels?: Record<string, string>;
       workspaceId?: string;
+      /** Paseo: history loading is read-only for archived native sessions. */
+      purpose?: "interactive" | "history";
     },
   ): Promise<ManagedAgent> {
     return this.trackAgentRegistrationOperation(
@@ -2101,6 +2184,8 @@ export class AgentManager {
       lastUserMessageAt?: Date | null;
       labels?: Record<string, string>;
       workspaceId?: string;
+      /** Paseo: history loading is read-only for archived native sessions. */
+      purpose?: "interactive" | "history";
     },
   ): Promise<ManagedAgent> {
     this.assertAcceptingAgentRegistrations();
@@ -2341,7 +2426,29 @@ export class AgentManager {
     }
   }
 
-  async closeAgent(agentId: string): Promise<void> {
+  closeAgent(agentId: string): Promise<void> {
+    const existing = this.inFlightAgentCloses.get(agentId);
+    if (existing) {
+      return existing;
+    }
+
+    const close = this.closeAgentRuntime(agentId);
+    this.inFlightAgentCloses.set(agentId, close);
+    const clearClose = () => {
+      if (this.inFlightAgentCloses.get(agentId) === close) {
+        this.inFlightAgentCloses.delete(agentId);
+      }
+    };
+    void close.then(clearClose, clearClose);
+    return close;
+  }
+
+  /** Await an in-flight close started elsewhere; resolves immediately if none. */
+  async waitForAgentClose(agentId: string): Promise<void> {
+    await this.inFlightAgentCloses.get(agentId)?.catch(() => undefined);
+  }
+
+  private async closeAgentRuntime(agentId: string): Promise<void> {
     const agent = this.requireAgent(agentId);
     this.logger.trace(
       {
@@ -2965,7 +3072,10 @@ export class AgentManager {
     return nextRecord;
   }
 
-  async unarchiveSnapshot(agentId: string): Promise<boolean> {
+  async unarchiveSnapshot(
+    agentId: string,
+    updates?: { workspaceId?: string; labels?: AgentLabelPatch },
+  ): Promise<boolean> {
     const registry = this.requireRegistry();
     const record = await registry.get(agentId);
     if (!record || !record.archivedAt) {
@@ -2976,6 +3086,8 @@ export class AgentManager {
 
     await registry.upsert({
       ...record,
+      ...(updates?.workspaceId ? { workspaceId: updates.workspaceId } : {}),
+      ...(updates?.labels ? { labels: applyLabelPatch(record.labels, updates.labels) } : {}),
       archivedAt: null,
       updatedAt: new Date().toISOString(),
     });
@@ -3186,7 +3298,7 @@ export class AgentManager {
 
     const streamForwarder = async function* streamForwarder(this: AgentManager) {
       let turnId: string;
-      let turnStream: ReturnType<ForegroundRunState["createTurnStream"]> | null = null;
+      let turnStream: ReturnType<AgentRunState["createTurnStream"]> | null = null;
       try {
         const result = await agent.session.startTurn(effectivePrompt, options);
         turnId = result.turnId;
@@ -3198,7 +3310,7 @@ export class AgentManager {
           error: errorMsg,
         });
         this.finalizeForegroundTurn(agent);
-        this.foregroundRuns.settlePendingRun(agentId, pendingRun.token);
+        this.foregroundRuns.settleForegroundRun(agentId, pendingRun.token);
         throw error;
       }
 
@@ -3230,7 +3342,7 @@ export class AgentManager {
         if (turnStream) {
           this.foregroundRuns.deleteWaiter(agent, turnStream.waiter);
         }
-        this.foregroundRuns.settlePendingRun(agentId, pendingRun.token);
+        this.foregroundRuns.settleForegroundRun(agentId, pendingRun.token);
         if (!agent.activeForegroundTurnId) {
           await this.refreshRuntimeInfo(agent);
         }
@@ -3754,7 +3866,13 @@ export class AgentManager {
     }
   }
 
-  async cancelAgentRun(agentId: string): Promise<boolean> {
+  /**
+   * Paseo widened this from boolean to a tri-state so callers can tell
+   * "nothing was running" from "we cancelled it" from "the provider refused".
+   * Otto adopts the contract; our implementation never produces `refused`
+   * because it force-cancels rather than giving up.
+   */
+  async cancelAgentRun(agentId: string): Promise<AgentRunCancellationResult> {
     const agent = this.requireSessionAgent(agentId);
     const pendingRun = this.foregroundRuns.getPendingRun(agentId);
     const foregroundTurnId = agent.activeForegroundTurnId;
@@ -3762,7 +3880,7 @@ export class AgentManager {
     const isAutonomousRunning = agent.lifecycle === "running" && !hasForegroundTurn && !pendingRun;
 
     if (!hasForegroundTurn && !isAutonomousRunning && !pendingRun) {
-      return false;
+      return { status: "not_running" };
     }
 
     await this.interruptSession(agent.session, agentId);
@@ -3850,7 +3968,7 @@ export class AgentManager {
       this.emitState(agent);
     }
 
-    return true;
+    return { status: "settled" };
   }
 
   private async interruptSession(session: AgentSession, agentId: string): Promise<void> {
@@ -3931,7 +4049,7 @@ export class AgentManager {
       );
       throw error;
     } finally {
-      this.foregroundRuns.settlePendingRun(agentId, lock.token);
+      this.foregroundRuns.settleForegroundRun(agentId, lock.token);
     }
   }
 
@@ -4529,7 +4647,7 @@ export class AgentManager {
       reason: cancelReason,
       turnId,
     }));
-    this.foregroundRuns.settlePendingRun(agent.id);
+    this.foregroundRuns.clearAgentRun(agent.id);
     return {
       ...agent,
       lifecycle: "closed",
@@ -4610,6 +4728,13 @@ export class AgentManager {
     agent: ActiveManagedAgent,
     event: AgentStreamEvent,
   ): Promise<void> {
+    // Provider-reported subagents never take part in the turn/waiter machinery:
+    // they are a projection, not a run. Fold and forward before any of it.
+    if (event.type === "provider_subagent") {
+      const update = this.providerSubagents.apply(agent.id, event.provider, event.event);
+      this.dispatch({ type: "provider_subagent", event: update });
+      return;
+    }
     const turnId = getAgentStreamEventTurnId(event);
     const matchingWaiters = this.foregroundRuns.getMatchingWaiters(agent, turnId);
     this.logger.trace(

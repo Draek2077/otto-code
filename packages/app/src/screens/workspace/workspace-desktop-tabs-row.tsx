@@ -124,10 +124,8 @@ import {
   usePreviewRunningServersStore,
   useHasRunningPreviewServer,
 } from "@/stores/preview-running-servers-store";
-import {
-  buildWorkspaceTabPersistenceKey,
-  useWorkspaceLayoutStore,
-} from "@/stores/workspace-layout-store";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import {
   computeVisibleTabCount,
   reorderTabIntoVisible,
@@ -1655,6 +1653,7 @@ interface WorkspaceDesktopTabsRowProps {
   onNavigateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
+  onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyFilePath: (path: string) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
@@ -2259,6 +2258,7 @@ export function WorkspaceDesktopTabsRow({
   onNavigateTab,
   onCloseTab,
   onCopyResumeCommand,
+  onCopyTerminalId,
   onCopyAgentId,
   onCopyFilePath,
   onReloadAgent,
@@ -2374,6 +2374,7 @@ export function WorkspaceDesktopTabsRow({
   const tabMenuLabels = useMemo<WorkspaceTabMenuLabels>(
     () => ({
       copyResumeCommand: t("workspace.tabs.menu.copyResumeCommand"),
+      copyTerminalId: t("workspace.tabs.menu.copyTerminalId"),
       copyAgentId: t("workspace.tabs.menu.copyAgentId"),
       copyFilePath: t("workspace.tabs.menu.copyFilePath"),
       rename: t("workspace.tabs.menu.rename"),
@@ -2489,6 +2490,7 @@ export function WorkspaceDesktopTabsRow({
           normalizedServerId={normalizedServerId}
           normalizedWorkspaceId={normalizedWorkspaceId}
           onCopyResumeCommand={onCopyResumeCommand}
+          onCopyTerminalId={onCopyTerminalId}
           onCopyAgentId={onCopyAgentId}
           onCopyFilePath={onCopyFilePath}
           onReloadAgent={onReloadAgent}
@@ -2524,6 +2526,7 @@ export function WorkspaceDesktopTabsRow({
       onCopyAgentId,
       onCopyFilePath,
       onCopyResumeCommand,
+      onCopyTerminalId,
       onNavigateTab,
       onReloadAgent,
       onRenameTab,
@@ -2625,6 +2628,7 @@ export interface ResolvedDesktopTabChipProps {
   normalizedServerId: string;
   normalizedWorkspaceId: string;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
+  onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyFilePath: (path: string) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
@@ -2655,6 +2659,7 @@ export function ResolvedDesktopTabChip({
   normalizedServerId,
   normalizedWorkspaceId,
   onCopyResumeCommand,
+  onCopyTerminalId,
   onCopyAgentId,
   onCopyFilePath,
   onReloadAgent,
@@ -2685,6 +2690,7 @@ export function ResolvedDesktopTabChip({
         tabCount,
         isDeveloperMode,
         onCopyResumeCommand,
+        onCopyTerminalId,
         onCopyAgentId,
         onCopyFilePath,
         onReloadAgent,
@@ -2710,6 +2716,7 @@ export function ResolvedDesktopTabChip({
       onCopyAgentId,
       onCopyFilePath,
       onCopyResumeCommand,
+      onCopyTerminalId,
       labels,
       onReloadAgent,
       onRenameTab,

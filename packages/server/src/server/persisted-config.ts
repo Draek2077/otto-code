@@ -11,6 +11,7 @@ import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-co
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.js";
 import { TerminalProfileSchema } from "@otto-code/protocol/messages";
 import { ConnectorConfigSchema, OTTO_TOOL_GROUPS } from "@otto-code/protocol/provider-config";
+import { OttoServicePortAllocationSchema } from "@otto-code/protocol/otto-config-schema";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
 export const LogFormatSchema = z.enum(["pretty", "json"]);
@@ -78,6 +79,7 @@ const ProvidersSchema = z
 const WorktreesConfigSchema = z
   .object({
     root: z.string().min(1).optional(),
+    servicePorts: OttoServicePortAllocationSchema.optional(),
   })
   .strict();
 

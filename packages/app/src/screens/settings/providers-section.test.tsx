@@ -8,39 +8,62 @@ import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
 import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
 
 const { theme, snapshotState, configState, patchConfigMock, openProviderSettingsMock } = vi.hoisted(
-  () => ({
-    theme: {
-      spacing: { 1: 4, "1.5": 6, 2: 8, 3: 12, 4: 16, 6: 24 },
-      iconSize: { sm: 14, md: 20 },
-      fontSize: { xs: 11, sm: 13, base: 15 },
-      fontWeight: { normal: "400" },
-      borderRadius: { lg: 8 },
-      opacity: { 50: 0.5 },
-      colors: {
-        surface1: "#111",
-        surface2: "#222",
-        surface3: "#333",
-        foreground: "#fff",
-        foregroundMuted: "#aaa",
-        border: "#555",
-        accent: "#0a84ff",
-        statusSuccess: "#00ff00",
-        statusWarning: "#ff9500",
-        statusDanger: "#ff0000",
-        palette: { red: { 300: "#ff6b6b" }, white: "#fff" },
+  () => {
+    // The values this screen actually renders are spelled out below. Everything
+    // else resolves to an empty stand-in: StyleSheet.create factories run for
+    // every module in the import graph (tooltip, dropdown-menu, ...), and a
+    // missing token throws at import time rather than where it is used. Style
+    // values are never asserted on, so a stand-in is harmless.
+    const permissive = (real: Record<string, unknown>): Record<string, unknown> =>
+      new Proxy(real, {
+        get: (target, key) => {
+          if (typeof key === "symbol") {
+            return target[key as unknown as string];
+          }
+          if (key in target) {
+            const value = target[key];
+            return value !== null && typeof value === "object"
+              ? permissive(value as Record<string, unknown>)
+              : value;
+          }
+          return permissive({});
+        },
+      });
+
+    return {
+      theme: permissive({
+        spacing: { 1: 4, "1.5": 6, 2: 8, 3: 12, 4: 16, 6: 24 },
+        iconSize: { sm: 14, md: 20 },
+        fontSize: { xs: 11, sm: 13, base: 15 },
+        fontWeight: { normal: "400" },
+        borderRadius: { lg: 8 },
+        opacity: { 50: 0.5 },
+        colors: {
+          surface1: "#111",
+          surface2: "#222",
+          surface3: "#333",
+          foreground: "#fff",
+          foregroundMuted: "#aaa",
+          border: "#555",
+          accent: "#0a84ff",
+          statusSuccess: "#00ff00",
+          statusWarning: "#ff9500",
+          statusDanger: "#ff0000",
+          palette: { red: { 300: "#ff6b6b" }, white: "#fff" },
+        },
+      }),
+      snapshotState: {
+        entries: undefined as ProviderSnapshotEntry[] | undefined,
+        isLoading: false,
+        isRefreshing: false,
       },
-    },
-    snapshotState: {
-      entries: undefined as ProviderSnapshotEntry[] | undefined,
-      isLoading: false,
-      isRefreshing: false,
-    },
-    configState: {
-      config: null as MutableDaemonConfig | null,
-    },
-    patchConfigMock: vi.fn(async () => undefined),
-    openProviderSettingsMock: vi.fn(),
-  }),
+      configState: {
+        config: null as MutableDaemonConfig | null,
+      },
+      patchConfigMock: vi.fn(async () => undefined),
+      openProviderSettingsMock: vi.fn(),
+    };
+  },
 );
 
 vi.mock("react-native", () => ({
@@ -83,7 +106,25 @@ vi.mock("react-native", () => ({
       typeof children === "function" ? children({ pressed: false, hovered: false }) : children,
     ),
   ActivityIndicator: () => React.createElement("span", { "data-testid": "activity-indicator" }),
-  Platform: { OS: "web" },
+  Platform: {
+    OS: "web",
+    select: (options: Record<string, unknown>) => options.web ?? options.default,
+  },
+  // Below here nothing is rendered by this screen. react-native-reanimated
+  // re-exports a slice of react-native at import time to build its Animated.*
+  // wrappers, and a missing binding fails the whole module graph rather than
+  // the line that uses it — so these exist purely to keep the import loading.
+  FlatList: () => null,
+  Image: () => null,
+  ScrollView: () => null,
+  TextInput: () => null,
+  StyleSheet: { create: (styles: unknown) => styles, flatten: (style: unknown) => style },
+  PixelRatio: { get: () => 1, getFontScale: () => 1, roundToNearestPixel: (n: number) => n },
+  I18nManager: { isRTL: false },
+  Dimensions: { get: () => ({ width: 1024, height: 768, scale: 1, fontScale: 1 }) },
+  Appearance: { getColorScheme: () => "light" },
+  processColor: (color: unknown) => color,
+  findNodeHandle: () => null,
 }));
 
 vi.mock("react-native-unistyles", () => ({

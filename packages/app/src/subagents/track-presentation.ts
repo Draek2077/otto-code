@@ -1,6 +1,7 @@
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { formatDuration } from "@/utils/time";
+import type { AgentLifecycleStatus } from "@otto-code/protocol/agent-lifecycle";
 import type { SubagentRow } from "./select";
 
 export interface SubagentRowPresentationData {
@@ -12,23 +13,43 @@ export interface SubagentRowPresentationData {
   statusBucket: SidebarStateBucket | null;
 }
 
+// Provider-reported subagents report terminal states Otto's agent lifecycle
+// does not name. Fold them onto the nearest lifecycle status so the sidebar
+// bucket logic stays single-sourced.
+function toAgentLifecycleStatus(row: SubagentRow): AgentLifecycleStatus {
+  if (row.kind === "otto") {
+    return row.status;
+  }
+  switch (row.status) {
+    case "failed":
+      return "error";
+    case "completed":
+    case "canceled":
+      return "closed";
+    default:
+      return row.status;
+  }
+}
+
 export function buildSubagentRowPresentationData(row: SubagentRow): SubagentRowPresentationData {
   const title = resolveRowLabel(row.title);
   // A personality-spawned subagent leads with its identity: "<Name>: <Chat title>".
   // With no title yet, the name alone beats a bare loading placeholder.
-  const personalityName = row.personalityName?.trim() || null;
+  const personalityName = row.kind === "otto" ? row.personalityName?.trim() || null : null;
   let label = title;
   if (personalityName) {
     label = title ? `${personalityName}: ${title}` : personalityName;
   }
   return {
-    key: `subagent_${row.id}`,
+    // Namespaced by row kind: an Otto subagent and a provider-reported one can
+    // carry the same id without being the same row.
+    key: `${row.kind}_subagent_${row.id}`,
     kind: "agent",
     label: label ?? "",
     subtitle: "",
     titleState: label ? "ready" : "loading",
     statusBucket: deriveSidebarStateBucket({
-      status: row.status,
+      status: toAgentLifecycleStatus(row),
       requiresAttention: false,
     }),
   };
@@ -113,7 +134,7 @@ export function selectSubagentsToAutoClear(
     if (input.excludeIds?.has(row.id)) {
       continue;
     }
-    if (input.now - row.updatedAt.getTime() < input.settleMs) {
+    if (row.kind === "otto" && input.now - row.updatedAt.getTime() < input.settleMs) {
       continue;
     }
     due.push(row);
@@ -193,6 +214,9 @@ export function formatSubagentCurrentTool(tool: string | null | undefined): stri
 export function sumSubagentTokens(rows: readonly SubagentRow[]): number {
   let total = 0;
   for (const row of rows) {
+    if (row.kind !== "otto") {
+      continue;
+    }
     if (typeof row.cumulativeTokens === "number" && Number.isFinite(row.cumulativeTokens)) {
       total += row.cumulativeTokens;
     }
@@ -244,11 +268,16 @@ export function isSubagentRowRunning(status: SubagentRow["status"]): boolean {
  * for those instead. See docs/chat-lifecycle.md (the subagents track).
  */
 export function formatSubagentElapsed(row: SubagentRow): string | null {
-  if (isSubagentRowRunning(row.status)) {
+  if (row.kind !== "otto" || isSubagentRowRunning(row.status)) {
     return null;
   }
   const ms = row.updatedAt.getTime() - row.createdAt.getTime();
   return formatDuration(Math.max(0, ms));
+}
+
+/** Provider-reported subagents that have stopped running. */
+export function countFinishedSubagents(rows: readonly SubagentRow[]): number {
+  return rows.filter((row) => row.kind === "provider" && row.status !== "running").length;
 }
 
 export function resolveRowLabel(title: SubagentRow["title"]): string | null {

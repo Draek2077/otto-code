@@ -38,7 +38,7 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   releaseChannel: "stable",
   daemon: {
     manageBuiltInDaemon: true,
-    keepRunningAfterQuit: true,
+    keepRunningAfterQuit: false,
   },
   tray: {
     minimizeOnClose: true,

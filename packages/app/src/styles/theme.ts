@@ -1,11 +1,11 @@
 // PROVENANCE: Otto's theme set is authored locally in this fork and is NOT
-// inherited from upstream Paseo. `light`/`dark` predate the fork, but the theme
+// inherited from upstream Otto. `light`/`dark` predate the fork, but the theme
 // variants (`zinc`/`midnight`/`claude`/`ghostty`, added in 2f77674c5, plus
 // `daylight`/`evergreen`/`cyberpunk`/`pastel`, plus
 // `meadow`/`terracotta`/`horizon`/`powder`) were created in Otto. During
 // upstream merges, resolve
 // conflicts in this file in favor of the Otto side — do not pull theme changes
-// from Paseo.
+// from Otto.
 import { Platform } from "react-native";
 import { darkHighlightColors, lightHighlightColors } from "@otto-code/highlight";
 import { resolveChatMaxWidth, useIsCompactFormFactor } from "@/constants/layout";

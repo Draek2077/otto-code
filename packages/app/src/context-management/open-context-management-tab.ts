@@ -29,7 +29,7 @@ export function openContextManagementTab(input: OpenContextManagementTabInput): 
   // Opened from the sidebar the tab would otherwise land in a workspace the
   // user isn't looking at, which reads as "nothing happened".
   if (input.navigate) {
-    navigateToWorkspace(input.serverId, input.workspaceId);
+    navigateToWorkspace({ serverId: input.serverId, workspaceId: input.workspaceId });
   }
   return true;
 }

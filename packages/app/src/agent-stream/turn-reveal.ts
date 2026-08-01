@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { StreamItem } from "@/types/stream";
-import { getIsAppInForeground } from "@/utils/app-visibility";
+import { getIsAppVisible } from "@/utils/app-visibility";
 
 const REVEAL_TICK_MS = 32;
 const MIN_CHARS_PER_TICK = 2;
@@ -240,9 +240,7 @@ export function useTurnRevealTicker(params: {
   enabled: boolean;
   visible?: boolean;
 }): TurnRevealTicker {
-  const [ticker] = useState(
-    () => new TurnRevealTicker({ ...params, isOnScreen: getIsAppInForeground }),
-  );
+  const [ticker] = useState(() => new TurnRevealTicker({ ...params, isOnScreen: getIsAppVisible }));
   ticker.update(params);
   // Hidden panes hold no timer at all: `update` keeps them caught up, so a
   // 31Hz interval per backgrounded chat would only ever bail. Every running

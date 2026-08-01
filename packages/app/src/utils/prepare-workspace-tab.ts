@@ -1,8 +1,5 @@
 import { generateDraftId } from "@/stores/draft-keys";
-import {
-  buildWorkspaceTabPersistenceKey,
-  type WorkspaceTabTarget,
-} from "@/stores/workspace-tabs-store";
+import { buildWorkspaceTabPersistenceKey, type WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 
 export interface PrepareWorkspaceTabInput {
@@ -20,7 +17,7 @@ export interface PrepareWorkspaceTabDeps {
 }
 
 export interface NavigateToPreparedWorkspaceTabDeps extends PrepareWorkspaceTabDeps {
-  navigateToWorkspace: (serverId: string, workspaceId: string) => void;
+  navigateToWorkspace: (input: { serverId: string; workspaceId: string }) => unknown;
 }
 
 function getPreparedTarget(target: WorkspaceTabTarget): WorkspaceTabTarget {
@@ -55,6 +52,6 @@ export function navigateToPreparedWorkspaceTab(
   deps: NavigateToPreparedWorkspaceTabDeps,
 ): string {
   const route = prepareWorkspaceTab(input, deps);
-  deps.navigateToWorkspace(input.serverId, input.workspaceId);
+  deps.navigateToWorkspace({ serverId: input.serverId, workspaceId: input.workspaceId });
   return route;
 }

@@ -13,7 +13,7 @@ import { seedDemoWorkspace, type DemoWorkspace } from "../staging/seed";
  * The flagship "everything at once" shot — not a feature tutorial (see the
  * numbered scenarios), the source image for the website's og-image and the
  * hero-mockup used across the alternatives pages. Both currently show stale
- * pre-fork Paseo screenshots.
+ * pre-fork Otto screenshots.
  *
  * One real Claude turn, started with the shipped starter personality Atlas
  * (not the demo cast — this is the site's default "meet your agent" moment),

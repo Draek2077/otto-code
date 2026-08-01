@@ -37,6 +37,7 @@ export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
   // Raw user-set title (null when the name is derived from branch/directory).
   // Prefills the rename input and signals whether a reset is available.
   title: string | null;
+  pinnedAt?: string | null;
   // Checkout branch (null when not a git checkout or detached HEAD).
   currentBranch: string | null;
   archivingAt: string | null;
@@ -140,10 +141,11 @@ function normalizeCurrentBranch(currentBranch: string | null | undefined): strin
 export function createSidebarWorkspaceEntry(input: {
   serverId: string;
   workspace: WorkspaceDescriptor;
+  projectKey?: string;
   pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
   workspaceAgentActivity?: ReadonlyMap<string, WorkspaceAgentActivity>;
 }): SidebarWorkspaceEntry {
-  const projectKey = input.workspace.project?.projectKey ?? input.workspace.projectId;
+  const projectKey = input.projectKey ?? input.workspace.projectId;
   const effectiveStatus = deriveEffectiveWorkspaceStatus(input);
   return {
     workspaceKey: `${input.serverId}:${input.workspace.id}`,
@@ -157,12 +159,16 @@ export function createSidebarWorkspaceEntry(input: {
     workspaceKind: input.workspace.workspaceKind,
     name: input.workspace.name,
     title: input.workspace.title ?? null,
+    pinnedAt: input.workspace.pinnedAt,
     currentBranch: normalizeCurrentBranch(input.workspace.gitRuntime?.currentBranch),
     statusBucket: effectiveStatus.status,
     statusEnteredAt: effectiveStatus.enteredAt,
     archivingAt: input.workspace.archivingAt,
     diffStat: input.workspace.diffStat,
-    prHint: selectPrHintFromStatus(input.workspace.githubRuntime?.pullRequest),
+    prHint: selectPrHintFromStatus(
+      input.workspace.githubRuntime?.pullRequest,
+      input.workspace.forge,
+    ),
     archiveHasUncommittedChanges: input.workspace.gitRuntime?.isDirty ?? null,
     archiveUnpushedCommitCount: input.workspace.gitRuntime?.aheadOfOrigin ?? null,
     scripts: input.workspace.scripts,
@@ -318,6 +324,7 @@ export function buildSidebarWorkspaceEntries(input: {
     const entry = createSidebarWorkspaceEntry({
       serverId: placement.serverId,
       workspace,
+      projectKey: placement.projectKey,
       pendingCreateAttempts: input.pendingCreateAttempts,
       workspaceAgentActivity: session.workspaceAgentActivity,
     });
@@ -350,7 +357,7 @@ function areSidebarWorkspaceEntriesEqual(
         leftHint.url === rightHint.url &&
         leftHint.number === rightHint.number &&
         leftHint.state === rightHint.state &&
-        leftHint.provider === rightHint.provider &&
+        leftHint.forge === rightHint.forge &&
         leftHint.checks === rightHint.checks &&
         leftHint.checksStatus === rightHint.checksStatus &&
         leftHint.reviewDecision === rightHint.reviewDecision)
@@ -473,6 +480,23 @@ export function appendMissingOrderKeys(input: {
   return [...input.currentOrder, ...missingKeys];
 }
 
+export function prependMissingOrderKeys(input: {
+  currentOrder: string[];
+  visibleKeys: string[];
+}): string[] {
+  if (input.visibleKeys.length === 0) {
+    return input.currentOrder;
+  }
+
+  const existingKeys = new Set(input.currentOrder);
+  const missingKeys = input.visibleKeys.filter((key) => !existingKeys.has(key));
+  if (missingKeys.length === 0) {
+    return input.currentOrder;
+  }
+
+  return [...missingKeys, ...input.currentOrder];
+}
+
 export interface SidebarOrderUpdates {
   projectOrder: string[] | null;
   workspaceOrders: Array<{ projectKey: string; order: string[] }>;
@@ -496,7 +520,7 @@ export function computeSidebarOrderUpdates(input: {
   const workspaceOrders: Array<{ projectKey: string; order: string[] }> = [];
   for (const project of input.projects) {
     const persistedWorkspaceOrder = input.getWorkspaceOrder(project.projectKey);
-    const nextWorkspaceOrder = appendMissingOrderKeys({
+    const nextWorkspaceOrder = prependMissingOrderKeys({
       currentOrder: persistedWorkspaceOrder,
       visibleKeys: project.workspaces.map((workspace) => workspace.workspaceKey),
     });

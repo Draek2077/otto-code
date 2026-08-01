@@ -1,8 +1,6 @@
-import { StreamLanguage } from "@codemirror/language";
+import { defineLanguageFacet, Language, StreamLanguage } from "@codemirror/language";
 import { dart } from "@codemirror/legacy-modes/mode/clike";
 import { swift } from "@codemirror/legacy-modes/mode/swift";
-import { shell } from "@codemirror/legacy-modes/mode/shell";
-import { standardSQL } from "@codemirror/legacy-modes/mode/sql";
 import { parser as jsParser } from "@lezer/javascript";
 import { parser as jsonParser } from "@lezer/json";
 import { parser as cssParser } from "@lezer/css";
@@ -20,75 +18,73 @@ import { csharpLanguage } from "@replit/codemirror-lang-csharp";
 import { parser as elixirParser } from "lezer-elixir";
 import type { Parser } from "@lezer/common";
 
-// Shared instance so the four shell fence aliases don't each build a grammar.
-const shellParser = StreamLanguage.define(shell).parser;
+function language(parser: Parser): Language {
+  return new Language(defineLanguageFacet(), parser);
+}
 
-const parsersByExtension: Record<string, Parser> = {
+const languagesByExtension: Record<string, Language> = {
   // JavaScript/TypeScript
-  js: jsParser,
-  jsx: jsParser.configure({ dialect: "jsx" }),
-  ts: jsParser.configure({ dialect: "ts" }),
-  tsx: jsParser.configure({ dialect: "ts jsx" }),
-  mjs: jsParser,
-  cjs: jsParser,
+  js: language(jsParser),
+  jsx: language(jsParser.configure({ dialect: "jsx" })),
+  ts: language(jsParser.configure({ dialect: "ts" })),
+  tsx: language(jsParser.configure({ dialect: "ts jsx" })),
+  mjs: language(jsParser),
+  cjs: language(jsParser),
   // C / C++ / Objective-C
-  c: cppParser,
-  h: cppParser,
-  cc: cppParser,
-  cpp: cppParser,
-  cxx: cppParser,
-  hpp: cppParser,
-  hxx: cppParser,
-  m: cppParser,
-  mm: cppParser,
+  c: language(cppParser),
+  h: language(cppParser),
+  cc: language(cppParser),
+  cpp: language(cppParser),
+  cxx: language(cppParser),
+  hpp: language(cppParser),
+  hxx: language(cppParser),
+  m: language(cppParser),
+  mm: language(cppParser),
   // JSON
-  json: jsonParser,
+  json: language(jsonParser),
   // CSS
-  css: cssParser,
-  scss: cssParser,
+  css: language(cssParser),
+  scss: language(cssParser),
   // HTML
-  html: htmlParser,
-  htm: htmlParser,
+  html: language(htmlParser),
+  htm: language(htmlParser),
   // XML
-  xml: xmlParser,
+  xml: language(xmlParser),
   // Java
-  java: javaParser,
+  java: language(javaParser),
   // Python
-  py: pythonParser,
+  py: language(pythonParser),
   // Go
-  go: goParser,
+  go: language(goParser),
   // PHP
-  php: phpParser,
+  php: language(phpParser),
   // YAML
-  yaml: yamlParser,
-  yml: yamlParser,
+  yaml: language(yamlParser),
+  yml: language(yamlParser),
   // Rust
-  rs: rustParser,
+  rs: language(rustParser),
   // Swift
-  swift: StreamLanguage.define(swift).parser,
+  swift: StreamLanguage.define(swift),
   // Dart
-  dart: StreamLanguage.define(dart).parser,
-  // Shell (fence tags bash/sh/zsh/shell all map here)
-  sh: shellParser,
-  bash: shellParser,
-  zsh: shellParser,
-  shell: shellParser,
-  // SQL
-  sql: StreamLanguage.define(standardSQL).parser,
+  dart: StreamLanguage.define(dart),
   // C#
-  cs: csharpLanguage.parser,
+  cs: csharpLanguage,
   // Elixir
-  ex: elixirParser,
-  exs: elixirParser,
+  ex: language(elixirParser),
+  exs: language(elixirParser),
   // Markdown
-  md: markdownParser,
-  mdx: markdownParser,
+  md: language(markdownParser),
+  mdx: language(markdownParser),
 };
 
-export function getParserForFile(filename: string): Parser | null {
+export function getLanguageForFile(filename: string): Language | null {
   const ext = filename.split(".").pop()?.toLowerCase();
   if (!ext) return null;
-  return parsersByExtension[ext] ?? null;
+  return languagesByExtension[ext] ?? null;
+}
+
+export function getParserForFile(filename: string): Parser | null {
+  return getLanguageForFile(filename)?.parser ?? null;
 }
 
 export function isLanguageSupported(filename: string): boolean {
@@ -96,5 +92,5 @@ export function isLanguageSupported(filename: string): boolean {
 }
 
 export function getSupportedExtensions(): string[] {
-  return Object.keys(parsersByExtension);
+  return Object.keys(languagesByExtension);
 }

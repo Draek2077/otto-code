@@ -37,6 +37,10 @@ import {
   UploadFile,
 } from "@/components/icons/material-icons";
 import Animated from "react-native-reanimated";
+import {
+  getWorkspaceFileAttachmentKey,
+  getWorkspaceFileAttachmentSubtitle,
+} from "@/attachments/workspace-file";
 import { FOOTER_HEIGHT } from "@/constants/layout";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import {
@@ -98,7 +102,8 @@ import { confirmInterruptWithLiveSubagents } from "@/components/interrupt-subage
 import { ComposerKeyboardScopeProvider } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
 import { isWeb, isNative } from "@/constants/platform";
-import type { GitHubSearchItem } from "@otto-code/protocol/messages";
+import type { ForgeSearchItem } from "@otto-code/protocol/messages";
+import type { WorkspaceFileComposerAttachment } from "@/attachments/types";
 import type {
   AttachmentMetadata,
   ComposerAttachment,
@@ -119,7 +124,7 @@ import { AttachmentLabel, AttachmentPill, AttachmentThumbnail } from "@/componen
 import { AttachmentLightbox } from "@/components/attachment-lightbox";
 import { openLink } from "@/utils/open-link";
 import { useIsDictationReady } from "@/hooks/use-is-dictation-ready";
-import { useGithubSearchQuery, useHostingSearchFeature } from "@/git/use-github-search-query";
+import { useForgeSearchQuery } from "@/git/use-forge-search-query";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useComposerGithubAutoAttach } from "./github/auto-attach";
 import { resolveClientSlashCommand, type ClientSlashCommand } from "@/client-slash-commands";
@@ -433,6 +438,18 @@ function renderComposerAttachmentPill(args: RenderComposerAttachmentPillArgs): R
       />
     );
   }
+  if (attachment.kind === "workspace_file") {
+    return (
+      <WorkspaceFileAttachmentPill
+        key={`workspace-file:${getWorkspaceFileAttachmentKey(attachment)}`}
+        attachment={attachment}
+        index={index}
+        disabled={disabled}
+        onRemove={onRemove}
+        removeLabel={labels.removeFile}
+      />
+    );
+  }
   if (composerWorkspaceAttachment.is(attachment)) {
     return composerWorkspaceAttachment.renderPill({
       attachment,
@@ -658,7 +675,10 @@ function ImageAttachmentPill({
 }
 
 interface GithubAttachmentPillProps {
-  attachment: Extract<ComposerAttachment, { kind: "github_pr" | "github_issue" }>;
+  attachment: Extract<
+    ComposerAttachment,
+    { kind: "github_pr" | "github_issue" | "forge_change_request" | "forge_issue" }
+  >;
   index: number;
   disabled: boolean;
   onOpen: (attachment: ComposerAttachment) => void;
@@ -677,11 +697,11 @@ function GithubAttachmentPill({
   removeLabel,
 }: GithubAttachmentPillProps) {
   const item = attachment.item;
-  const kindLabel = item.kind === "pr" ? "PR" : "issue";
+  const kindLabel = item.kind === "change_request" ? "PR" : "issue";
   const iconSize = useIconSize();
   const icon = useMemo(
     () =>
-      item.kind === "pr" ? (
+      item.kind === "change_request" ? (
         <ThemedGitPullRequest size={iconSize.sm} uniProps={iconForegroundMutedMapping} />
       ) : (
         <ThemedCircleDot size={iconSize.sm} uniProps={iconForegroundMutedMapping} />
@@ -706,7 +726,7 @@ function GithubAttachmentPill({
       <AttachmentLabel
         icon={icon}
         title={item.title}
-        subtitle={`${item.kind === "pr" ? "PR" : "Issue"} #${item.number}`}
+        subtitle={`${item.kind === "change_request" ? "PR" : "Issue"} #${item.number}`}
       />
     </AttachmentPill>
   );
@@ -718,6 +738,48 @@ interface FileAttachmentPillProps {
   disabled: boolean;
   onRemove: (index: number) => void;
   removeLabel: string;
+}
+
+interface WorkspaceFileAttachmentPillProps {
+  attachment: WorkspaceFileComposerAttachment;
+  index: number;
+  disabled: boolean;
+  onRemove: (index: number) => void;
+  removeLabel: string;
+}
+
+function WorkspaceFileAttachmentPill({
+  attachment,
+  index,
+  disabled,
+  onRemove,
+  removeLabel,
+}: WorkspaceFileAttachmentPillProps) {
+  const iconSize = useIconSize();
+  const icon = useMemo(
+    () => <ThemedFileText size={iconSize.sm} uniProps={iconForegroundMutedMapping} />,
+    [iconSize.sm],
+  );
+  const handleRemove = useCallback(() => {
+    onRemove(index);
+  }, [index, onRemove]);
+  const fileName = attachment.path.split("/").pop() ?? attachment.path;
+  return (
+    <AttachmentPill
+      testID="composer-workspace-file-attachment-pill"
+      onOpen={noopCallback}
+      onRemove={handleRemove}
+      openAccessibilityLabel={fileName}
+      removeAccessibilityLabel={removeLabel}
+      disabled={disabled}
+    >
+      <AttachmentLabel
+        icon={icon}
+        title={fileName}
+        subtitle={getWorkspaceFileAttachmentSubtitle(attachment)}
+      />
+    </AttachmentPill>
+  );
 }
 
 function FileAttachmentPill({
@@ -760,8 +822,8 @@ interface GithubPickerOptionProps {
   testID: string;
   active: boolean;
   selected: boolean;
-  item: GitHubSearchItem;
-  onToggle: (item: GitHubSearchItem) => void;
+  item: ForgeSearchItem;
+  onToggle: (item: ForgeSearchItem) => void;
 }
 
 function GithubPickerOption({
@@ -778,7 +840,7 @@ function GithubPickerOption({
   }, [onToggle, item]);
   const leadingSlot = useMemo(
     () =>
-      item.kind === "pr" ? (
+      item.kind === "change_request" ? (
         <ThemedGitPullRequest size={iconSize.sm} uniProps={iconForegroundMutedMapping} />
       ) : (
         <ThemedCircleDot size={iconSize.sm} uniProps={iconForegroundMutedMapping} />
@@ -798,6 +860,9 @@ function GithubPickerOption({
 }
 
 interface ComposerProps {
+  workspaceId?: string | null;
+  /** Changing this re-runs autofocus, e.g. when a draft tab is re-selected. */
+  autoFocusKey?: string;
   agentId: string;
   serverId: string;
   isPaneFocused: boolean;
@@ -1124,7 +1189,9 @@ export function Composer({
   });
   const setSelectedAttachments = onChangeAttachments;
   const checkoutStatusQuery = useCheckoutStatusQuery({ serverId, cwd });
-  const hostingSearchEnabled = useHostingSearchFeature(serverId);
+  const supportsForgeSearch = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.forgeSearch === true,
+  );
   const githubAutoAttach = useComposerGithubAutoAttach({
     text: userInput,
     remoteUrl: resolveCheckoutRemoteUrl(checkoutStatusQuery.status),
@@ -1133,7 +1200,7 @@ export function Composer({
     isConnected,
     serverId,
     cwd,
-    hostingSearchEnabled,
+    supportsForgeSearch,
     setAttachments: setSelectedAttachments,
   });
   const [cursorIndex, setCursorIndex] = useState(0);
@@ -1595,11 +1662,16 @@ export function Composer({
       isAgentRunning,
       isCancellingAgent,
       isConnected,
+      onCancelFailed: (error) => {
+        toastErrorRef.current(
+          error instanceof Error ? error.message : t("composer.errors.failedToCancel"),
+        );
+      },
     });
     if (!didCancel) return;
     setIsCancellingAgent(true);
     messageInputRef.current?.focus();
-  }, [client, isAgentRunning, isCancellingAgent, isConnected]);
+  }, [client, isAgentRunning, isCancellingAgent, isConnected, t]);
 
   const focusMessageInputForKeyboardAction = useCallback(() => {
     focusMessageInputWithPlatformStrategy(messageInputRef);
@@ -2033,12 +2105,13 @@ export function Composer({
   );
 
   const githubSearchQueryTrimmed = githubSearchQuery.trim();
-  const githubSearchResultsQuery = useGithubSearchQuery({
+  const githubSearchResultsQuery = useForgeSearchQuery({
     client,
     serverId,
     cwd,
     query: githubSearchQueryTrimmed,
     enabled: resolvePickerSearchEnabled(isGithubPickerOpen, isConnected, cwd),
+    supportsForgeSearch,
   });
 
   const githubSearchItemsRaw = githubSearchResultsQuery.data?.items;
@@ -2128,11 +2201,10 @@ export function Composer({
   }, [handlePickImage, handlePickFile, folderAttachmentScopeKey, t, iconSize.md]);
 
   const handleToggleGithubItem = useCallback(
-    (item: GitHubSearchItem) => {
+    (item: ForgeSearchItem) => {
       const nextAttachments = toggleGithubAttachmentFromPicker({
         current: attachments,
         item,
-        provider: githubSearchResultsQuery.data?.provider,
         markGithubAttachmentRemoved: githubAutoAttach.markGithubAttachmentRemoved,
       });
       setSelectedAttachments(nextAttachments);
@@ -2142,7 +2214,6 @@ export function Composer({
     [
       attachments,
       githubAutoAttach,
-      githubSearchResultsQuery.data?.provider,
       setSelectedAttachments,
       setGithubSearchQuery,
       setIsGithubPickerOpen,

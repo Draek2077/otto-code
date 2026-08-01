@@ -25,15 +25,19 @@ describe("settingsViewRoute", () => {
 
   it("maps projects and a single project", () => {
     expect(settingsViewRoute({ kind: "projects" })).toBe("/settings/projects");
-    expect(settingsViewRoute({ kind: "project", projectKey: "proj1" })).toBe(
-      "/settings/projects/proj1",
+    // Otto keeps the settings project route host-scoped, matching the route
+    // files under app/settings/projects/[serverId]/[projectId].tsx. Paseo
+    // addresses projects by host-local id alone; adopting that would be a route
+    // restructure, not a rename.
+    expect(settingsViewRoute({ kind: "project", serverId: "host-a", projectId: "proj1" })).toBe(
+      "/settings/projects/host-a/proj1",
     );
   });
 
   it("returns null for the root list and for empty ids", () => {
     expect(settingsViewRoute({ kind: "root" })).toBeNull();
     expect(settingsViewRoute({ kind: "host", serverId: "", section: "providers" })).toBeNull();
-    expect(settingsViewRoute({ kind: "project", projectKey: "" })).toBeNull();
+    expect(settingsViewRoute({ kind: "project", serverId: "", projectId: "" })).toBeNull();
   });
 });
 

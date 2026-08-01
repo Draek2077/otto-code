@@ -57,11 +57,11 @@ class FakePermissionAgentManager {
     return emptyAgentStream();
   }
 
-  replaceAgentRun(
+  async replaceAgentRun(
     agentId: string,
     prompt: AgentPromptInput,
     options?: AgentRunOptions,
-  ): AsyncGenerator<AgentStreamEvent> {
+  ): Promise<AsyncGenerator<AgentStreamEvent>> {
     this.replacementRuns.push({ agentId, prompt, options });
     return emptyAgentStream();
   }

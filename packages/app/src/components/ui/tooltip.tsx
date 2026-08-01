@@ -13,6 +13,7 @@ import {
   type ReactElement,
   type Ref,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   Dimensions,
   Platform,
@@ -24,14 +25,13 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { Portal } from "@gorhom/portal";
-import { useBottomSheetModalInternal } from "@gorhom/bottom-sheet";
 import { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { FloatingSurface } from "@/components/ui/floating";
 import { isWeb } from "@/constants/platform";
 import { mergeRefs } from "@/utils/merge-refs";
+import { getOverlayRoot, OVERLAY_Z } from "@/lib/overlay-root";
 
 type Side = "top" | "bottom" | "left" | "right";
 type Align = "start" | "center" | "end";
@@ -457,7 +457,6 @@ export function TooltipContent({
   maxWidth?: number;
 }>): ReactElement | null {
   const ctx = useTooltipContext("TooltipContent");
-  const bottomSheetInternal = useBottomSheetModalInternal(true);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
@@ -527,23 +526,22 @@ export function TooltipContent({
   // steal focus / disrupt hover). Rendering via Portal + position:fixed keeps the
   // exact same positioning math as DropdownMenu, without hover feedback loops.
   if (isWeb) {
-    return (
-      <Portal hostName={bottomSheetInternal?.hostName}>
-        <View pointerEvents="none" style={styles.portalOverlay}>
-          <FloatingSurface
-            pointerEvents="none"
-            entering={FadeIn.duration(80)}
-            exiting={FadeOut.duration(80)}
-            collapsable={false}
-            testID={testID}
-            onLayout={handleLayout}
-            style={contentStyle}
-            frameStyle={frameStyle}
-          >
-            {children}
-          </FloatingSurface>
-        </View>
-      </Portal>
+    return createPortal(
+      <View pointerEvents="none" style={styles.portalOverlay}>
+        <FloatingSurface
+          pointerEvents="none"
+          entering={FadeIn.duration(80)}
+          exiting={FadeOut.duration(80)}
+          collapsable={false}
+          testID={testID}
+          onLayout={handleLayout}
+          style={contentStyle}
+          frameStyle={frameStyle}
+        >
+          {children}
+        </FloatingSurface>
+      </View>,
+      getOverlayRoot(),
     );
   }
 
@@ -581,7 +579,7 @@ const styles = StyleSheet.create((theme) => ({
     right: 0,
     bottom: 0,
     left: 0,
-    zIndex: 1000,
+    zIndex: OVERLAY_Z.tooltip,
   },
   content: {
     paddingVertical: theme.spacing[1],

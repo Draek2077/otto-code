@@ -13,7 +13,9 @@ export function showProviderNoticeToast(
     return;
   }
   toast.show(notice.message, {
+    // ToastVariant has no info/warning tier; both render on the default surface,
+    // with warnings held longer.
     variant: "default",
-    durationMs: notice.type === "warning" ? 3200 : undefined,
+    durationMs: notice.type === "warning" ? 5000 : undefined,
   });
 }

@@ -4,7 +4,6 @@ const INTERACTIVE_TARGET_SELECTOR = [
   "select",
   "[role='button']",
   "[role='link']",
-  "[contenteditable='true']",
   "[data-otto-pane-focus-exempt='true']",
 ].join(", ");
 

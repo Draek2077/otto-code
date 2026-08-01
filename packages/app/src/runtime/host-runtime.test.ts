@@ -28,6 +28,7 @@ vi.mock("@/browser-automation/handler", () => ({
 class FakeDaemonClient {
   private state: ConnectionState = { status: "idle" };
   private listeners = new Set<(status: ConnectionState) => void>();
+  private eventHandlers = new Map<string, Set<(message: unknown) => void>>();
   private error: string | null = null;
   private heartbeatRttMs: number | null = null;
   private latencyMeasurementFailure: Error | null = null;
@@ -61,6 +62,25 @@ class FakeDaemonClient {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  // DirectorySync subscribes to agent_update / workspace_update / project.update
+  // / project.updated.notification the moment a host comes online. These tests
+  // drive bootstrap through fetchAgents rather than pushed events, so the
+  // handlers only need somewhere to go and a working disposer.
+  on(event: string, handler: (message: unknown) => void): () => void {
+    const handlers = this.eventHandlers.get(event) ?? new Set();
+    handlers.add(handler);
+    this.eventHandlers.set(event, handlers);
+    return () => {
+      handlers.delete(handler);
+    };
+  }
+
+  emit(event: string, message: unknown): void {
+    for (const handler of this.eventHandlers.get(event) ?? []) {
+      handler(message);
+    }
   }
 
   get lastError(): string | null {

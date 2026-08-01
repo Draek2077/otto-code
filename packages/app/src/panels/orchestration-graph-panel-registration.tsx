@@ -29,6 +29,7 @@ function useOrchestrationGraphPanelDescriptor(
   const graph = (graphsQuery.data ?? []).find((candidate) => candidate.id === target.graphId);
   return {
     label: graph?.name ?? "Graph",
+    tooltip: graph?.name ?? "Graph",
     subtitle: "Orchestration graph",
     titleState: "ready",
     icon: Schema,

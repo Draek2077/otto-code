@@ -23,6 +23,10 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, type Href } from "expo-router";
 import * as Clipboard from "expo-clipboard";
+import {
+  useWorkspaceRecovery,
+  type WorkspaceRecoveryController,
+} from "@/workspace-recovery/use-workspace-recovery";
 import { useTranslation } from "react-i18next";
 import { DiffStat } from "@/components/diff-stat";
 import {
@@ -105,13 +109,8 @@ import {
   type ExplorerTab,
 } from "@/stores/panel-store";
 import { type ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
+import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import {
-  useSessionStore,
-  useWorkspaceRestoreStatus,
-  type WorkspaceDescriptor,
-} from "@/stores/session-store";
-import {
-  buildWorkspaceTabPersistenceKey,
   collectAllTabs,
   findPaneById,
   getFocusedBrowserId,
@@ -119,6 +118,7 @@ import {
   useWorkspaceLayoutStore,
   useWorkspaceLayoutStoreHydrated,
 } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useAppSettingValue, useSettings } from "@/hooks/use-settings";
@@ -523,7 +523,7 @@ function getFallbackTabOptionDescription(
   if (tab.target.kind === "refine") {
     return fileNameOf(tab.target.paths[0] ?? "");
   }
-  return tab.target.path;
+  return tab.target.kind === "file" ? tab.target.path : "";
 }
 
 function fileNameOf(absolutePath: string): string {
@@ -541,6 +541,7 @@ interface MobileWorkspaceTabSwitcherProps {
   normalizedWorkspaceId: string;
   onSelectSwitcherTab: (key: string) => void;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
+  onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyFilePath: (path: string) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
@@ -731,6 +732,7 @@ function MobileWorkspaceTabOption({
   active,
   onPress,
   onCopyResumeCommand,
+  onCopyTerminalId,
   onCopyAgentId,
   onCopyFilePath,
   onReloadAgent,
@@ -749,6 +751,7 @@ function MobileWorkspaceTabOption({
   active: boolean;
   onPress: () => void;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
+  onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyFilePath: (path: string) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
@@ -763,6 +766,7 @@ function MobileWorkspaceTabOption({
   const tabMenuLabels = useMemo<WorkspaceTabMenuLabels>(
     () => ({
       copyResumeCommand: t("workspace.tabs.menu.copyResumeCommand"),
+      copyTerminalId: t("workspace.tabs.menu.copyTerminalId"),
       copyAgentId: t("workspace.tabs.menu.copyAgentId"),
       copyFilePath: t("workspace.tabs.menu.copyFilePath"),
       rename: t("workspace.tabs.menu.rename"),
@@ -788,6 +792,7 @@ function MobileWorkspaceTabOption({
     menuTestIDBase,
     isDeveloperMode,
     onCopyResumeCommand,
+    onCopyTerminalId,
     onCopyAgentId,
     onCopyFilePath,
     onReloadAgent,
@@ -859,6 +864,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
   normalizedWorkspaceId,
   onSelectSwitcherTab,
   onCopyResumeCommand,
+  onCopyTerminalId,
   onCopyAgentId,
   onCopyFilePath,
   onReloadAgent,
@@ -915,6 +921,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
           active={active}
           onPress={onPress}
           onCopyResumeCommand={onCopyResumeCommand}
+          onCopyTerminalId={onCopyTerminalId}
           onCopyAgentId={onCopyAgentId}
           onCopyFilePath={onCopyFilePath}
           onReloadAgent={onReloadAgent}
@@ -933,6 +940,7 @@ const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitcher({
       normalizedServerId,
       normalizedWorkspaceId,
       onCopyResumeCommand,
+      onCopyTerminalId,
       onCopyAgentId,
       onCopyFilePath,
       onReloadAgent,
@@ -2037,7 +2045,7 @@ function useResolvedWorkspaceRouteState(input: {
   workspaceId: string;
   workspace: WorkspaceDescriptor | null;
   hasHydratedWorkspaces: boolean;
-}): WorkspaceRouteState {
+}): { state: WorkspaceRouteState; recovery: WorkspaceRecoveryController } {
   const hosts = useHosts();
   const host = useMemo(
     () => hosts.find((entry) => entry.serverId === input.serverId) ?? null,
@@ -2045,9 +2053,13 @@ function useResolvedWorkspaceRouteState(input: {
   );
   const hostSnapshot = useHostRuntimeSnapshot(input.serverId);
   const hostName = useMemo(() => getHostDisplayName(host, input.serverId), [host, input.serverId]);
-  const restoreStatus = useWorkspaceRestoreStatus(input.serverId, input.workspaceId);
+  const recoveryController = useWorkspaceRecovery({
+    serverId: input.serverId,
+    workspaceId: input.workspaceId,
+    enabled: true,
+  });
 
-  return useMemo(
+  const state = useMemo(
     () =>
       resolveWorkspaceRouteState({
         hostName,
@@ -2055,7 +2067,7 @@ function useResolvedWorkspaceRouteState(input: {
         lastError: hostSnapshot?.lastError ?? null,
         workspace: input.workspace,
         hasHydratedWorkspaces: input.hasHydratedWorkspaces,
-        restoreStatus,
+        recovery: recoveryController.state,
       }),
     [
       hostName,
@@ -2063,9 +2075,11 @@ function useResolvedWorkspaceRouteState(input: {
       hostSnapshot?.lastError,
       input.workspace,
       input.hasHydratedWorkspaces,
-      restoreStatus,
+      recoveryController.state,
     ],
   );
+
+  return { state, recovery: recoveryController };
 }
 
 function WorkspaceScreenGateFrame({ children }: { children: ReactNode }) {
@@ -2455,12 +2469,19 @@ function WorkspaceScreenContent({
   const hasHydratedAgents = useSessionStore(
     (state) => state.sessions[normalizedServerId]?.hasHydratedAgents ?? false,
   );
-  const workspaceRouteState = useResolvedWorkspaceRouteState({
-    serverId: normalizedServerId,
-    workspaceId: normalizedWorkspaceId,
-    workspace: workspaceDescriptor,
-    hasHydratedWorkspaces,
-  });
+  const { state: workspaceRouteState, recovery: workspaceRecovery } =
+    useResolvedWorkspaceRouteState({
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+      workspace: workspaceDescriptor,
+      hasHydratedWorkspaces,
+    });
+  const handleRecoverWorkspace = useCallback(() => {
+    workspaceRecovery.restore();
+  }, [workspaceRecovery]);
+  const handleRetryRecoveryInspection = useCallback(() => {
+    workspaceRecovery.retryInspection();
+  }, [workspaceRecovery]);
   const workspaceHeaderCheckoutState = buildWorkspaceHeaderCheckoutState({
     isCheckoutStatusLoading,
     isError: checkoutQuery.isError,
@@ -2691,7 +2712,6 @@ function WorkspaceScreenContent({
         const browserRecord = useBrowserStore.getState().browsersById[browserId];
         useBrowserStore.getState().removeBrowser(browserId);
         removeResidentBrowserWebview(browserId);
-        void getDesktopHost()?.browser?.clearPartition?.(browserId);
 
         // Auto-stop this tab's own preview server if the setting is enabled.
         if (
@@ -3525,6 +3545,7 @@ function WorkspaceScreenContent({
         const confirmed = await registration.confirmClose(tab.target, {
           serverId: normalizedServerId,
           workspaceId: normalizedWorkspaceId,
+          tabId: tab.tabId,
         });
         if (!confirmed) {
           return;
@@ -3574,6 +3595,19 @@ function WorkspaceScreenContent({
       }
     },
     [toast, t],
+  );
+
+  const handleCopyTerminalId = useCallback(
+    async (terminalId: string) => {
+      if (!terminalId) return;
+      try {
+        await Clipboard.setStringAsync(terminalId);
+        toast.copied(t("workspace.tabs.toasts.terminalIdCopiedLabel"));
+      } catch {
+        toast.error(t("workspace.tabs.toasts.copyFailed"));
+      }
+    },
+    [t, toast],
   );
 
   const handleCopyResumeCommand = useCallback(
@@ -4255,6 +4289,8 @@ function WorkspaceScreenContent({
       onRetryHost: handleRetryHost,
       onManageHost: handleManageHost,
       onDismissMissingWorkspace: handleDismissMissingWorkspace,
+      onRecoverWorkspace: handleRecoverWorkspace,
+      onRetryRecoveryInspection: handleRetryRecoveryInspection,
     },
   });
   const gatedWorkspaceScreen = renderWorkspaceScreenGateShell({
@@ -4509,6 +4545,7 @@ function WorkspaceScreenContent({
         onNavigateTab={navigateToTabId}
         onCloseTab={handleCloseTabById}
         onCopyResumeCommand={handleCopyResumeCommand}
+        onCopyTerminalId={handleCopyTerminalId}
         onCopyAgentId={handleCopyAgentId}
         onCopyFilePath={handleCopyFilePath}
         onReloadAgent={handleReloadAgent}
@@ -4537,6 +4574,7 @@ function WorkspaceScreenContent({
     normalizedServerId,
     normalizedWorkspaceId,
     isRouteFocused,
+    handleCopyTerminalId,
     visibleUiTabs,
     hoveredCloseTabKey,
     closingTabIds,
@@ -4633,6 +4671,7 @@ function WorkspaceScreenContent({
           normalizedWorkspaceId={normalizedWorkspaceId}
           onSelectSwitcherTab={handleSelectSwitcherTab}
           onCopyResumeCommand={handleCopyResumeCommand}
+          onCopyTerminalId={handleCopyTerminalId}
           onCopyAgentId={handleCopyAgentId}
           onCopyFilePath={handleCopyFilePath}
           onReloadAgent={handleReloadAgent}
@@ -4655,6 +4694,7 @@ function WorkspaceScreenContent({
           onNavigateTab={navigateToTabId}
           onCloseTab={handleCloseTabById}
           onCopyResumeCommand={handleCopyResumeCommand}
+          onCopyTerminalId={handleCopyTerminalId}
           onCopyAgentId={handleCopyAgentId}
           onCopyFilePath={handleCopyFilePath}
           onReloadAgent={handleReloadAgent}

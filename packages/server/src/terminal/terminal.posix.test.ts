@@ -253,7 +253,7 @@ function lastNonEmptyLineIsPrompt(state: ReturnType<TerminalSession["getState"]>
 }
 
 function removeZshShellIntegrationRuntimeDir(): void {
-  rmSync(join(tmpdir(), `${userInfo().username || "unknown"}-otto-zsh`), {
+  rmSync(join(tmpdir(), `${userInfo().username || "unknown"}-otto-zsh-${process.pid}`), {
     recursive: true,
     force: true,
   });
@@ -272,7 +272,9 @@ describe.skipIf(isPlatform("win32"))("terminal POSIX-only", () => {
     expect(resolvedEnv.TERM).toBe("xterm-256color");
     expect(resolvedEnv.TERM_PROGRAM).toBe("kitty");
     expect(resolvedEnv.OTTO_ZSH_ZDOTDIR).toBe("/tmp/otto-zdotdir");
-    expect(resolvedEnv.ZDOTDIR).not.toBe("/tmp/otto-zdotdir");
+    expect(resolvedEnv.ZDOTDIR).toBe(
+      join(tmpdir(), `${userInfo().username || "unknown"}-otto-zsh-${process.pid}`),
+    );
     expect(existsSync(join(resolvedEnv.ZDOTDIR, ".zshenv"))).toBe(true);
     expect(existsSync(join(resolvedEnv.ZDOTDIR, "otto-integration.zsh"))).toBe(true);
   });

@@ -17,11 +17,14 @@ import {
   expectPickerOpen,
   expectPickerSelected,
   expectStartingRefPickerTriggerPr,
+  fillNewWorkspaceDraft,
   openGlobalNewWorkspaceComposer,
   openBranchPicker,
   openNewWorkspaceComposer,
   openProjectViaDaemon,
   openStartingRefPicker,
+  pasteGithubPrUrl,
+  searchAndSelectBranchInPicker,
   selectBranchInPicker,
   selectGitHubPrInPicker,
   selectPickerOptionByKeyboard,
@@ -30,11 +33,16 @@ import {
 } from "./helpers/new-workspace";
 import { createTempGitRepo, readWorktreeBranchInfo } from "./helpers/workspace";
 import {
+  createLocalGithubPrFixture,
   cloneGithubRepoDefaultBranchOnly,
   createTempGithubRepo,
   hasGithubAuth,
+  type LocalGhPrFixture,
 } from "./helpers/github-fixtures";
 import { getServerId } from "./helpers/server-id";
+import { getE2EDaemonPort } from "./helpers/daemon-port";
+import { chooseAddProjectMethod, expectAddProjectPage } from "./helpers/add-project-flow";
+import { seedSavedSettingsHosts } from "./helpers/settings";
 import {
   expectSidebarWorkspaceSelected,
   expectWorkspaceHeader,
@@ -187,7 +195,9 @@ async function submitNewWorkspaceWithoutPrompt(page: import("@playwright/test").
 test.describe("New workspace flow", () => {
   let client: Awaited<ReturnType<typeof connectNewWorkspaceDaemonClient>>;
   const localWorkspaceIds = new Set<string>();
+  const localProjectIds = new Set<string>();
   const createdWorktreeDirectories = new Set<string>();
+  const localGithubFixtures = new Set<LocalGhPrFixture>();
 
   test.describe.configure({ timeout: 240_000 });
 
@@ -203,10 +213,69 @@ test.describe("New workspace flow", () => {
       for (const workspaceId of localWorkspaceIds) {
         await archiveLocalWorkspaceFromDaemon(client, workspaceId).catch(() => undefined);
       }
+      for (const projectId of localProjectIds) {
+        await client.removeProject(projectId).catch(() => undefined);
+      }
     }
     createdWorktreeDirectories.clear();
     localWorkspaceIds.clear();
+    localProjectIds.clear();
     await client?.close().catch(() => undefined);
+  });
+
+  test.afterAll(async () => {
+    for (const fixture of localGithubFixtures) {
+      await fixture.cleanup();
+    }
+    localGithubFixtures.clear();
+  });
+
+  test("adds a project from the selected empty host", async ({ page }) => {
+    const repo = await createTempGitRepo("new-workspace-project-picker-");
+    const primaryServerId = getServerId();
+    const emptyServerId = "empty-new-workspace-host";
+
+    try {
+      const openedProject = await openProjectViaDaemon(client, repo.path);
+      localWorkspaceIds.add(openedProject.workspaceId);
+      await seedSavedSettingsHosts(page, [
+        {
+          serverId: primaryServerId,
+          label: "Primary host",
+          endpoint: `127.0.0.1:${getE2EDaemonPort()}`,
+        },
+        {
+          serverId: emptyServerId,
+          label: "Empty host",
+          endpoint: "127.0.0.1:9",
+        },
+      ]);
+
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+      await openGlobalNewWorkspaceComposer(page);
+
+      const projectTrigger = page.getByTestId("new-workspace-project-picker-trigger");
+      await projectTrigger.click();
+      await page.getByPlaceholder("Search projects").fill("no matching project");
+      await expect(page.getByTestId("new-workspace-project-picker-add-project")).toBeVisible();
+      await page.keyboard.press("Escape");
+
+      await page.getByTestId("host-picker-trigger").click();
+      await page.getByTestId(`new-workspace-host-picker-option-${emptyServerId}`).click();
+      await expect(projectTrigger).toContainText("Choose project");
+      await projectTrigger.click();
+
+      const addProject = page.getByTestId("new-workspace-project-picker-add-project");
+      await expect(addProject).toContainText("Add project");
+      await expect(addProject).toContainText(/(?:⌘|Ctrl\+)O/);
+      await addProject.click();
+
+      await expectAddProjectPage(page, "method");
+      await chooseAddProjectMethod(page, "directory-search");
+    } finally {
+      await repo.cleanup();
+    }
   });
 
   test("sidebar workspace navigation updates URL and header", async ({ page }) => {
@@ -770,6 +839,102 @@ test.describe("New workspace flow", () => {
     } finally {
       await ghRepo.cleanup();
     }
+  });
+
+  test("pasted GitHub PR replaces a selected branch and creates its worktree", async ({
+    page,
+    context,
+  }) => {
+    const fixture = await createLocalGithubPrFixture();
+    localGithubFixtures.add(fixture);
+    const { pr, mainCheckout } = fixture;
+
+    const openedProject = await openProjectViaDaemon(client, mainCheckout.path);
+    localWorkspaceIds.add(openedProject.workspaceId);
+    localProjectIds.add(openedProject.projectId);
+
+    await gotoAppShell(page);
+    await waitForSidebarHydration(page);
+    await openNewWorkspaceComposer(page, {
+      projectKey: openedProject.projectKey,
+      projectDisplayName: openedProject.projectDisplayName,
+    });
+    await selectWorkspaceIsolation(page, "worktree");
+    await openStartingRefPicker(page);
+    await selectBranchInPicker(page, "main");
+
+    await pasteGithubPrUrl(page, context, pr.url);
+
+    await expect(page.getByTestId("workspace-create-submit")).toBeDisabled();
+    await expectComposerGithubAttachmentPill(page, {
+      number: pr.number,
+      title: pr.title,
+    });
+    await expectStartingRefPickerTriggerPr(page, {
+      number: pr.number,
+      title: pr.title,
+      headRef: pr.branch,
+    });
+
+    await submitNewWorkspaceWithoutPrompt(page);
+
+    const worktree = await assertNewWorkspaceSidebarAndHeader(page, {
+      serverId: getServerId(),
+      client,
+      previousWorkspaceId: openedProject.workspaceId,
+      projectDisplayName: openedProject.projectDisplayName,
+    });
+    createdWorktreeDirectories.add(worktree.workspaceDirectory);
+
+    const branchInfo = await readWorktreeBranchInfo({
+      worktreePath: worktree.workspaceDirectory,
+    });
+    expect(branchInfo.currentBranch).toBe(pr.branch);
+    expect(existsSync(path.join(worktree.workspaceDirectory, "pr-1.txt"))).toBe(true);
+  });
+
+  test("branches remain searchable after a pasted PR and determine the created worktree", async ({
+    page,
+    context,
+  }) => {
+    const fixture = await createLocalGithubPrFixture();
+    localGithubFixtures.add(fixture);
+    const { pr, mainCheckout } = fixture;
+
+    const openedProject = await openProjectViaDaemon(client, mainCheckout.path);
+    localWorkspaceIds.add(openedProject.workspaceId);
+    localProjectIds.add(openedProject.projectId);
+
+    await gotoAppShell(page);
+    await waitForSidebarHydration(page);
+    await openNewWorkspaceComposer(page, {
+      projectKey: openedProject.projectKey,
+      projectDisplayName: openedProject.projectDisplayName,
+    });
+    await selectWorkspaceIsolation(page, "worktree");
+    await pasteGithubPrUrl(page, context, pr.url);
+    await expectStartingRefPickerTriggerPr(page, {
+      number: pr.number,
+      title: pr.title,
+      headRef: pr.branch,
+    });
+
+    await openStartingRefPicker(page);
+    await searchAndSelectBranchInPicker(page, "main");
+    await expectPickerSelected(page, "main");
+    await fillNewWorkspaceDraft(page, `${pr.url}\nKeep this checkout on main`);
+    await expectPickerSelected(page, "main");
+    await submitNewWorkspaceWithoutPrompt(page);
+
+    const worktree = await assertNewWorkspaceSidebarAndHeader(page, {
+      serverId: getServerId(),
+      client,
+      previousWorkspaceId: openedProject.workspaceId,
+      projectDisplayName: openedProject.projectDisplayName,
+    });
+    createdWorktreeDirectories.add(worktree.workspaceDirectory);
+
+    expect(existsSync(path.join(worktree.workspaceDirectory, "pr-1.txt"))).toBe(false);
   });
 
   test("selected GitHub PR creates the worktree from the PR head even when the head branch is not fetched", async ({

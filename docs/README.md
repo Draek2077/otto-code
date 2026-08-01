@@ -148,7 +148,7 @@ An unlisted page is an invisible page.
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [release.md](release.md)                       | Release playbook, draft releases, the completion checklist                                                                                         |
 | [fork-release-guide.md](fork-release-guide.md) | This fork's release infrastructure versus upstream — EAS/Play/Cloudflare/domain gaps                                                               |
-| [upstream-merges.md](upstream-merges.md)       | Ingesting upstream Paseo changes — remote setup, rebrand tooling, the merge playbook, merge-at-a-tag cadence, the intent ledger of what we skipped |
+| [upstream-merges.md](upstream-merges.md)       | Ingesting upstream Otto changes — remote setup, rebrand tooling, the merge playbook, merge-at-a-tag cadence, the intent ledger of what we skipped  |
 | [android.md](android.md)                       | App variants, local and cloud builds, EAS workflows                                                                                                |
 | [desktop-linux.md](desktop-linux.md)           | Linux desktop — packaging (deb/rpm/AppImage), the sandbox profile, GPU fallback, diagnostics                                                       |
 | [docker.md](docker.md)                         | Running the daemon and bundled web UI in Docker — volumes, agent images, security                                                                  |

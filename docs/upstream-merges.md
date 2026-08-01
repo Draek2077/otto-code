@@ -276,6 +276,22 @@ These carry across merges. Revisit only when the stated trigger fires.
   phantom parents, stuck sessions, hidden Codex subagents. We keep **our client
   presentation** and project their store into Otto's observed-subagent model,
   which carries the per-subagent usage accounting, nesting, and stop control
-  their descriptor has no room for. The carried patch is small and deliberate:
-  don't register their `provider-subagent-panel`, don't take their `select.ts`
-  discriminated union. See `projects/upstream-subagent-convergence/`.
+  their descriptor has no room for.
+
+  **Amended at v0.2.5 (2026-08-01).** This entry used to end "don't register
+  their `provider-subagent-panel`, don't take their `select.ts` discriminated
+  union." That instruction assumed the choice was our presentation _or_ theirs.
+  It isn't. `select.ts` now carries a union tagged on `kind`: `OttoSubagentRow`
+  keeps the full accounting (`cumulativeUsage`, `toolUseCount`,
+  `personalityName`, …) and `ProviderSubagentRow` carries the provider
+  descriptor. Our presentation still owns our rows; theirs adds a row kind our
+  model cannot represent, because a provider-reported subagent has no Otto agent
+  record behind it. Their panel is registered and wired end to end
+  (`workspace-tab-menu.ts` opens the `provider_subagent` tab; the panel reads
+  `subagents/provider-store`), which is what makes provider-native subagents
+  visible at all — previously they were not.
+
+  So: still take the daemon side verbatim, still keep our presentation for our
+  own rows, and **do** take their row kind, their panel, and the `${row.kind}_`
+  presentation-key prefix that stops the two id spaces colliding. See
+  `projects/upstream-subagent-convergence/`.

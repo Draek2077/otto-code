@@ -69,7 +69,7 @@ function buildRowPresentation(row: SubagentRow): WorkspaceTabPresentation {
     icon: getProviderIcon(row.provider),
     // Personality-spawned subagents keep their identity colors on the glyph
     // and busy loader; rows without one fall back to the plain themed icon.
-    personalitySpinner: row.personalitySpinner ?? null,
+    personalitySpinner: row.kind === "otto" ? (row.personalitySpinner ?? null) : null,
     provider: row.provider,
   };
 }
@@ -118,7 +118,11 @@ export function SubagentsTrack({
     [rows, pinnedIds],
   );
   const completedClearRows = useMemo<ClearableSubagentRow[]>(
-    () => completed.map((row) => ({ id: row.id, cumulativeTokens: row.cumulativeTokens })),
+    () =>
+      completed.map((row) => ({
+        id: row.id,
+        cumulativeTokens: row.kind === "otto" ? row.cumulativeTokens : undefined,
+      })),
     [completed],
   );
   const handleClearCompleted = useCallback(() => {
@@ -315,12 +319,12 @@ function SubagentsTrackRow({
   const displayLabel =
     presentation.titleState === "loading" ? t("common.states.loading") : presentation.label;
   const rowAction = resolveSubagentRowAction(row.status);
-  const tokenLabel = formatCompactTokenCount(row.cumulativeTokens);
+  const tokenLabel = row.kind === "otto" ? formatCompactTokenCount(row.cumulativeTokens) : null;
   // Liveness readouts, in the same order Claude's own background-task panel
   // uses: elapsed · tokens · tool uses · current tool. Each is null when the
   // provider doesn't report it, so the row degrades to what it can honestly say.
-  const toolUseLabel = formatSubagentToolUseCount(row.toolUseCount);
-  const currentToolLabel = formatSubagentCurrentTool(row.currentTool);
+  const toolUseLabel = row.kind === "otto" ? formatSubagentToolUseCount(row.toolUseCount) : null;
+  const currentToolLabel = row.kind === "otto" ? formatSubagentCurrentTool(row.currentTool) : null;
   const isRunning = isSubagentRowRunning(row.status);
   const frozenElapsed = formatSubagentElapsed(row);
   const handlePress = useCallback(() => {
@@ -340,7 +344,8 @@ function SubagentsTrackRow({
   const actionsAlwaysVisible = isNative || isCompact;
   const actionsVisible = actionsAlwaysVisible || hovered;
   // Observed subagents have no runtime to detach — hide the action for them.
-  const detachHandler = row.attend === "observed" ? undefined : onDetachSubagent;
+  const detachHandler =
+    row.kind !== "otto" || row.attend === "observed" ? undefined : onDetachSubagent;
 
   return (
     // Wrapper View handles hover so moving the pointer between the row and

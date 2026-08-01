@@ -32,7 +32,7 @@ export function CommunityLinks() {
     void openLink("https://github.com/Draek2077/otto-code");
   }, []);
 
-  // Otto takes no sponsorships of its own — this points at Paseo, the upstream
+  // Otto takes no sponsorships of its own — this points at Otto, the upstream
   // project Otto is forked from. The label has to say so: a bare "Sponsor" next
   // to Otto's own Star/Feedback buttons reads as sponsoring Otto.
   const handleOpenSponsor = useCallback(() => {
@@ -69,7 +69,7 @@ export function CommunityLinks() {
           onPress={handleOpenSponsor}
           testID="community-links-sponsor"
         >
-          Sponsor Paseo
+          Sponsor Otto
         </Button>
         <Button
           variant="ghost"

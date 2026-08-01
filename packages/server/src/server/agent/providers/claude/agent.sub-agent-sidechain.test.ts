@@ -139,146 +139,6 @@ function buildTailScenarioEvents(actionCount: number): unknown[] {
   ];
 }
 
-// A plain Task sub-agent whose live sidechain assistant frame carries the full
-// `message.usage` split + a (cheaper) model — the real per-frame API numbers.
-function buildSidechainUsageEvents(): unknown[] {
-  return [
-    {
-      type: "system",
-      subtype: "init",
-      session_id: "sidechain-usage-session",
-      permissionMode: "default",
-      model: "opus",
-    },
-    {
-      type: "stream_event",
-      parent_tool_use_id: null,
-      event: {
-        type: "content_block_start",
-        index: 0,
-        content_block: {
-          type: "tool_use",
-          id: "task-usage-1",
-          name: "Task",
-          input: { subagent_type: "Explore", description: "Summarize the module" },
-        },
-      },
-    },
-    // The sub-agent's assistant turn on the sidechain, carrying real usage + model.
-    {
-      type: "assistant",
-      parent_tool_use_id: "task-usage-1",
-      message: {
-        id: "sub-usage-msg-1",
-        role: "assistant",
-        model: "claude-haiku-4-5-20251001",
-        content: [{ type: "text", text: "Subagent narration." }],
-        usage: {
-          input_tokens: 4,
-          output_tokens: 913,
-          cache_creation_input_tokens: 726,
-          cache_read_input_tokens: 68161,
-        },
-      },
-    },
-    {
-      type: "assistant",
-      parent_tool_use_id: null,
-      message: {
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: "task-usage-1",
-            tool_name: "Task",
-            content: "done",
-            is_error: false,
-          },
-        ],
-      },
-    },
-    {
-      type: "result",
-      subtype: "success",
-      usage: { input_tokens: 1, cache_read_input_tokens: 0, output_tokens: 1 },
-      total_cost_usd: 0,
-    },
-  ];
-}
-
-function buildWorkflowScenarioEvents(
-  notificationStatus: "completed" | "failed" | "stopped",
-): unknown[] {
-  return [
-    {
-      type: "system",
-      subtype: "init",
-      session_id: "workflow-session",
-      permissionMode: "default",
-      model: "opus",
-    },
-    // The Workflow tool call is a normal top-level tool_use, cached under its id
-    // so task_* system messages can be classified as a workflow run.
-    {
-      type: "stream_event",
-      parent_tool_use_id: null,
-      event: {
-        type: "content_block_start",
-        index: 0,
-        content_block: {
-          type: "tool_use",
-          id: "wf-call-1",
-          name: "Workflow",
-          input: { name: "spec" },
-        },
-      },
-    },
-    {
-      type: "system",
-      subtype: "task_started",
-      session_id: "workflow-session",
-      task_id: "wf-task-1",
-      tool_use_id: "wf-call-1",
-      task_type: "local_workflow",
-      workflow_name: "spec",
-      description: "Deep research workflow",
-    },
-    {
-      type: "system",
-      subtype: "task_progress",
-      session_id: "workflow-session",
-      task_id: "wf-task-1",
-      tool_use_id: "wf-call-1",
-      description: "Fanning out research agents",
-      summary: "Phase 1: gather sources",
-      usage: { total_tokens: 1200, tool_uses: 4, duration_ms: 5000 },
-      // The SDK's own liveness pair: how many tools the run has invoked and
-      // which one it is on right now.
-      last_tool_name: "Bash",
-    },
-    {
-      type: "system",
-      subtype: "task_notification",
-      session_id: "workflow-session",
-      task_id: "wf-task-1",
-      tool_use_id: "wf-call-1",
-      status: notificationStatus,
-      output_file: "/tmp/workflow-out.md",
-      summary: "Synthesis complete",
-      usage: { total_tokens: 4800, tool_uses: 12, duration_ms: 42000 },
-    },
-    {
-      type: "result",
-      subtype: "success",
-      usage: {
-        input_tokens: 1,
-        cache_read_input_tokens: 0,
-        output_tokens: 1,
-      },
-      total_cost_usd: 0,
-    },
-  ];
-}
-
 describe("ClaudeAgentSession sub-agent sidechain updates", () => {
   const logger = createTestLogger();
 
@@ -350,6 +210,21 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
           tool_name: "Edit",
           parent_tool_use_id: "task-call-1",
           elapsed_time_seconds: 1,
+        },
+        {
+          type: "user",
+          parent_tool_use_id: "task-call-1",
+          message: {
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "sub-read-1",
+                tool_name: "Read",
+                content: "README contents",
+                is_error: false,
+              },
+            ],
+          },
         },
         {
           type: "assistant",
@@ -447,6 +322,44 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
     );
 
     expect(projectedTaskCalls).toHaveLength(1);
+
+    const providerEvents = events.flatMap((event) =>
+      event.type === "provider_subagent" ? [event.event] : [],
+    );
+    expect(providerEvents).toContainEqual({
+      type: "timeline",
+      id: "task-call-1",
+      item: expect.objectContaining({
+        type: "tool_call",
+        callId: "sub-read-1",
+        status: "running",
+      }),
+    });
+    expect(providerEvents).toContainEqual({
+      type: "timeline",
+      id: "task-call-1",
+      item: expect.objectContaining({
+        type: "tool_call",
+        callId: "sub-read-1",
+        status: "completed",
+      }),
+    });
+    expect(providerEvents).toContainEqual({
+      type: "timeline",
+      id: "task-call-1",
+      item: {
+        type: "assistant_message",
+        messageId: "subagent-message-1",
+        text: "Sub-agent narration belongs inside the Task row, not the parent transcript.",
+      },
+    });
+    expect(providerEvents.at(-1)).toMatchObject({
+      type: "upsert",
+      id: "task-call-1",
+      title: "Explore",
+      description: "Inspect repository structure",
+      status: "completed",
+    });
   });
 
   test("keeps sidechain assistant text out of the parent transcript", async () => {
@@ -489,87 +402,44 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
     });
   });
 
-  test("promotes the sidechain to observed subagent lifecycle + timeline events", async () => {
+  test("keeps a failed Task subagent failed when the parent turn succeeds", async () => {
+    const failedEvents = buildTailScenarioEvents(1);
+    const taskResult = failedEvents.find(
+      (event) =>
+        typeof event === "object" &&
+        event !== null &&
+        "type" in event &&
+        event.type === "assistant",
+    ) as { message: Record<string, unknown> } | undefined;
+    if (!taskResult) throw new Error("expected Task result fixture");
+    taskResult.message = {
+      ...taskResult.message,
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "task-tail-1",
+          tool_name: "Task",
+          content: "failed",
+          is_error: true,
+        },
+      ],
+    };
+    queryFactory.mockImplementation(() => buildQueryMock(failedEvents));
     const session = await new ClaudeAgentClient({
       logger,
       queryFactory,
       resolveBinary: async () => "/test/claude/bin",
-    }).createSession({
-      provider: "claude",
-      cwd: process.cwd(),
-    });
+    }).createSession({ provider: "claude", cwd: process.cwd() });
 
     const events = await collectUntilTerminal(streamSession(session, "delegate work"));
     await session.close();
 
-    const updates = events.filter(
-      (event): event is Extract<AgentStreamEvent, { type: "observed_subagent_updated" }> =>
-        event.type === "observed_subagent_updated",
-    );
-    expect(updates.length).toBeGreaterThanOrEqual(2);
-
-    const first = updates[0];
-    expect(first?.update).toMatchObject({
-      key: "task-call-1",
-      status: "running",
-      subAgentType: "Explore",
-      description: "Inspect repository structure",
-    });
-
-    // The Task tool_result settles the observed row.
-    const last = updates[updates.length - 1];
-    expect(last?.update).toMatchObject({ key: "task-call-1", status: "idle" });
-
-    // Sidechain assistant text lands in the observed subagent's own timeline.
-    const observedTimeline = events.filter(
-      (event): event is Extract<AgentStreamEvent, { type: "observed_subagent_timeline" }> =>
-        event.type === "observed_subagent_timeline",
-    );
     expect(
-      observedTimeline.some(
-        (event) =>
-          event.key === "task-call-1" &&
-          event.item.type === "assistant_message" &&
-          event.item.text.includes("Sub-agent narration"),
-      ),
-    ).toBe(true);
-  });
-
-  test("emits the plain Task sub-agent's real usage split + model from the live sidechain", async () => {
-    queryFactory.mockImplementation(() => buildQueryMock(buildSidechainUsageEvents()));
-
-    const session = await new ClaudeAgentClient({
-      logger,
-      queryFactory,
-      resolveBinary: async () => "/test/claude/bin",
-    }).createSession({
-      provider: "claude",
-      cwd: process.cwd(),
-    });
-
-    const events = await collectUntilTerminal(streamSession(session, "delegate work"));
-    await session.close();
-
-    const withUsage = events.findLast(
-      (event): event is Extract<AgentStreamEvent, { type: "observed_subagent_updated" }> =>
-        event.type === "observed_subagent_updated" &&
-        event.update.key === "task-usage-1" &&
-        event.update.usage !== undefined,
-    );
-
-    expect(withUsage).toBeDefined();
-    // cache_read → cachedInputTokens, cache_creation → cacheCreationInputTokens.
-    expect(withUsage?.update.usage).toMatchObject({
-      inputTokens: 4,
-      cachedInputTokens: 68161,
-      cacheCreationInputTokens: 726,
-      outputTokens: 913,
-    });
-    // Priced on the subagent's own (Haiku) model, not the parent's (opus).
-    expect(withUsage?.update.usage?.totalCostUsd).toBeGreaterThan(0);
-    // The sub-agent ran a cheaper model than the parent (opus) — pricing must
-    // use THIS model, so it has to be reported.
-    expect(withUsage?.update.model).toBe("claude-haiku-4-5-20251001");
+      events
+        .filter((event) => event.type === "provider_subagent")
+        .map((event) => event.event)
+        .at(-1),
+    ).toMatchObject({ type: "upsert", id: "task-tail-1", status: "failed" });
   });
 
   test("tails sub-agent actions instead of dropping latest entries at cap", async () => {
@@ -605,135 +475,5 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
     expect(latest.detail.log).not.toContain("[Read] file-5.md");
     expect(latest.detail.log).toContain("[Read] file-6.md");
     expect(latest.detail.log).toContain("[Read] file-205.md");
-  });
-
-  test("surfaces a Workflow orchestration run as an observed subagent", async () => {
-    queryFactory.mockImplementation(() => buildQueryMock(buildWorkflowScenarioEvents("completed")));
-
-    const session = await new ClaudeAgentClient({
-      logger,
-      queryFactory,
-      resolveBinary: async () => "/test/claude/bin",
-    }).createSession({
-      provider: "claude",
-      cwd: process.cwd(),
-    });
-
-    const events = await collectUntilTerminal(streamSession(session, "ultracode: research this"));
-    await session.close();
-
-    const updates = events.filter(
-      (event): event is Extract<AgentStreamEvent, { type: "observed_subagent_updated" }> =>
-        event.type === "observed_subagent_updated",
-    );
-    // task_started + task_progress + task_notification all route to the observed row.
-    expect(updates.length).toBeGreaterThanOrEqual(2);
-
-    const first = updates[0];
-    expect(first?.update).toMatchObject({
-      key: "wf-call-1",
-      taskId: "wf-task-1",
-      status: "running",
-      // The workflow name becomes the frozen row label so it reads as a workflow.
-      subAgentType: "Workflow: spec",
-    });
-
-    // The completion notification settles the observed row and carries the run's
-    // cumulative token cost.
-    const last = updates[updates.length - 1];
-    expect(last?.update).toMatchObject({ key: "wf-call-1", status: "idle" });
-    expect(last?.update.cumulativeTokens).toBe(4800);
-  });
-
-  test("carries the SDK's tool-use count and current tool onto the observed row", async () => {
-    queryFactory.mockImplementation(() => buildQueryMock(buildWorkflowScenarioEvents("completed")));
-
-    const session = await new ClaudeAgentClient({
-      logger,
-      queryFactory,
-      resolveBinary: async () => "/test/claude/bin",
-    }).createSession({
-      provider: "claude",
-      cwd: process.cwd(),
-    });
-
-    const events = await collectUntilTerminal(streamSession(session, "ultracode: research this"));
-    await session.close();
-
-    const updates = events.filter(
-      (event): event is Extract<AgentStreamEvent, { type: "observed_subagent_updated" }> =>
-        event.type === "observed_subagent_updated",
-    );
-
-    // Mid-run: "89 tool uses · Bash" — how much work it has done and what it is
-    // doing right now, both read from the SDK rather than inferred.
-    const progress = updates.find((event) => event.update.currentTool !== undefined);
-    expect(progress?.update).toMatchObject({
-      key: "wf-call-1",
-      status: "running",
-      toolUseCount: 4,
-      currentTool: "Bash",
-    });
-
-    // The settle carries the final count but no current tool — a finished run
-    // isn't running anything.
-    const last = updates[updates.length - 1];
-    expect(last?.update.toolUseCount).toBe(12);
-    expect(last?.update.currentTool).toBeUndefined();
-  });
-
-  test("omits the liveness fields when the provider reports no tool signal", async () => {
-    // The plain-Task fixture's task lifecycle carries no usage.tool_uses and no
-    // last_tool_name. The row must simply say nothing — never a zero, never a
-    // guessed tool name.
-    const session = await new ClaudeAgentClient({
-      logger,
-      queryFactory,
-      resolveBinary: async () => "/test/claude/bin",
-    }).createSession({
-      provider: "claude",
-      cwd: process.cwd(),
-    });
-
-    const events = await collectUntilTerminal(streamSession(session, "delegate work"));
-    await session.close();
-
-    const updates = events.filter(
-      (event): event is Extract<AgentStreamEvent, { type: "observed_subagent_updated" }> =>
-        event.type === "observed_subagent_updated",
-    );
-    expect(updates.length).toBeGreaterThan(0);
-    for (const event of updates) {
-      expect(event.update).not.toHaveProperty("toolUseCount");
-      expect(event.update).not.toHaveProperty("currentTool");
-    }
-  });
-
-  test("surfaces a failed Workflow run as an error requiring attention", async () => {
-    queryFactory.mockImplementation(() => buildQueryMock(buildWorkflowScenarioEvents("failed")));
-
-    const session = await new ClaudeAgentClient({
-      logger,
-      queryFactory,
-      resolveBinary: async () => "/test/claude/bin",
-    }).createSession({
-      provider: "claude",
-      cwd: process.cwd(),
-    });
-
-    const events = await collectUntilTerminal(streamSession(session, "ultracode: research this"));
-    await session.close();
-
-    const updates = events.filter(
-      (event): event is Extract<AgentStreamEvent, { type: "observed_subagent_updated" }> =>
-        event.type === "observed_subagent_updated",
-    );
-    // The previously-invisible failure signal must surface as error + attention.
-    const last = updates[updates.length - 1];
-    expect(last?.update).toMatchObject({
-      key: "wf-call-1",
-      status: "error",
-      requiresAttention: true,
-    });
   });
 });

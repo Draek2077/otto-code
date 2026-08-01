@@ -103,7 +103,7 @@ import {
   setAgentModeCommand,
   updateAgentCommand,
 } from "../lifecycle-command.js";
-import type { GitHubService } from "../../../services/github-service.js";
+import type { ForgeService } from "../../../services/github-service.js";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
 import type { ProjectRegistry, WorkspaceRegistry } from "../../workspace-registry.js";
 import { WorktreeRequestError } from "../../worktree-errors.js";
@@ -166,7 +166,7 @@ export interface OttoToolHostDependencies {
    * worse than a missing one.
    */
   personalityMemory?: PersonalityMemoryService | null;
-  github?: GitHubService;
+  github?: ForgeService;
   workspaceGitService?: Pick<
     WorkspaceGitService,
     "getSnapshot" | "listWorktrees" | "resolveRepoRoot"

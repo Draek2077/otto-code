@@ -1,12 +1,13 @@
 import { useState, useCallback, useEffect, useMemo, type ReactElement } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getForgePresentation } from "@/git/forge";
+import { deriveMergeCapability } from "@/git/merge-capability";
 import { useTranslation } from "react-i18next";
 import { type CheckoutGitActionStatus, useCheckoutGitActionsStore } from "@/git/actions-store";
 import { type CheckoutStatusPayload, useCheckoutStatusQuery } from "@/git/use-status-query";
 import { type CheckoutPrStatusPayload, useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
 import {
   buildGitActions,
-  getGitHostingProviderDisplayName,
   narrowPullRequestState,
   type BuildGitActionsInput,
   type GitAction,
@@ -324,6 +325,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     status: prStatus,
     githubFeaturesEnabled,
     hostingProvider,
+    forge,
   } = useCheckoutPrStatusQuery({
     serverId,
     cwd,
@@ -705,10 +707,13 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   }, [prStatus?.url, handleCreatePr]);
 
   // Build actions
-  const gitActionsInput = useMemo<BuildGitActionsInput>(
-    () => ({
+  const gitActionsInput = useMemo<BuildGitActionsInput>(() => {
+    const presentation = getForgePresentation(forge);
+    return {
       isGit,
       githubFeaturesEnabled,
+      forgeBrandLabel: presentation.brandLabel,
+      forgeChangeRequestNoun: presentation.changeRequestAbbrev,
       githubAutoMergeActionsEnabled,
       hasPullRequest,
       pullRequestUrl: prStatus?.url ?? null,
@@ -716,8 +721,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       pullRequestIsDraft: prStatus?.isDraft ?? false,
       pullRequestIsMerged: prStatus?.isMerged ?? false,
       pullRequestMergeable: prStatus?.mergeable ?? "UNKNOWN",
-      pullRequestGithub: prStatus?.github ?? null,
-      pullRequestHosting: prStatus?.hosting ?? null,
+      mergeCapability: deriveMergeCapability(prStatus?.forgeSpecific, prStatus?.github),
       hostingProvider,
       hasRemote,
       isOttoOwnedWorktree,
@@ -824,74 +828,74 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
           handler: handleArchiveWorkspace,
         },
       },
-    }),
-    [
-      isGit,
-      hasRemote,
-      hasPullRequest,
-      prStatus?.url,
-      prStatus?.state,
-      prStatus?.isDraft,
-      prStatus?.isMerged,
-      prStatus?.mergeable,
-      prStatus?.github,
-      prStatus?.hosting,
-      aheadCount,
-      behindBaseCount,
-      isOttoOwnedWorktree,
-      isOnBaseBranch,
-      githubFeaturesEnabled,
-      githubAutoMergeActionsEnabled,
-      hasUncommittedChanges,
-      aheadOfOrigin,
-      behindOfOrigin,
-      shipDefault,
-      baseRefLabel,
-      shouldPromoteArchive,
-      hideMergeIntoBaseAction,
-      actionsDisabled,
-      commitStatus,
-      pullStatus,
-      pushStatus,
-      pullAndPushStatus,
-      prCreateStatus,
-      mergePrStatuses.squash,
-      mergePrStatuses.merge,
-      mergePrStatuses.rebase,
-      enablePrAutoMergeStatuses.squash,
-      enablePrAutoMergeStatuses.merge,
-      enablePrAutoMergeStatuses.rebase,
-      disablePrAutoMergeStatus,
-      mergeStatus,
-      mergeFromBaseStatus,
-      archiveController.canArchive,
-      archiveController.isArchiving,
-      handleCommit,
-      handlePull,
-      handlePush,
-      handlePullAndPush,
-      handlePrAction,
-      handleMergePr,
-      handleEnablePrAutoMerge,
-      handleDisablePrAutoMerge,
-      handleMergeBranch,
-      handleMergeFromBase,
-      handleArchiveWorkspace,
-      icons,
-      hostingProvider,
-      baseRef,
-    ],
-  );
+    };
+  }, [
+    isGit,
+    hasRemote,
+    hasPullRequest,
+    prStatus?.url,
+    prStatus?.state,
+    prStatus?.isDraft,
+    prStatus?.isMerged,
+    prStatus?.mergeable,
+    prStatus?.github,
+    prStatus?.forgeSpecific,
+    forge,
+    aheadCount,
+    behindBaseCount,
+    isOttoOwnedWorktree,
+    isOnBaseBranch,
+    githubFeaturesEnabled,
+    githubAutoMergeActionsEnabled,
+    hasUncommittedChanges,
+    aheadOfOrigin,
+    behindOfOrigin,
+    shipDefault,
+    baseRefLabel,
+    shouldPromoteArchive,
+    hideMergeIntoBaseAction,
+    actionsDisabled,
+    commitStatus,
+    pullStatus,
+    pushStatus,
+    pullAndPushStatus,
+    prCreateStatus,
+    mergePrStatuses.squash,
+    mergePrStatuses.merge,
+    mergePrStatuses.rebase,
+    enablePrAutoMergeStatuses.squash,
+    enablePrAutoMergeStatuses.merge,
+    enablePrAutoMergeStatuses.rebase,
+    disablePrAutoMergeStatus,
+    mergeStatus,
+    mergeFromBaseStatus,
+    archiveController.canArchive,
+    archiveController.isArchiving,
+    handleCommit,
+    handlePull,
+    handlePush,
+    handlePullAndPush,
+    handlePrAction,
+    handleMergePr,
+    handleEnablePrAutoMerge,
+    handleDisablePrAutoMerge,
+    handleMergeBranch,
+    handleMergeFromBase,
+    handleArchiveWorkspace,
+    icons,
+    hostingProvider,
+    baseRef,
+  ]);
 
   const gitActions: GitActions = useMemo(
     () =>
       translateGitActions(buildGitActions(gitActionsInput), {
         baseRefLabel,
         hasPullRequest,
-        hostingProvider,
+        forge,
         t,
       }),
-    [gitActionsInput, baseRefLabel, hasPullRequest, hostingProvider, t],
+    [gitActionsInput, baseRefLabel, hasPullRequest, forge, t],
   );
 
   return { gitActions, branchLabel, isGit };
@@ -900,7 +904,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
 interface TranslateGitActionsInput {
   baseRefLabel: string;
   hasPullRequest: boolean;
-  hostingProvider: GitHostingProviderId | null;
+  forge: string;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
 
@@ -1049,7 +1053,7 @@ function getTranslatedGitActionLabels(
 
 function translateGitActionUnavailableMessage(
   message: string | undefined,
-  { baseRefLabel, hostingProvider, t }: TranslateGitActionsInput,
+  { baseRefLabel, forge, t }: TranslateGitActionsInput,
 ): string | undefined {
   if (!message) return undefined;
   const keyByMessage: Record<string, string> = {
@@ -1108,7 +1112,7 @@ function translateGitActionUnavailableMessage(
   // The "<provider> isn't connected" messages carry the workspace's hosting
   // provider name, so they match by their invariant prefix instead of the
   // full string.
-  const providerName = getGitHostingProviderDisplayName(hostingProvider);
+  const providerName = getForgePresentation(forge).brandLabel;
   if (message.startsWith("View PR isn't available right now because ")) {
     return t("workspace.git.actions.unavailable.viewPrNoGithub", { provider: providerName });
   }

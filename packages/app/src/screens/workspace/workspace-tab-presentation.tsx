@@ -64,6 +64,7 @@ function WorkspaceTabPresentationResolverInner({
   const descriptor = registration.useDescriptor(tab.target as never, {
     serverId,
     workspaceId,
+    tabId: tab.tabId,
   });
 
   const presentation = useMemo(

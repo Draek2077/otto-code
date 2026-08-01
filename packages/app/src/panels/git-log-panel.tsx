@@ -49,6 +49,7 @@ function useGitLogPanelDescriptor(
   const { t } = useTranslation();
   return {
     label: gitLogTabTitle(target.operation, t),
+    tooltip: gitLogTabTitle(target.operation, t),
     subtitle: t("workspace.git.log.subtitle"),
     titleState: "ready",
     icon: SquareTerminal,

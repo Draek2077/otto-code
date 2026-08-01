@@ -1,5 +1,6 @@
 import { type ReactElement, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { ForgeBrandIcon } from "@/git/forge-icon";
 import {
   ActivityIndicator,
   Pressable,
@@ -11,7 +12,6 @@ import { useMutation } from "@tanstack/react-query";
 import { Check, ChevronDown } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { EditorAppIcon } from "@/components/icons/editor-app-icons";
-import { GitHubIcon } from "@/components/icons/github-icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,7 +49,6 @@ interface OpenTarget {
 
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedEditorAppIcon = withUnistyles(EditorAppIcon);
-const ThemedGitHubIcon = withUnistyles(GitHubIcon);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedCheckIcon = withUnistyles(Check);
 
@@ -126,11 +125,11 @@ export function WorkspaceOpenInEditorButton({
         isLocalExecution: isLocalDaemon,
         checkoutStatus,
       }).map((target) => {
-        if (target.source === "github") {
+        if (target.source === "forge") {
           return {
             id: target.id,
             label: target.label,
-            icon: <ThemedGitHubIcon size={16} uniProps={mutedColorMapping} />,
+            icon: <ForgeBrandIcon iconKind={target.forge} size={16} uniProps={mutedColorMapping} />,
             onOpen: () => openLink(target.url),
           };
         }

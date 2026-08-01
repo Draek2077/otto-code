@@ -11,6 +11,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import * as Haptics from "expo-haptics";
+import { useProjects } from "@/hooks/use-projects";
 import { useMutation } from "@tanstack/react-query";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
@@ -503,11 +504,18 @@ function ProjectMenuItems({
   // checkout is also the directory the CLI actually reads project context from,
   // which the originating project row cannot name. It lives on the workspace
   // "..." menu instead, where the workspace and its git path are unambiguous.
+  // Paseo's project settings route is keyed by (serverId, projectId) rather than
+  // the cross-host projectKey, so resolve one owning host to address it.
+  const { projects: allProjects } = useProjects();
+  const settingsHost = useMemo(
+    () => allProjects.find((entry) => entry.projectKey === projectKey)?.hosts[0] ?? null,
+    [allProjects, projectKey],
+  );
   const handleOpenProjectSettings = useCallback(() => {
-    if (projectKey.trim().length === 0) return;
-    router.navigate(buildProjectSettingsRoute(projectKey));
-  }, [projectKey]);
-  const canOpenProjectSettings = projectKey.trim().length > 0;
+    if (!settingsHost) return;
+    router.navigate(buildProjectSettingsRoute(settingsHost.serverId, settingsHost.projectId));
+  }, [settingsHost]);
+  const canOpenProjectSettings = settingsHost !== null;
   // Desktop-only: open a second window that lands on this project via the same
   // open-project flow as a CLI launch. The project stays visible here too — no
   // ownership, no move.
@@ -1658,7 +1666,7 @@ function WorkspaceRowWithMenu({
     },
     onSuccess: (baseWorkspace) => {
       useSessionStore.getState().mergeWorkspaces(workspace.serverId, [baseWorkspace]);
-      navigateToWorkspace(workspace.serverId, baseWorkspace.id);
+      navigateToWorkspace({ serverId: workspace.serverId, workspaceId: baseWorkspace.id });
     },
     onError: (error) => {
       toast.error(
@@ -1766,7 +1774,7 @@ function WorkspaceRowItem({
       return;
     }
     onWorkspacePress?.();
-    navigateToWorkspace(workspace.serverId, workspace.workspaceId);
+    navigateToWorkspace({ serverId: workspace.serverId, workspaceId: workspace.workspaceId });
   }, [onWorkspacePress, workspace.serverId, workspace.workspaceId]);
 
   return (
@@ -2037,7 +2045,6 @@ function ProjectBlock({
       }
 
       void removeProjectFromHosts({
-        projectKey: project.projectKey,
         targets: readiness.targets,
         getClient: (serverId) => getHostRuntimeStore().getClient(serverId),
       })

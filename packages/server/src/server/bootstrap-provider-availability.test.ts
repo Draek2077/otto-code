@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -18,7 +19,9 @@ describe("bootstrap provider availability", () => {
     process.env.PATH = originalEnv.PATH;
     process.env.PATHEXT = originalEnv.PATHEXT;
     await Promise.all(
-      tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+      tempRoots
+        .splice(0)
+        .map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })),
     );
   });
 
@@ -26,12 +29,13 @@ describe("bootstrap provider availability", () => {
     const { createOttoDaemon } = await import("./bootstrap.js");
     const root = await mkdtemp(path.join(os.tmpdir(), "otto-bootstrap-provider-"));
     tempRoots.push(root);
-    const binDir = await mkdtemp(path.join(os.tmpdir(), "otto-bootstrap-provider-bin-"));
-    tempRoots.push(binDir);
-    process.env.PATH = binDir;
-    if (process.platform === "win32") {
-      process.env.PATHEXT = ".CMD";
-    }
+    const gitPath = execFileSync(process.platform === "win32" ? "where" : "which", ["git"], {
+      encoding: "utf8",
+    })
+      .split(/\r?\n/)[0]
+      .trim();
+    process.env.PATH = path.dirname(gitPath);
+    expect(execFileSync("git", ["--version"], { encoding: "utf8" })).toMatch(/git version/i);
     const ottoHome = path.join(root, ".otto");
     const staticDir = path.join(root, "static");
     const agentStoragePath = path.join(ottoHome, "agents");
@@ -75,7 +79,7 @@ describe("bootstrap provider availability", () => {
       agentClients: {},
       agentStoragePath,
       relayEnabled: false,
-      appBaseUrl: "https://app.otto-code.ai",
+      appBaseUrl: "https://app.otto-code.me",
       openai: undefined,
       speech: undefined,
     };

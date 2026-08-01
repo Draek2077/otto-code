@@ -5,7 +5,7 @@ import { z } from "zod";
 // canonical shape shared by the daemon and the app; the orchestration runtime
 // (see projects/agent-orchestration) enforces it at the worker tool boundary and
 // reads `verdict`/`score` directly to drive gates and the loop-until-N-good
-// pattern. Absorbs upstream Paseo's `verify·spec` auditor output ("YES/NO per
+// pattern. Absorbs upstream Otto's `verify·spec` auditor output ("YES/NO per
 // acceptance criterion, with evidence").
 //
 // Wire-forward-compat: kept a pure structural schema with plain leaves (no

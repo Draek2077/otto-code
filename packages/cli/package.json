@@ -21,7 +21,8 @@
     "build:clean": "npm run clean && npm run build",
     "prepack": "npm run build:clean",
     "typecheck": "tsgo --noEmit",
-    "test": "npm run test:local",
+    "test": "npm run test:unit && npm run test:local",
+    "test:unit": "vitest run src",
     "test:local": "tsx tests/run-all.ts",
     "test:e2e": "npm run test:local",
     "test:e2e:lifecycle": "npx tsx tests/e2e/agent-lifecycle.test.ts"
@@ -37,7 +38,8 @@
     "mime-types": "^2.1.35",
     "tree-kill": "^1.2.2",
     "ws": "^8.21.0",
-    "yaml": "^2.8.4"
+    "yaml": "^2.8.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/mime-types": "^3.0.1",

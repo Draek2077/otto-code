@@ -19,6 +19,19 @@ interface FakeLegacyCommand {
   command: string;
   output: string;
 }
+interface FakeSilentCommand {
+  threadId: string;
+  callId: string;
+  command: string;
+  cwd: string;
+}
+interface FakeTerminalInput {
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  processId: string;
+  text: string;
+}
 interface FakeLegacyPatch {
   threadId: string;
   callId: string;
@@ -45,12 +58,21 @@ export interface FakeCodexAppServer {
     agentPath: string;
     parentThreadId?: string;
   }): void;
+  startsLegacyOnlySubAgent(params: {
+    callId: string;
+    threadId: string;
+    agentPath: string;
+    parentThreadId?: string;
+  }): void;
   beginsSubAgentActivity(params: FakeSubAgentActivity): void;
   completesSubAgentActivity(params: FakeSubAgentActivity): void;
   completesCompaction(params: { threadId: string; itemId: string }): void;
   runsLegacyCommand(params: FakeLegacyCommand): void;
   appliesLegacyPatch(params: FakeLegacyPatch): void;
   completesCommand(params: FakeLegacyCommand): void;
+  completesSilentCommand(params: FakeSilentCommand): void;
+  completesSilentLegacyCommand(params: FakeSilentCommand): void;
+  typesIntoTerminal(params: FakeTerminalInput): void;
   says(params: { threadId: string; itemId?: string; text: string; chunks?: string[] }): void;
   requestCommandApproval(params: {
     itemId: string;
@@ -308,6 +330,18 @@ export function createFakeCodexAppServer(
     startsSubAgent(params) {
       writeSubAgentActivity("item/completed", { ...params, kind: "started" });
     },
+    startsLegacyOnlySubAgent(params) {
+      writeLegacyEvent(params.parentThreadId ?? "thread-1", "codex/event/item_completed", {
+        type: "item_completed",
+        item: {
+          type: "subAgentActivity",
+          id: params.callId,
+          kind: "started",
+          agentThreadId: params.threadId,
+          agentPath: params.agentPath,
+        },
+      });
+    },
     beginsSubAgentActivity(params) {
       writeSubAgentActivity("item/started", params);
     },
@@ -364,6 +398,37 @@ export function createFakeCodexAppServer(
         command: params.command,
         aggregatedOutput: params.output,
         exitCode: 0,
+      });
+    },
+    completesSilentCommand(params) {
+      completeItem(params.threadId, {
+        type: "commandExecution",
+        id: params.callId,
+        status: "completed",
+        command: params.command,
+        cwd: params.cwd,
+        aggregatedOutput: null,
+        exitCode: 0,
+      });
+    },
+    completesSilentLegacyCommand(params) {
+      writeLegacyEvent(params.threadId, "codex/event/exec_command_end", {
+        type: "exec_command_end",
+        call_id: params.callId,
+        command: params.command,
+        cwd: params.cwd,
+        aggregatedOutput: null,
+        exit_code: 0,
+        success: true,
+      });
+    },
+    typesIntoTerminal(params) {
+      writeNotification("item/commandExecution/terminalInteraction", {
+        threadId: params.threadId,
+        turnId: params.turnId,
+        itemId: params.itemId,
+        processId: params.processId,
+        stdin: params.text,
       });
     },
     says(params) {
@@ -458,21 +523,61 @@ function toJsonObject(value: unknown): JsonObject {
   return {};
 }
 
-export function waitForNextPermission(
+type StreamEventType = AgentStreamEvent["type"];
+type StreamEventOfType<TType extends StreamEventType> = Extract<AgentStreamEvent, { type: TType }>;
+
+function waitForNextEvent<TType extends StreamEventType>(
   session: AgentSession,
-): Promise<Extract<AgentStreamEvent, { type: "permission_requested" }>> {
+  type: TType,
+  accepts?: (event: StreamEventOfType<TType>) => boolean,
+): Promise<StreamEventOfType<TType>> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       unsubscribe();
-      reject(new Error("Timed out waiting for permission_requested"));
+      reject(new Error(`Timed out waiting for ${type}`));
     }, 1000);
     const unsubscribe = session.subscribe((event) => {
-      if (event.type !== "permission_requested") {
+      if (event.type !== type) {
+        return;
+      }
+      const typedEvent = event as StreamEventOfType<TType>;
+      if (accepts && !accepts(typedEvent)) {
         return;
       }
       clearTimeout(timeout);
       unsubscribe();
-      resolve(event);
+      resolve(typedEvent);
     });
   });
+}
+
+type TimelineEvent = StreamEventOfType<"timeline">;
+type ProviderSubagentEvent = StreamEventOfType<"provider_subagent">;
+
+export function waitForNextPermission(
+  session: AgentSession,
+): Promise<StreamEventOfType<"permission_requested">> {
+  return waitForNextEvent(session, "permission_requested");
+}
+
+export function waitForNextTimelineItem(session: AgentSession): Promise<TimelineEvent> {
+  return waitForNextEvent(session, "timeline");
+}
+
+export function waitForTimelineToolCall(
+  session: AgentSession,
+  callId: string,
+): Promise<TimelineEvent> {
+  return waitForNextEvent(
+    session,
+    "timeline",
+    (event) => event.item.type === "tool_call" && event.item.callId === callId,
+  );
+}
+
+export function waitForProviderSubagent(
+  session: AgentSession,
+  id: string,
+): Promise<ProviderSubagentEvent> {
+  return waitForNextEvent(session, "provider_subagent", (event) => event.event.id === id);
 }

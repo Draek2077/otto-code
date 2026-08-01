@@ -308,7 +308,7 @@ Every entry cost a failed run to learn. Read it before writing a scenario, and a
 
 ## Watch for stale brand assets
 
-Two website assets were pre-fork Paseo screenshots, found by inspection rather than by any scenario
+Two website assets were pre-fork Otto screenshots, found by inspection rather than by any scenario
 run — nothing in the pipeline flags this class of drift automatically, so it is worth a recurring
 check. `og-image.png` is now a **pure brand card** (no app screenshot) rendered from
 `demo/assets/og-image.html`; `hero-mockup.png` stays a genuine app screenshot, sourced from the

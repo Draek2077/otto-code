@@ -204,6 +204,32 @@ const MOCK_SLOW_MODES: AgentProviderModeDefinition[] = [
   },
 ];
 
+export const OMP_MODES: AgentProviderModeDefinition[] = [
+  {
+    id: "full",
+    label: "Full Access",
+    description: "Launches OMP with yolo approval mode so tools run without prompts.",
+    icon: "ShieldOff",
+    colorTier: "dangerous",
+    isUnattended: true,
+  },
+  {
+    id: "write",
+    label: "Write Approval",
+    description:
+      "Launches OMP with write approval mode â€” reads are free, writes require approval.",
+    icon: "ShieldAlert",
+    colorTier: "moderate",
+  },
+  {
+    id: "ask",
+    label: "Always Ask",
+    description: "Launches OMP with always-ask approval mode for write and exec tools.",
+    icon: "ShieldCheck",
+    colorTier: "safe",
+  },
+];
+
 export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
   {
     id: "claude",
@@ -259,8 +285,8 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
     label: "OMP",
     description: "Pi-compatible coding agent distributed as Oh My Pi",
     enabledByDefault: false,
-    defaultModeId: null,
-    modes: [],
+    defaultModeId: "ask",
+    modes: OMP_MODES,
   },
 ];
 

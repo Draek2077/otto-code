@@ -19,6 +19,8 @@ import type {
   CheckoutDiffSnapshotPayload,
 } from "../../checkout-diff-manager.js";
 import { toCheckoutError } from "../../checkout-git-utils.js";
+import { isGitHubPullRequestStatusFacts } from "../../../services/github-facts.js";
+import { getCommitFileDiff, listCheckoutCommits } from "../../../utils/checkout-git.js";
 import {
   buildCheckoutPrStatusPayloadFromSnapshot,
   buildCheckoutStatusPayloadFromSnapshot,
@@ -34,10 +36,11 @@ import type { GitMutationService } from "../git-mutation/git-mutation-service.js
 import type { GitOperationLogService } from "../../git-operation-log.js";
 import type { GitHostingResolver } from "../../../services/git-hosting/resolver.js";
 import { isGitHostingFeatureDisabledError } from "../../../services/git-hosting/types.js";
+import type { SearchResult } from "../../../services/forge-service.js";
 import {
   assertPullRequestAutoMergeDisableReady,
   assertPullRequestAutoMergeEnableReady,
-  type GitHubService,
+  type ForgeService,
   type PullRequestTimelineItem,
 } from "../../../services/github-service.js";
 import {
@@ -62,6 +65,7 @@ import {
 import type { ParsedDiffFile } from "../../utils/diff-highlighter.js";
 import { parseAndHighlightDiff } from "../../utils/diff-highlighter.js";
 import { execCommand } from "../../../utils/spawn.js";
+import { isAbsolute } from "node:path";
 import { expandTilde } from "../../../utils/path.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
 
@@ -104,10 +108,23 @@ function toCheckoutGitFileError(error: unknown): CheckoutGitFileError {
 }
 
 type CurrentWorkspacePullRequest = NonNullable<
-  WorkspaceGitRuntimeSnapshot["github"]["pullRequest"]
+  WorkspaceGitRuntimeSnapshot["forge"]["pullRequest"]
 > & {
   number: number;
 };
+
+// COMPAT(githubSearchRpc): added in v0.1.106, remove after 2026-12-28 with the
+// legacy github_search RPC. Adapters speak the forge-neutral "change_request";
+// the legacy channel's item schema only knows "pr".
+function toLegacyGithubSearchItems(
+  items: SearchResult["items"],
+): Array<Omit<SearchResult["items"][number], "kind"> & { kind: "issue" | "pr" }> {
+  return items.map((item) =>
+    item.kind === "change_request"
+      ? { ...item, kind: "pr" as const }
+      : { ...item, kind: "issue" as const },
+  );
+}
 
 /**
  * The slice of CheckoutDiffManager that CheckoutSession needs: open a live diff
@@ -136,7 +153,7 @@ export interface CheckoutSessionOptions {
   listBusyAgentsForCwd: (cwd: string) => BusyWorkspaceAgent[];
   gitOperationLog: GitOperationLogService;
   workspaceGitService: WorkspaceGitService;
-  github: GitHubService;
+  github: ForgeService;
   // Present on daemons with the gitHostingProviders feature; absent in legacy
   // test constructions (hosting.search then answers as GitHub).
   gitHostingResolver?: GitHostingResolver;
@@ -168,7 +185,7 @@ export class CheckoutSession {
   private readonly listBusyAgentsForCwd: (cwd: string) => BusyWorkspaceAgent[];
   private readonly gitOperationLog: GitOperationLogService;
   private readonly workspaceGitService: WorkspaceGitService;
-  private readonly github: GitHubService;
+  private readonly github: ForgeService;
   private readonly gitHostingResolver: GitHostingResolver | null;
   private readonly checkoutDiffManager: CheckoutDiffSubscriber;
   private readonly gitMetadataGenerator: GitMetadataGenerator;
@@ -198,12 +215,12 @@ export class CheckoutSession {
 
     try {
       // Git-only: `checkout_status_response` is built purely from `snapshot.git`
-      // (buildCheckoutStatusPayloadFromSnapshot never reads `snapshot.github`), so
+      // (buildCheckoutStatusPayloadFromSnapshot never reads `snapshot.forge`), so
       // fetching GitHub PR status inline here is wasted work that blocks the
       // workspace-open critical path by 3-4s on a cold snapshot. PR status has its
       // own request (`checkout_pr_status_request`) and push channel.
       const snapshot = await this.workspaceGitService.getSnapshot(resolvedCwd, {
-        includeGitHub: false,
+        includeForge: false,
         reason: "checkout-status-request",
       });
       this.host.emit({
@@ -373,7 +390,7 @@ export class CheckoutSession {
       this.github.invalidate({ cwd: resolvedCwd });
       await this.workspaceGitService.getSnapshot(resolvedCwd, {
         force: true,
-        includeGitHub: true,
+        includeForge: true,
         reason: "manual-refresh",
       });
       this.checkoutDiffManager.scheduleRefreshForCwd(resolvedCwd);
@@ -499,7 +516,7 @@ export class CheckoutSession {
 
     try {
       const result = await this.host.renameCurrentBranch(cwd, branch);
-      await this.gitMutation.notifyGitMutation(cwd, "rename-branch", { invalidateGithub: true });
+      await this.gitMutation.notifyGitMutation(cwd, "rename-branch", { invalidateForge: true });
       this.scheduleDiffRefresh(cwd);
       this.host.handleWorkspaceGitBranchSnapshot(cwd, result.currentBranch);
 
@@ -580,6 +597,51 @@ export class CheckoutSession {
       this.host.emit({
         type: "stash_pop_response",
         payload: { cwd, success: false, error: toCheckoutError(error), requestId },
+      });
+    }
+  }
+
+  // Paseo's commit-history RPCs. listCheckoutCommits takes no base ref: it calls
+  // Otto's resolveBaseRefForCwd itself (checkout-git.ts), so the list runs
+  // against the resolved base rather than main without the caller passing one.
+  async handleCommitsListRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.commits.list.request" }>,
+  ): Promise<void> {
+    const { cwd, requestId } = msg;
+
+    try {
+      const { baseRef, commits } = await listCheckoutCommits({ cwd: expandTilde(cwd) });
+      this.host.emit({
+        type: "checkout.commits.list.response",
+        payload: { cwd, baseRef, commits, error: null, requestId },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "checkout.commits.list.response",
+        payload: { cwd, baseRef: null, commits: [], error: toCheckoutError(error), requestId },
+      });
+    }
+  }
+
+  async handleCommitFileDiffRequest(
+    msg: Extract<SessionInboundMessage, { type: "checkout.commits.file_diff.request" }>,
+  ): Promise<void> {
+    const { cwd, sha, path, requestId } = msg;
+
+    try {
+      assertSafeGitRef(sha, "commit");
+      if (path.length === 0 || isAbsolute(path) || path.split(/[\\/]/).includes("..")) {
+        throw new Error(`Invalid path: ${path}`);
+      }
+      const file = await getCommitFileDiff({ cwd: expandTilde(cwd), sha, path });
+      this.host.emit({
+        type: "checkout.commits.file_diff.response",
+        payload: { cwd, sha, path, file, error: null, requestId },
+      });
+    } catch (error) {
+      this.host.emit({
+        type: "checkout.commits.file_diff.response",
+        payload: { cwd, sha, path, file: null, error: toCheckoutError(error), requestId },
       });
     }
   }
@@ -1020,7 +1082,7 @@ export class CheckoutSession {
         { ottoHome: this.ottoHome, worktreesRoot: this.worktreesRoot },
       );
       await Promise.all([
-        this.gitMutation.notifyGitMutation(mutatedCwd, "merge-to-base", { invalidateGithub: true }),
+        this.gitMutation.notifyGitMutation(mutatedCwd, "merge-to-base", { invalidateForge: true }),
         ...(mutatedCwd !== cwd ? [this.gitMutation.notifyGitMutation(cwd, "merge-to-base")] : []),
       ]);
       this.scheduleDiffRefresh(cwd);
@@ -1064,7 +1126,7 @@ export class CheckoutSession {
         baseRef: msg.baseRef,
         requireCleanTarget: msg.requireCleanTarget ?? true,
       });
-      await this.gitMutation.notifyGitMutation(cwd, "merge-from-base", { invalidateGithub: true });
+      await this.gitMutation.notifyGitMutation(cwd, "merge-from-base", { invalidateForge: true });
       this.scheduleDiffRefresh(cwd);
 
       this.host.emit({
@@ -1098,7 +1160,7 @@ export class CheckoutSession {
       await this.gitOperationLog.runOperation({ cwd, operation: "pull", label: "git pull" }, () =>
         pullCurrentBranch(cwd),
       );
-      await this.gitMutation.notifyGitMutation(cwd, "pull", { invalidateGithub: true });
+      await this.gitMutation.notifyGitMutation(cwd, "pull", { invalidateForge: true });
       this.scheduleDiffRefresh(cwd);
 
       this.host.emit({
@@ -1132,7 +1194,7 @@ export class CheckoutSession {
       await this.gitOperationLog.runOperation({ cwd, operation: "push", label: "git push" }, () =>
         pushCurrentBranch(cwd),
       );
-      await this.gitMutation.notifyGitMutation(cwd, "push", { invalidateGithub: true });
+      await this.gitMutation.notifyGitMutation(cwd, "push", { invalidateForge: true });
       this.host.emit({
         type: "checkout_push_response",
         payload: {
@@ -1179,7 +1241,7 @@ export class CheckoutSession {
         },
         this.github,
       );
-      await this.gitMutation.notifyGitMutation(cwd, "create-pr", { invalidateGithub: true });
+      await this.gitMutation.notifyGitMutation(cwd, "create-pr", { invalidateForge: true });
 
       this.host.emit({
         type: "checkout_pr_create_response",
@@ -1213,7 +1275,7 @@ export class CheckoutSession {
     try {
       const pullRequest = await this.resolveCurrentPullRequest(cwd, "merge", {
         force: true,
-        includeGitHub: true,
+        includeForge: true,
         reason: "merge-pr-validation",
       });
       this.assertCurrentPullRequestHasGithubMergeFacts(pullRequest);
@@ -1223,7 +1285,7 @@ export class CheckoutSession {
         mergeMethod: msg.mergeMethod,
         status: pullRequest,
       });
-      await this.gitMutation.notifyGitMutation(cwd, "merge-pr", { invalidateGithub: true });
+      await this.gitMutation.notifyGitMutation(cwd, "merge-pr", { invalidateForge: true });
 
       this.host.emit({
         type: "checkout_pr_merge_response",
@@ -1250,20 +1312,23 @@ export class CheckoutSession {
   private assertCurrentPullRequestHasGithubMergeFacts(
     pullRequest: CurrentWorkspacePullRequest,
   ): void {
-    if (!pullRequest.github) {
+    if (!isGitHubPullRequestStatusFacts(pullRequest.forgeSpecific)) {
       throw new Error("GitHub merge facts are unavailable for this pull request");
     }
   }
 
-  async handleCheckoutGithubSetAutoMergeRequest(
-    msg: Extract<SessionInboundMessage, { type: "checkout.github.set_auto_merge.request" }>,
+  async handleCheckoutForgeSetAutoMergeRequest(
+    msg: Extract<
+      SessionInboundMessage,
+      { type: "checkout.forge.set_auto_merge.request" | "checkout.github.set_auto_merge.request" }
+    >,
   ): Promise<void> {
     const { cwd, requestId } = msg;
 
     try {
       const pullRequest = await this.resolveCurrentPullRequest(cwd, "auto-merge", {
         force: true,
-        includeGitHub: true,
+        includeForge: true,
         reason: "auto-merge-validation",
       });
       if (msg.enabled) {
@@ -1296,7 +1361,7 @@ export class CheckoutSession {
         cwd,
         msg.enabled ? "enable-pr-auto-merge" : "disable-pr-auto-merge",
         {
-          invalidateGithub: true,
+          invalidateForge: true,
         },
       );
 
@@ -1330,7 +1395,7 @@ export class CheckoutSession {
     options?: WorkspaceGitSnapshotOptions,
   ): Promise<CurrentWorkspacePullRequest> {
     const snapshot = await this.workspaceGitService.getSnapshot(cwd, options);
-    const pullRequest = snapshot.github.pullRequest;
+    const pullRequest = snapshot.forge.pullRequest;
     if (!pullRequest || typeof pullRequest.number !== "number") {
       throw new Error(`Unable to determine GitHub pull request number for ${operation}`);
     }
@@ -1357,6 +1422,7 @@ export class CheckoutSession {
         type: "checkout_pr_status_response",
         payload: {
           cwd,
+          forge: "github",
           status: null,
           githubFeaturesEnabled: true,
           error: toCheckoutError(error),
@@ -1451,13 +1517,29 @@ export class CheckoutSession {
     }
   }
 
-  async handleCheckoutGithubGetCheckDetailsRequest(
-    msg: Extract<SessionInboundMessage, { type: "checkout.github.get_check_details.request" }>,
+  async handleCheckoutForgeGetCheckDetailsRequest(
+    msg: Extract<
+      SessionInboundMessage,
+      {
+        type:
+          | "checkout.forge.get_check_details.request"
+          | "checkout.github.get_check_details.request";
+      }
+    >,
   ): Promise<void> {
     const { cwd, repoOwner, repoName, checkRunId, workflowRunId, requestId } = msg;
+    // One handler serves both the namespaced RPC and its legacy github twin, so
+    // the response type has to follow the request type. Answering the forge
+    // request on the github channel leaves the client — which is on the forge
+    // path because websocket-server advertises `forgeCheckDetails` — waiting for
+    // a message that never arrives.
+    const responseType =
+      msg.type === "checkout.forge.get_check_details.request"
+        ? "checkout.forge.get_check_details.response"
+        : "checkout.github.get_check_details.response";
 
     try {
-      const details = await this.github.getGitHubCheckDetails({
+      const details = await this.github.getCheckDetails({
         cwd,
         repoOwner,
         repoName,
@@ -1465,7 +1547,7 @@ export class CheckoutSession {
         workflowRunId,
       });
       this.host.emit({
-        type: "checkout.github.get_check_details.response",
+        type: responseType,
         payload: {
           cwd,
           success: true,
@@ -1476,7 +1558,7 @@ export class CheckoutSession {
       });
     } catch (error) {
       this.host.emit({
-        type: "checkout.github.get_check_details.response",
+        type: responseType,
         payload: {
           cwd,
           success: false,
@@ -1491,10 +1573,18 @@ export class CheckoutSession {
     }
   }
 
-  async handleGitHubSearchRequest(
-    msg: Extract<SessionInboundMessage, { type: "github_search_request" }>,
+  async handleForgeSearchRequest(
+    msg: Extract<SessionInboundMessage, { type: "forge.search.request" | "github_search_request" }>,
   ): Promise<void> {
     const { cwd, query, limit, kinds, requestId } = msg;
+    // COMPAT(githubSearchRpc): added in v0.1.106, remove after 2026-12-28.
+    // One handler serves the namespaced RPC and its legacy github twin, so the
+    // response type follows the request type — the client is on the forge path
+    // whenever websocket-server advertises `forgeSearch`, and answering on the
+    // github channel leaves it waiting until timeout. The legacy channel also
+    // needs the change_request kind mapped back to "pr": old clients parse items
+    // with GitHubSearchItemSchema and silently drop anything else.
+    const isLegacyRequest = msg.type === "github_search_request";
 
     try {
       const resolvedCwd = expandTilde(cwd);
@@ -1504,29 +1594,57 @@ export class CheckoutSession {
         limit,
         kinds,
       });
+      if (isLegacyRequest) {
+        const featuresEnabled = result.featuresEnabled ?? result.githubFeaturesEnabled ?? true;
+        this.host.emit({
+          type: "github_search_response",
+          payload: {
+            items: toLegacyGithubSearchItems(result.items),
+            featuresEnabled,
+            authState: result.authState,
+            githubFeaturesEnabled: featuresEnabled,
+            error: null,
+            requestId,
+          },
+        });
+        return;
+      }
       this.host.emit({
-        type: "github_search_response",
+        type: "forge.search.response",
         payload: {
           items: result.items,
-          githubFeaturesEnabled: result.githubFeaturesEnabled,
+          authState: result.authState,
           error: null,
           requestId,
         },
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isLegacyRequest) {
+        this.host.emit({
+          type: "github_search_response",
+          payload: {
+            items: [],
+            featuresEnabled: true,
+            githubFeaturesEnabled: true,
+            error: message,
+            requestId,
+          },
+        });
+        return;
+      }
       this.host.emit({
-        type: "github_search_response",
+        type: "forge.search.response",
         payload: {
           items: [],
-          githubFeaturesEnabled: true,
-          error: error instanceof Error ? error.message : String(error),
+          error: message,
           requestId,
         },
       });
     }
   }
 
-  // Provider-neutral successor to handleGitHubSearchRequest: resolves the
+  // Provider-neutral successor to handleForgeSearchRequest: resolves the
   // project's hosting provider from cwd, so a Bitbucket project searches
   // Bitbucket PRs and a GitHub project searches GitHub issues + PRs.
   async handleHostingSearchRequest(
@@ -1564,9 +1682,12 @@ export class CheckoutSession {
       this.host.emit({
         type: "hosting.search.response",
         payload: {
-          items: result.items,
+          items: result.items.map((item) => ({
+            ...item,
+            kind: item.kind === "change_request" ? ("pr" as const) : ("issue" as const),
+          })),
           provider,
-          featuresEnabled: result.githubFeaturesEnabled,
+          featuresEnabled: result.githubFeaturesEnabled ?? result.featuresEnabled,
           error: null,
           requestId,
         },

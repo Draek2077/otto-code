@@ -110,6 +110,7 @@ function useRefinePanelDescriptor(target: RefineTarget): PanelDescriptor {
   const preset = findRefinePreset(target.presetId);
   return {
     label: i18n.t("refine.tab.title", { job: jobTitle(job), file: tail }),
+    tooltip: i18n.t("refine.tab.title", { job: jobTitle(job), file: tail }),
     subtitle: describeExtraFiles(extra, preset),
     titleState: "ready",
     icon: job === "compact" ? Compress : WandStars,

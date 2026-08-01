@@ -1,0 +1,467 @@
+Upstream v0.2.5 test cases absent from Otto's versions of the same files.
+Captured during the v0.2.5 merge; ours were kept because they cover Otto's own UI.
+
+packages/app/e2e/assistant-fork-menu.spec.ts	focuses a forked assistant turn in a new workspace draft tab
+packages/app/e2e/assistant-fork-menu.spec.ts	forks a failed assistant turn that has no provider message id
+packages/app/e2e/assistant-fork-menu.spec.ts	keeps the fork attachment after submitting an existing-workspace draft tab
+packages/app/e2e/assistant-fork-menu.spec.ts	keeps the fork attachment after the new agent receives its user message
+packages/app/e2e/empty-project-persists.spec.ts	Project picker search
+packages/app/e2e/empty-project-persists.spec.ts	shows a loading state after typing while directory suggestions are pending
+packages/app/e2e/project-picker-desktop.spec.ts	Browse opens the folder selected by the desktop dialog
+packages/app/e2e/project-picker-desktop.spec.ts	canceling Browse returns to the Add Project methods
+packages/app/e2e/projects-settings.spec.ts	invalid paseo.json shows read-error callout, reload after fix shows form
+packages/app/e2e/provider-settings-refresh.spec.ts	provider settings covers the desktop model selector without closing it
+packages/app/e2e/provider-settings-refresh.spec.ts	provider settings overlay stack
+packages/app/e2e/workspace-model-restart.spec.ts	browser-created same-cwd workspace preserves restarted agent status and migrated tab ownership
+packages/app/e2e/workspace-multiplicity.spec.ts	two Local workspaces appear under the same non-git project
+packages/app/e2e/workspace-multiplicity.spec.ts	two Local workspaces share one git checkout and both are independently selectable
+packages/app/src/components/browser-webview-resident.browser.test.ts	finds the originating browser webview for focus restoration
+packages/app/src/components/browser-webview-resident.browser.test.ts	shares one profile and registers attached guests with explicit identity
+packages/app/src/components/markdown/html-ish.test.ts	falls back to inert markdown when details are unclosed
+packages/app/src/components/markdown/html-ish.test.ts	falls back to inert markdown when summary is missing
+packages/app/src/components/markdown/html-ish.test.ts	leaves complex code tags inert instead of parsing HTML
+packages/app/src/components/markdown/html-ish.test.ts	leaves unsafe HTML image sources inert
+packages/app/src/components/markdown/html-ish.test.ts	normalizes HTML table cells and inline formatting into markdown
+packages/app/src/components/worktree-setup-callout-policy.test.ts	ignores non-git workspaces and blank coordinates
+packages/app/src/components/worktree-setup-callout-policy.test.ts	routes by server id and project id
+packages/app/src/components/worktree-setup-callout-policy.test.ts	selects the host-local project id for a git workspace
+packages/app/src/components/worktree-setup-callout-policy.test.ts	shows only after a successful config read with no setup command
+packages/app/src/composer/actions.test.ts	can send legacy GitHub attachment payloads for old daemons
+packages/app/src/composer/actions.test.ts	removes the optimistic prompt when the host rejects it
+packages/app/src/composer/actions.test.ts	removes the queued entry and submits its text + attachments
+packages/app/src/composer/actions.test.ts	reports a rejected cancel so the composer can leave its canceling state
+packages/app/src/composer/actions.test.ts	restores the queued entry to the front and surfaces the error message on failure
+packages/app/src/composer/actions.test.ts	returns missing without submitting when the message id is gone
+packages/app/src/composer/github/auto-attach.test.tsx	accepts a lookup after the transport client is replaced for the same target
+packages/app/src/composer/github/auto-attach.test.tsx	ignores a lookup that finishes after the target changes
+packages/app/src/composer/github/auto-attach.test.tsx	stays resolving while overlapping lookups share a ref
+packages/app/src/composer/github/auto-attach.test.tsx	stops resolving when an in-flight PR URL is removed
+packages/app/src/git/checkout-status-cache.test.ts	invalidates PR detail queries on the first prStatus emission, scoped to its cwd
+packages/app/src/git/checkout-status-cache.test.ts	invalidates PR detail queries when the prStatus changes, ignoring the volatile requestId
+packages/app/src/git/checkout-status-cache.test.ts	invalidates recent commits when checkout status is pushed
+packages/app/src/git/checkout-status-cache.test.ts	normalizes legacy PR auth state at the pushed-cache boundary
+packages/app/src/git/pull-request-panel/context-attachment.test.ts	formats GitLab failed check context as a merge request
+packages/app/src/git/pull-request-panel/context-attachment.test.ts	labels a GitLab comment as a merge request with the ! prefix
+packages/app/src/git/pull-request-panel/data.test.ts	carries the resolved forge and the nested project path for GitLab
+packages/app/src/git/pull-request-panel/data.test.ts	carries the resolved forge brand and activity provider for GitLab
+packages/app/src/git/pull-request-panel/data.test.ts	defaults the forge to github and omits the project path when neither is supplied
+packages/app/src/git/pull-request-panel/data.test.ts	keeps Forgejo branding for aggregate Gitea-family CI status
+packages/app/src/git/pull-request-panel/data.test.ts	keeps a workflowRunId-only detail ref so Gitea Actions rows stay fetchable
+packages/app/src/git/pull-request-panel/data.test.ts	maps GitLab and neutral pipeline statuses onto check statuses
+packages/app/src/git/pull-request-panel/data.test.ts	maps a top-level threadId onto general (non-file) discussion comments
+packages/app/src/git/pull-request-panel/data.test.ts	maps thread-level resolution onto general (non-file) discussion comments
+packages/app/src/git/pull-request-panel/data.test.ts	marks running and queued pipeline statuses as live for polling
+packages/app/src/git/pull-request-panel/data.test.ts	omits forgeSpecific when no registered forge schema accepts it
+packages/app/src/git/pull-request-panel/data.test.ts	omits forgeSpecific when the status carries no native facts
+packages/app/src/git/pull-request-panel/data.test.ts	passes the forge native facts through for pane contributions to derive surfaces
+packages/app/src/git/pull-request-panel/data.test.ts	surfaces Gitea aggregate CI status as a check row
+packages/app/src/hooks/sidebar-workspaces-view-model.test.ts	appends unseen projects while putting unseen workspaces before the saved order
+packages/app/src/hooks/sidebar-workspaces-view-model.test.ts	falls back to github when the summary omits forge (old daemon)
+packages/app/src/hooks/sidebar-workspaces-view-model.test.ts	keeps a structurally disambiguated project key in status entries
+packages/app/src/hooks/sidebar-workspaces-view-model.test.ts	preserves the saved workspace order behind multiple newly discovered workspaces
+packages/app/src/hooks/sidebar-workspaces-view-model.test.ts	threads a gitlab summary forge onto the prHint
+packages/app/src/hooks/use-projects.test.ts	derives projects from the project descriptor replica
+packages/app/src/hooks/use-projects.test.ts	preserves runtime loading and error state
+packages/app/src/hooks/use-settings/storage.test.ts	defaults theme to auto when storage is empty
+packages/app/src/hooks/use-settings/storage.test.ts	maps an unrecognized tool call detail level to overview
+packages/app/src/hooks/use-settings/storage.test.ts	migrates the enabled compact tool call preference to overview
+packages/app/src/hooks/use-settings/storage.test.ts	normalizes a legacy cached settings shape before saving
+packages/app/src/runtime/host-runtime.test.ts	applies agent updates received during initial directory bootstrap
+packages/app/src/runtime/host-runtime.test.ts	applies buffered stale side effects from the accepted page agent
+packages/app/src/runtime/host-runtime.test.ts	drains legacy snapshot and buffered running transitions exactly once
+packages/app/src/runtime/host-runtime.test.ts	drains queued messages once for snapshot and buffered running transitions
+packages/app/src/runtime/host-runtime.test.ts	owns the session replica for the registered host lifecycle
+packages/app/src/runtime/host-runtime.test.ts	rejects a refresh when the session generation changes before commit
+packages/app/src/runtime/host-runtime.test.ts	rejects a superseded refresh without overwriting the newer replica
+packages/app/src/runtime/host-runtime.test.ts	replays agent updates received while a later bootstrap page is loading
+packages/app/src/runtime/host-runtime.test.ts	replays inherited deltas when a superseding refresh fails
+packages/app/src/runtime/host-runtime.test.ts	restores an automatically drained message when sending fails
+packages/app/src/runtime/host-runtime.test.ts	restores the display replica before declaring the host registry loaded
+packages/app/src/runtime/host-runtime.test.ts	serializes queued-message drains for the same agent
+packages/app/src/runtime/host-runtime.test.ts	uses legacy GitHub attachments when draining a queue for an old daemon
+packages/app/src/screens/new-workspace-picker-item.test.ts	does not send the legacy githubPrNumber for non-GitHub change requests
+packages/app/src/screens/new-workspace-picker-state.test.ts	clears a persisted picker selection without removing user-added attachments
+packages/app/src/screens/new-workspace-picker-state.test.ts	clears all PR attachments when the target changes
+packages/app/src/screens/new-workspace-picker-state.test.ts	does not derive checkout selection from an existing attachment
+packages/app/src/screens/new-workspace-picker-state.test.ts	does not duplicate a generalized PR attachment
+packages/app/src/screens/new-workspace-picker-state.test.ts	keeps a branch selected after a pending PR is added
+packages/app/src/screens/new-workspace-picker-state.test.ts	keeps the first PR selected when one edit adds multiple PRs
+packages/app/src/screens/new-workspace-picker-state.test.ts	keeps the picker selection when the target is reselected
+packages/app/src/screens/new-workspace-picker-state.test.ts	lets a newly detected PR replace an earlier explicit branch
+packages/app/src/screens/new-workspace-picker-state.test.ts	selects a PR that was newly detected and added
+packages/app/src/screens/workspace/workspace-scripts-button.test.tsx	adds localized tooltips to every icon action
+packages/app/src/screens/workspace/workspace-scripts-button.test.tsx	defaults to a configured reverse proxy URL
+packages/app/src/screens/workspace/workspace-scripts-button.test.tsx	persists the selected route for the host
+packages/app/src/screens/workspace/workspace-scripts-button.test.tsx	restarts a script once its stopped lifecycle arrives
+packages/app/src/screens/workspace/workspace-scripts-button.test.tsx	stops a running script through its terminal
+packages/app/src/screens/workspace/workspace-scripts-button.test.tsx	uses icon-only actions with view and fixed-position lifecycle controls
+packages/app/src/subagents/select.test.ts	hides cached provider children when the host does not support them
+packages/app/src/subagents/select.test.ts	hides locally dismissed provider children while retaining their descriptor
+packages/app/src/utils/agent-directory-sync.test.ts	keeps newer metadata while accepting usage-only updates and legacy workspace ownership
+packages/app/src/utils/agent-directory-sync.test.ts	preserves timeline initialization while replacing directory state
+packages/app/src/utils/agent-directory-sync.test.ts	removes every replica-owned artifact for a removed agent
+packages/app/src/utils/desktop-window.test.ts	has no corner obstruction outside Electron or in fullscreen
+packages/app/src/utils/desktop-window.test.ts	insets and reserves only claimed corners
+packages/app/src/utils/desktop-window.test.ts	intersects identical and empty corner claims
+packages/app/src/utils/desktop-window.test.ts	places native controls in their physical top corner
+packages/app/src/utils/desktop-window.test.ts	reports an obstruction only when the surface owns its corner
+packages/app/src/utils/host-routes.test.ts	buildProjectSettingsRoute addresses a host-local project id
+packages/app/src/utils/host-routes.test.ts	keeps route ids opaque
+packages/app/src/utils/projects.test.ts	includes a project with no workspaces
+packages/app/src/utils/projects.test.ts	looks up a grouped project by host-local identity
+packages/app/src/utils/projects.test.ts	uses the grouped project list while retaining each host project id
+packages/app/src/utils/review-attachments.test.ts	builds a forge change request attachment for pull requests
+packages/app/src/utils/review-attachments.test.ts	builds a forge issue attachment for issues
+packages/app/src/utils/review-attachments.test.ts	builds a legacy GitHub PR attachment for old daemons
+packages/app/src/utils/workspace-script-links.test.ts	classifies proxyUrl from older daemons
+packages/app/src/utils/workspace-script-links.test.ts	defaults to an explicitly configured reverse proxy
+packages/app/src/utils/workspace-script-links.test.ts	defaults to the memorable Paseo URL locally and keeps direct as a fallback
+packages/app/src/utils/workspace-script-links.test.ts	has no routes for stopped services or plain scripts
+packages/app/src/utils/workspace-script-links.test.ts	keeps service routes available independently of a relay connection
+packages/app/src/utils/workspace-script-links.test.ts	offers the reverse proxy and direct route over a direct network connection
+packages/app/src/utils/workspace-script-links.test.ts	uses the daemon host and service port over a direct network connection
+packages/app/src/workspace/legacy-daemon-workspaces.test.ts	keeps matching legacy path projects separate across hosts
+packages/cli/src/commands/agent/run.test.ts	allows explicit worktree workspace creation through validation
+packages/cli/src/commands/agent/run.test.ts	omits blank caller ids
+packages/cli/src/commands/agent/run.test.ts	propagates a trimmed PASEO_AGENT_ID
+packages/cli/src/commands/agent/run.test.ts	queries the daemon for an exact workspace id and uses its directory
+packages/cli/src/commands/agent/run.test.ts	rejects --new-workspace combined with --workspace
+packages/cli/src/commands/agent/run.test.ts	rejects a workspace id absent from daemon state
+packages/cli/src/commands/agent/run.test.ts	rejects an unknown worktree creation mode before connecting
+packages/cli/src/commands/agent/run.test.ts	rejects two workspace creation flags
+packages/cli/src/commands/agent/run.test.ts	rejects unknown new workspace kinds
+packages/desktop/src/daemon/daemon-manager.test.ts	does not pass stale lock reclaim when the status command fails
+packages/desktop/src/daemon/daemon-manager.test.ts	passes stale lock reclaim only after a live desktop daemon is confirmed unresponsive
+packages/desktop/src/daemon/desktop-packaging.test.ts	registers Paseo agent links with the operating system
+packages/desktop/src/daemon/quit-lifecycle.test.ts	does not intercept a quit started by a manual update
+packages/desktop/src/daemon/quit-lifecycle.test.ts	exits when the updater does not take ownership before its deadline
+packages/desktop/src/daemon/quit-lifecycle.test.ts	exits when update revalidation reaches its deadline
+packages/desktop/src/daemon/quit-lifecycle.test.ts	lets the updater own process exit when a validated update is installing
+packages/desktop/src/daemon/quit-lifecycle.test.ts	recognizes a repeated quit as updater handoff
+packages/desktop/src/daemon/quit-lifecycle.test.ts	revalidates updates after daemon shutdown before exiting
+packages/desktop/src/daemon/quit-lifecycle.test.ts	stops by default and only keeps running when keepRunningAfterQuit is enabled
+packages/desktop/src/features/browser-webviews/index.test.ts	accepts only allowed URLs on the shared profile partition
+packages/desktop/src/features/browser-webviews/index.test.ts	binds explicit browser identity to the renderer that hosts the guest
+packages/desktop/src/features/browser-webviews/index.test.ts	concurrent windows cannot swap browser identities
+packages/desktop/src/features/browser-webviews/index.test.ts	prepares throttling once and removes registration when the guest is destroyed
+packages/desktop/src/features/browser-webviews/index.test.ts	rejects a guest hosted by another renderer
+packages/desktop/src/features/browser-webviews/index.test.ts	rejects a guest outside the shared profile
+packages/desktop/src/features/browser-webviews/index.test.ts	unregisters the same browser only from its requesting host
+packages/desktop/src/features/browser-webviews/registry.test.ts	keeps a pre-attach selection when another host attaches the same browser
+packages/desktop/src/features/browser-webviews/registry.test.ts	keeps a pre-attach selection when another host tears down the same browser
+packages/desktop/src/features/browser-webviews/registry.test.ts	keeps active updates and clears inside their owning host window
+packages/desktop/src/features/browser-webviews/registry.test.ts	keeps another host
+packages/desktop/src/features/browser-webviews/registry.test.ts	keeps one authoritative webContents target per host and browser
+packages/desktop/src/features/browser-webviews/registry.test.ts	keeps same-browser active references in separate host windows
+packages/desktop/src/features/browser-webviews/registry.test.ts	keeps the active browser when the same guest registers again
+packages/desktop/src/features/browser-webviews/registry.test.ts	keeps the same-window active selection made before the guest attaches
+packages/desktop/src/features/browser-webviews/registry.test.ts	removes only the closing host
+packages/desktop/src/features/browser-webviews/registry.test.ts	reports when another host still owns the same browser
+packages/desktop/src/features/browser-webviews/registry.test.ts	returns the active browser only from the requested host window
+packages/desktop/src/features/browser-webviews/registry.test.ts	unregisters a browser only from the requesting host
+packages/desktop/src/features/browser-webviews/window-open.test.ts	denies unsupported window-open requests
+packages/desktop/src/features/browser-webviews/window-open.test.ts	drops pending workspace-tab requests when an unregistered guest is destroyed
+packages/desktop/src/features/browser-webviews/window-open.test.ts	holds early workspace-tab requests until browser identity registration
+packages/desktop/src/features/browser-webviews/window-open.test.ts	keeps POST-backed foreground tabs as real popups
+packages/desktop/src/features/browser-webviews/window-open.test.ts	keeps an explicitly requested popup as a real popup
+packages/desktop/src/features/browser-webviews/window-open.test.ts	keeps legacy browser-chrome features as a real popup
+packages/desktop/src/features/browser-webviews/window-open.test.ts	keeps named windows as real popups without a feature string
+packages/desktop/src/features/browser-webviews/window-open.test.ts	keeps script-opened windows as real popups
+packages/desktop/src/features/browser-webviews/window-open.test.ts	keeps unknown window features as a real popup
+packages/desktop/src/features/browser-webviews/window-open.test.ts	routes Shift-clicked links to a Paseo workspace tab
+packages/desktop/src/features/browser-webviews/window-open.test.ts	routes an all-enabled browser-chrome request to a Paseo workspace tab
+packages/desktop/src/features/browser-webviews/window-open.test.ts	routes foreground tabs to a Paseo workspace tab
+packages/desktop/src/window/window-manager.test.ts	preserves fractional traffic-light offsets
+packages/desktop/src/window/window-manager.test.ts	uses the focus and normal traffic-light positions
+packages/server/src/server/agent/agent-manager.test.ts	a shared agent load upgrades provider history hydration to broadcast
+packages/server/src/server/agent/agent-manager.test.ts	applies live autonomous events and preserves usage omitted from completion
+packages/server/src/server/agent/agent-manager.test.ts	archiving a closed parent still cascades to its managed children
+packages/server/src/server/agent/agent-manager.test.ts	cancelAgentRun preserves running state when the provider interrupt hangs
+packages/server/src/server/agent/agent-manager.test.ts	cancelAgentRun preserves the active turn when the provider rejects the interrupt
+packages/server/src/server/agent/agent-manager.test.ts	cancelAgentRun succeeds when the foreground turn finishes before the provider rejects the interrupt
+packages/server/src/server/agent/agent-manager.test.ts	cancelAgentRun succeeds when the provider queues completion before rejecting the interrupt
+packages/server/src/server/agent/agent-manager.test.ts	cancelAgentRun waits for an acknowledged autonomous interrupt to settle
+packages/server/src/server/agent/agent-manager.test.ts	concurrent explicit closes tear down the runtime once
+packages/server/src/server/agent/agent-manager.test.ts	createAgent injects paseo MCP server only into provider launch config
+packages/server/src/server/agent/agent-manager.test.ts	createAgent passes native Paseo tools through launch context without internal MCP
+packages/server/src/server/agent/agent-manager.test.ts	createAgent preserves a user-provided paseo MCP config
+packages/server/src/server/agent/agent-manager.test.ts	ensureUnarchivedAgentLoaded closes a runtime archived while it resumes
+packages/server/src/server/agent/agent-manager.test.ts	ensureUnarchivedAgentLoaded does not resume an archived agent
+packages/server/src/server/agent/agent-manager.test.ts	ensureUnarchivedAgentLoaded fences an archived agent after joining a shared resume
+packages/server/src/server/agent/agent-manager.test.ts	explicit close cancels running provider subagents before resume
+packages/server/src/server/agent/agent-manager.test.ts	failed replacement cancellation preserves an autonomous running state
+packages/server/src/server/agent/agent-manager.test.ts	force provider hydration removes children absent from current history
+packages/server/src/server/agent/agent-manager.test.ts	hydrateTimelineFromProvider restores and broadcasts provider children from session history
+packages/server/src/server/agent/agent-manager.test.ts	idle agents remain resident until an explicit lifecycle action closes them
+packages/server/src/server/agent/agent-manager.test.ts	later explicit config mutations win over events emitted by earlier mutations
+packages/server/src/server/agent/agent-manager.test.ts	load waits for an in-flight explicit close and creates one resumed runtime
+packages/server/src/server/agent/agent-manager.test.ts	normalizeConfig injects Claude
+packages/server/src/server/agent/agent-manager.test.ts	normalizeConfig uses a capability-aware provider mode default
+packages/server/src/server/agent/agent-manager.test.ts	provider close failure still persists and emits a resumable closed agent
+packages/server/src/server/agent/agent-manager.test.ts	reloadAgentSession clears provider children before rehydrating from disk
+packages/server/src/server/agent/agent-manager.test.ts	resumeAgentFromPersistence drops stored internal paseo MCP when runtime injection is disabled
+packages/server/src/server/agent/agent-manager.test.ts	resumeAgentFromPersistence replaces stored internal paseo MCP with current runtime URL
+packages/server/src/server/agent/agent-manager.test.ts	subscribe hides provider subagents of internal parents from global subscribers
+packages/server/src/server/agent/agent-manager.test.ts	updateProviderRegistry removes providers omitted from the next registry
+packages/server/src/server/agent/agent-manager.test.ts	user_message events wrapping a paseo-system envelope are not added to the timeline
+packages/server/src/server/agent/agent-manager.test.ts	user_message events wrapping a paseo-system envelope are not restored during history replay
+packages/server/src/server/agent/agent-prompt.test.ts	detaching a child ends its parent-owned finish notification
+packages/server/src/server/agent/agent-prompt.test.ts	finish notifications log a rejected parent prompt without an unhandled rejection
+packages/server/src/server/agent/agent-prompt.test.ts	follow-up finish notifications do not require a parent relationship
+packages/server/src/server/agent/create-agent/create.test.ts	mcp create exposes the created worktree before dispatching the initial prompt
+packages/server/src/server/agent/create-agent/create.test.ts	session create applies the resolved mode from the provider create config
+packages/server/src/server/agent/create-agent/create.test.ts	session create validates the requested mode against the provider
+packages/server/src/server/agent/import-sessions.test.ts	importProviderSession rejects a provider session with an active stored owner
+packages/server/src/server/agent/import-sessions.test.ts	importProviderSession rejects an archived session from a different cwd before restoring
+packages/server/src/server/agent/import-sessions.test.ts	importProviderSession restores an archived session as the same standalone agent
+packages/server/src/server/agent/import-sessions.test.ts	importProviderSession restores storage and closes a partial runtime when loading fails
+packages/server/src/server/agent/import-sessions.test.ts	importProviderSession serializes legacy and native aliases for one archived session
+packages/server/src/server/agent/import-sessions.test.ts	importProviderSession uses the provider import path with the requested labels
+packages/server/src/server/agent/import-sessions.test.ts	listImportableProviderSessions includes a provider session after its Paseo agent is archived
+packages/server/src/server/agent/import-sessions.test.ts	listImportableProviderSessions includes an archived provider session still loaded in memory
+packages/server/src/server/agent/import-sessions.test.ts	listImportableProviderSessions looks past already-imported rows to fill the requested limit
+packages/server/src/server/agent/mcp-server.test.ts	archives a worktree-isolated workspace by workspace id
+packages/server/src/server/agent/mcp-server.test.ts	creates a fresh local workspace for canonical top-level creation
+packages/server/src/server/agent/mcp-server.test.ts	creates a worktree workspace from a project root without a path
+packages/server/src/server/agent/mcp-server.test.ts	creates a worktree-isolated workspace
+packages/server/src/server/agent/mcp-server.test.ts	deletes the caller
+packages/server/src/server/agent/mcp-server.test.ts	does not expose worktree path or slug operations
+packages/server/src/server/agent/mcp-server.test.ts	exposes workspace tools instead of worktree tools
+packages/server/src/server/agent/mcp-server.test.ts	inherits the caller provider, model, and features when provider is omitted
+packages/server/src/server/agent/mcp-server.test.ts	keeps an owned worktree while another workspace still references it
+packages/server/src/server/agent/mcp-server.test.ts	keeps provider forms compatible without materializing default schedule isolation
+packages/server/src/server/agent/mcp-server.test.ts	lists active workspace descriptors
+packages/server/src/server/agent/mcp-server.test.ts	preserves branch checkout and pull request checkout workspace modes
+packages/server/src/server/agent/mcp-server.test.ts	rejects another agent
+packages/server/src/server/agent/mcp-server.test.ts	rejects archiving a missing workspace
+packages/server/src/server/agent/mcp-server.test.ts	requires a concise title no longer than 60 characters
+packages/server/src/server/agent/mcp-server.test.ts	requires initialPrompt
+packages/server/src/server/agent/mcp-server.test.ts	requires provider as provider/model and rejects the old model field
+packages/server/src/server/agent/providers/claude/agent.test.ts	preserves the catalog when Claude Code version detection fails
+packages/server/src/server/agent/providers/claude/agent.test.ts	rejects an initial disabled-thinking config for an unsupported model
+packages/server/src/server/agent/providers/claude/agent.test.ts	rejects disabled thinking when the active model does not support it
+packages/server/src/server/agent/providers/claude/agent.test.ts	resolves the installed Claude Code version
+packages/server/src/server/agent/providers/claude/agent.test.ts	scopes candidates to the requested cwd before applying the limit
+packages/server/src/server/agent/providers/claude/agent.test.ts	selected 1M Claude models seed active context window usage from the catalog
+packages/server/src/server/agent/providers/claude/agent.test.ts	turns Claude thinking off without retaining an effort level
+packages/server/src/server/agent/providers/claude/models.test.ts	filters models by their minimum Claude Code version
+packages/server/src/server/agent/providers/claude/models.test.ts	keeps disabled thinking available for agents persisted on the retired 1M ID
+packages/server/src/server/agent/providers/claude/models.test.ts	offers a single Opus 5 entry with a 1M context window
+packages/server/src/server/agent/providers/claude/models.test.ts	omits models that require a newer Claude Code version
+packages/server/src/server/agent/providers/claude/models.test.ts	prefers the Claude Code version over a wrapper banner
+packages/server/src/server/agent/providers/claude/models.test.ts	resolves retired and dated Opus 5 IDs to the single catalog entry
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	closes Codex app-server when an interactive resume fails
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	closes Codex app-server when archived history hydration fails
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	correlates a Codex user message with the submitting client message
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	discovers a MultiAgentV2 child from a legacy-only lifecycle notification
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	dismisses a pending synthetic plan approval after a new prompt is accepted
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	does not dismiss a new plan approval emitted while a prompt is being accepted
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	does not import a parent interaction from child history as another sub-agent
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	does not register a parent interaction on a child thread as another sub-agent
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	emits a markdown divider when a new Codex assistant item starts after the previous one completed
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	emits imageView paths with spaces as valid assistant markdown images
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	initializes Codex app-server without making Paseo the request originator
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	interrupts an autonomous Codex turn identified by live notifications
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	keeps a synthetic plan dismissed when a new prompt is rejected
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	keeps repeated writes to one terminal as separate timeline rows
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	lists project skill commands when app-server receives the project cwd in cwds
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	loads archived Codex history without resuming the native thread
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	makes the old plan non-actionable while a new prompt is being prepared
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	rejects an interrupt before Codex initializes the thread
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	rejects an interrupt until Codex identifies the accepted turn
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	renders a child user message once across lifecycle notifications
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	renders child MCP image results in the provider subagent timeline
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	replaces a pending synthetic plan approval when a later plan completes
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	reports when Codex rejects a foreground turn interrupt
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	returns only the latest assistant item without its visual boundary
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	shows a silent shell command from legacy live notifications
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	shows a successful shell command that produces no output
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	shows the exact bytes Codex writes into an existing terminal
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts	updates a registered child with its later native activity name
+packages/server/src/server/agent/providers/pi/agent.test.ts	appends agent and daemon prompts after Pi
+packages/server/src/server/agent/providers/pi/agent.test.ts	canceling a silent Pi extension command leaves the session usable
+packages/server/src/server/agent/providers/pi/agent.test.ts	completes locally handled slash commands when agentInvoked is false
+packages/server/src/server/agent/providers/pi/agent.test.ts	does not probe non-slash prompts when agentInvoked is missing
+packages/server/src/server/agent/providers/pi/agent.test.ts	does not synthesize completion when agentInvoked is true for slash prompts
+packages/server/src/server/agent/providers/pi/agent.test.ts	does not synthesize completion when lifecycle starts before the no-turn probe
+packages/server/src/server/agent/providers/pi/agent.test.ts	emits live user messages with submitted Pi tree entry ids
+packages/server/src/server/agent/providers/pi/agent.test.ts	fails slash turns when the no-turn getState barrier errors
+packages/server/src/server/agent/providers/pi/agent.test.ts	keeps normal Pi agent sessions persisted
+packages/server/src/server/agent/providers/pi/agent.test.ts	keeps one generated message id when Pi omits message start and response id
+packages/server/src/server/agent/providers/pi/agent.test.ts	maps extension, prompt, and skill commands to Paseo slash commands
+packages/server/src/server/agent/providers/pi/agent.test.ts	probes slash prompts without agentInvoked and surfaces buffered notify output
+packages/server/src/server/agent/providers/pi/agent.test.ts	reports the persisted Pi entry attached to the submitted message
+packages/server/src/server/agent/providers/pi/agent.test.ts	starts internal Pi agents without persisting a native session
+packages/server/src/server/agent/providers/pi/agent.test.ts	suppresses late aborted terminal response arriving after interrupt resolves
+packages/server/src/server/agent/providers/pi/agent.test.ts	treats Pi
+packages/server/src/server/agent/providers/pi/agent.test.ts	uses a response id that first appears on the assistant update
+packages/server/src/server/agent/providers/pi/agent.test.ts	uses the Pi entry attached to a submitted prompt after resuming old history
+packages/server/src/server/auto-archive-on-merge/archive-if-safe.test.ts	archives a clean Paseo-owned worktree after merge
+packages/server/src/server/auto-archive-on-merge/archive-if-safe.test.ts	does nothing when the cwd is not a Paseo-owned worktree
+packages/server/src/server/checkout/status-projection.test.ts	a forgejo-resolved snapshot keeps Forgejo branding with Gitea-family facts
+packages/server/src/server/checkout/status-projection.test.ts	a gitlab-resolved snapshot emits status.forge and payload forge as gitlab
+packages/server/src/server/checkout/status-projection.test.ts	an unresolved self-hosted remote projects as neutral unauthenticated
+packages/server/src/server/checkout/status-projection.test.ts	does not project a facts-family tag as the brand forge for unresolved snapshots
+packages/server/src/server/checkout/status-projection.test.ts	labels the nested status.forge with the resolved forge
+packages/server/src/server/checkout/status-projection.test.ts	projects GitLab merge facts onto forgeSpecific without a github mirror
+packages/server/src/server/checkout/status-projection.test.ts	projects Gitea-family facts while preserving the resolved Forgejo brand
+packages/server/src/server/cli-run-workspace-precedence.e2e.test.ts	daemon resolves human and managed CLI workspace ownership
+packages/server/src/server/daemon-client.e2e.test.ts	DaemonClient rejects Stop when cancellation is not acknowledged
+packages/server/src/server/daemon-client.e2e.test.ts	DaemonClient rejects a replacement prompt when cancellation is not acknowledged
+packages/server/src/server/daemon-client.e2e.test.ts	a Desktop-managed daemon does not advertise npm self-update
+packages/server/src/server/daemon-client.e2e.test.ts	finds workspace files inside the OpenCode directory
+packages/server/src/server/daemon-config-store.test.ts	patch persists provider removal when in-memory config is already clean
+packages/server/src/server/daemon-config-store.test.ts	patch removes deleted providers from metadata generation
+packages/server/src/server/daemon-config-store.test.ts	patch removes provider entries from config.json
+packages/server/src/server/daemon-config-store.test.ts	patch removes the providers object when the last provider is deleted
+packages/server/src/server/daemon-e2e/open-project-worktree-reclassification.e2e.test.ts	openProject preserves a worktree
+packages/server/src/server/loop-service.test.ts	force-closes a loop worker when graceful cancellation is refused
+packages/server/src/server/loop-service.test.ts	reports unexpected loop worker cancellation errors
+packages/server/src/server/loop-service.test.ts	tolerates a loop worker closing while graceful cancellation is refused
+packages/server/src/server/schedule/service.test.ts	archives the run workspace when scheduled agent creation fails before archive opt-out can preserve an agent
+packages/server/src/server/schedule/service.test.ts	failed new-agent run keeps run error when workspace archive also fails
+packages/server/src/server/schedule/service.test.ts	records prompt-start failures as failed and archives the scheduled agent
+packages/server/src/server/session.test.ts	acknowledges a timeline subscription only to its socket source
+packages/server/src/server/session.test.ts	cancel_agent_request reports refusal only through its response
+packages/server/src/server/session.test.ts	creates a directory and returns its normalized Project descriptor
+packages/server/src/server/session.test.ts	delegates direct merge when the current change request lacks GitHub-only merge facts
+packages/server/src/server/session.test.ts	interruptAgentIfRunning rejects when graceful cancellation is refused
+packages/server/src/server/session.test.ts	keeps selective delivery scoped per socket when a retained session also has a legacy socket
+packages/server/src/server/session.test.ts	legacy cancel_agent_request reports refusal through the activity log
+packages/server/src/server/session.test.ts	passes request identity to ForgeService and emits timeline items
+packages/server/src/server/session.test.ts	passes the project slug and cached branch into workspace script spawning
+packages/server/src/server/session.test.ts	project.list returns every active project descriptor
+packages/server/src/server/session.test.ts	rejects an RPC outside an exact grant with the generic RPC error
+packages/server/src/server/session.test.ts	replaces a capable session
+packages/server/src/server/session.test.ts	replaces a session
+packages/server/src/server/session.test.ts	reports no remote when forge search has no resolved forge
+packages/server/src/server/session.test.ts	returns normalized repositories from the host GitHub service
+packages/server/src/server/session.test.ts	rolls back the directory when Project registration fails
+packages/server/src/server/session.test.ts	routes GitHub search requests through ForgeService
+packages/server/src/server/session.test.ts	sends project updates only to capable sockets in a retained session
+packages/server/src/server/session.test.ts	unions viewed timelines across socket sources and removes detached sources
+packages/server/src/server/session.workspaces.test.ts	a workspace leaving a filtered subscription after bootstrap emits a removal
+packages/server/src/server/session.workspaces.test.ts	create paseo worktree response preserves an explicit non-Git project
+packages/server/src/server/session.workspaces.test.ts	create_agent_request launches from an exact subdirectory in a created worktree
+packages/server/src/server/session.workspaces.test.ts	external workspace updates emit one deduplicated batch
+packages/server/src/server/session.workspaces.test.ts	import_agent_request imports into the workspace that opened the import sheet
+packages/server/src/server/session.workspaces.test.ts	import_agent_request maps an import failure to agent_create_failed
+packages/server/src/server/session.workspaces.test.ts	legacy refresh_agent_request restores a real deleted worktree
+packages/server/src/server/session.workspaces.test.ts	lists Git runtime for a checkout explicitly owned by a non-Git project
+packages/server/src/server/session.workspaces.test.ts	open_project_request does not repurpose an orphaned archived workspace
+packages/server/src/server/session.workspaces.test.ts	open_project_request gives a plain git worktree its own exact-root project
+packages/server/src/server/session.workspaces.test.ts	open_project_request keeps archived records and allocates a fresh workspace
+packages/server/src/server/session.workspaces.test.ts	project removal mutation broadcasts the final delta to another subscribed session
+packages/server/src/server/session.workspaces.test.ts	project.rename.request updates a project with no workspaces
+packages/server/src/server/session.workspaces.test.ts	refresh_agent_request does not inspect an archived worktree branch
+packages/server/src/server/session.workspaces.test.ts	refresh_agent_request does not recreate or unarchive a deleted worktree
+packages/server/src/server/session.workspaces.test.ts	refresh_agent_request leaves workspace archival independent when its directory exists
+packages/server/src/server/session.workspaces.test.ts	refresh_agent_request leaves workspace archival independent when its directory is missing
+packages/server/src/server/session.workspaces.test.ts	workspace auto-name uses the backing root for a nested worktree
+packages/server/src/server/session.workspaces.test.ts	workspace create emits through a matching workspace subscription
+packages/server/src/server/session.workspaces.test.ts	workspace create stays out of a non-matching workspace subscription
+packages/server/src/server/session.workspaces.test.ts	workspace mutation handling does not let a delayed upsert recreate an archived observer
+packages/server/src/server/session.workspaces.test.ts	workspace mutation handling drops queued observer sync after session cleanup
+packages/server/src/server/session.workspaces.test.ts	workspace mutations outside a filtered subscription neither watch nor emit
+packages/server/src/server/session.workspaces.test.ts	workspace placements preserve checkout facts independently from the project
+packages/server/src/server/session.workspaces.test.ts	workspace recovery stays accepted when git observer warming fails
+packages/server/src/server/session.workspaces.test.ts	workspace updates stay scoped to the matching cwd
+packages/server/src/server/session.workspaces.test.ts	workspace.create.request attaches a directory workspace to its explicit active project
+packages/server/src/server/session.workspaces.test.ts	workspace.create.request reports an archived explicit project
+packages/server/src/server/session.workspaces.test.ts	workspace.create.request reports an unknown explicit project
+packages/server/src/server/session.workspaces.test.ts	workspace.pin.set.request stores the pin timestamp and emits an updated descriptor
+packages/server/src/server/session/checkout/checkout-session.test.ts	carries the precise authState when the auth probe throws a classified error
+packages/server/src/server/session/checkout/checkout-session.test.ts	converts neutral change-request items for the legacy github search response
+packages/server/src/server/session/checkout/checkout-session.test.ts	derives the unauthenticated timeline error label from the forge brand for GitLab
+packages/server/src/server/session/checkout/checkout-session.test.ts	keeps features enabled when the timeline fetch fails for non-auth reasons
+packages/server/src/server/session/checkout/checkout-session.test.ts	reports features disabled with the precise authState when the timeline fetch hits an auth error
+packages/server/src/server/session/checkout/checkout-session.test.ts	reports non-auth status errors as errors instead of sign-in setup
+packages/server/src/server/session/checkout/checkout-session.test.ts	resolves the forge once when reporting a non-auth status error
+packages/server/src/server/session/checkout/checkout-session.test.ts	returns stash entries scoped to paseo stashes by default
+packages/server/src/server/session/checkout/checkout-session.test.ts	routes GitLab set-auto-merge enable and disable through the resolved adapter
+packages/server/src/server/session/checkout/checkout-session.test.ts	routes get-check-details through the resolved GitLab adapter
+packages/server/src/server/session/checkout/checkout-session.test.ts	routes search through the resolved GitLab service without running gh
+packages/server/src/server/session/checkout/checkout-session.test.ts	routes the timeline request through the resolved GitLab adapter
+packages/server/src/server/session/checkout/checkout-session.test.ts	routes the timeline request through the resolved Gitea adapter
+packages/server/src/server/session/files/workspace-files-session.test.ts	streams a real file larger than the socket limit as paced ordered chunks
+packages/server/src/server/session/workspace-scripts/workspace-scripts-service.test.ts	keeps same-named service projects distinct
+packages/server/src/server/session/workspace-scripts/workspace-scripts-service.test.ts	kills the supervised terminal and returns the stopped service metadata
+packages/server/src/server/session/workspace-scripts/workspace-scripts-service.test.ts	predicts the same service hostname that start registers
+packages/server/src/server/session/workspace-scripts/workspace-scripts-service.test.ts	projects service hostnames without a Git snapshot
+packages/server/src/server/session/workspace-scripts/workspace-scripts-service.test.ts	returns no scripts for a workspace without a paseo.json
+packages/server/src/server/session/workspace-scripts/workspace-scripts-service.test.ts	uses the exact project root for a service hostname
+packages/server/src/server/wire-compat.test.ts	hello parses with and without the project update capability
+packages/server/src/server/wire-compat.test.ts	sends project updates only to clients that declare support
+packages/server/src/server/wire-compat.test.ts	server info accepts legacy feature payloads without stable project identity
+packages/server/src/server/workspace-archive-service.test.ts	archiving a subdirectory workspace keeps its active worktree root
+packages/server/src/server/workspace-archive-service.test.ts	workspace scope keeps a worktree for an active workspace in a subdirectory
+packages/server/src/server/workspace-archive-service.test.ts	workspace scope never removes a non-Paseo-owned directory
+packages/server/src/server/workspace-archive-service.test.ts	workspace scope runs teardown from the exact nested workspace before deleting its worktree
+packages/server/src/server/workspace-archive-service.test.ts	workspace scope runs teardown while keeping a directory referenced by a sibling
+packages/server/src/server/workspace-archive-service.test.ts	worktree scope archives root and subdirectory workspaces before removing the backing worktree
+packages/server/src/server/workspace-create-worktree-source.e2e.test.ts	workspace.create keeps a branch-off name separate from its worktree slug
+packages/server/src/server/workspace-git-service.primitive.test.ts	generic forge poll refreshes immediately when checkout HEAD changes
+packages/server/src/server/workspace-git-service.primitive.test.ts	generic forge self-heal uses the fast poll window while checks are pending
+packages/server/src/server/workspace-git-service.primitive.test.ts	getCheckout surfaces an unexpected Git read failure
+packages/server/src/server/workspace-git-service.primitive.test.ts	getProjectSlug derives the slug from the snapshot cache
+packages/server/src/server/workspace-git-service.primitive.test.ts	getSnapshot reports an unresolved self-hosted remote as neutral unauthenticated
+packages/server/src/server/workspace-git-service.primitive.test.ts	onWorkspaceStateMayHaveChanged preserves includeForge when a file watcher fires within the debounce window
+packages/server/src/server/workspace-git-service.primitive.test.ts	self-heal timer refreshes git without refreshing GitHub
+packages/server/src/server/workspace-git-service.primitive.test.ts	subscription cancels generic forge PR status self-heal polling after unsubscribe
+packages/server/src/server/workspace-git-service.primitive.test.ts	subscription self-heal polls a resolved non-GitHub forge for PR status
+packages/server/src/server/workspace-registry-bootstrap.test.ts	materializes legacy remote worktrees into one readable project
+packages/server/src/server/workspace-registry-bootstrap.test.ts	propagates a Git failure for an existing legacy directory
+packages/server/src/server/workspace-registry-bootstrap.test.ts	skips a legacy agent whose cwd is a file
+packages/server/src/server/workspace-registry-bootstrap.test.ts	skips a legacy agent whose directory no longer exists
+packages/server/src/server/workspace-registry-model.test.ts	defines checkout and created-worktree placement completely
+packages/server/src/server/workspace-registry-model.test.ts	generates opaque project ids
+packages/server/src/server/workspace-registry-model.test.ts	projects persisted placement to the wire checkout
+packages/server/src/server/workspace-registry-model.test.ts	updates live placement while preserving its durable name and base branch
+packages/server/src/server/worktree-core.posix.test.ts	checks out a GitLab MR ref when the source branch is gone
+packages/server/src/server/worktree-core.posix.test.ts	checks out a GitLab MR source branch through the resolved forge service
+packages/server/src/server/worktree-core.posix.test.ts	checks out the authoritative GitLab MR ref before a same-named origin branch
+packages/server/src/server/worktree-core.posix.test.ts	derives a deduped PR lookup target from git config when metadata has no target
+packages/server/src/server/worktree-core.posix.test.ts	does not add a fallback push remote for a cross-repo MR without a push URL
+packages/server/src/server/worktree-core.posix.test.ts	tracks a same-repo PR branch from a single-branch clone
+packages/server/src/server/worktree-core.posix.test.ts	uses an injectable ForgeService dependency for missing PR head refs
+packages/server/src/services/github-service.test.ts	caches definitive null repo host resolutions
+packages/server/src/services/github-service.test.ts	does not attach a stale merged PR after a same-name branch advances
+packages/server/src/services/github-service.test.ts	does not treat an unrelated tracker URL as a GitHub issue/PR number
+packages/server/src/services/github-service.test.ts	keeps a merged PR only when headRefOid matches the checkout HEAD
+packages/server/src/services/github-service.test.ts	keeps an open PR when its remote head SHA differs from the checkout HEAD
+packages/server/src/services/github-service.test.ts	populates repoOwner/repoName from a GitHub Enterprise PR URL
+packages/server/src/services/github-service.test.ts	prefers an open PR over an exact-SHA merged PR for the same head
+packages/server/src/services/github-service.test.ts	re-resolves a null repo host after the TTL expires
+packages/server/src/services/github-service.test.ts	re-resolves the host after invalidation when the remote changes
+packages/server/src/services/github-service.test.ts	resolves the repo slug from the workspace when creating a pull request
+packages/server/src/services/github-service.test.ts	routes gh calls to the resolved GitHub Enterprise host via GH_HOST
+packages/server/src/services/github-service.test.ts	throws a typed command error for malformed JSON output
+packages/server/src/services/github-service.test.ts	throws when the workspace repository cannot be resolved for pull request creation
+packages/server/src/services/github-service.test.ts	treats a GitHub Enterprise issue/PR URL as a search for that number
+packages/server/src/utils/checkout-git.test.ts	creates a pull request via the given adapter without resolving a repo slug in the shell
+packages/server/src/utils/checkout-git.test.ts	does not report full history as unpushed for fresh no-track Paseo worktrees
+packages/server/src/utils/checkout-git.test.ts	does not reuse a PR status cache entry after HEAD changes on the same branch
+packages/server/src/utils/checkout-git.test.ts	excludes dirty working tree changes from Paseo worktree base diffs
+packages/server/src/utils/checkout-git.test.ts	falls back to plain git checkout status when Paseo worktree metadata is missing
+packages/server/src/utils/checkout-git.test.ts	handles status/diff/commit in a .paseo worktree
+packages/server/src/utils/checkout-git.test.ts	keeps stale PR status when a Gitea-family refresh hits a transient command error
+packages/server/src/utils/checkout-git.test.ts	keeps the structured diff cap below the relay frame limit
+packages/server/src/utils/checkout-git.test.ts	maps Gitea authentication PR status failures to unauthenticated auth state
+packages/server/src/utils/checkout-git.test.ts	maps missing Gitea CLI PR status lookups to cli_missing auth state
+packages/server/src/utils/checkout-git.test.ts	matches Unix .paseo/worktrees/ paths
+packages/server/src/utils/checkout-git.test.ts	matches Windows .paseo\\worktrees\\ paths
+packages/server/src/utils/checkout-git.test.ts	matches worktrees under a custom PASEO_HOME
+packages/server/src/utils/checkout-git.test.ts	names both refs when a requested base ref does not match the stored one
+packages/server/src/utils/checkout-git.test.ts	reads a non-origin branch remote without replacing it with the origin URL
+packages/server/src/utils/checkout-git.test.ts	reads the origin URL once when collecting facts for an origin-tracking branch
+packages/server/src/utils/checkout-git.test.ts	rejects paths without .paseo/worktrees segment
+packages/server/src/utils/checkout-git.test.ts	reports an ordinary directory as non-git without warning
+packages/server/src/utils/checkout-git.test.ts	resolves a gitlab remote through the resolver and creates via the gitlab adapter
+packages/server/src/utils/checkout-git.test.ts	resolves the Git common directory once when reading Paseo worktree facts
+packages/server/src/utils/checkout-git.test.ts	returns checkout root metadata for .paseo worktrees
+packages/server/src/utils/checkout-git.test.ts	uses stored baseRefName for Paseo worktrees (no heuristics)
+packages/server/src/utils/checkout-git.test.ts	warns when git discovery fails unexpectedly
+packages/server/src/utils/worktree.test.ts	maps only root-contained workspace paths into a replacement worktree
+packages/server/src/utils/worktree.test.ts	rejects paths that are not under the paseo worktrees root
+packages/server/src/utils/worktree.test.ts	reports the source checkout root separately from Git
+packages/server/src/utils/worktree.test.ts	treats a worktree as paseo-owned even when its .git admin is missing

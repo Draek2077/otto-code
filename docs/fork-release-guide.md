@@ -498,7 +498,7 @@ full infrastructure independence ever becomes a goal.
 "Web app custom domain" above).
 Everything that referenced `otto-code.ai` across source, docs, nix packaging, and the
 upstream-merge rebrand tooling (`scripts/rebrand-upstream.pl`, `docs/upstream-merges.md`) has been
-swapped — future `git merge upstream/main` runs will rebrand new Paseo code straight to
+swapped — future `git merge upstream/main` runs will rebrand new Otto code straight to
 `otto-code.me` / `Draek2077/otto-code` without drifting back.
 
 ## Full release checklist

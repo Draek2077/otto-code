@@ -1,13 +1,13 @@
-import type { GitHubService } from "../github-service.js";
+import type { ForgeService } from "../github-service.js";
 import type { GitHostingResolver } from "./resolver.js";
 import { GitHostingCredentialsMissingError } from "./types.js";
 
-// A GitHubService-shaped facade that routes every call to the provider the
+// A ForgeService-shaped facade that routes every call to the provider the
 // target directory's project selects. Every method on the service interface
 // already carries a cwd, so existing consumers (session, checkout,
 // auto-archive, agent tools) become multi-provider by swapping the singleton
 // injection for this router — no per-call-site changes.
-export function createGitHostingRouter(resolver: GitHostingResolver): GitHubService {
+export function createGitHostingRouter(resolver: GitHostingResolver): ForgeService {
   async function serviceFor(cwd: string) {
     const resolved = await resolver.resolveForCwd(cwd);
     if (!resolved.service) {
@@ -49,8 +49,8 @@ export function createGitHostingRouter(resolver: GitHostingResolver): GitHubServ
       return (await serviceFor(input.cwd)).getPullRequestTimeline(input);
     },
 
-    async getGitHubCheckDetails(input) {
-      return (await serviceFor(input.cwd)).getGitHubCheckDetails(input);
+    async getCheckDetails(input) {
+      return (await serviceFor(input.cwd)).getCheckDetails(input);
     },
 
     async searchIssuesAndPrs(input) {

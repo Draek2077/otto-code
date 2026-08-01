@@ -45,7 +45,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install JS dependencies
-        run: npm ci
+        run: node scripts/npm-retry.mjs ci
 
       - name: Download release manifests
         env:

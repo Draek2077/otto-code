@@ -7,6 +7,7 @@ interface DiffStatProps {
   additions: number;
   deletions: number;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 }
 
 const compactFormatter = new Intl.NumberFormat("en-US", {
@@ -18,10 +19,10 @@ export function formatDiffCount(value: number): string {
   return compactFormatter.format(value).toLowerCase();
 }
 
-export function DiffStat({ additions, deletions, style }: DiffStatProps) {
+export function DiffStat({ additions, deletions, style, testID }: DiffStatProps) {
   const rowStyle = useMemo(() => (style ? [styles.row, style] : styles.row), [style]);
   return (
-    <View style={rowStyle}>
+    <View style={rowStyle} testID={testID}>
       <Text style={styles.additions}>+{formatDiffCount(additions)}</Text>
       <Text style={styles.deletions}>-{formatDiffCount(deletions)}</Text>
     </View>

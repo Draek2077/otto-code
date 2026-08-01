@@ -62,6 +62,10 @@ export const en = {
       newAgent: "New chat",
       openProject: "Open project",
       home: "Home",
+      workspaces: "Workspaces",
+      addProject: "Add project",
+      modelGroupLabel: "Model",
+      modelSearchKeywords: "switch model change model set model select model",
     },
   },
   // The chat metrics toolbar. "Total tokens" is lifetime SPEND and never
@@ -159,9 +163,11 @@ export const en = {
       fileContext: "File context",
       folderContext: "Folder context",
       lineContext: "Line context",
+      addIssueOrPr_mr: "Add issue or MR",
     },
     errors: {
       failedToSend: "Failed to send message",
+      failedToCancel: "Failed to cancel",
       failedToCreateAgent: "Failed to create chat",
       noHostSelected: "No host selected",
       initialPromptRequired: "Initial prompt is required",
@@ -178,6 +184,8 @@ export const en = {
       noResults: "No results found.",
       searchPlaceholder: "Search issues and PRs...",
       title: "Attach issue or PR",
+      searchPlaceholder_mr: "Search issues and MRs...",
+      title_mr: "Attach issue or MR",
     },
     folder: {
       searching: "Searching...",
@@ -374,6 +382,7 @@ export const en = {
     mode: {
       title: "Mode",
       selectWithValue: "Select chat mode ({{value}})",
+      searchPlaceholder: "Search modes...",
     },
     hints: {
       thinking: "Change effort",
@@ -433,6 +442,7 @@ export const en = {
       reconnecting: "Reconnecting...",
       archivingTitle: "Archiving chat...",
       archivingSubtitle: "Please wait while we archive this chat.",
+      timelineSyncFailed: "Couldn't refresh agent history. Retrying…",
     },
     unavailable: {
       selectedHost: "Selected host",
@@ -661,6 +671,18 @@ export const en = {
       missing: "Workspace not found",
       needsHostUpgrade: "Update your host to restore this workspace",
       manageHost: "Manage host",
+      recovery: {
+        archivedTitle: "Workspace archived",
+        restoreDescription:
+          "{{workspaceName}} was archived and its worktree was removed. Restore branch {{branch}} to open it again.",
+        unarchiveDescription: "{{workspaceName}} is archived. Unarchive it to open it again.",
+        restoreAction: "Restore",
+        unarchiveAction: "Unarchive",
+        restoringTitle: "Restoring workspace",
+        restoringAction: "Restoring...",
+        unavailableTitle: "Workspace unavailable",
+        checkFailedTitle: "Couldn't check workspace",
+      },
     },
     hoverCard: {
       scriptsAccessibility: "Workspace scripts",
@@ -902,6 +924,7 @@ export const en = {
         close: "Close",
         renameTerminal: "Rename terminal",
         renameAgent: "Rename chat",
+        copyTerminalId: "Copy terminal id",
       },
       actions: {
         newAgent: "New chat",
@@ -920,6 +943,7 @@ export const en = {
         previewDisabledTooltip: "Start the chat to use Preview",
         previewPickServer: "Start which server?",
         previewStopServer: "Stop {{name}}",
+        exitFocusMode: "Exit focus mode",
       },
       explorer: {
         open: "Open explorer",
@@ -939,6 +963,7 @@ export const en = {
         reloadingAgent: "Reloading chat...",
         reloadedAgent: "Reloaded chat",
         failedToReloadAgent: "Failed to reload chat",
+        terminalIdCopiedLabel: "Terminal ID",
       },
       confirmations: {
         close: "Close",
@@ -967,7 +992,14 @@ export const en = {
           tabs: "This will close {{tabs}} tab(s).",
           agents: "This will archive {{agents}} chat(s).",
         },
+        unsavedTitle: "Unsaved changes",
+        unsavedMessage:
+          "This tab has changes that have not been saved. Closing it will discard the draft.",
+        closeWithoutSaving: "Close without saving",
+        closePaneTitle: "Close pane?",
+        bulkUnsaved: "{{count}} tab(s) have unsaved changes. Closing will discard those drafts.",
       },
+      modified: "Unsaved changes",
     },
     header: {
       actions: {
@@ -995,6 +1027,11 @@ export const en = {
       actions: {
         run: "Run",
         view: "View",
+        chooseUrl: "Choose URL",
+        copyUrl: "Copy URL",
+        openService: "View service",
+        restart: "Restart",
+        stop: "Stop",
       },
       accessibility: {
         trigger: "Workspace scripts",
@@ -1002,10 +1039,21 @@ export const en = {
         viewTerminal: "View {{scriptName}} terminal",
         runScript: "Run {{scriptName}} script",
         script: "{{scriptName}} script",
+        openService: "View {{scriptName}} service",
+        stopScript: "Stop {{scriptName}}",
+        restartScript: "Restart {{scriptName}}",
+        copyUrl: "Copy {{scriptName}} URL",
+        chooseUrl: "Choose URL for {{scriptName}}",
       },
       states: {
         exitCode: "exit {{code}}",
         startFailed: "Failed to start {{scriptName}}",
+        stopFailed: "Failed to stop {{scriptName}}",
+      },
+      routes: {
+        public: "Reverse proxy",
+        otto: "Memorable",
+        direct: "Direct",
       },
     },
     git: {
@@ -1048,6 +1096,9 @@ export const en = {
           pending: "Creating PR...",
           success: "PR Created",
           description: "Push this branch to the remote and open a pull request against {{baseRef}}",
+          label_mr: "Create MR",
+          pending_mr: "Creating MR...",
+          success_mr: "MR Created",
         },
         mergeBranch: {
           label: "Merge into {{baseRef}}",
@@ -1078,6 +1129,11 @@ export const en = {
           mergeDescription: "Merge the pull request with a merge commit",
           rebaseDescription:
             "Rebase the pull request's commits onto the base branch, no merge commit",
+          squash_mr: "Merge MR (squash)",
+          merge_mr: "Merge MR (merge)",
+          rebase_mr: "Merge MR (rebase)",
+          pending_mr: "Merging MR...",
+          success_mr: "MR merged",
         },
         autoMerge: {
           enableSquash: "Auto merge (squash)",
@@ -1131,6 +1187,18 @@ export const en = {
           mergePrNotReady:
             "Merge PR isn't available until GitHub reports the pull request is ready to merge",
           autoMergeCannotDisable: "Auto-merge is enabled, but this account can't disable it",
+          viewPrNoForge:
+            "View {{noun}} isn't available right now because {{brand}} isn't connected",
+          pullAndPushNoIncoming:
+            "Pull and push isn't available because there are no incoming changes to pull first",
+          pullAndPushNothingToPush:
+            "Pull and push isn't available because there is nothing new to send after pulling",
+          createPrNoForge:
+            "Create {{noun}} isn't available right now because {{brand}} isn't connected",
+          archiveNotWorktree:
+            "Archive isn't available here because this workspace was not created as a Otto worktree",
+          mergePrNoForge:
+            "Merge {{noun}} isn't available right now because {{brand}} isn't connected",
         },
         toasts: {
           failedCommit: "Failed to commit",
@@ -1172,6 +1240,7 @@ export const en = {
           branchRemoteKept: "The copy on origin is kept.",
           branchDeleted: "Deleted branch {{branchName}}.",
         },
+        viewPr_mr: "View MR",
       },
       diff: {
         viewChanges: "View changes",
@@ -1226,6 +1295,20 @@ export const en = {
         basePickerRedetectDescription: "Work out again which branch this one was created from",
         basePickerRemoteDescription: "The remote-tracking branch, which may differ from local",
         baseChangeFailed: "Failed to change the base branch",
+        openChangesTab: "Open Changes tab",
+        closeChangesTab: "Close Changes tab",
+        previewTooLargeTitle: "This diff is too large to preview",
+        previewTooLargeDescription: "Narrow the comparison to preview it here",
+        commits: {
+          title: "Commits",
+          countLabel: "{{count}} workspace commits",
+          noneAhead: "No commits ahead of {{baseRef}} yet",
+          fileDiffEmpty: "No changes to display",
+          fileDiffError: "Failed to load file diff",
+          loading: "Loading commits…",
+          loadError: "Failed to load commits",
+          empty: "No commits yet",
+        },
       },
       commit: {
         messagePlaceholder: "Commit message",
@@ -1295,13 +1378,16 @@ export const en = {
       pr: {
         actions: {
           viewPullRequest: "View",
+          openOn: "Open on {{brand}}",
         },
         sections: {
           checks: "Checks",
           reviews: "Reviews",
+          pipeline: "Pipeline",
         },
         accessibility: {
           pullRequest: "Pull request #{{number}}",
+          pullRequest_mr: "Merge request !{{number}}",
         },
         states: {
           draft: "Draft",
@@ -1322,7 +1408,29 @@ export const en = {
           statusLoadFailed: "Unable to load pull request status",
           activityLoadFailed: "Unable to load pull request activity",
         },
+        empty: {
+          noJobs: "No jobs",
+          loadingPipeline: "Loading pipeline…",
+          pipelineJobsLoadFailed: "Could not load pipeline jobs",
+          allowedToFail: "allowed to fail",
+        },
+        approvals: "{{given}} of {{required}} approvals",
+        thread: {
+          discussion: "Discussion thread",
+        },
       },
+      forgeSetup: {
+        installCli: "Install the {{cli}} CLI to use {{brand}} features.",
+        signIn: "Run {{command}} to use {{brand}} features.",
+        generic: "Set up {{brand}} on this host to use its features.",
+      },
+    },
+    fileActions: {
+      openFile: "Open file",
+      copyPath: "Copy path",
+      download: "Download",
+      addToChat: "Add to chat…",
+      moreActions: "More actions",
     },
   },
   sidebar: {
@@ -1337,6 +1445,7 @@ export const en = {
       home: "Home",
       settings: "Settings",
       closeSidebar: "Close sidebar",
+      hosts: "Hosts",
     },
     sections: {
       sessions: "History",
@@ -1357,6 +1466,8 @@ export const en = {
         openNewWindowFailed: "Couldn't open a new window",
         remove: "Remove project",
         removing: "Removing...",
+        openFolder: "Open in file manager",
+        openFolderFailed: "Couldn't open folder",
       },
       confirmations: {
         removeTitle: "Remove project?",
@@ -1394,6 +1505,10 @@ export const en = {
         hideFromSidebar: "Hide from sidebar",
         archiving: "Archiving...",
         hiding: "Hiding...",
+        showMore: "Show more",
+        showLess: "Show less",
+        pin: "Pin to top",
+        unpin: "Unpin",
       },
       reopenWorktree: {
         menu: "Reopen worktree...",
@@ -1424,6 +1539,20 @@ export const en = {
         hideFailed: "Failed to hide workspace",
         archiveFailed: "Failed to archive workspace",
       },
+    },
+    pinned: {
+      title: "Pinned",
+    },
+    help: {
+      trigger: "Help and support",
+      sectionHelp: "Help",
+      diagnostics: "Run diagnostics",
+      shortcuts: "Keyboard shortcuts",
+      reportIssue: "Report an issue",
+      discord: "Discord",
+      github: "Create GitHub issue",
+      whatsNew: "What's new",
+      version: "Otto {{version}}",
     },
   },
   newProject: {
@@ -2381,6 +2510,8 @@ export const en = {
         confirm: "Clear",
       },
     },
+    archiveFinishedAction: "Archive finished subagents",
+    archiveFinishedTooltip: "Archive finished",
   },
   observedSubagents: {
     readOnlyTitle: "Observed subagent · read-only",
@@ -2686,6 +2817,36 @@ export const en = {
         actualSize: "Actual size",
         fitToWindow: "Fit to window",
       },
+      editor: {
+        fileSize: "File size {{size}}",
+        lines: "{{count}} lines",
+        editorStatus: "Editor status {{status}}",
+        unsavedChanges: "Unsaved changes",
+        saving: "Saving...",
+        saveFailed: "Save failed",
+        changedOnDisk: "Changed on disk",
+        vimMode: "Vim mode {{mode}}",
+        cursor: "Line {{line}}, column {{column}}",
+        preview: "Preview",
+        source: "Source",
+        unavailableTitle: "File unavailable on disk",
+        conflictDescription: "The local buffer was preserved. Choose which version to keep.",
+        overwrite: "Overwrite",
+        reload: "Reload",
+        reloadTitle: "Reload from disk?",
+        reloadMessage: "Your local changes will be lost.",
+      },
+    },
+    diff: {
+      changesLabel: "Changes",
+      changesSubtitle: "Working tree diff",
+      commitSubtitle: "Commit diff",
+      uncommittedSubtitle: "Uncommitted changes",
+      baseSubtitle: "Compared with {{baseRef}}",
+      directoryMissing: "Workspace directory not found.",
+      empty: "No changes",
+      loadError: "Failed to load diff",
+      capabilityMissing: "Update the host to view commit diffs.",
     },
   },
   toolCallDetails: {
@@ -2708,6 +2869,8 @@ export const en = {
     sessionCost: "Session cost {{cost}}",
     accessibility: "Context window {{percentage}}% used",
     tooltip: "View usage",
+    used: "{{percentage}}% used",
+    tokens: "{{used}} / {{max}} tokens",
   },
   review: {
     comment: {
@@ -2758,6 +2921,7 @@ export const en = {
       permissions: "Permissions",
       diagnostics: "Diagnostics",
       about: "About",
+      editor: "Editor",
     },
     hostSections: {
       connections: "Connections",
@@ -2862,6 +3026,30 @@ export const en = {
           zhCN: "Simplified Chinese",
         },
       },
+      browserData: {
+        title: "Browser data",
+        siteData: "Cookies and site data",
+        description: "Browser tabs share sign-ins and site data across Otto.",
+        clear: "Clear browser data",
+        clearing: "Clearing...",
+        confirmTitle: "Clear browser data?",
+        confirmMessage: "Sites will be signed out and open browser tabs will reload.",
+        success: "Browser data cleared.",
+        error: "Couldn't clear browser data.",
+      },
+      autoExpandReasoning: {
+        label: "Always expand reasoning",
+        description: "Show agent thinking and chain-of-thought blocks fully expanded by default",
+      },
+      toolCallDetail: {
+        label: "Tool call display",
+        description: "How tool calls appear in the timeline",
+        accessibilityLabel: "Select tool call display ({{value}})",
+        options: {
+          overview: "Summary",
+          detailed: "Full detail",
+        },
+      },
     },
     preview: {
       title: "Preview",
@@ -2957,6 +3145,8 @@ export const en = {
           terracotta: "Terracotta",
           horizon: "Horizon",
           powder: "Powder",
+          light: "Light",
+          auto: "System",
         },
       },
       agents: {
@@ -3087,6 +3277,9 @@ export const en = {
         highlightThemeAccessibility: "Highlight theme: {{value}}",
         previewAccessibility: "Live preview of the syntax theme and code font",
       },
+      detailLevel: {
+        title: "Detail level",
+      },
     },
     shortcuts: {
       dialogTitle: "Shortcuts",
@@ -3157,10 +3350,12 @@ export const en = {
         editorGoToDefinition: "Go to definition",
         editorFindReferences: "Find references",
         editorRenameSymbol: "Rename symbol",
+        switchProject: "Switch project",
       },
       helpNotes: {
         showKeyboardShortcuts: "Available when focus is not in a text field or terminal.",
       },
+      searchPlaceholder: "Search shortcuts",
     },
     integrations: {
       title: "Integrations",
@@ -3448,6 +3643,8 @@ export const en = {
           requestFailedTitle: "Update failed",
           requestFailedMessage: "Failed to update the daemon: {{error}}",
           dialogFailedMessage: "Unable to open the update confirmation dialog.",
+          desktopManagedHint:
+            "This daemon is managed by Otto Desktop. Update Otto Desktop on the host.",
         },
         dangerZone: "Danger zone",
         remove: {
@@ -3543,6 +3740,8 @@ export const en = {
         removing: "Removing...",
         requiresUpdate: "Update the host to remove providers.",
         failed: "Failed to remove provider",
+        confirm: "Remove",
+        errorTitle: "Unable to remove provider",
       },
       models: {
         one: "1 model",
@@ -3579,6 +3778,11 @@ export const en = {
         none: "No diagnostic available",
         failedToFetch: "Failed to fetch diagnostic",
         unknownError: "Unknown error",
+      },
+      actions: {
+        menu: "{{name}} actions",
+        remove: "Remove provider",
+        removing: "Removing...",
       },
     },
     project: {
@@ -3680,6 +3884,11 @@ export const en = {
         discard: "Discard",
         keepEditing: "Keep editing",
       },
+    },
+    editor: {
+      title: "Editor",
+      vimKeybindings: "Vim keybindings",
+      vimHint: "Applies to source files on web and desktop.",
     },
   },
   artifacts: {

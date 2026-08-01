@@ -37,6 +37,7 @@ function project(input: {
     hosts: input.hosts ?? [
       {
         serverId: "srv",
+        projectId: input.projectKey,
         iconWorkingDir: input.iconWorkingDir ?? input.projectKey,
         canCreateWorktree: true,
       },
@@ -193,6 +194,7 @@ describe("buildSidebarProjectsFromStructure", () => {
           hosts: [
             {
               serverId: "relay:otto-host",
+              projectId: "project-1",
               iconWorkingDir: "/repo/project-1",
               canCreateWorktree: true,
             },
@@ -221,11 +223,13 @@ describe("shared sidebar workspace model", () => {
           hosts: [
             {
               serverId: "host-a",
+              projectId: "otto-code-ai/otto-code",
               iconWorkingDir: "/repo/otto-code-ai/otto-code",
               canCreateWorktree: true,
             },
             {
               serverId: "host-b",
+              projectId: "otto-code-ai/otto-code",
               iconWorkingDir: "/repo/otto-code-ai/otto-code",
               canCreateWorktree: true,
             },
@@ -283,11 +287,13 @@ describe("shared sidebar workspace model", () => {
         hosts: [
           {
             serverId: "host-a",
+            projectId: "otto-code-ai/otto-code",
             iconWorkingDir: "/repo/otto-code-ai/otto-code",
             canCreateWorktree: true,
           },
           {
             serverId: "host-b",
+            projectId: "otto-code-ai/otto-code",
             iconWorkingDir: "/repo/otto-code-ai/otto-code",
             canCreateWorktree: true,
           },
@@ -392,14 +398,24 @@ describe("shouldShowSidebarHostLabels", () => {
         project({
           projectKey: "project-a",
           hosts: [
-            { serverId: "host-a", iconWorkingDir: "/repo/project-a", canCreateWorktree: true },
+            {
+              serverId: "host-a",
+              projectId: "project-a",
+              iconWorkingDir: "/repo/project-a",
+              canCreateWorktree: true,
+            },
           ],
           workspaceKeys: ["host-a:ws-1"],
         }),
         project({
           projectKey: "project-b",
           hosts: [
-            { serverId: "host-b", iconWorkingDir: "/repo/project-b", canCreateWorktree: true },
+            {
+              serverId: "host-b",
+              projectId: "project-b",
+              iconWorkingDir: "/repo/project-b",
+              canCreateWorktree: true,
+            },
           ],
           workspaceKeys: ["host-b:ws-2"],
         }),
@@ -415,8 +431,18 @@ describe("shouldShowSidebarHostLabels", () => {
         project({
           projectKey: "otto-code-ai/otto-code",
           hosts: [
-            { serverId: "host-a", iconWorkingDir: "/repo/otto", canCreateWorktree: true },
-            { serverId: "host-b", iconWorkingDir: "/repo/otto", canCreateWorktree: true },
+            {
+              serverId: "host-a",
+              projectId: "otto-code-ai/otto-code",
+              iconWorkingDir: "/repo/otto",
+              canCreateWorktree: true,
+            },
+            {
+              serverId: "host-b",
+              projectId: "otto-code-ai/otto-code",
+              iconWorkingDir: "/repo/otto",
+              canCreateWorktree: true,
+            },
           ],
           workspaceKeys: ["host-a:main", "host-b:feature"],
         }),
@@ -438,7 +464,7 @@ describe("computeSidebarOrderUpdates", () => {
     expect(updates).toEqual({ projectOrder: null, workspaceOrders: [] });
   });
 
-  it("appends unseen projects and workspaces to the persisted orders", () => {
+  it("appends unseen projects while putting unseen workspaces before the saved order", () => {
     const projects = [
       sidebarProject({ projectKey: "project-a", workspaceKeys: ["ws-1", "ws-2"] }),
       sidebarProject({ projectKey: "project-b", workspaceKeys: ["ws-3"] }),
@@ -452,7 +478,7 @@ describe("computeSidebarOrderUpdates", () => {
 
     expect(updates.projectOrder).toEqual(["project-a", "project-b"]);
     expect(updates.workspaceOrders).toEqual([
-      { projectKey: "project-a", order: ["srv:ws-1", "srv:ws-2"] },
+      { projectKey: "project-a", order: ["srv:ws-2", "srv:ws-1"] },
       { projectKey: "project-b", order: ["srv:ws-3"] },
     ]);
   });

@@ -17,33 +17,64 @@ const runningService: WorkspaceScriptPayload = {
   terminalId: null,
 };
 
-function resolveLink(activeConnection: ActiveConnection | null) {
-  return resolveWorkspaceScriptLink({
-    script: runningService,
-    activeConnection,
-  });
+function resolveLink(
+  activeConnection: ActiveConnection | null,
+  script: WorkspaceScriptPayload = runningService,
+) {
+  return resolveWorkspaceScriptLink({ script, activeConnection });
 }
 
 describe("resolveWorkspaceScriptLink", () => {
-  it("uses the local proxy URL for loopback TCP connections", () => {
+  it("defaults to the memorable Otto URL locally and keeps direct as a fallback", () => {
     expect(
       resolveLink({ type: "directTcp", endpoint: "localhost:6868", display: "localhost:6868" }),
     ).toEqual({
-      openUrl: "http://web--feature--otto.localhost:6868",
-      labelUrl: "http://web--feature--otto.localhost:6868",
+      primary: {
+        kind: "otto",
+        label: "web--feature--otto.localhost:6868",
+        url: "http://web--feature--otto.localhost:6868",
+      },
+      targets: [
+        {
+          kind: "otto",
+          label: "web--feature--otto.localhost:6868",
+          url: "http://web--feature--otto.localhost:6868",
+        },
+        { kind: "direct", label: "localhost:3000", url: "http://localhost:3000" },
+      ],
     });
   });
 
-  it("uses the local proxy URL for socket and pipe connections", () => {
+  it("defaults to an explicitly configured reverse proxy", () => {
+    const publicUrl = "https://web--feature--otto.services.example.com";
     expect(
-      resolveLink({ type: "directSocket", endpoint: "/tmp/otto.sock", display: "socket" }),
+      resolveLink(
+        { type: "directSocket", endpoint: "/tmp/otto.sock", display: "socket" },
+        { ...runningService, publicProxyUrl: publicUrl, proxyUrl: publicUrl },
+      ),
     ).toEqual({
-      openUrl: "http://web--feature--otto.localhost:6868",
-      labelUrl: "http://web--feature--otto.localhost:6868",
+      primary: {
+        kind: "public",
+        label: "web--feature--otto.services.example.com",
+        url: publicUrl,
+      },
+      targets: [
+        {
+          kind: "public",
+          label: "web--feature--otto.services.example.com",
+          url: publicUrl,
+        },
+        {
+          kind: "otto",
+          label: "web--feature--otto.localhost:6868",
+          url: "http://web--feature--otto.localhost:6868",
+        },
+        { kind: "direct", label: "localhost:3000", url: "http://localhost:3000" },
+      ],
     });
   });
 
-  it("degrades to daemon-host plus service port for direct network connections", () => {
+  it("uses the daemon host and service port over a direct network connection", () => {
     expect(
       resolveLink({
         type: "directTcp",
@@ -51,124 +82,123 @@ describe("resolveWorkspaceScriptLink", () => {
         display: "mac-mini.tail123.ts.net:6868",
       }),
     ).toEqual({
-      openUrl: "http://mac-mini.tail123.ts.net:3000",
-      labelUrl: "http://mac-mini.tail123.ts.net:3000",
-    });
-  });
-
-  it("shows the local proxy URL but disables opening over relay", () => {
-    expect(
-      resolveLink({ type: "relay", endpoint: "relay.otto-code.ai:443", display: "relay" }),
-    ).toEqual({
-      openUrl: null,
-      labelUrl: "http://web--feature--otto.localhost:6868",
-    });
-  });
-
-  it("opens the public URL over relay when one is provided", () => {
-    expect(
-      resolveWorkspaceScriptLink({
-        script: {
-          ...runningService,
-          publicProxyUrl: "https://web--feature--otto.services.example.com",
-          proxyUrl: "https://web--feature--otto.services.example.com",
+      primary: {
+        kind: "otto",
+        label: "web--feature--otto.localhost:6868",
+        url: "http://web--feature--otto.localhost:6868",
+      },
+      targets: [
+        {
+          kind: "otto",
+          label: "web--feature--otto.localhost:6868",
+          url: "http://web--feature--otto.localhost:6868",
         },
-        activeConnection: { type: "relay", endpoint: "relay.otto-code.ai:443", display: "relay" },
-      }),
-    ).toEqual({
-      openUrl: "https://web--feature--otto.services.example.com",
-      labelUrl: "https://web--feature--otto.services.example.com",
-    });
-  });
-
-  it("uses local URL for direct loopback even when public URL exists", () => {
-    expect(
-      resolveWorkspaceScriptLink({
-        script: {
-          ...runningService,
-          publicProxyUrl: "https://web--feature--otto.services.example.com",
-          proxyUrl: "https://web--feature--otto.services.example.com",
+        {
+          kind: "direct",
+          label: "mac-mini.tail123.ts.net:3000",
+          url: "http://mac-mini.tail123.ts.net:3000",
         },
-        activeConnection: { type: "directTcp", endpoint: "127.0.0.1:6868", display: "localhost" },
-      }),
-    ).toEqual({
-      openUrl: "http://web--feature--otto.localhost:6868",
-      labelUrl: "http://web--feature--otto.localhost:6868",
+      ],
     });
   });
 
-  it("uses local URL for direct socket and pipe even when public URL exists", () => {
+  it("offers the reverse proxy and direct route over a direct network connection", () => {
+    const publicUrl = "https://web--feature--otto.services.example.com";
     expect(
-      resolveWorkspaceScriptLink({
-        script: {
-          ...runningService,
-          publicProxyUrl: "https://web--feature--otto.services.example.com",
-          proxyUrl: "https://web--feature--otto.services.example.com",
-        },
-        activeConnection: { type: "directPipe", endpoint: "otto", display: "pipe" },
-      }),
-    ).toEqual({
-      openUrl: "http://web--feature--otto.localhost:6868",
-      labelUrl: "http://web--feature--otto.localhost:6868",
-    });
+      resolveLink(
+        { type: "directTcp", endpoint: "mac-mini.tail123.ts.net:6868", display: "remote" },
+        { ...runningService, publicProxyUrl: publicUrl, proxyUrl: publicUrl },
+      ).targets,
+    ).toEqual([
+      { kind: "public", label: "web--feature--otto.services.example.com", url: publicUrl },
+      {
+        kind: "otto",
+        label: "web--feature--otto.localhost:6868",
+        url: "http://web--feature--otto.localhost:6868",
+      },
+      {
+        kind: "direct",
+        label: "mac-mini.tail123.ts.net:3000",
+        url: "http://mac-mini.tail123.ts.net:3000",
+      },
+    ]);
   });
 
-  it("uses public URL for direct remote TCP when split URLs exist", () => {
-    expect(
-      resolveWorkspaceScriptLink({
-        script: {
-          ...runningService,
-          publicProxyUrl: "https://web--feature--otto.services.example.com",
-          proxyUrl: "https://web--feature--otto.services.example.com",
-        },
-        activeConnection: {
-          type: "directTcp",
-          endpoint: "mac-mini.tail123.ts.net:6868",
-          display: "remote",
-        },
-      }),
-    ).toEqual({
-      openUrl: "https://web--feature--otto.services.example.com",
-      labelUrl: "https://web--feature--otto.services.example.com",
-    });
-  });
-
-  it("keeps old daemon local-only proxyUrl payloads working", () => {
-    const {
-      localProxyUrl: _localProxyUrl,
-      publicProxyUrl: _publicProxyUrl,
-      ...oldPayload
-    } = runningService;
-
-    expect(
-      resolveWorkspaceScriptLink({
-        script: oldPayload,
-        activeConnection: { type: "directTcp", endpoint: "localhost:6868", display: "localhost" },
-      }),
-    ).toEqual({
-      openUrl: "http://web--feature--otto.localhost:6868",
-      labelUrl: "http://web--feature--otto.localhost:6868",
-    });
-  });
-
-  it("keeps old daemon public proxyUrl payloads working over relay", () => {
-    const {
-      localProxyUrl: _localProxyUrl,
-      publicProxyUrl: _publicProxyUrl,
-      ...oldPayload
-    } = {
-      ...runningService,
-      proxyUrl: "https://web--feature--otto.services.example.com",
+  it("keeps service routes available independently of a relay connection", () => {
+    const relay: ActiveConnection = {
+      type: "relay",
+      endpoint: "relay.otto-code.me:443",
+      display: "relay",
     };
+    expect(resolveLink(relay)).toEqual({
+      primary: {
+        kind: "otto",
+        label: "web--feature--otto.localhost:6868",
+        url: "http://web--feature--otto.localhost:6868",
+      },
+      targets: [
+        {
+          kind: "otto",
+          label: "web--feature--otto.localhost:6868",
+          url: "http://web--feature--otto.localhost:6868",
+        },
+        { kind: "direct", label: "localhost:3000", url: "http://localhost:3000" },
+      ],
+    });
 
+    const publicUrl = "https://web--feature--otto.services.example.com";
     expect(
-      resolveWorkspaceScriptLink({
-        script: oldPayload,
-        activeConnection: { type: "relay", endpoint: "relay.otto-code.ai:443", display: "relay" },
-      }),
+      resolveLink(relay, { ...runningService, publicProxyUrl: publicUrl, proxyUrl: publicUrl }),
     ).toEqual({
-      openUrl: "https://web--feature--otto.services.example.com",
-      labelUrl: "https://web--feature--otto.services.example.com",
+      primary: {
+        kind: "public",
+        label: "web--feature--otto.services.example.com",
+        url: publicUrl,
+      },
+      targets: [
+        {
+          kind: "public",
+          label: "web--feature--otto.services.example.com",
+          url: publicUrl,
+        },
+        {
+          kind: "otto",
+          label: "web--feature--otto.localhost:6868",
+          url: "http://web--feature--otto.localhost:6868",
+        },
+        { kind: "direct", label: "localhost:3000", url: "http://localhost:3000" },
+      ],
+    });
+  });
+
+  it("classifies proxyUrl from older daemons", () => {
+    const { localProxyUrl: _local, publicProxyUrl: _public, ...legacyLocal } = runningService;
+    expect(resolveLink(null, legacyLocal).targets.map((target) => target.kind)).toEqual([
+      "otto",
+      "direct",
+    ]);
+
+    const publicUrl = "https://web--feature--otto.services.example.com";
+    expect(
+      resolveLink(
+        { type: "relay", endpoint: "relay.otto-code.me:443", display: "relay" },
+        { ...legacyLocal, proxyUrl: publicUrl },
+      ).primary,
+    ).toEqual({
+      kind: "public",
+      label: "web--feature--otto.services.example.com",
+      url: publicUrl,
+    });
+  });
+
+  it("has no routes for stopped services or plain scripts", () => {
+    expect(resolveLink(null, { ...runningService, lifecycle: "stopped" })).toEqual({
+      primary: null,
+      targets: [],
+    });
+    expect(resolveLink(null, { ...runningService, type: "script" })).toEqual({
+      primary: null,
+      targets: [],
     });
   });
 });

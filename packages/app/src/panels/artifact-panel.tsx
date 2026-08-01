@@ -21,6 +21,7 @@ function useArtifactPanelDescriptor(
   );
   return {
     label: artifact?.name?.trim() || target.artifactId,
+    tooltip: artifact?.name?.trim() || target.artifactId,
     subtitle: artifact?.description ?? "",
     titleState: artifact?.status === "generating" ? "loading" : "ready",
     icon: FileText,

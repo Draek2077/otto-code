@@ -20,6 +20,7 @@ import {
   ACPAgentSession,
   type SpawnedACPProcess,
   type SessionStateResponse,
+  buildACPClientCapabilities,
   createLoggedNdJsonStream,
   deriveModelDefinitionsFromACP,
   deriveModesFromACP,
@@ -49,6 +50,39 @@ import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { buildStringCommandShellInvocation } from "../../../utils/string-command-shell.js";
 import { asInternals } from "../../test-utils/class-mocks.js";
 import * as spawnUtils from "../../../utils/spawn.js";
+
+describe("buildACPClientCapabilities", () => {
+  test("keeps filesystem and terminal execution with the agent by default", () => {
+    expect(buildACPClientCapabilities()).toEqual({
+      fs: {
+        readTextFile: false,
+        writeTextFile: false,
+      },
+      terminal: false,
+    });
+  });
+
+  test("applies provider capability overrides without dropping metadata", () => {
+    expect(
+      buildACPClientCapabilities(
+        { source: "provider" },
+        {
+          fs: {
+            readTextFile: true,
+          },
+          terminal: true,
+        },
+      ),
+    ).toEqual({
+      fs: {
+        readTextFile: true,
+        writeTextFile: false,
+      },
+      terminal: true,
+      _meta: { source: "provider" },
+    });
+  });
+});
 
 interface ACPSessionInternals {
   sessionId: string | null;
@@ -2056,11 +2090,16 @@ describe("ACPAgentSession", () => {
 
   test("emits assistant and reasoning chunks as deltas while user chunks stay accumulated", async () => {
     const session = createSession();
-    const events: Array<{ type: string; item?: { type: string; text?: string } }> = [];
+    const events: Array<{
+      type: string;
+      item?: { type: string; text?: string; messageId?: string };
+    }> = [];
     asInternals<ACPSessionInternals>(session).sessionId = "session-1";
 
     session.subscribe((event) => {
-      events.push(event as { type: string; item?: { type: string; text?: string } });
+      events.push(
+        event as { type: string; item?: { type: string; text?: string; messageId?: string } },
+      );
     });
 
     await session.sessionUpdate({
@@ -2111,6 +2150,14 @@ describe("ACPAgentSession", () => {
         content: { type: "text", text: "lo" },
       } as SessionUpdate,
     });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        messageId: "assistant-2",
+        content: { type: "text", text: "" },
+      } as SessionUpdate,
+    });
 
     const timeline = events
       .filter((event) => event.type === "timeline")
@@ -2118,12 +2165,118 @@ describe("ACPAgentSession", () => {
       .filter(Boolean);
 
     expect(timeline).toEqual([
-      { type: "assistant_message", text: "Hey!" },
-      { type: "assistant_message", text: " How are you?" },
+      { type: "assistant_message", text: "Hey!", messageId: "assistant-1" },
+      { type: "assistant_message", text: " How are you?", messageId: "assistant-1" },
       { type: "reasoning", text: "Thinking" },
       { type: "reasoning", text: " more" },
-      { type: "user_message", text: "hel", messageId: "user-1" },
       { type: "user_message", text: "hello", messageId: "user-1" },
+    ]);
+  });
+
+  test("assigns one fallback ID per contiguous assistant message", async () => {
+    const session = createSession();
+    const assistantMessages: Array<{ text: string; messageId?: string }> = [];
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+
+    session.subscribe((event) => {
+      if (event.type === "timeline" && event.item.type === "assistant_message") {
+        assistantMessages.push(event.item);
+      }
+    });
+
+    for (const text of ["First", " message"]) {
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text },
+        } as SessionUpdate,
+      });
+    }
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "agent_thought_chunk",
+        content: { type: "text", text: "Next response" },
+      } as SessionUpdate,
+    });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "Second message" },
+      } as SessionUpdate,
+    });
+
+    expect(assistantMessages).toHaveLength(3);
+    expect(assistantMessages[0].messageId).toEqual(expect.any(String));
+    expect(assistantMessages[1].messageId).toBe(assistantMessages[0].messageId);
+    expect(assistantMessages[2].messageId).toEqual(expect.any(String));
+    expect(assistantMessages[2].messageId).not.toBe(assistantMessages[0].messageId);
+  });
+
+  test("keeps ACP configuration notifications outside the turn lifecycle", async () => {
+    const session = createSession();
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "config_option_update",
+        configOptions: [
+          selectConfigOption("mode", ["plan", "yolo"], "yolo"),
+          selectConfigOption("model", ["kimi-code/kimi-for-coding"]),
+          selectConfigOption("thought_level", ["off", "on"], "on"),
+        ],
+      } as SessionUpdate,
+    });
+
+    expect(events.map((event) => event.type)).toEqual([
+      "thread_started",
+      "mode_changed",
+      "model_changed",
+      "thinking_option_changed",
+    ]);
+  });
+
+  test("forwards out-of-prompt ACP content without inventing a turn", async () => {
+    const session = createSession();
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        messageId: "unscoped-message",
+        content: { type: "text", text: "Unscoped ACP update" },
+      } as SessionUpdate,
+    });
+
+    expect(events).toEqual([
+      {
+        type: "thread_started",
+        provider: "claude-acp",
+        sessionId: "session-1",
+      },
+      {
+        type: "timeline",
+        provider: "claude-acp",
+        item: {
+          type: "assistant_message",
+          text: "Unscoped ACP update",
+          messageId: "unscoped-message",
+        },
+      },
     ]);
   });
 
@@ -2183,7 +2336,9 @@ describe("ACPAgentSession", () => {
       events.push(event);
     });
 
-    const { turnId } = await session.startTurn("hello", { messageId: "msg-client-1" });
+    const { turnId } = await session.startTurn("hello", {
+      clientMessageId: "msg-client-1",
+    });
 
     expect(prompt).toHaveBeenCalledWith({
       sessionId: "session-1",
@@ -2197,7 +2352,12 @@ describe("ACPAgentSession", () => {
         type: "timeline",
         provider: "claude-acp",
         turnId,
-        item: { type: "user_message", text: "hello", messageId: "msg-client-1" },
+        item: {
+          type: "user_message",
+          text: "hello",
+          messageId: "msg-client-1",
+          clientMessageId: "msg-client-1",
+        },
       },
     ]);
 
@@ -2216,7 +2376,7 @@ describe("ACPAgentSession", () => {
       events.push(event);
     });
 
-    await session.startTurn("hello", { messageId: "msg-client-1" });
+    await session.startTurn("hello", { clientMessageId: "msg-client-1" });
     await session.sessionUpdate({
       sessionId: "session-1",
       update: {
@@ -2243,7 +2403,7 @@ describe("ACPAgentSession", () => {
       events.push(event);
     });
 
-    await session.startTurn("hello", { messageId: "msg-client-1" });
+    await session.startTurn("hello", { clientMessageId: "msg-client-1" });
     await session.sessionUpdate({
       sessionId: "session-1",
       update: {
@@ -2258,7 +2418,12 @@ describe("ACPAgentSession", () => {
       {
         type: "timeline",
         provider: "claude-acp",
-        item: { type: "user_message", text: "hello", messageId: "msg-client-1" },
+        item: {
+          type: "user_message",
+          text: "hello",
+          messageId: "msg-client-1",
+          clientMessageId: "msg-client-1",
+        },
         turnId: expect.any(String),
       },
     ]);
@@ -2282,7 +2447,7 @@ describe("ACPAgentSession", () => {
       events.push(event);
     });
 
-    await session.startTurn("first", { messageId: "msg-client-1" });
+    await session.startTurn("first", { clientMessageId: "msg-client-1" });
     await session.sessionUpdate({
       sessionId: "session-1",
       update: {
@@ -2294,7 +2459,7 @@ describe("ACPAgentSession", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    await session.startTurn("second", { messageId: "msg-client-2" });
+    await session.startTurn("second", { clientMessageId: "msg-client-2" });
     await session.sessionUpdate({
       sessionId: "session-1",
       update: {
@@ -2309,13 +2474,23 @@ describe("ACPAgentSession", () => {
       {
         type: "timeline",
         provider: "claude-acp",
-        item: { type: "user_message", text: "first", messageId: "msg-client-1" },
+        item: {
+          type: "user_message",
+          text: "first",
+          messageId: "msg-client-1",
+          clientMessageId: "msg-client-1",
+        },
         turnId: expect.any(String),
       },
       {
         type: "timeline",
         provider: "claude-acp",
-        item: { type: "user_message", text: "second", messageId: "msg-client-2" },
+        item: {
+          type: "user_message",
+          text: "second",
+          messageId: "msg-client-2",
+          clientMessageId: "msg-client-2",
+        },
         turnId: expect.any(String),
       },
     ]);
@@ -2333,7 +2508,7 @@ describe("ACPAgentSession", () => {
       events.push(event);
     });
 
-    await session.startTurn("hello", { messageId: "msg-client-1" });
+    await session.startTurn("hello", { clientMessageId: "msg-client-1" });
     await session.sessionUpdate({
       sessionId: "session-1",
       update: {
@@ -2349,7 +2524,108 @@ describe("ACPAgentSession", () => {
       {
         type: "timeline",
         provider: "claude-acp",
-        item: { type: "user_message", text: "hello", messageId: "msg-client-1" },
+        item: {
+          type: "user_message",
+          text: "hello",
+          messageId: "msg-client-1",
+          clientMessageId: "msg-client-1",
+        },
+        turnId: expect.any(String),
+      },
+    ]);
+  });
+
+  test("startTurn dedupes a provider-owned user echo streamed as text and image chunks", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const prompt = vi.fn(() => new Promise<PromptResponse>(() => {}));
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    await session.startTurn(
+      [
+        { type: "text", text: "hey" },
+        { type: "image", data: "AA==", mimeType: "image/png" },
+      ],
+      { clientMessageId: "msg-client-1" },
+    );
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        messageId: "msg-provider-1",
+        content: { type: "text", text: "hey" },
+      } as SessionUpdate,
+    });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        messageId: "msg-provider-1",
+        content: { type: "image", data: "AA==", mimeType: "image/png" },
+      } as SessionUpdate,
+    });
+
+    expect(
+      events.filter((event) => event.type === "timeline" && event.item.type === "user_message"),
+    ).toEqual([
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: {
+          type: "user_message",
+          text: "hey",
+          messageId: "msg-client-1",
+          clientMessageId: "msg-client-1",
+        },
+        turnId: expect.any(String),
+      },
+    ]);
+  });
+
+  test("startTurn keeps an image-only provider echo when no canonical user message was emitted", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const prompt = vi.fn(() => new Promise<PromptResponse>(() => {}));
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    session.subscribe((event) => {
+      events.push(event);
+    });
+
+    await session.startTurn([{ type: "image", data: "AA==", mimeType: "image/png" }], {
+      clientMessageId: "msg-client-1",
+    });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        content: { type: "image", data: "AA==", mimeType: "image/png" },
+      } as SessionUpdate,
+    });
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "agent_message_chunk",
+        messageId: "assistant-1",
+        content: { type: "text", text: "I see it" },
+      } as SessionUpdate,
+    });
+
+    expect(
+      events.filter((event) => event.type === "timeline" && event.item.type === "user_message"),
+    ).toEqual([
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: { type: "user_message", text: "[image]" },
         turnId: expect.any(String),
       },
     ]);
@@ -2386,6 +2662,49 @@ describe("ACPAgentSession", () => {
       error: "prompt failed",
     });
     expect(asInternals<ACPSessionInternals>(session).activeForegroundTurnId).toBeNull();
+  });
+
+  test("flushes an image-only provider echo before a rejected turn finishes", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    let rejectPrompt!: (error: Error) => void;
+    const prompt = vi.fn(
+      () =>
+        new Promise<PromptResponse>((_, reject) => {
+          rejectPrompt = reject;
+        }),
+    );
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+    session.subscribe((event) => events.push(event));
+
+    const { turnId } = await session.startTurn([
+      { type: "image", data: "AA==", mimeType: "image/png" },
+    ]);
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        content: { type: "image", data: "AA==", mimeType: "image/png" },
+      } as SessionUpdate,
+    });
+
+    rejectPrompt(new Error("prompt failed"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(
+      events.filter((event) => event.type === "timeline" || event.type === "turn_failed"),
+    ).toEqual([
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: { type: "user_message", text: "[image]" },
+        turnId,
+      },
+      expect.objectContaining({ type: "turn_failed", turnId, error: "prompt failed" }),
+    ]);
   });
 
   test("startTurn preserves JSON-RPC error details from a real ACP prompt response", async () => {
@@ -2490,6 +2809,32 @@ describe("ACPAgentSession close() tree-kill", () => {
     vi.restoreAllMocks();
   });
 
+  test("close() flushes a buffered provider-owned user message before unsubscribing", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    asInternals<ACPCloseInternals>(session).sessionId = "session-1";
+
+    await session.sessionUpdate({
+      sessionId: "session-1",
+      update: {
+        sessionUpdate: "user_message_chunk",
+        content: { type: "image", data: "AA==", mimeType: "image/png" },
+      } as SessionUpdate,
+    });
+    expect(events).toEqual([]);
+
+    await session.close();
+
+    expect(events).toEqual([
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: { type: "user_message", text: "[image]" },
+      },
+    ]);
+  });
+
   test("close() terminates the main child process via the process tree", async () => {
     const terminator = new FakeTerminator();
     const session = createSession(terminator.terminate);
@@ -2566,6 +2911,81 @@ describe("ACPAgentSession close() tree-kill", () => {
     await expect(session.terminalOutput({ sessionId: "session-1", terminalId })).rejects.toThrow(
       `Unknown terminal '${terminalId}'`,
     );
+  });
+});
+
+describe("ACPAgentSession initialization cleanup", () => {
+  test("terminates the ACP process when session/new fails", async () => {
+    const terminator = new FakeTerminator();
+    const child = createProbeChildStub();
+
+    class FailingNewSession extends ACPAgentSession {
+      protected override async spawnProcess(): Promise<SpawnedACPProcess> {
+        return {
+          child,
+          connection: {
+            newSession: vi.fn().mockRejectedValue(new Error("session/new failed")),
+          } as unknown as ClientSideConnection,
+          initialize: { agentCapabilities: {} },
+        };
+      }
+    }
+
+    const session = new FailingNewSession(
+      { provider: "copilot", cwd: "/tmp/paseo-acp-test" },
+      {
+        provider: "copilot",
+        logger: createTestLogger(),
+        defaultCommand: ["copilot", "--acp"],
+        defaultModes: [],
+        capabilities: {
+          supportsStreaming: true,
+          supportsSessionPersistence: true,
+        },
+        terminateProcess: terminator.terminate,
+      },
+    );
+
+    await expect(session.initializeNewSession()).rejects.toThrow("session/new failed");
+
+    expect(terminator.terminated).toContain(child);
+  });
+
+  test("terminates the ACP process when session/load fails", async () => {
+    const terminator = new FakeTerminator();
+    const child = createProbeChildStub();
+
+    class FailingLoadSession extends ACPAgentSession {
+      protected override async spawnProcess(): Promise<SpawnedACPProcess> {
+        return {
+          child,
+          connection: {
+            loadSession: vi.fn().mockRejectedValue(new Error("session/load failed")),
+          } as unknown as ClientSideConnection,
+          initialize: { agentCapabilities: { loadSession: true } },
+        };
+      }
+    }
+
+    const session = new FailingLoadSession(
+      { provider: "cursor", cwd: "/tmp/paseo-acp-test" },
+      {
+        provider: "cursor",
+        logger: createTestLogger(),
+        defaultCommand: ["cursor-agent", "acp"],
+        defaultModes: [],
+        capabilities: {
+          supportsStreaming: true,
+          supportsSessionPersistence: true,
+        },
+        handle: { provider: "cursor", sessionId: "session-1" },
+        terminateProcess: terminator.terminate,
+      },
+    );
+
+    await expect(session.initializeResumedSession()).rejects.toThrow("session/load failed");
+
+    expect(terminator.terminated).toContain(child);
   });
 });
 
@@ -2691,6 +3111,165 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
       cwd: "/tmp/otto-acp-test",
       mcpServers: [],
     });
+  });
+
+  test("preserves assistant message IDs from loadSession replay", async () => {
+    let session!: ACPAgentSession;
+    const loadSession = async () => {
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          messageId: "assistant-replay-1",
+          content: { type: "text", text: "Welcome back" },
+        } as SessionUpdate,
+      });
+      return {
+        sessionId: "session-1",
+        modes: null,
+        models: null,
+        configOptions: [],
+      };
+    };
+    ({ session } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-1", provider: "claude-acp" },
+      loadSession,
+    }));
+
+    await session.initializeResumedSession();
+
+    const history: AgentStreamEvent[] = [];
+    for await (const event of session.streamHistory()) {
+      history.push(event);
+    }
+    expect(history).toEqual([
+      {
+        type: "timeline",
+        provider: "claude-acp",
+        item: {
+          type: "assistant_message",
+          text: "Welcome back",
+          messageId: "assistant-replay-1",
+        },
+      },
+    ]);
+  });
+
+  test("coalesces an ID-less text and image user message during loadSession replay", async () => {
+    let session!: ACPAgentSession;
+    const loadSession = async () => {
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "user_message_chunk",
+          content: { type: "text", text: "hey" },
+        } as SessionUpdate,
+      });
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "user_message_chunk",
+          content: { type: "image", data: "AA==", mimeType: "image/png" },
+        } as SessionUpdate,
+      });
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          messageId: "assistant-replay-1",
+          content: { type: "text", text: "Hello" },
+        } as SessionUpdate,
+      });
+      return {
+        sessionId: "session-1",
+        modes: null,
+        models: null,
+        configOptions: [],
+      };
+    };
+    ({ session } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-1", provider: "test-acp" },
+      loadSession,
+    }));
+
+    await session.initializeResumedSession();
+
+    const history: AgentStreamEvent[] = [];
+    for await (const event of session.streamHistory()) {
+      history.push(event);
+    }
+    expect(history).toEqual([
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: { type: "user_message", text: "hey[image]" },
+      },
+      {
+        type: "timeline",
+        provider: session.provider,
+        item: {
+          type: "assistant_message",
+          text: "Hello",
+          messageId: "assistant-replay-1",
+        },
+      },
+    ]);
+  });
+
+  test("assigns stable fallback IDs to ID-less assistant messages during loadSession replay", async () => {
+    let session!: ACPAgentSession;
+    const loadSession = async () => {
+      for (const text of ["Loaded", " response"]) {
+        await session.sessionUpdate({
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text },
+          } as SessionUpdate,
+        });
+      }
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "user_message_chunk",
+          content: { type: "text", text: "Follow up" },
+        } as SessionUpdate,
+      });
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "Loaded second response" },
+        } as SessionUpdate,
+      });
+      return {
+        sessionId: "session-1",
+        modes: null,
+        models: null,
+        configOptions: [],
+      };
+    };
+    ({ session } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-1", provider: "claude-acp" },
+      loadSession,
+    }));
+
+    await session.initializeResumedSession();
+
+    const assistantMessages: Array<{ text: string; messageId?: string }> = [];
+    for await (const event of session.streamHistory()) {
+      if (event.type === "timeline" && event.item.type === "assistant_message") {
+        assistantMessages.push(event.item);
+      }
+    }
+    expect(assistantMessages).toHaveLength(3);
+    expect(assistantMessages[0].messageId).toEqual(expect.any(String));
+    expect(assistantMessages[1].messageId).toBe(assistantMessages[0].messageId);
+    expect(assistantMessages[2].messageId).toEqual(expect.any(String));
+    expect(assistantMessages[2].messageId).not.toBe(assistantMessages[0].messageId);
   });
 
   test("loadSession is always called with mcpServers even when supportsMcpServers is false", async () => {

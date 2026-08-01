@@ -9,6 +9,7 @@ import type {
 } from "@otto-code/protocol/messages";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
+import type { Forge } from "@/git/forge";
 import { i18n } from "@/i18n/i18next";
 import { mapPrPaneData, type PrPaneData } from "./data";
 import { prPaneTimelineQueryKey } from "./query-keys";
@@ -26,6 +27,7 @@ export interface UsePrPaneDataOptions {
 
 export interface UsePrPaneDataResult {
   data: PrPaneData | null;
+  forge: Forge;
   prNumber: number | null;
   /** Git hosting provider for this workspace, so the PR tab shows the right mark. */
   hostingProvider: GitHostingProviderId;
@@ -153,6 +155,7 @@ export interface SelectPrPaneStateInput {
   statusIsLoading: boolean;
   statusIsFetching: boolean;
   githubFeaturesEnabled: boolean;
+  forge?: Forge;
   timelineEnabled: boolean;
   shouldFetchTimeline: boolean;
   timelinePayload: PullRequestTimeline | undefined;
@@ -169,7 +172,7 @@ export function selectPrPaneState(input: SelectPrPaneStateInput): UsePrPaneDataR
   const data =
     identity.prNumber === null || !input.timelineEnabled
       ? null
-      : mapPrPaneData(input.status, input.timelinePayload);
+      : mapPrPaneData(input.status, input.timelinePayload, undefined, input.forge ?? "github");
   const statusRefreshing = input.statusIsFetching && !input.statusIsLoading;
   const timelineRefreshing = input.timelineIsFetching && !input.timelineIsLoading;
   const timelinePending =
@@ -177,6 +180,7 @@ export function selectPrPaneState(input: SelectPrPaneStateInput): UsePrPaneDataR
 
   return {
     data,
+    forge: input.forge ?? "github",
     prNumber: identity.prNumber,
     // Defaults to GitHub for legacy daemons that don't describe the provider.
     hostingProvider: input.hostingProvider ?? "github",
@@ -268,6 +272,7 @@ export function usePrPaneData({
     statusIsLoading: checkoutPrStatus.isLoading,
     statusIsFetching: checkoutPrStatus.isFetching,
     githubFeaturesEnabled,
+    forge: checkoutPrStatus.forge,
     timelineEnabled,
     shouldFetchTimeline,
     timelinePayload: timelineQuery.data,

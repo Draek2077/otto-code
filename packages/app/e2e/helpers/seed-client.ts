@@ -13,6 +13,11 @@ export interface SeedWorkspaceDescriptor {
   workspaceDirectory: string;
 }
 
+interface SeedProjectDescriptor {
+  projectId: string;
+  projectKey?: string;
+}
+
 /**
  * The general-purpose E2E daemon client used to seed and drive state out of
  * band (workspaces, agents, terminals) while the UI is exercised through the
@@ -25,15 +30,18 @@ export interface SeedDaemonClient {
   addProject(cwd: string): Promise<{
     project: {
       projectId: string;
+      projectKey?: string;
       projectDisplayName: string;
       projectRootPath: string;
     } | null;
     error: string | null;
   }>;
   removeProject(projectId: string): Promise<{ removedWorkspaceIds: string[] }>;
+  renameProject(projectId: string, customName: string | null): Promise<void>;
   fetchWorkspaces(options?: { filter?: { projectId?: string } }): Promise<{
     entries: SeedWorkspaceDescriptor[];
   }>;
+  listProjects(): Promise<{ projects: SeedProjectDescriptor[] }>;
   createWorkspace(input: {
     source:
       | { kind: "directory"; path: string; projectId?: string }
@@ -136,15 +144,19 @@ export interface SeedDaemonClient {
     timeout?: number,
   ): Promise<{ status: string; final?: { lastError?: string | null } | null }>;
   archiveAgent(agentId: string): Promise<{ archivedAt: string }>;
+  refreshAgent(agentId: string): Promise<unknown>;
   fetchAgent(options: {
     agentId: string;
   }): Promise<{ agent: { id: string; archivedAt?: string | null } } | null>;
   getLastServerInfoMessage(): {
-    features?: { projectAdd?: boolean; worktreeRestore?: boolean } | null;
+    features?: {
+      projectAdd?: boolean;
+      workspaceRecovery?: boolean;
+    } | null;
   } | null;
   fetchAgentHistory(options?: {
     page?: { limit: number };
-  }): Promise<{ entries: Array<{ id: string }> }>;
+  }): Promise<{ entries: Array<{ agent: { id: string } }> }>;
   subscribeTerminal(
     terminalId: string,
   ): Promise<{ terminalId: string; slot: number; error: null } | { error: string }>;
@@ -158,10 +170,11 @@ export interface SeedDaemonClient {
   killTerminal(terminalId: string): Promise<{ error: string | null }>;
 }
 
-export async function connectSeedClient(): Promise<SeedDaemonClient> {
+export async function connectSeedClient(options?: { port?: number }): Promise<SeedDaemonClient> {
   return connectDaemonClient<SeedDaemonClient>({
     clientIdPrefix: "seed",
     appVersion: loadAppVersion(),
+    port: options?.port,
   });
 }
 
@@ -178,8 +191,10 @@ export interface SeededWorkspace {
   workspaceId: string;
   workspaceName: string;
   workspaceDirectory: string;
-  /** Stable project identity the daemon groups workspaces under. */
+  /** Host-local identity used by daemon project operations. */
   projectId: string;
+  /** Opaque cross-host key used by grouped project UI. */
+  projectKey: string;
   /** Project label the UI shows (owner/repo for known remotes, else basename). */
   projectDisplayName: string;
   cleanup(): Promise<void>;
@@ -187,6 +202,7 @@ export interface SeededWorkspace {
 
 export async function seedWorkspace(options: {
   repoPrefix: string;
+  title?: string;
   /** Repo fixture options; only applies to git projects (the default). */
   repo?: Parameters<typeof createTempGitRepo>[1];
   /** Set to false to seed a plain non-git directory instead of a git repo. */
@@ -200,11 +216,17 @@ export async function seedWorkspace(options: {
   try {
     const created = await client.createWorkspace({
       source: { kind: "directory", path: project.path },
+      title: options.title,
     });
     if (!created.workspace) {
       throw new Error(created.error ?? `Failed to create workspace ${project.path}`);
     }
     const workspace = created.workspace;
+    const listed = await client.listProjects();
+    const descriptor = listed.projects.find((item) => item.projectId === workspace.projectId);
+    if (!descriptor?.projectKey) {
+      throw new Error(`Created project ${workspace.projectId} has no project key`);
+    }
     return {
       client,
       repoPath: project.path,
@@ -212,6 +234,7 @@ export async function seedWorkspace(options: {
       workspaceName: workspace.name,
       workspaceDirectory: workspace.workspaceDirectory,
       projectId: workspace.projectId,
+      projectKey: descriptor.projectKey,
       projectDisplayName: workspace.projectDisplayName,
       cleanup: async () => {
         await client.removeProject(workspace.projectId).catch(() => undefined);

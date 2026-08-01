@@ -69,5 +69,5 @@ Should return nothing outside code blocks and quoted output.
   [feature-inventory.md](../projects/marketing-strategy/feature-inventory.md), which was verified
   against the fork point. Marketing copy does not get to invent features, and it does not get to
   describe a simulated screenshot as a real one.
-- **Credit is loud and specific.** Paseo and Agent Flow are named, linked, and thanked wherever
+- **Credit is loud and specific.** Otto and Agent Flow are named, linked, and thanked wherever
   their work is being shown.

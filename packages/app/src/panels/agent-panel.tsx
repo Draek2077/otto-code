@@ -362,6 +362,7 @@ function useAgentPanelDescriptor(
 
   return {
     label: label ?? "",
+    tooltip: label ?? "",
     subtitle: provider ? `${formatProviderLabel(provider)} agent` : "Agent",
     titleState: label ? "ready" : "loading",
     icon,
@@ -996,6 +997,11 @@ function ChatAgentContent({
       needsAuthoritativeSync,
       continuity,
       hasHydratedHistoryBefore,
+      isArchived: agentState.archivedAt != null,
+      // Paseo gates the ready state on per-agent visibility catch-up. The app
+      // does not surface that signal yet (the sync owns it internally), so
+      // report ready and keep today's behaviour.
+      visibilityCatchUpStatus: "ready",
     },
   });
 
@@ -1226,8 +1232,17 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   });
   // Stabilize the agentInputDraft object identity so that memo(AgentComposerSection) can bail out
   // when only toast state changes (which does not affect any draft field).
-  const { text, setText, attachments, setAttachments, clear, isHydrated, composerState } =
-    rawAgentInputDraft;
+  const {
+    text,
+    setText,
+    attachments,
+    setAttachments,
+    clear,
+    isHydrated,
+    composerState,
+    attachmentFocusRequestId,
+    personalitySelection,
+  } = rawAgentInputDraft;
   const agentInputDraft = useMemo(
     (): AgentInputDraft => ({
       text,
@@ -1237,8 +1252,20 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       clear,
       isHydrated,
       composerState,
+      attachmentFocusRequestId,
+      personalitySelection,
     }),
-    [text, setText, attachments, setAttachments, clear, isHydrated, composerState],
+    [
+      text,
+      setText,
+      attachments,
+      setAttachments,
+      clear,
+      isHydrated,
+      composerState,
+      attachmentFocusRequestId,
+      personalitySelection,
+    ],
   );
   const suggestedTaskRows = useSuggestedTasksForParent({ serverId, parentAgentId: agentId });
   const hasSuggestedTasks = useSessionStore(
@@ -1430,7 +1457,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
       ref={streamViewRef}
       agentId={agent.id}
       serverId={serverId}
-      agent={agent}
+      context={agent}
       streamItems={streamItems}
       pendingPermissions={pendingPermissions}
       routeBottomAnchorRequest={routeBottomAnchorRequest}

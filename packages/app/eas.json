@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 14.0.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
@@ -22,7 +22,8 @@
       },
       "android": {
         "autoIncrement": "versionCode",
-        "gradleCommand": ":app:bundleRelease --no-parallel --max-workers=1 -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease -x generateReleaseLintModel -x generateReleaseLintVitalModel"
+        "gradleCommand": ":app:bundleRelease --no-parallel --max-workers=1 -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease -x generateReleaseLintModel -x generateReleaseLintVitalModel",
+        "resourceClass": "large"
       },
       "ios": {
         "autoIncrement": "buildNumber"
@@ -32,6 +33,7 @@
       "extends": "production",
       "distribution": "internal",
       "android": {
+        "resourceClass": "large",
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease --no-parallel --max-workers=1 -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease -x generateReleaseLintModel -x generateReleaseLintVitalModel"
       }

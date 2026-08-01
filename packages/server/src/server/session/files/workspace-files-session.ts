@@ -91,8 +91,10 @@ class WorkspaceAccessError extends Error {
  * — old clients without a binary channel fall back to inline JSON file content.
  */
 export interface WorkspaceFilesSessionHost {
-  emit(msg: SessionOutboundMessage): void;
-  emitBinary(frame: Uint8Array): void;
+  // `source` is the socket that issued the request. Otto routes file-transfer
+  // responses back to it rather than fanning out to every session.
+  emit(msg: SessionOutboundMessage, source?: object): void;
+  emitBinary(frame: Uint8Array, source?: object): void;
   hasBinaryChannel(): boolean;
 }
 

@@ -7,6 +7,10 @@ export async function expectOpenedProject(page: Page, projectName: string): Prom
     .first();
   await expect(projectRow).toBeVisible({ timeout: 30_000 });
 
+  // The id comes off the sidebar row, not the URL: opening an existing folder
+  // navigates back to wherever the page was pushed from (new-project-screen's
+  // submitOpen), so there is no projectId query parameter to read. Only the
+  // scaffold path hands off to New workspace with one.
   const testId = await projectRow.getAttribute("data-testid");
   expect(testId).not.toBeNull();
   return testId!.replace("sidebar-project-row-", "");

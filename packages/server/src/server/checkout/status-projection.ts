@@ -1,3 +1,4 @@
+import { isBitbucketPullRequestStatusFacts } from "../../services/git-hosting/bitbucket-facts.js";
 import type {
   CheckoutPrStatusResponse,
   CheckoutStatusResponse,
@@ -129,23 +130,24 @@ export function buildCheckoutPrStatusPayloadFromSnapshot({
   requestId: string;
   snapshot: WorkspaceGitRuntimeSnapshot;
 }): CheckoutPrStatusResponse["payload"] {
-  const provider = snapshot.github.provider ?? "github";
+  const provider = snapshot.forge.provider ?? "github";
   return {
     cwd,
-    status: normalizeCheckoutPrStatusPayload(snapshot.github.pullRequest),
+    forge: provider,
+    status: normalizeCheckoutPrStatusPayload(snapshot.forge.pullRequest),
     // Legacy GitHub-only flag: old clients read this, so it must stay false
     // for non-GitHub providers (they would otherwise render GitHub UI against
     // a Bitbucket workspace).
-    githubFeaturesEnabled: provider === "github" && snapshot.github.featuresEnabled,
+    githubFeaturesEnabled: provider === "github" && snapshot.forge.featuresEnabled,
     hosting: {
       provider,
-      featuresEnabled: snapshot.github.featuresEnabled,
-      ...(snapshot.github.capabilities ? { capabilities: snapshot.github.capabilities } : {}),
+      featuresEnabled: snapshot.forge.featuresEnabled,
+      ...(snapshot.forge.capabilities ? { capabilities: snapshot.forge.capabilities } : {}),
     },
-    error: snapshot.github.error
+    error: snapshot.forge.error
       ? {
           code: "UNKNOWN",
-          message: snapshot.github.error.message,
+          message: snapshot.forge.error.message,
         }
       : null,
     requestId,
@@ -153,12 +155,13 @@ export function buildCheckoutPrStatusPayloadFromSnapshot({
 }
 
 export function normalizeCheckoutPrStatusPayload(
-  status: WorkspaceGitRuntimeSnapshot["github"]["pullRequest"],
+  status: WorkspaceGitRuntimeSnapshot["forge"]["pullRequest"],
 ): CheckoutPrStatusPayloadStatus | null {
   if (!status) {
     return null;
   }
   const payload: CheckoutPrStatusPayloadStatus = {
+    forge: status.forgeSpecific?.forge ?? "github",
     number: status.number,
     url: status.url,
     title: status.title,
@@ -174,13 +177,15 @@ export function normalizeCheckoutPrStatusPayload(
     checksStatus: status.checksStatus,
     reviewDecision: status.reviewDecision,
   };
-  if (status.github) {
-    payload.github = status.github;
+  if (status.forgeSpecific) {
+    payload.forgeSpecific = status.forgeSpecific;
   }
-  if (status.bitbucket) {
+  // The legacy hosting block is Bitbucket-shaped; only a Bitbucket-tagged facts
+  // envelope belongs in it. Old clients read this; new ones read forgeSpecific.
+  if (isBitbucketPullRequestStatusFacts(status.forgeSpecific)) {
     payload.hosting = {
       provider: "bitbucket-cloud",
-      bitbucket: status.bitbucket,
+      bitbucket: status.forgeSpecific,
     };
   }
   return payload;

@@ -94,9 +94,9 @@ export function LandingPage({ title, subtitle }: LandingPageProps) {
             <ShipSection />
             <BringAnyModelSection />
             <VoiceSection />
-            <BuiltOnPaseoSection />
+            <BuiltOnOttoSection />
             <FAQ />
-            <PaseoCreditCTA />
+            <OttoCreditCTA />
           </div>
         </main>
         <SiteFooter />
@@ -216,7 +216,7 @@ function SectionTitle({ title, description }: { title: string; description: stri
 
 const UPSTREAM_PILLARS = [
   {
-    title: "From Paseo, by Mo",
+    title: "From Otto, by Mo",
     items: [
       "Multi-provider agent orchestration",
       "Self-hosted daemon, your machines",
@@ -246,7 +246,7 @@ const UPSTREAM_PILLARS = [
   },
 ] as const;
 
-function BuiltOnPaseoSection() {
+function BuiltOnOttoSection() {
   return (
     <motion.section
       initial={FADE_IN_UP}
@@ -255,19 +255,19 @@ function BuiltOnPaseoSection() {
       transition={EASE_OUT_05}
     >
       <SectionTitle
-        title="Built on Paseo"
-        description="Everything above stands on a foundation someone else got right first. Multi-provider agent orchestration, a self-hosted daemon, real clients on every platform, split panes, worktrees, the CLI. That is Paseo, and Otto keeps all of it intact."
+        title="Built on Otto"
+        description="Everything above stands on a foundation someone else got right first. Multi-provider agent orchestration, a self-hosted daemon, real clients on every platform, split panes, worktrees, the CLI. That is Otto, and Otto keeps all of it intact."
       />
 
       <div className="space-y-4">
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           <a
-            href="https://github.com/getpaseo/paseo"
+            href="https://github.com/Draek2077/otto-code"
             target="_blank"
             rel="noopener noreferrer"
             className="underline hover:text-white/80"
           >
-            Paseo
+            Otto
           </a>{" "}
           is a phenomenal piece of open-source engineering by{" "}
           <a
@@ -384,7 +384,7 @@ function SplitPanesBlock() {
       description="Open agents, browsers, terminals, diffs, and logs in the same workspace. Split them side by side or group them in tabs."
     >
       <FeatureShot
-        id="paseo-panes"
+        id="otto-panes"
         kind="focus"
         ratio="16/9"
         scenario="15-workspace-layouts"
@@ -432,7 +432,7 @@ function ThemesBlock() {
   return (
     <SubFeature
       title="Made yours"
-      description="Cleaner surfaces and refined spacing on top of Paseo, then the dials: a full set of light and dark themes, and the details tuned until it feels like your environment."
+      description="Cleaner surfaces and refined spacing on top of Otto, then the dials: a full set of light and dark themes, and the details tuned until it feels like your environment."
     >
       <FeatureShot
         id="ui-themes"
@@ -1911,22 +1911,22 @@ function FAQ() {
     >
       <h2 className="text-3xl font-medium">FAQ</h2>
       <div className="space-y-6">
-        <FAQItem question="How is Otto related to Paseo?">
+        <FAQItem question="How is Otto related to Otto?">
           Otto is an open-source fork of{" "}
           <a
-            href="https://github.com/getpaseo/paseo"
+            href="https://github.com/Draek2077/otto-code"
             target="_blank"
             rel="noopener noreferrer"
             className="underline hover:text-white/80"
           >
-            Paseo
+            Otto
           </a>
-          , with full upstream history preserved. I&apos;m proud of that lineage. Paseo is a
+          , with full upstream history preserved. I&apos;m proud of that lineage. Otto is a
           fantastic platform to build on. Otto tracks upstream improvements and adds its own
           direction on top: growing into a fully featured agentic coding assistant, with in-browser
           preview verification, artifacts, and frontier-model tooling brought to every provider,
           cloud APIs and local models alike. Otto is an independent project and isn&apos;t
-          affiliated with or endorsed by the Paseo team; Paseo&apos;s community, sponsors, and
+          affiliated with or endorsed by the Otto team; Otto&apos;s community, sponsors, and
           testimonials are theirs, not mine.
         </FAQItem>
         <FAQItem question="What powers the Visualizer?">
@@ -2024,7 +2024,7 @@ function FAQ() {
   );
 }
 
-function PaseoCreditCTA() {
+function OttoCreditCTA() {
   return (
     <motion.div
       initial={FADE_IN_UP}
@@ -2037,12 +2037,12 @@ function PaseoCreditCTA() {
         <p>
           Otto is an independent open-source fork of{" "}
           <a
-            href="https://github.com/getpaseo/paseo"
+            href="https://github.com/Draek2077/otto-code"
             target="_blank"
             rel="noopener noreferrer"
             className="underline hover:text-white/80"
           >
-            Paseo
+            Otto
           </a>
           , created by{" "}
           <a

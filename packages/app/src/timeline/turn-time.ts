@@ -19,6 +19,7 @@ export interface StreamTurnTiming {
    * each incoming chunk. Null when the agent is idle or nothing streamed yet.
    */
   runningEstimatedTokens: number | null;
+  isActive: boolean;
 }
 
 const ESTIMATED_CHARS_PER_TOKEN = 4;
@@ -59,6 +60,8 @@ export function deriveStreamTurnTiming(params: {
 }): StreamTurnTiming {
   const byAssistantId = new Map<string, TurnTiming>();
   let currentUserAt: Date | null = null;
+  let currentAuthoritativeUserAt: Date | null = null;
+  let currentUserIsOptimistic = false;
   let currentLastItemAt: Date | null = null;
   let currentAssistantIds: string[] = [];
   let currentUsage: AgentUsage | undefined;
@@ -83,6 +86,8 @@ export function deriveStreamTurnTiming(params: {
     if (item.kind === "user_message") {
       flushCompletedTurn();
       currentUserAt = item.timestamp;
+      currentAuthoritativeUserAt = item.optimistic ? null : item.timestamp;
+      currentUserIsOptimistic = item.optimistic === true;
       currentLastItemAt = null;
       currentAssistantIds = [];
       currentUsage = undefined;
@@ -109,10 +114,8 @@ export function deriveStreamTurnTiming(params: {
     visitItem(item);
   }
 
-  const runningStartedAt =
-    params.agentStatus === "running"
-      ? (findLastUserMessageTimestamp(params.head) ?? currentUserAt)
-      : null;
+  const isRunning = params.agentStatus === "running";
+  const runningStartedAt = isRunning ? currentAuthoritativeUserAt : null;
   if (params.agentStatus !== "running") {
     flushCompletedTurn();
   }
@@ -130,15 +133,6 @@ export function deriveStreamTurnTiming(params: {
     byAssistantId,
     runningStartedAt,
     runningEstimatedTokens,
+    isActive: isRunning || currentUserIsOptimistic,
   };
-}
-
-function findLastUserMessageTimestamp(items: StreamItem[]): Date | null {
-  for (let i = items.length - 1; i >= 0; i -= 1) {
-    const item = items[i];
-    if (item?.kind === "user_message") {
-      return item.timestamp;
-    }
-  }
-  return null;
 }

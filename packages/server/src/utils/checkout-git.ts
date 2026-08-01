@@ -3,6 +3,7 @@ import { existsSync, realpathSync } from "fs";
 import { open as openFile, readFile, stat as statFile } from "fs/promises";
 import { TTLCache } from "@isaacs/ttlcache";
 import type { Logger } from "pino";
+import type { CheckoutCommit, CheckoutCommitFile } from "@otto-code/protocol/messages";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
 import { parseGitHubRepoFromRemote } from "../server/workspace-git-metadata.js";
@@ -11,10 +12,10 @@ import {
   GitHubCliMissingError,
   GitHubCommandError,
   createGitHubService,
-  resolveGitHubRepo,
-  type HostingCurrentPullRequestStatus,
+  type CurrentPullRequestStatus,
+  type ForgeAuthState,
   type GitHubPullRequestStatusFacts,
-  type GitHubService,
+  type ForgeService,
   type PullRequestMergeable,
 } from "../services/github-service.js";
 import { isGitHostingFeatureDisabledError } from "../services/git-hosting/types.js";
@@ -812,10 +813,9 @@ export type CheckoutStatusGit = CheckoutStatusGitNonOtto | CheckoutStatusGitOtto
 
 export type CheckoutStatusResult = CheckoutStatus | CheckoutStatusGit;
 
-export interface CheckoutDiffResult {
-  diff: string;
-  structured?: ParsedDiffFile[];
-}
+export type CheckoutDiffResult =
+  | { diff: string; structured?: ParsedDiffFile[]; diffTooLarge?: false }
+  | { diff: ""; structured: []; diffTooLarge: true };
 
 export interface CheckoutDiffCompare {
   mode: "uncommitted" | "base";
@@ -3591,7 +3591,7 @@ async function detectAndThrowMergeFromBaseConflict(
   }
 }
 
-export async function pullCurrentBranch(cwd: string, github?: GitHubService): Promise<void> {
+export async function pullCurrentBranch(cwd: string, github?: ForgeService): Promise<void> {
   await requireGitRepo(cwd);
   const currentBranch = await getCurrentBranch(cwd);
   if (!currentBranch || currentBranch === "HEAD") {
@@ -3610,7 +3610,7 @@ export async function pullCurrentBranch(cwd: string, github?: GitHubService): Pr
   }
 }
 
-export async function pushCurrentBranch(cwd: string, github?: GitHubService): Promise<void> {
+export async function pushCurrentBranch(cwd: string, github?: ForgeService): Promise<void> {
   await requireGitRepo(cwd);
   const currentBranch = await getCurrentBranch(cwd);
   if (!currentBranch || currentBranch === "HEAD") {
@@ -3773,7 +3773,29 @@ export interface PullRequestStatus {
 
 export interface PullRequestStatusResult {
   status: PullRequestStatus | null;
+  /** Why forge features are (un)available — drives the onboarding callout. */
+  authState: ForgeAuthState;
+  /** Kept in sync with {@link authState} for back-compat; true iff authenticated. */
   githubFeaturesEnabled: boolean;
+}
+
+function buildPullRequestStatusResult(
+  status: PullRequestStatus | null,
+  authState: ForgeAuthState,
+): PullRequestStatusResult {
+  return { status, authState, githubFeaturesEnabled: authState === "authenticated" };
+}
+
+/**
+ * Map a forge CLI failure to an auth state. A missing-CLI error means the user
+ * must install the tool; anything else surfaced as an auth probe failure means
+ * they must sign in.
+ */
+export function forgeAuthStateFromError(error: unknown): ForgeAuthState {
+  if (error instanceof GitHubCliMissingError) {
+    return "cli_missing";
+  }
+  return "unauthenticated";
 }
 
 export interface PullRequestCheck {
@@ -3791,14 +3813,10 @@ export type ReviewDecision = "approved" | "changes_requested" | "pending" | null
 export async function createPullRequest(
   cwd: string,
   options: CreatePullRequestOptions,
-  github: GitHubService = createGitHubService(),
+  forgeService: ForgeService = createGitHubService(),
   context?: CheckoutContext,
 ): Promise<{ url: string; number: number }> {
   await requireGitRepo(cwd);
-  const repo = await resolveGitHubRepo(cwd);
-  if (!repo) {
-    throw new Error("Unable to determine GitHub repo from git remote");
-  }
 
   const head = options.head ?? (await getCurrentBranch(cwd));
   const { storedBaseRef, resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
@@ -3814,23 +3832,28 @@ export async function createPullRequest(
     throw new Error(`Base ref mismatch: expected ${base}, got ${options.base}`);
   }
 
+  // The push deliberately happens before the adapter resolves the target
+  // repository: slug resolution is adapter-internal (e.g. `gh repo view`, which
+  // handles GHES and renamed repos), and the RPC path only reaches here after
+  // the forge resolver has already matched the origin remote to a forge. If the
+  // adapter still fails after the push, retrying is safe — the non-force push
+  // of the head branch is idempotent.
   await runGitCommand(["push", "-u", "origin", head], { cwd, timeout: 120_000 });
 
-  const result = await github.createPullRequest({
+  const result = await forgeService.createPullRequest({
     cwd,
-    repo,
     title: options.title,
     body: options.body,
     head,
     base: normalizedBase,
   });
-  github.invalidate({ cwd });
+  forgeService.invalidate({ cwd });
   return result;
 }
 
 export async function getPullRequestStatus(
   cwd: string,
-  github: GitHubService = createGitHubService(),
+  forgeService: ForgeService = createGitHubService(),
   options?: CheckoutReadCacheOptions,
   context?: CheckoutContext,
 ): Promise<PullRequestStatusResult> {
@@ -3847,7 +3870,7 @@ export async function getPullRequestStatus(
     }
   }
 
-  const lookup = getPullRequestStatusUncached(cwd, github, options, context)
+  const lookup = getPullRequestStatusUncached(cwd, forgeService, options, context)
     .then((status) => {
       pullRequestStatusCache.set(cacheKey, status);
       rememberPullRequestStatus(cacheKey, status);
@@ -3872,13 +3895,14 @@ export async function getPullRequestStatus(
 
 async function getPullRequestStatusUncached(
   cwd: string,
-  github: GitHubService,
+  forgeService: ForgeService,
   options?: CheckoutReadCacheOptions,
   context?: CheckoutContext,
 ): Promise<PullRequestStatusResult> {
   if (context?.facts?.isGit === false) {
     return {
       status: null,
+      authState: "no_remote",
       githubFeaturesEnabled: false,
     };
   }
@@ -3889,42 +3913,375 @@ async function getPullRequestStatusUncached(
   if (!head) {
     return {
       status: null,
+      authState: "no_remote",
       githubFeaturesEnabled: false,
     };
   }
   try {
     const lookupTarget = await resolvePullRequestStatusLookupTarget(cwd, head, context);
-    let status: HostingCurrentPullRequestStatus | null;
+    let status: CurrentPullRequestStatus | null;
     if (options?.force) {
       const reason = options.reason;
       if (!reason) {
         throw new Error("Forced PR status read requires a reason");
       }
-      status = await github.getCurrentPullRequestStatus({
+      status = await forgeService.getCurrentPullRequestStatus({
         cwd,
         ...lookupTarget,
         force: true,
         reason,
       });
     } else {
-      status = await github.getCurrentPullRequestStatus({
+      status = await forgeService.getCurrentPullRequestStatus({
         cwd,
         ...lookupTarget,
         reason: options?.reason,
       });
     }
-    return {
-      status,
-      githubFeaturesEnabled: true,
-    };
+    return buildPullRequestStatusResult(status, "authenticated");
   } catch (error) {
     if (
       error instanceof GitHubCliMissingError ||
       error instanceof GitHubAuthenticationError ||
       isGitHostingFeatureDisabledError(error)
     ) {
-      return { status: null, githubFeaturesEnabled: false };
+      return buildPullRequestStatusResult(null, forgeAuthStateFromError(error));
     }
     throw error;
+  }
+}
+
+export async function listCheckoutCommits({
+  cwd,
+  context,
+}: {
+  cwd: string;
+  context?: CheckoutContext;
+}): Promise<CheckoutCommitsResult> {
+  const currentBranch = await getCurrentBranch(cwd);
+  if (!currentBranch) {
+    return { baseRef: null, commits: [] };
+  }
+
+  const { resolvedBaseRef } = await resolveBaseRefForCwd(cwd, context);
+  const normalizedBaseRef = resolvedBaseRef ? normalizeLocalBranchRefName(resolvedBaseRef) : null;
+  let comparisonBaseRef = await tryResolveCheckoutCommitsBaseRef(
+    cwd,
+    resolvedBaseRef,
+    currentBranch,
+  );
+  if (!comparisonBaseRef && normalizedBaseRef && normalizedBaseRef !== currentBranch) {
+    // Saved worktree metadata can outlive a renamed or deleted base branch.
+    comparisonBaseRef = await tryResolveCheckoutCommitsBaseRef(
+      cwd,
+      await resolveBaseRef(cwd),
+      currentBranch,
+    );
+  }
+
+  let workspaceRecords: ParsedCheckoutCommit[] = [];
+  let baseRevision = "HEAD";
+  if (comparisonBaseRef) {
+    const [records, mergeBase] = await Promise.all([
+      getCheckoutCommitRecords({ cwd, revision: `${comparisonBaseRef}..HEAD` }),
+      tryResolveMergeBase(cwd, comparisonBaseRef),
+    ]);
+    workspaceRecords = records;
+    baseRevision = mergeBase ?? "";
+  }
+
+  const baseRecords = baseRevision
+    ? await getCheckoutCommitRecords({
+        cwd,
+        revision: baseRevision,
+        maxCount: CHECKOUT_BASE_COMMIT_LIMIT,
+      })
+    : [];
+  const records = [...workspaceRecords, ...baseRecords];
+  if (records.length === 0) {
+    return { baseRef: comparisonBaseRef, commits: [] };
+  }
+
+  const unpushedShas = await getUnpushedCommitShas(cwd);
+  const workspaceShas = new Set(workspaceRecords.map((record) => record.sha));
+
+  const commits = records.map((record) => ({
+    sha: record.sha,
+    shortSha: record.shortSha,
+    subject: record.subject,
+    authorName: record.authorName,
+    authorDate: record.authorDate,
+    isOnRemote: !unpushedShas.has(record.sha),
+    isOnBase: !workspaceShas.has(record.sha),
+    files: record.files,
+  }));
+
+  return { baseRef: comparisonBaseRef, commits };
+}
+
+/**
+ * Fetches the unified diff of a single file as introduced by one commit and
+ * parses it into the same {@link ParsedDiffFile} shape the diff subscription
+ * emits (so the client can reuse its existing renderer).
+ *
+ * Compares merge commits to their first parent, matching the linear history shown
+ * in the explorer. The text is parsed and highlighted by
+ * {@link parseAndHighlightDiff} — the exact parser the diff subscription uses.
+ * Returns `null` when the file is absent from the commit or the change is
+ * binary-only (no textual hunks). Throws on git failure (e.g. an unknown sha),
+ * which the caller maps to a typed checkout error.
+ */
+export async function getCommitFileDiff({
+  cwd,
+  sha,
+  path,
+}: {
+  cwd: string;
+  sha: string;
+  path: string;
+}): Promise<ParsedDiffFile | null> {
+  const { stdout } = await runGitCommand(
+    ["show", sha, "--format=", "--diff-merges=first-parent", "--", path],
+    {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+    },
+  );
+
+  if (stdout.trim().length === 0) {
+    return null;
+  }
+
+  const parsedFiles = await parseAndHighlightDiff(stdout, cwd, {
+    getOldFileContent: (file) => readGitFileContentAtRef(cwd, `${sha}^`, file.path),
+    getNewFileContent: (file) => readGitFileContentAtRef(cwd, sha, file.path),
+  });
+
+  // `--` scopes the diff to a single pathspec, so there is at most one real
+  // entry. Pick by path to drop any stray header-only section the parser emits.
+  const file = parsedFiles.find((candidate) => candidate.path === path) ?? null;
+  if (!file) {
+    return null;
+  }
+
+  // Binary changes carry a "Binary files ... differ" marker and no hunks; there
+  // is nothing textual to render, so report them as absent.
+  if (file.hunks.length === 0 && /^Binary files .* differ$/m.test(stdout)) {
+    return null;
+  }
+
+  return file;
+}
+
+async function getCheckoutCommitRecords({
+  cwd,
+  revision,
+  maxCount,
+}: CheckoutCommitLogInput): Promise<ParsedCheckoutCommit[]> {
+  const args = [
+    "log",
+    revision,
+    "--diff-merges=first-parent",
+    `--format=${COMMIT_LOG_FORMAT}`,
+    "--raw",
+    "--numstat",
+    "-M",
+  ];
+  if (maxCount !== undefined) {
+    args.splice(2, 0, `--max-count=${maxCount}`);
+  }
+
+  const result = await runGitCommand(args, { cwd, envOverlay: READ_ONLY_GIT_ENV });
+  if (result.truncated) {
+    throw new Error("Commit history exceeded the git output limit");
+  }
+  return parseCheckoutCommitRecords(result.stdout);
+}
+
+async function tryResolveCheckoutCommitsBaseRef(
+  cwd: string,
+  baseRef: string | null,
+  currentBranch: string,
+): Promise<string | null> {
+  if (!baseRef) {
+    return null;
+  }
+  const normalizedBaseRef = normalizeLocalBranchRefName(baseRef);
+  if (!normalizedBaseRef || normalizedBaseRef === currentBranch) {
+    return null;
+  }
+  return resolveMostAheadBaseRef(cwd, normalizedBaseRef).catch(() => null);
+}
+
+// Returns commits reachable from HEAD that are not reachable from any remote ref.
+async function getUnpushedCommitShas(cwd: string, context?: CheckoutContext): Promise<Set<string>> {
+  const { stdout } = await runGitCommand(["rev-list", "HEAD", "--not", "--remotes"], {
+    cwd,
+    envOverlay: READ_ONLY_GIT_ENV,
+    logger: context?.logger,
+  });
+  return new Set(
+    stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+  );
+}
+
+export interface CheckoutCommitsResult {
+  baseRef: string | null;
+  commits: CheckoutCommit[];
+}
+
+interface ParsedCheckoutCommit {
+  sha: string;
+  shortSha: string;
+  authorName: string;
+  authorDate: string;
+  subject: string;
+  files: CheckoutCommitFile[];
+}
+
+// Workspace history stays complete; base history is bounded context until the
+// commits list supports paging older base commits.
+const CHECKOUT_BASE_COMMIT_LIMIT = 10;
+
+interface CheckoutCommitLogInput {
+  cwd: string;
+  revision: string;
+  maxCount?: number;
+}
+
+// Record-separated, NUL-field-separated so arbitrary subject text stays parseable.
+// `%x1e`/`%x00` are git placeholders (literal text in the arg, real bytes in the
+// output) — passing actual NUL bytes as a process arg is rejected by Node.
+const COMMIT_LOG_FORMAT = "%x1e%H%x00%h%x00%an%x00%aI%x00%s";
+
+// Parses the single combined `git log ... --raw --numstat -M` stream. Each record
+// (split on the record separator) starts with the NUL-field-separated header line,
+// then a blank line, then the interleaved `--raw` (status) and `--numstat` (counts)
+// blocks. We merge both by destination path so each file carries counts + status.
+function parseCheckoutCommitRecords(stdout: string): ParsedCheckoutCommit[] {
+  const records = stdout.split(COMMIT_RECORD_SEPARATOR).filter((record) => record.length > 0);
+  const commits: ParsedCheckoutCommit[] = [];
+  for (const record of records) {
+    const lines = record.split("\n");
+    const fields = (lines[0] ?? "").split(COMMIT_FIELD_SEPARATOR);
+    if (fields.length < 5) {
+      continue;
+    }
+    const sha = (fields[0] ?? "").trim();
+    if (!sha) {
+      continue;
+    }
+
+    const stats = new Map<string, { additions: number; deletions: number }>();
+    const statuses = new Map<string, CheckoutCommitFileStatus>();
+    for (let index = 1; index < lines.length; index += 1) {
+      const line = lines[index] ?? "";
+      if (!line) {
+        continue;
+      }
+      if (line.startsWith(":")) {
+        parseRawStatusLine(line, statuses);
+      } else {
+        parseNumstatLine(line, stats);
+      }
+    }
+
+    const files: CheckoutCommitFile[] = [];
+    for (const [path, stat] of stats) {
+      const status = statuses.get(path);
+      files.push({
+        path,
+        additions: stat.additions,
+        deletions: stat.deletions,
+        ...(status ? { status } : {}),
+      });
+    }
+
+    commits.push({
+      sha,
+      shortSha: (fields[1] ?? "").trim(),
+      authorName: fields[2] ?? "",
+      authorDate: (fields[3] ?? "").trim(),
+      subject: fields[4] ?? "",
+      files,
+    });
+  }
+  return commits;
+}
+
+const COMMIT_RECORD_SEPARATOR = "\x1e";
+
+// Bytes git emits between fields/records. We split parsed output on these.
+const COMMIT_FIELD_SEPARATOR = "\x00";
+
+type CheckoutCommitFileStatus = NonNullable<CheckoutCommitFile["status"]>;
+
+// A `--raw` line: `:<srcmode> <dstmode> <srcsha> <dstsha> <STATUS>\t<path>`
+// (rename/copy add a second path: `R100\t<old>\t<new>`). The status token is the
+// last space-separated field before the first tab. Keyed on the destination path.
+function parseRawStatusLine(line: string, statuses: Map<string, CheckoutCommitFileStatus>): void {
+  const tabParts = line.split("\t");
+  const meta = tabParts[0] ?? "";
+  const statusToken = meta.slice(meta.lastIndexOf(" ") + 1);
+  const letter = statusToken.charAt(0);
+  const status = mapNameStatusLetter(letter);
+  if (!status) {
+    return;
+  }
+  const path =
+    letter === "R" || letter === "C" ? (tabParts[tabParts.length - 1] ?? "") : (tabParts[1] ?? "");
+  if (!path) {
+    return;
+  }
+  statuses.set(path, status);
+}
+
+// A `--numstat` line: `<adds>\t<dels>\t<path>` (renames use `old => new`, binary
+// files report `-` for both counts). Keyed on the (normalized) destination path.
+function parseNumstatLine(
+  line: string,
+  stats: Map<string, { additions: number; deletions: number }>,
+): void {
+  const parts = line.split("\t");
+  if (parts.length < 3) {
+    return;
+  }
+  const additionsField = parts[0] ?? "";
+  const deletionsField = parts[1] ?? "";
+  const path = normalizeNumstatPath(parts.slice(2).join("\t"));
+  if (!path) {
+    return;
+  }
+  if (additionsField === "-" || deletionsField === "-") {
+    stats.set(path, { additions: 0, deletions: 0 });
+    return;
+  }
+  const additions = Number.parseInt(additionsField, 10);
+  const deletions = Number.parseInt(deletionsField, 10);
+  if (Number.isNaN(additions) || Number.isNaN(deletions)) {
+    return;
+  }
+  stats.set(path, { additions, deletions });
+}
+
+function mapNameStatusLetter(letter: string): CheckoutCommitFileStatus | undefined {
+  switch (letter) {
+    case "A":
+      return "added";
+    case "C":
+      return "added";
+    case "M":
+      return "modified";
+    case "T":
+      return "modified";
+    case "D":
+      return "deleted";
+    case "R":
+      return "renamed";
+    default:
+      return undefined;
   }
 }

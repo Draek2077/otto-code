@@ -17,6 +17,7 @@ import {
   encodeWorkspaceIdForPathSegment,
   isSettingsSectionSlug,
   normalizeHostSectionSlug,
+  normalizeProjectSettingsRouteId,
   parseHostAgentRouteFromPathname,
   parseHostWorkspaceOpenIntentFromPathname,
   parseHostWorkspaceRouteFromPathname,
@@ -46,6 +47,8 @@ describe("workspace route parsing", () => {
   });
 
   it("decodes non-canonical base64url workspace IDs used by older links", () => {
+    // Unpadded base64url of "/home/user/dev/otto" — older links wrote the
+    // segment without the trailing "=" that canonical base64 would carry.
     expect(decodeWorkspaceIdFromPathSegment("L2hvbWUvdXNlci9kZXYvb3R0bw")).toBe(
       "/home/user/dev/otto",
     );
@@ -196,23 +199,14 @@ describe("projects settings routes", () => {
     expect(buildProjectsSettingsRoute()).toBe("/settings/projects");
   });
 
-  it("buildProjectSettingsRoute encodes a remote project key as a single segment", () => {
-    expect(buildProjectSettingsRoute("remote:github.com/acme/app")).toBe(
-      "/settings/projects/remote%3Agithub.com%2Facme%2Fapp",
+  it("buildProjectSettingsRoute addresses a host-local project id", () => {
+    expect(buildProjectSettingsRoute("host a", "project/1")).toBe(
+      "/settings/projects/host%20a/project%2F1",
     );
   });
 
-  it("buildProjectSettingsRoute encodes a local repo-root key", () => {
-    expect(buildProjectSettingsRoute("/Users/me/dev/otto")).toBe(
-      "/settings/projects/%2FUsers%2Fme%2Fdev%2Fotto",
-    );
-  });
-
-  it("project keys round-trip through decodeURIComponent", () => {
-    const projectKey = "remote:github.com/acme/app";
-    const route = buildProjectSettingsRoute(projectKey);
-    const segment = route.slice("/settings/projects/".length);
-    expect(decodeURIComponent(segment)).toBe(projectKey);
+  it("keeps route ids opaque", () => {
+    expect(normalizeProjectSettingsRouteId("project%2F1")).toBe("project%2F1");
   });
 });
 
@@ -264,7 +258,6 @@ describe("host settings section slugs", () => {
   it("maps old host settings sections to their new names", () => {
     expect(normalizeHostSectionSlug("orchestration")).toBe("agents");
     expect(normalizeHostSectionSlug("daemon")).toBe("host");
-    expect(normalizeHostSectionSlug("git-providers")).toBe("workspaces");
   });
 });
 

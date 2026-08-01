@@ -7,8 +7,12 @@ import { createPermitCommand } from "./commands/permit/index.js";
 import { createProviderCommand } from "./commands/provider/index.js";
 import { createScheduleCommand } from "./commands/schedule/index.js";
 import { createSpeechCommand } from "./commands/speech/index.js";
+import { createScriptCommand } from "./commands/script/index.js";
 import { createTerminalCommand } from "./commands/terminal/index.js";
 import { createWorktreeCommand } from "./commands/worktree/index.js";
+import { createWorkspaceCommand } from "./commands/workspace/index.js";
+import { createHeartbeatCommand } from "./commands/heartbeat/index.js";
+import { createHubCommand } from "./commands/hub/index.js";
 import { createHooksCommand } from "./commands/hooks.js";
 import { createBrainCommand } from "@otto-code/brain";
 import { startCommand as daemonStartCommand } from "./commands/daemon/start.js";
@@ -26,6 +30,7 @@ import { addArchiveOptions, runArchiveCommand } from "./commands/agent/archive.j
 import { addAttachOptions, runAttachCommand } from "./commands/agent/attach.js";
 import { addImportOptions, runImportCommand } from "./commands/agent/import.js";
 import { withOutput } from "./output/index.js";
+import { runCloneCommand } from "./commands/clone.js";
 import { onboardCommand } from "./commands/onboard.js";
 import {
   addDaemonHostOption,
@@ -66,6 +71,20 @@ export function createCli(): Command {
   addJsonAndDaemonHostOptions(addImportOptions(program.command("import"))).action(
     withOutput(runImportCommand),
   );
+
+  addJsonAndDaemonHostOptions(
+    program
+      .command("clone")
+      .description("Clone a GitHub repo and register it as a Otto workspace")
+      .argument("<repo>", "GitHub repo in owner/repo format or a full git remote URL")
+      .requiredOption("--dir <path>", "Parent directory to clone into (for example: ~/workspace)"),
+  )
+    .addOption(
+      new Option("--protocol <protocol>", "Protocol for owner/repo shorthand repositories").choices(
+        ["https", "ssh"],
+      ),
+    )
+    .action(withOutput(runCloneCommand));
 
   addDaemonHostOption(addAttachOptions(program.command("attach"))).action(runAttachCommand);
 
@@ -146,6 +165,7 @@ export function createCli(): Command {
 
   // Daemon commands
   program.addCommand(createDaemonCommand());
+  program.addCommand(createHubCommand());
 
   // Chat commands
   program.addCommand(createChatCommand());
@@ -153,11 +173,15 @@ export function createCli(): Command {
   // Terminal commands
   program.addCommand(createTerminalCommand());
 
+  // Workspace script commands
+  program.addCommand(createScriptCommand());
+
   // Loop commands
   program.addCommand(createLoopCommand());
 
   // Schedule commands
   program.addCommand(createScheduleCommand());
+  program.addCommand(createHeartbeatCommand());
 
   // Permission commands
   program.addCommand(createPermitCommand());
@@ -168,8 +192,11 @@ export function createCli(): Command {
   // Speech model commands
   program.addCommand(createSpeechCommand());
 
-  // Worktree commands
-  program.addCommand(createWorktreeCommand());
+  // Workspace commands
+  program.addCommand(createWorkspaceCommand());
+  // COMPAT(worktreeCli): legacy command alias added before workspace was the product unit.
+  // Added in v0.2.0; remove after 2027-01-17.
+  program.addCommand(createWorktreeCommand(), { hidden: true });
 
   // Local AI (otto-brain)
   program.addCommand(createBrainCommand());

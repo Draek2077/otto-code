@@ -1,4 +1,4 @@
-import type { HostingCurrentPullRequestStatus } from "../github-service.js";
+import type { CurrentPullRequestStatus } from "../github-service.js";
 
 // Retain-count based PR status poller, extracted from the GitHub service's
 // embedded implementation so other providers reuse the same discipline:
@@ -23,9 +23,9 @@ interface PollTarget {
   target: PullRequestStatusPollTargetKey;
   retainCount: number;
   timer: NodeJS.Timeout | null;
-  latestStatus: HostingCurrentPullRequestStatus | null;
+  latestStatus: CurrentPullRequestStatus | null;
   consecutiveErrors: number;
-  callbacks: Set<(status: HostingCurrentPullRequestStatus | null) => void>;
+  callbacks: Set<(status: CurrentPullRequestStatus | null) => void>;
   errorCallbacks: Set<(error: unknown) => void>;
 }
 
@@ -34,22 +34,20 @@ export interface PullRequestStatusPoller {
     cwd: string;
     headRef: string;
     headRepositoryOwner?: string;
-    onStatus?: (status: HostingCurrentPullRequestStatus | null) => void;
+    onStatus?: (status: CurrentPullRequestStatus | null) => void;
     onError?: (error: unknown) => void;
   }): { unsubscribe: () => void };
   // Reports a successful read (from any code path) so an active target can
   // reschedule from fresh data and notify subscribers when it was a poll.
   reportSuccess(options: {
     target: PullRequestStatusPollTargetKey;
-    status: HostingCurrentPullRequestStatus | null;
+    status: CurrentPullRequestStatus | null;
     notify: boolean;
   }): void;
   dispose(): void;
 }
 
-export function isPullRequestStatusPending(
-  status: HostingCurrentPullRequestStatus | null,
-): boolean {
+export function isPullRequestStatusPending(status: CurrentPullRequestStatus | null): boolean {
   if (!status) {
     return false;
   }
@@ -60,7 +58,7 @@ export function isPullRequestStatusPending(
 }
 
 export function computeNextPollInterval(params: {
-  status: HostingCurrentPullRequestStatus | null;
+  status: CurrentPullRequestStatus | null;
   consecutiveErrors: number;
   intervals: PullRequestStatusPollerIntervals;
 }): number {

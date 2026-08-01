@@ -65,7 +65,7 @@ function ChatMetricsBarContent({ serverId, agentId }: ChatMetricsBarProps): Reac
   );
 
   const toolUseCount = useMemo(
-    () => rows.reduce((sum, row) => sum + (row.toolUseCount ?? 0), 0),
+    () => rows.reduce((sum, row) => sum + (row.kind === "otto" ? (row.toolUseCount ?? 0) : 0), 0),
     [rows],
   );
   const activeSubagents = useMemo(

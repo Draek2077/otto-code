@@ -170,7 +170,7 @@ export type SettingsView =
   | { kind: "section"; section: SettingsSectionSlug }
   | { kind: "host"; serverId: string; section: HostSectionSlug }
   | { kind: "projects" }
-  | { kind: "project"; projectKey: string };
+  | { kind: "project"; serverId: string; projectId: string };
 
 // Counts mounted SettingsScreen instances. Navigating between settings route
 // groups (app section ↔ host section ↔ projects) replaces one SettingsScreen
@@ -190,7 +190,7 @@ function settingsViewKey(view: SettingsView): string {
     case "host":
       return `host:${view.serverId}:${view.section}`;
     case "project":
-      return `project:${view.projectKey}`;
+      return `project:${view.serverId}:${view.projectId}`;
     default:
       return view.kind;
   }
@@ -2345,7 +2345,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     if (view.kind === "project") {
       return (
         <ProjectSettingsScreen
-          projectKey={view.projectKey}
+          projectKey={view.projectId}
           onDirtyChange={handleProjectSettingsDirtyChange}
         />
       );

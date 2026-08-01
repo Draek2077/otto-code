@@ -7,13 +7,13 @@ import {
 } from "@/components/browser-webview-resident";
 import { createWorkspaceBrowser, getBrowserRecord, useBrowserStore } from "@/stores/browser-store";
 import {
-  buildWorkspaceTabPersistenceKey,
   collectAllTabs,
   createDefaultLayout,
   findPaneById,
   normalizeLayout,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 
 type BrowserAutomationExecuteRequest = Extract<
   SessionOutboundMessage,
@@ -305,7 +305,9 @@ async function closeBrowserTabForRequest(params: {
   useBrowserStore.getState().removeBrowser(browserId);
   removeResidentBrowserWebview(browserId);
   await browserHost?.unregisterWorkspaceBrowser?.(browserId);
-  await browserHost?.clearPartition?.(browserId);
+  // No per-browser partition to clear: browsers now share one profile partition,
+  // and wiping it is a deliberate settings action (`clearProfile`), not a
+  // side effect of closing a tab.
 
   return {
     requestId: request.requestId,
@@ -425,10 +427,12 @@ async function openBrowserTabForRequest(params: {
     });
   }
 
-  await browserHost?.registerWorkspaceBrowser?.({ browserId, workspaceId });
+  // Registration happens when the webview actually attaches, in
+  // browser-webview-resident.ts, because the daemon binds by webContentsId and
+  // that id does not exist until attach.
 
   if (browserHost?.executeAutomationCommand) {
-    ensureResidentBrowserWebview({ browserId, url: normalizedUrl });
+    ensureResidentBrowserWebview({ browserId, workspaceId, url: normalizedUrl });
     const registered = await waitForBrowserRegistration({
       request,
       browserId,

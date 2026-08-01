@@ -27,7 +27,7 @@ export function openArtifactTab(input: OpenArtifactTabInput): boolean {
     .getState()
     .openTabFocused(workspaceKey, { kind: "artifact", artifactId: input.artifactId });
   if (input.navigate) {
-    navigateToWorkspace(input.serverId, input.workspaceId);
+    navigateToWorkspace({ serverId: input.serverId, workspaceId: input.workspaceId });
   }
   return true;
 }

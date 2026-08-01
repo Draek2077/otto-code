@@ -6,6 +6,8 @@ import { Inter_400Regular } from "@expo-google-fonts/inter/400Regular";
 import { JetBrainsMono_400Regular } from "@expo-google-fonts/jetbrains-mono/400Regular";
 import { useFonts } from "expo-font";
 import * as Linking from "expo-linking";
+import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
+import type { KeyboardActionId } from "@/keyboard/keyboard-action-dispatcher";
 import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import { Stack, useNavigationContainerRef, usePathname, useRouter } from "expo-router";
@@ -15,6 +17,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -25,7 +28,8 @@ import { GestureDetector, GestureHandlerRootView } from "react-native-gesture-ha
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { CommandCenter } from "@/components/command-center";
+import { CommandCenter, CommandCenterRootActions } from "@/command-center/command-center";
+import { CommandCenterProvider } from "@/command-center/provider";
 import { DevModeBorder } from "@/components/dev-mode-border";
 import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-source";
 import { DownloadToast } from "@/components/download-toast";
@@ -471,6 +475,11 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   const closeDesktopAgentList = usePanelStore((state) => state.closeDesktopAgentList);
   const closeDesktopFileExplorer = usePanelStore((state) => state.closeDesktopFileExplorer);
   const toggleFocusMode = usePanelStore((state) => state.toggleFocusMode);
+  const focusModeHandlerId = useId();
+  const handleToggleFocusMode = useCallback((): boolean => {
+    toggleFocusMode();
+    return true;
+  }, [toggleFocusMode]);
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
   const cycleTheme = useCallback(() => {
@@ -514,12 +523,19 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   // other non-workspace routes) don't need a special-case to keep shortcuts alive.
   const keyboardShortcutsEnabled = chromeEnabled || pathname.startsWith("/settings");
 
+  useKeyboardActionHandler({
+    handlerId: focusModeHandlerId,
+    actions: FOCUS_MODE_KEYBOARD_ACTIONS,
+    enabled: keyboardShortcutsEnabled,
+    priority: 0,
+    handle: handleToggleFocusMode,
+  });
+
   useKeyboardShortcuts({
     enabled: keyboardShortcutsEnabled,
     isMobile: isCompactLayout,
     toggleAgentList,
     toggleBothSidebars: toggleDesktopSidebars,
-    toggleFocusMode,
     cycleTheme,
   });
 
@@ -555,6 +571,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <RosettaCalloutSource />
       <UpdateCalloutSource />
       <WorktreeSetupCalloutSource />
+      <CommandCenterRootActions />
       <CommandCenter />
       <HostChooserModal />
       <ProviderSettingsHost />
@@ -573,7 +590,10 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     surface
   );
 
-  return content;
+  // The command-center registry is what draft composers publish their model
+  // choices into, so the provider has to sit above every surface that renders a
+  // composer — not just above <CommandCenter /> itself.
+  return <CommandCenterProvider>{content}</CommandCenterProvider>;
 }
 
 function SidebarChrome({
@@ -1041,6 +1061,8 @@ function RootAppTree() {
     </GestureHandlerRootView>
   );
 }
+
+const FOCUS_MODE_KEYBOARD_ACTIONS: readonly KeyboardActionId[] = ["workspace.focus.toggle"];
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({ Inter_400Regular, JetBrainsMono_400Regular });

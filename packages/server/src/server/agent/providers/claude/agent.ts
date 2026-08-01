@@ -63,7 +63,11 @@ import {
   TaskTranscriptWatcher,
   readClaudeSubagentAgentIdFromToolResult,
 } from "./task-transcript-watcher.js";
-import { SETTING_APPLIES_NEXT_TURN_NOTICE } from "../../provider-notices.js";
+import {
+  MODE_APPLIES_NEXT_TURN_NOTICE,
+  SETTING_APPLIES_NEXT_TURN_NOTICE,
+  THINKING_APPLIES_NEXT_TURN_NOTICE,
+} from "../../provider-notices.js";
 import {
   isProviderImageMarkdown,
   materializeProviderImage,
@@ -2704,7 +2708,7 @@ class ClaudeAgentSession implements AgentSession {
     // so the staged value applies at the pending restart.
     this.currentMode = normalized;
     if (stagedOnly && this.hasActiveTurn()) {
-      return SETTING_APPLIES_NEXT_TURN_NOTICE;
+      return MODE_APPLIES_NEXT_TURN_NOTICE;
     }
   }
 
@@ -2746,7 +2750,7 @@ class ClaudeAgentSession implements AgentSession {
     }
     this.queryRestartNeeded = true;
     if (this.activeForegroundTurnId || this.autonomousTurn) {
-      return SETTING_APPLIES_NEXT_TURN_NOTICE;
+      return THINKING_APPLIES_NEXT_TURN_NOTICE;
     }
   }
 

@@ -75,6 +75,7 @@ export interface ScheduleFormProjectOption {
 }
 
 export type ScheduleFormTargetKind = "agent" | "new-agent";
+type CronCadence = Extract<ScheduleCadence, { type: "cron" }>;
 type ProviderResolutionStatus = "idle" | "pending" | "complete";
 
 export interface ScheduleFormState {
@@ -84,7 +85,7 @@ export interface ScheduleFormState {
   prompt: string;
   maxRuns: string;
   cadence: ScheduleCadence;
-  submitCadence: ScheduleCadence;
+  submitCadence: CronCadence | undefined;
   hosts: ScheduleFormHost[];
   projectOptions: ScheduleFormProjectOption[];
   selectedServerId: string | null;
@@ -416,13 +417,10 @@ function formatInitialMaxRuns(schedule: ScheduleFormSnapshot["schedule"]): strin
 }
 
 function resolveInitialSubmitCadence(
-  snapshot: ScheduleFormSnapshot,
-  initialCadence: ScheduleCadence,
-): ScheduleCadence {
-  if (snapshot.mode === "edit" && snapshot.schedule) {
-    return snapshot.schedule.cadence;
-  }
-  return initialCadence;
+  schedule: ScheduleFormSnapshot["schedule"],
+  initialCadence: CronCadence,
+): CronCadence | undefined {
+  return schedule ? undefined : initialCadence;
 }
 
 function resolveInitialIsolation(input: {
@@ -523,11 +521,11 @@ function resolveDisclosure(state: ScheduleFormState): ScheduleDisclosureState {
 }
 
 function resolveCanSubmit(state: ScheduleFormState): boolean {
+  if (state.targetKind === "agent") {
+    return state.submitCadence !== undefined;
+  }
   if (state.prompt.trim().length === 0) {
     return false;
-  }
-  if (state.targetKind === "agent") {
-    return true;
   }
   const hasWorkingDir = state.workingDir.trim().length > 0;
   const hasMatchedProject = state.selectedProjectOptionId.trim().length > 0;
@@ -579,6 +577,11 @@ function updateDerivedState(input: {
     ...input.state,
     hosts: [...input.hosts],
     projectOptions: buildProjectOptions(input.targets, input.state.selectedServerId),
+    projectDisplay: resolveProjectDisplay({
+      targets: input.targets,
+      serverId: input.state.selectedServerId,
+      cwd: input.state.workingDir,
+    }),
     selectedProjectOptionId: projectTarget?.optionId ?? input.state.selectedProjectOptionId,
     selectedModelDisplay: resolveModelDisplay({
       entries: input.providerEntries,
@@ -630,7 +633,7 @@ function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
     prompt: snapshot.schedule?.prompt ?? "",
     maxRuns: formatInitialMaxRuns(snapshot.schedule),
     cadence: initialCadence,
-    submitCadence: resolveInitialSubmitCadence(snapshot, initialCadence),
+    submitCadence: resolveInitialSubmitCadence(snapshot.schedule, initialCadence),
     hosts: [...snapshot.hosts],
     projectOptions: buildProjectOptions(snapshot.defaults.projectTargets, selectedServerId),
     selectedServerId,

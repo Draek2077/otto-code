@@ -19,10 +19,8 @@ import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-bu
 import { createWorkspaceBrowser } from "@/stores/browser-store";
 import { markScriptTerminalPending } from "@/stores/script-terminal-pending-store";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
-import {
-  buildWorkspaceTabPersistenceKey,
-  useWorkspaceLayoutStore,
-} from "@/stores/workspace-layout-store";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { resolveWorkspaceDirectory } from "@/utils/workspace-directory";
 
 const EMPTY_TERMINAL_IDS: string[] = [];

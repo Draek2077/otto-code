@@ -1,4 +1,5 @@
 import { Buffer } from "buffer";
+import { buildAgentDeepLinkRoute } from "@otto-code/protocol/agent-deep-link";
 
 type NullableString = string | null | undefined;
 const BASE64_WORKSPACE_ID_PREFIX = "b64_";
@@ -174,11 +175,16 @@ export function parseWorkspaceOpenIntent(
 export function parseHostWorkspaceOpenIntentFromPathname(
   pathname: string,
 ): WorkspaceOpenIntent | null {
+  return parseWorkspaceOpenIntent(getHostWorkspaceOpenParamFromPathname(pathname));
+}
+
+export function getHostWorkspaceOpenParamFromPathname(pathname: string): string | null {
   const search = extractSearch(pathname);
   if (!search) {
     return null;
   }
-  return parseWorkspaceOpenIntent(new URLSearchParams(search).get("open"));
+  const open = new URLSearchParams(search).get("open");
+  return parseWorkspaceOpenIntent(open) ? open : null;
 }
 
 export function encodeWorkspaceIdForPathSegment(workspaceId: string): string {
@@ -384,7 +390,10 @@ export function buildHostAgentDetailRoute(serverId: string, agentId: string, wor
   if (!normalizedServerId || !normalizedAgentId) {
     return "/" as const;
   }
-  return `${buildHostRootRoute(normalizedServerId)}/agent/${encodeSegment(normalizedAgentId)}` as const;
+  return buildAgentDeepLinkRoute({
+    serverId: normalizedServerId,
+    agentId: normalizedAgentId,
+  });
 }
 
 export function buildHostRootRoute(serverId: string) {
@@ -500,6 +509,7 @@ export const SETTINGS_SECTION_SLUGS = [
   "general",
   "appearance",
   "visualizer",
+  "editor",
   "shortcuts",
   "integrations",
   "permissions",
@@ -580,10 +590,14 @@ export function buildProjectsSettingsRoute() {
   return "/settings/projects" as const;
 }
 
-export function buildProjectSettingsRoute(projectKey: string) {
-  const normalized = trimNonEmpty(projectKey);
-  if (!normalized) {
-    throw new Error("buildProjectSettingsRoute requires a non-empty projectKey");
+export function buildProjectSettingsRoute(serverId: string, projectId: string) {
+  if (!serverId.trim() || !projectId.trim()) {
+    throw new Error("buildProjectSettingsRoute requires a serverId and projectId");
   }
-  return `/settings/projects/${encodeSegment(normalized)}` as const;
+  return `/settings/projects/${encodeSegment(serverId)}/${encodeSegment(projectId)}` as const;
+}
+
+export function normalizeProjectSettingsRouteId(value: string | string[] | undefined): string {
+  const id = Array.isArray(value) ? value[0] : value;
+  return typeof id === "string" ? id : "";
 }

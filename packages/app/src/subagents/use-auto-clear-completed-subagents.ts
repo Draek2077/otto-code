@@ -69,7 +69,10 @@ export function useAutoClearCompletedSubagents(input: UseAutoClearCompletedSubag
         {
           serverId,
           parentAgentId,
-          rows: due.map((row) => ({ id: row.id, cumulativeTokens: row.cumulativeTokens })),
+          rows: due.map((row) => ({
+            id: row.id,
+            cumulativeTokens: row.kind === "otto" ? row.cumulativeTokens : undefined,
+          })),
         },
         {
           archiveAgent,
@@ -83,6 +86,10 @@ export function useAutoClearCompletedSubagents(input: UseAutoClearCompletedSubag
     let earliestRemaining = Number.POSITIVE_INFINITY;
     for (const row of rows) {
       if (!isSubagentRowTidyEligible(row) || excludeIds.has(row.id)) {
+        continue;
+      }
+      // Provider rows have no updatedAt, so nothing holds them in the settle window.
+      if (row.kind !== "otto") {
         continue;
       }
       const remaining = SUBAGENT_AUTO_CLEAR_SETTLE_MS - (now - row.updatedAt.getTime());

@@ -5,7 +5,7 @@ import type { Logger } from "pino";
 import type { AgentManager } from "./agent/agent-manager.js";
 import type { AgentStorage, StoredAgentRecord } from "./agent/agent-storage.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
-import type { GitHubService } from "../services/github-service.js";
+import type { ForgeService } from "../services/github-service.js";
 import {
   deleteOttoWorktree,
   isOttoOwnedWorktreeCwd,
@@ -20,6 +20,12 @@ export interface ActiveWorkspaceRef {
   workspaceId: string;
   cwd: string;
   kind?: "local_checkout" | "worktree" | "directory";
+  // Paseo widened this ref so archive callers can decide worktree teardown
+  // without a second registry read. Optional here because Otto's older
+  // producers (and the test harnesses) only fill the first three.
+  worktreeRoot?: string | null;
+  isOttoOwnedWorktree?: boolean;
+  mainRepoRoot?: string | null;
 }
 
 export interface ArchiveDependencies {
@@ -27,7 +33,7 @@ export interface ArchiveDependencies {
   // Base directory that may hold worktrees across repositories. Used as a fallback
   // when the request does not supply a per-repo root.
   ottoWorktreesBaseRoot?: string;
-  github: GitHubService;
+  github: ForgeService;
   workspaceGitService: Pick<WorkspaceGitService, "getSnapshot">;
   agentManager: Pick<AgentManager, "listAgents" | "archiveAgent" | "archiveSnapshot">;
   agentStorage: Pick<AgentStorage, "list">;
@@ -79,7 +85,8 @@ export interface ArchiveResult {
 
 export interface ArchiveByScopeRequest {
   scope: ArchiveScope;
-  repoRoot: string | null;
+  // Optional: Paseo's callers let the service resolve the repo root itself.
+  repoRoot?: string | null;
   // Per-repository worktree root, used to remove the actual directory.
   repoWorktreesRoot?: string;
   // Base directory that may hold worktrees across repositories; falls back to the
@@ -90,6 +97,19 @@ export interface ArchiveByScopeRequest {
   // the directory and the branch is no longer checked out). Requires repoRoot.
   branchCleanup?: { branchName: string } | null;
   requestId: string;
+}
+
+export async function requireActiveWorkspaceForArchive(
+  dependencies: Pick<ArchiveDependencies, "listActiveWorkspaces">,
+  workspaceId: string,
+): Promise<ActiveWorkspaceRef> {
+  const workspace = (await dependencies.listActiveWorkspaces()).find(
+    (candidate) => candidate.workspaceId === workspaceId,
+  );
+  if (!workspace) {
+    throw new Error(`Workspace not found: ${workspaceId}`);
+  }
+  return workspace;
 }
 
 export async function resolveWorkspaceIdAtPath(
@@ -277,7 +297,7 @@ async function maybeRemoveDirectory(
 
   try {
     await deleteOttoWorktree({
-      cwd: request.repoRoot,
+      cwd: request.repoRoot ?? null,
       worktreePath: targetDir,
       worktreesRoot: request.repoWorktreesRoot ?? ownership.worktreeRoot,
       ottoHome: dependencies.ottoHome,

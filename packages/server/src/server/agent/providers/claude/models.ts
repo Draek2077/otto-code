@@ -17,7 +17,10 @@ const CLAUDE_SETTINGS_MODEL_ENV_KEYS = [
   "ANTHROPIC_DEFAULT_HAIKU_MODEL",
 ] as const;
 
-export function getClaudeModels(): AgentModelDefinition[] {
+export function getClaudeModels(_claudeCodeVersion?: string): AgentModelDefinition[] {
+  // COMPAT(claudeVersionGating): Paseo filters the manifest by installed Claude
+  // Code version. Otto's manifest is not version-tagged yet, so the argument is
+  // accepted and ignored rather than silently dropping models.
   return getClaudeManifestModels();
 }
 
@@ -34,8 +37,9 @@ export function findClaudeModel(
 export async function getClaudeModelsWithSettings(
   logger: Logger,
   configDir?: string,
+  claudeCodeVersion?: string,
 ): Promise<AgentModelDefinition[]> {
-  const hardcodedModels = getClaudeModels();
+  const hardcodedModels = getClaudeModels(claudeCodeVersion);
   const settingsModels = await readClaudeSettingsModels(logger, configDir);
   if (settingsModels.length === 0) {
     return hardcodedModels;

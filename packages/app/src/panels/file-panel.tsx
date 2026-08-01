@@ -1,4 +1,5 @@
 import { Text, View } from "react-native";
+import type { WorkspaceFileTabTarget } from "@/workspace/file-open";
 import { FileText } from "@/components/icons/material-icons";
 import invariant from "tiny-invariant";
 import { useTranslation } from "react-i18next";
@@ -24,10 +25,7 @@ const CENTERED_PADDED_STYLE = {
   padding: 16,
 } as const;
 
-function useFilePanelDescriptor(
-  target: { kind: "file"; path: string; origin?: { workspaceId: string } },
-  context: PanelDescriptorContext,
-) {
+function useFilePanelDescriptor(target: WorkspaceFileTabTarget, context: PanelDescriptorContext) {
   const fileName = target.path.split("/").findLast(Boolean) ?? target.path;
   // Out-of-project tabs key their buffer by the OWNING workspace, not the host
   // pane's, so the dirty indicator must read the same key (gated-multi-root).
@@ -45,6 +43,7 @@ function useFilePanelDescriptor(
   return {
     label: dirty ? `● ${fileName}` : fileName,
     subtitle: target.path,
+    tooltip: target.path,
     titleState: "ready" as const,
     icon: FileText,
     statusBucket: null,

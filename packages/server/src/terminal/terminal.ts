@@ -311,16 +311,16 @@ function resolveExternalProcessPath(filePath: string): string {
 }
 
 export function resolveOttoCliBinDir(): string | null {
-  const cliEntrypoint = resolveOttoCliBinEntrypoint();
-  if (!cliEntrypoint) {
-    return null;
-  }
-
-  const externalCliEntrypoint = resolveExternalProcessPath(cliEntrypoint);
-  return findNpmBinDir(dirname(externalCliEntrypoint)) ?? dirname(externalCliEntrypoint);
+  const cliExecutable = resolveOttoCliExecutablePath();
+  return cliExecutable ? dirname(cliExecutable) : null;
 }
 
 export function resolveOttoCliExecutablePath(): string | null {
+  const configuredCli = process.env.OTTO_CLI?.trim();
+  if (configuredCli) {
+    return resolvePath(configuredCli);
+  }
+
   const cliEntrypoint = resolveOttoCliBinEntrypoint();
   if (!cliEntrypoint) {
     return null;
@@ -387,7 +387,7 @@ function resolveZshShellIntegrationRuntimeDir(): string {
   } catch {
     // keep fallback
   }
-  return join(tmpdir(), `${username}-otto-zsh`);
+  return join(tmpdir(), `${username}-otto-zsh-${process.pid}`);
 }
 
 /**

@@ -280,6 +280,43 @@ function resolveScriptIconColorMapping(args: {
   return mutedColorMapping;
 }
 
+/**
+ * The addresses a running service answers on: the routed URL the daemon
+ * advertises, plus plain localhost when the port is known and not already the
+ * same thing. Stopped scripts and plain scripts have none.
+ */
+function buildServiceHostLinks(input: {
+  script: WorkspaceDescriptor["scripts"][number];
+  isService: boolean;
+  isRunning: boolean;
+  routedUrl: string | null;
+  openUrl: string | null;
+}): HostLink[] {
+  if (!input.isService || !input.isRunning) {
+    return [];
+  }
+  const links: HostLink[] = [];
+  if (input.routedUrl) {
+    links.push({
+      key: "proxy",
+      label: stripUrlProtocol(input.routedUrl),
+      url: input.openUrl,
+    });
+  }
+  const { port } = input.script;
+  if (port !== null) {
+    const localhostLabel = `localhost:${port}`;
+    if (!links.some((link) => link.label === localhostLabel)) {
+      links.push({
+        key: "localhost",
+        label: localhostLabel,
+        url: `http://localhost:${port}`,
+      });
+    }
+  }
+  return links;
+}
+
 function ScriptRow({
   script,
   liveTerminalIdSet,
@@ -296,32 +333,17 @@ function ScriptRow({
   const isService = (script.type ?? "service") === "service";
   const exitCode = script.exitCode ?? null;
   const serviceLink = resolveWorkspaceScriptLink({ script, activeConnection });
-  const serviceOpenUrl = isService && isRunning ? serviceLink.openUrl : null;
+  const serviceOpenUrl = isService && isRunning ? (serviceLink.primary?.url ?? null) : null;
   const liveTerminalId =
     script.terminalId && liveTerminalIdSet.has(script.terminalId) ? script.terminalId : null;
 
-  const hostLinks: HostLink[] = [];
-  if (isService && isRunning) {
-    const routedUrl = script.proxyUrl ?? serviceLink.labelUrl;
-    if (routedUrl) {
-      hostLinks.push({
-        key: "proxy",
-        label: stripUrlProtocol(routedUrl),
-        url: serviceOpenUrl,
-      });
-    }
-    if (script.port !== null) {
-      const localhostLabel = `localhost:${script.port}`;
-      const alreadyShown = hostLinks.some((l) => l.label === localhostLabel);
-      if (!alreadyShown) {
-        hostLinks.push({
-          key: "localhost",
-          label: localhostLabel,
-          url: `http://localhost:${script.port}`,
-        });
-      }
-    }
-  }
+  const hostLinks = buildServiceHostLinks({
+    script,
+    isService,
+    isRunning,
+    routedUrl: script.proxyUrl ?? serviceLink.primary?.url ?? null,
+    openUrl: serviceOpenUrl,
+  });
 
   const iconColorMapping = resolveScriptIconColorMapping({ script, isService, isRunning });
   const ScriptIcon = isService ? ThemedGlobe : ThemedSquareTerminal;
