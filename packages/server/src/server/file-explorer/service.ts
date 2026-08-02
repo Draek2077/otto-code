@@ -311,7 +311,8 @@ export async function writeExplorerFile({
   // The check-then-replace window is unavoidable without file locks; the
   // replacement itself is all-or-nothing, and mode is preserved so executable
   // scripts keep their bits.
-  await writeFileAtomic(filePath.resolvedPath, outputBytes, { mode: stats.mode });
+  // Number(), because these are BigIntStats and fs.chmod rejects a bigint mode.
+  await writeFileAtomic(filePath.resolvedPath, outputBytes, { mode: Number(stats.mode) });
   const newStats = await fs.stat(filePath.resolvedPath);
   return {
     status: "ok",

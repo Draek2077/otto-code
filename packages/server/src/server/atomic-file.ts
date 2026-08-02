@@ -14,6 +14,13 @@ export async function writeFileAtomic(
   );
   try {
     await fs.writeFile(tempPath, data, { encoding: "utf8", mode: options?.mode });
+    // chmod after create, because the mode passed to open() is masked by the
+    // process umask: a caller preserving 0o764 across a replacement got 0o744
+    // under the usual 0o022, silently dropping group write from every file the
+    // explorer saved. chmod is not masked, so the requested mode survives.
+    if (options?.mode !== undefined) {
+      await fs.chmod(tempPath, options.mode);
+    }
     await fs.rename(tempPath, filePath);
   } catch (error) {
     await fs.rm(tempPath, { force: true });

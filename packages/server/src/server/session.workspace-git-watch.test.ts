@@ -697,6 +697,8 @@ describe("workspace git watch targets", () => {
       forge: "github",
       authState: undefined,
       githubFeaturesEnabled: true,
+      // Otto's provider-neutral hosting envelope, emitted alongside the legacy flag.
+      hosting: { provider: "github", featuresEnabled: true },
       error: null,
       requestId: REPO_SUBSCRIPTION_REQUEST_ID,
     });
@@ -754,6 +756,8 @@ describe("workspace git watch targets", () => {
       forge: "github",
       authState: undefined,
       githubFeaturesEnabled: true,
+      // Otto's provider-neutral hosting envelope, emitted alongside the legacy flag.
+      hosting: { provider: "github", featuresEnabled: true },
       error: null,
       requestId: "req-pr-status",
     });
