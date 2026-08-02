@@ -43,6 +43,31 @@ test("matrix jobs expand before change gating", () => {
   );
 });
 
+test("playwright shard labels match the shard denominator", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  const labelled = [...workflow.matchAll(/label: "shard (\d+)\/(\d+)", shard: (\d+)/g)];
+  const denominators = [...workflow.matchAll(/--shard=\$\{\{ matrix\.shard \}\}\/(\d+)/g)].map(
+    ([, total]) => Number(total),
+  );
+
+  assert.ok(labelled.length > 0, "no sharded playwright matrix entries found");
+  assert.deepEqual(
+    [...new Set(denominators)],
+    [labelled.length],
+    "the --shard denominator disagrees with how many shards the matrix declares",
+  );
+
+  // The label is cosmetic and the `shard:` value is what Playwright receives, so
+  // they drift silently: a matrix that says "shard 5/8" while passing shard 4
+  // runs one slice twice and never runs the other. Both must agree with the row's
+  // position, or a whole slice of the suite goes unrun under a green check.
+  assert.deepEqual(
+    labelled.map(([, index, total, shard]) => `${index}/${total}:${shard}`),
+    labelled.map((_, i) => `${i + 1}/${labelled.length}:${i + 1}`),
+    "playwright shard labels, shard numbers, and matrix order must line up",
+  );
+});
+
 test("change gating allows superseded workflow runs to cancel", () => {
   const workflow = readFileSync(workflowPath, "utf8");
   const cancellationBlockingJobs = [...jobBlocks(workflow)]

@@ -430,14 +430,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { label: "shard 1/4", shard: 1, desktop: false }
-          - { label: "shard 2/4", shard: 2, desktop: false }
-          - { label: "shard 3/4", shard: 3, desktop: false }
-          - { label: "shard 4/4", shard: 4, desktop: false }
+          - { label: "shard 1/8", shard: 1, desktop: false }
+          - { label: "shard 2/8", shard: 2, desktop: false }
+          - { label: "shard 3/8", shard: 3, desktop: false }
+          - { label: "shard 4/8", shard: 4, desktop: false }
+          - { label: "shard 5/8", shard: 5, desktop: false }
+          - { label: "shard 6/8", shard: 6, desktop: false }
+          - { label: "shard 7/8", shard: 7, desktop: false }
+          - { label: "shard 8/8", shard: 8, desktop: false }
           - { label: "desktop overlay", shard: "desktop", desktop: true }
     name: playwright (${{ matrix.label }})
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # The suite is ~370 tests at roughly 26 seconds each on a hosted runner, and
+    # `workers: 1` in playwright.config.ts is deliberate (the specs share one
+    # daemon/relay/Metro stack). That is ~2.7 hours of serial work: at 4 shards a
+    # single shard needs ~45 minutes of test time on top of ~5 minutes of job
+    # setup, so the old 35-minute cap killed every shard mid-run and the tier had
+    # never once completed. Eight shards puts a shard around 22 minutes; the cap
+    # stays well above that so a genuinely hung suite still cannot run for hours.
+    timeout-minutes: 50
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       RUN_TESTS: >-
@@ -480,7 +491,7 @@ jobs:
 
       - name: Run Playwright E2E tests
         if: env.RUN_TESTS == 'true' && !matrix.desktop
-        run: npm run test:e2e --workspace=@otto-code/app -- --shard=${{ matrix.shard }}/4
+        run: npm run test:e2e --workspace=@otto-code/app -- --shard=${{ matrix.shard }}/8
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
