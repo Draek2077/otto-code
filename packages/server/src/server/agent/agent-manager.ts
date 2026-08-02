@@ -100,7 +100,11 @@ import {
   AGENT_STREAM_COALESCE_DEFAULT_WINDOW_MS,
   AgentStreamCoalescer,
 } from "./agent-stream-coalescer.js";
-import { AgentRunState, type ForegroundTurnWaiter } from "./agent-run-state.js";
+import {
+  AgentRunState,
+  type ForegroundTurnWaiter,
+  type PendingForegroundRun,
+} from "./agent-run-state.js";
 import {
   createSteerQueueEntry,
   mergeSteerQueueBatch,
@@ -3918,48 +3922,34 @@ export class AgentManager {
       return { status: "not_running" };
     }
 
-    await this.interruptSession(agent.session, agentId);
+    const interruptOutcome = await this.interruptSession(agent.session, agentId);
+    if (interruptOutcome !== "acknowledged" && this.isRunStillActive(agent, foregroundTurnId)) {
+      // The provider never accepted the interrupt and its work is still going.
+      // Refuse rather than force-dispatching a synthetic turn_canceled: that
+      // would clear activeForegroundTurnId and settle the waiters, leaving the
+      // UI showing a stopped agent that is in fact still running and still
+      // spending tokens. The caller surfaces the refusal so the user can retry.
+      //
+      // A rejected interrupt is not automatically a refusal: providers commonly
+      // reject because the turn just finished on its own, and that is a genuine
+      // settle, which is why this checks the run rather than the outcome alone.
+      return { status: "refused" };
+    }
 
     // The interrupt will produce a turn_canceled/turn_failed event via subscribe(),
     // which flows through the session event dispatcher and settles the foreground turn waiter.
     // Wait briefly for the event to propagate if there's an active foreground turn.
     if (foregroundTurnId) {
-      const waiter = Array.from(agent.foregroundTurnWaiters).find(
-        (candidate) => candidate.turnId === foregroundTurnId,
-      );
-      const timeout = new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 2000));
-      if (waiter) {
-        await Promise.race([waiter.settledPromise, timeout]);
-      } else if (agent.activeForegroundTurnId === foregroundTurnId) {
-        await Promise.race([
-          new Promise<void>((resolvePromise) => {
-            const unsubscribe = this.subscribe(
-              (event) => {
-                if (
-                  event.type === "agent_state" &&
-                  event.agent.id === agentId &&
-                  !event.agent.activeForegroundTurnId
-                ) {
-                  unsubscribe();
-                  resolvePromise();
-                }
-              },
-              { agentId, replayState: false },
-            );
-          }),
-          timeout,
-        ]);
-      }
-      // The waiter settling wakes up the streamForwarder generator, but its
-      // finally block (which deletes the pendingForegroundRun) runs asynchronously.
-      // Wait for the pending run to be fully cleaned up so the next streamAgent
-      // call doesn't see a stale entry and reject with "already has an active run".
-      if (pendingRun && !pendingRun.settled) {
-        await Promise.race([pendingRun.settledPromise, timeout]);
-      }
+      await this.waitForForegroundTurnToSettle(agent, foregroundTurnId, pendingRun);
     } else if (pendingRun) {
       const timeout = new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 2000));
       await Promise.race([pendingRun.settledPromise, timeout]);
+    } else if (isAutonomousRunning) {
+      // An autonomous run has no foreground turn and no pending run to wait on,
+      // so cancel used to return the moment the provider acknowledged the
+      // interrupt — before the agent had actually stopped. Wait for it to leave
+      // the running lifecycle so a resolved cancel means stopped.
+      await this.waitForAgentToLeaveRunning(agentId);
     }
 
     // If the foreground turn is still stuck after the timeout, force-dispatch a
@@ -4006,7 +3996,96 @@ export class AgentManager {
     return { status: "settled" };
   }
 
-  private async interruptSession(session: AgentSession, agentId: string): Promise<void> {
+  /**
+   * Waits for an interrupted foreground turn to actually settle. The interrupt
+   * produces a turn_canceled/turn_failed through the session event dispatcher;
+   * this waits for that to land, then for the pending run to be torn down, so a
+   * following streamAgent does not trip over a stale entry.
+   */
+  private async waitForForegroundTurnToSettle(
+    agent: ManagedAgent,
+    foregroundTurnId: string,
+    pendingRun: PendingForegroundRun | null,
+  ): Promise<void> {
+    const agentId = agent.id;
+    const waiter = Array.from(agent.foregroundTurnWaiters).find(
+      (candidate) => candidate.turnId === foregroundTurnId,
+    );
+    const timeout = new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 2000));
+    if (waiter) {
+      await Promise.race([waiter.settledPromise, timeout]);
+    } else if (agent.activeForegroundTurnId === foregroundTurnId) {
+      await Promise.race([
+        new Promise<void>((resolvePromise) => {
+          const unsubscribe = this.subscribe(
+            (event) => {
+              if (
+                event.type === "agent_state" &&
+                event.agent.id === agentId &&
+                !event.agent.activeForegroundTurnId
+              ) {
+                unsubscribe();
+                resolvePromise();
+              }
+            },
+            { agentId, replayState: false },
+          );
+        }),
+        timeout,
+      ]);
+    }
+    if (pendingRun && !pendingRun.settled) {
+      await Promise.race([pendingRun.settledPromise, timeout]);
+    }
+  }
+
+  /** Resolves when the agent stops reporting `running`, or after 2s. */
+  private async waitForAgentToLeaveRunning(agentId: string): Promise<void> {
+    if (this.agents.get(agentId)?.lifecycle !== "running") {
+      return;
+    }
+    await Promise.race([
+      new Promise<void>((resolvePromise) => {
+        const unsubscribe = this.subscribe(
+          (event) => {
+            if (
+              event.type === "agent_state" &&
+              event.agent.id === agentId &&
+              event.agent.lifecycle !== "running"
+            ) {
+              unsubscribe();
+              resolvePromise();
+            }
+          },
+          { agentId, replayState: false },
+        );
+      }),
+      new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 2000)),
+    ]);
+  }
+
+  /**
+   * Is there still work in flight after a refused interrupt? A foreground turn
+   * counts while it is still the agent's active turn; an autonomous run counts
+   * while the agent is still lifecycle-running.
+   */
+  private isRunStillActive(agent: ManagedAgent, foregroundTurnId: string | null): boolean {
+    if (foregroundTurnId) {
+      return agent.activeForegroundTurnId === foregroundTurnId;
+    }
+    return agent.lifecycle === "running";
+  }
+
+  /**
+   * Reports whether the provider actually accepted the interrupt. The caller
+   * needs to know: a hung or rejected interrupt means the provider is still
+   * running, and pretending otherwise is how Stop stops the UI without stopping
+   * the agent.
+   */
+  private async interruptSession(
+    session: AgentSession,
+    agentId: string,
+  ): Promise<"acknowledged" | "timed_out" | "failed"> {
     try {
       const result = await this.waitWithTimeout({
         operation: session.interrupt(),
@@ -4024,9 +4103,12 @@ export class AgentManager {
           { agentId, timeoutMs: this.rescueTimeouts.interruptSessionMs },
           "Timed out interrupting session during cancel",
         );
+        return "timed_out";
       }
+      return "acknowledged";
     } catch (error) {
       this.logger.error({ err: error, agentId }, "Failed to interrupt session");
+      return "failed";
     }
   }
 
