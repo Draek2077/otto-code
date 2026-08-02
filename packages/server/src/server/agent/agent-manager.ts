@@ -3490,7 +3490,6 @@ export class AgentManager {
     }
 
     const agent = existingAgent;
-    agent.pendingReplacement = false;
     agent.pendingSteerDrain = false;
     // A new run resumes the queue: the hold only ever covered the finalize of
     // the turn that was cancelled.
@@ -3524,6 +3523,12 @@ export class AgentManager {
 
       pendingRun.started = true;
       agent.activeForegroundTurnId = turnId;
+      // Cleared here, not when the run was requested: between the old turn
+      // being cancelled and this one becoming current there is a gap in which
+      // the old turn's terminal event can still arrive. The flag is what stops
+      // that stale terminal from reporting the agent idle, so it has to survive
+      // until a replacement turn is actually current.
+      agent.pendingReplacement = false;
       agent.lifecycle = "running";
       this.touchUpdatedAt(agent);
       this.emitState(agent);
@@ -3908,9 +3913,24 @@ export class AgentManager {
     this.touchUpdatedAt(agent);
     this.emitState(agent);
 
+    // Started here rather than inside the generator: "replace this run" means
+    // stop the current one now, not whenever something gets around to draining
+    // the replacement's stream. A refused cancel means the previous run is
+    // still going, and starting the replacement anyway would leave two turns
+    // live against one session.
+    const cancellation = (async () => {
+      const result = await this.cancelAgentRun(agentId);
+      if (result.status === "refused") {
+        throw new AgentRunCancellationError(agentId, "replace");
+      }
+    })();
+    // The generator below is the only consumer, but it may not be driven for a
+    // while; park the rejection so it is not reported as unhandled first.
+    cancellation.catch(() => undefined);
+
     return async function* replaceRunForwarder(this: AgentManager) {
       try {
-        await this.cancelAgentRun(agentId);
+        await cancellation;
         const nextRun = this.streamAgent(agentId, prompt, options);
         for await (const event of nextRun) {
           yield event;
@@ -3920,11 +3940,20 @@ export class AgentManager {
         if (latest) {
           const latestActive = latest;
           latestActive.pendingReplacement = false;
-          if (!latestActive.activeForegroundTurnId && latestActive.lifecycle === "running") {
+          // A refused cancellation leaves the original run in place, so the
+          // agent really is still running and must keep saying so. Only a
+          // replacement that failed after the cancel succeeded leaves nothing
+          // behind to be running.
+          const originalRunStillLive = error instanceof AgentRunCancellationError;
+          if (
+            !originalRunStillLive &&
+            !latestActive.activeForegroundTurnId &&
+            latestActive.lifecycle === "running"
+          ) {
             (latestActive as ActiveManagedAgent).lifecycle = "idle";
-            this.touchUpdatedAt(latestActive);
-            this.emitState(latestActive);
           }
+          this.touchUpdatedAt(latestActive);
+          this.emitState(latestActive);
         }
         throw error;
       }
@@ -4309,7 +4338,11 @@ export class AgentManager {
     const hadActiveRun =
       Boolean(agent.activeForegroundTurnId) || this.foregroundRuns.hasPendingRun(agentId);
     if (hadActiveRun) {
-      await this.cancelAgentRun(agentId);
+      // Rewinding under a still-live turn would rewrite history the provider is
+      // actively appending to, so a refused cancel stops the rewind.
+      if ((await this.cancelAgentRun(agentId)).status === "refused") {
+        throw new AgentRunCancellationError(agentId, "rewind");
+      }
     }
 
     const lock = this.foregroundRuns.createPendingRun(agentId);

@@ -5039,7 +5039,9 @@ test("failed replacement cancellation preserves an autonomous running state", as
     });
     await running;
 
-    await expect(manager.replaceAgentRun(agent.id, "replacement prompt")).rejects.toThrow(
+    // replaceAgentRun returns the replacement's event stream, so the refusal
+    // surfaces when that stream is driven rather than from the call itself.
+    await expect(manager.replaceAgentRun(agent.id, "replacement prompt").next()).rejects.toThrow(
       `Cannot replace agent ${agent.id} because its active run cancellation was not acknowledged`,
     );
     expect(manager.getAgent(agent.id)).toMatchObject({
