@@ -10,7 +10,9 @@ function parse(markdown: string) {
 function inlineChildren(markdown: string): Array<[string, string]> {
   return parse(markdown)
     .filter((token) => token.type === "inline")
-    .flatMap((token) => (token.children ?? []).map((child) => [child.type, child.content]));
+    .flatMap((token) =>
+      (token.children ?? []).map((child): [string, string] => [child.type, child.content]),
+    );
 }
 
 /** The TeX of every block formula, in document order. */

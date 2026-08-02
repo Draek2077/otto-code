@@ -1133,6 +1133,33 @@ describe("WorkspaceFilesSession known-workspace boundary", () => {
     });
     expect(existsSync(join(stranger, "a.txt"))).toBe(true);
   });
+
+  // The binary write takes the same boundary guard, and needs it more than the
+  // three above: those act on names that already exist, while this one puts new
+  // bytes wherever it is pointed.
+  test("refuses to write bytes outside every known workspace", async () => {
+    const known = makeDir("workspace-files-known-binary-");
+    const stranger = makeDir("workspace-files-stranger-binary-");
+    const { subsystem, emitted } = makeSubsystem({ allowedRoots: [known] });
+
+    await subsystem.handleFsFileWriteBinaryRequest({
+      type: "fs.file.write_binary.request",
+      cwd: stranger,
+      path: "planted.pdf",
+      contentBase64: Buffer.from([0x25, 0x50, 0x44, 0x46]).toString("base64"),
+      requestId: "req-stranger-binary",
+    });
+
+    const message = emitted.at(-1);
+    if (message?.type !== "fs.file.write_binary.response") {
+      throw new Error(`expected fs.file.write_binary.response, got ${message?.type}`);
+    }
+    expect(message.payload.result).toEqual({
+      status: "error",
+      error: "Access outside of known workspaces is not allowed",
+    });
+    expect(existsSync(join(stranger, "planted.pdf"))).toBe(false);
+  });
 });
 
 function lastMutationResult(

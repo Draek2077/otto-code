@@ -381,15 +381,21 @@ export async function writeExplorerBinaryFile({
   bytes,
   overwrite,
 }: WriteBinaryFileParams): Promise<WriteExplorerBinaryFileResult> {
-  const filePath = await resolveScopedPath({ root, relativePath });
+  // Both branches below need the target's parent directories, because one of
+  // them would create them anyway: `writeFileAtomic` mkdirs before it writes,
+  // and an exclusive `open(…, "wx")` does not. Directory creation that depended
+  // on whether the caller passed `overwrite` would be nobody's intent.
+  await createContainedParentDirectories({ root, relativePath });
 
-  // Both branches below create the target's parent directories, because one of
-  // them would anyway: `writeFileAtomic` mkdirs before it writes, and an
-  // exclusive `open(…, "wx")` does not. Directory creation that depended on
-  // whether the caller passed `overwrite` would be nobody's intent. The path is
-  // already contained within `root`, so this can only build a tree inside the
-  // workspace.
-  await fs.mkdir(path.dirname(filePath.resolvedPath), { recursive: true });
+  // `resolveMutationPath`, not `resolveScopedPath`. This call CREATES files, and
+  // for a target that does not exist yet `resolveScopedPath` has nothing to
+  // resolve — its realpath throws ENOENT and it falls back to returning the
+  // requested path unchecked, leaving only the lexical `..` test. A parent
+  // directory that is a symlink out of the workspace passes that and the bytes
+  // land wherever it points. `resolveMutationPath` resolves the parent's REAL
+  // path instead, which is the same guard create/delete/rename use and the
+  // reason those three can be trusted with names that are not on disk yet.
+  const filePath = await resolveMutationPath({ root, relativePath });
 
   if (!overwrite) {
     // Exclusive create, so the not-there check and the write are one operation
@@ -694,6 +700,69 @@ async function resolveMutationPath({
     resolvedPath,
     relativePath: normalizeRelativePath({ root, targetPath: requestedPath }),
   };
+}
+
+/**
+ * Create a target's missing parent directories, one segment at a time, refusing
+ * to step outside the workspace root.
+ *
+ * `mkdir(…, { recursive: true })` would be one call and the wrong one: if any
+ * existing segment is a symlink pointing out of the workspace it cheerfully
+ * builds the rest of the tree at the far end, and a containment check that ran
+ * afterwards would only get to decline a directory it had already created out
+ * there. Walking down and re-resolving each segment means the first escape
+ * stops the walk before anything beyond it exists.
+ *
+ * Runs BEFORE `resolveMutationPath`, which requires the parent to be on disk —
+ * it reports a missing one as an error rather than creating it, because for
+ * create/delete/rename a missing parent really is a mistake.
+ *
+ * The final component is the file, never created here: the exclusive create in
+ * {@link writeExplorerBinaryFile} has to stay the operation that discovers an
+ * occupied target.
+ */
+async function createContainedParentDirectories({
+  root,
+  relativePath,
+}: {
+  root: string;
+  relativePath: string;
+}): Promise<void> {
+  const trimmed = relativePath.trim();
+  if (!trimmed) {
+    throw new Error("path is required");
+  }
+
+  const normalizedRoot = expandUserPath(root);
+  const requestedPath = resolvePathFromBase(normalizedRoot, trimmed);
+  const relative = path.relative(normalizedRoot, requestedPath);
+
+  if (relative === "") {
+    throw new Error(WORKSPACE_ROOT_TARGET_MESSAGE);
+  }
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(ACCESS_OUTSIDE_WORKSPACE_MESSAGE);
+  }
+
+  const realRoot = await fs.realpath(normalizedRoot);
+  let current = realRoot;
+  for (const segment of relative.split(path.sep).slice(0, -1)) {
+    const next = path.join(current, segment);
+    try {
+      await fs.mkdir(next);
+    } catch (error) {
+      // Already there is the ordinary case. Only the escape check below decides
+      // whether "already there" is somewhere we are allowed to be.
+      if ((error as NodeJS.ErrnoException | null)?.code !== "EEXIST") {
+        throw error;
+      }
+    }
+    current = await fs.realpath(next);
+    const containedRelative = path.relative(realRoot, current);
+    if (containedRelative.startsWith("..") || path.isAbsolute(containedRelative)) {
+      throw new Error(ACCESS_OUTSIDE_WORKSPACE_MESSAGE);
+    }
+  }
 }
 
 /**

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -95,6 +95,42 @@ describe("writeExplorerBinaryFile", () => {
       ).rejects.toThrow();
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The lexical `..` check above is not the whole boundary. `root/link/x.pdf`
+   * is lexically inside `root` no matter where `link` points, so a parent
+   * directory that symlinks out of the workspace is how a write escapes without
+   * ever writing a `..`. This is the case that made the read-grade
+   * `resolveScopedPath` the wrong resolver for a call that creates files.
+   */
+  it("refuses a parent directory that symlinks out of the workspace", async () => {
+    const root = await createTempDir("otto-binary-write-");
+    const outside = await createTempDir("otto-binary-outside-");
+    try {
+      try {
+        // "junction" so this works on Windows without developer mode; the type
+        // is ignored on POSIX.
+        await symlink(outside, path.join(root, "assets"), "junction");
+      } catch {
+        // A host that cannot create links at all has nothing to prove here.
+        return;
+      }
+
+      await expect(
+        writeExplorerBinaryFile({
+          root,
+          relativePath: "assets/escaped.pdf",
+          bytes: PDF_BYTES,
+        }),
+      ).rejects.toThrow();
+      // The refusal has to mean nothing was written, not merely that the call
+      // reported failure after landing the bytes out there.
+      await expect(stat(path.join(outside, "escaped.pdf"))).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
     }
   });
 });
