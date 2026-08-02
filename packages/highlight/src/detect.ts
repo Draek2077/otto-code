@@ -128,6 +128,17 @@ function scoreRules(sample: string): Map<string, number> {
   return scores;
 }
 
+/**
+ * Every extension `detectLanguage` can return.
+ *
+ * Exported so the invariant in this file's header — that each one is a key in
+ * parsers.ts's table — can actually be tested. It stopped being true once
+ * before: the v0.2.5 merge dropped the shell and SQL rows from that table while
+ * these rules kept scoring both, so detection claimed a language the renderer
+ * could not colour.
+ */
+export const DETECTABLE_EXTENSIONS: readonly string[] = [...new Set(RULES.map((rule) => rule.ext))];
+
 // Best-effort guess of the language extension for a code block, or null when
 // there isn't enough signal to be confident.
 export function detectLanguage(code: string): string | null {

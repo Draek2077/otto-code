@@ -1,5 +1,7 @@
 import { defineLanguageFacet, Language, StreamLanguage } from "@codemirror/language";
 import { dart } from "@codemirror/legacy-modes/mode/clike";
+import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { standardSQL } from "@codemirror/legacy-modes/mode/sql";
 import { swift } from "@codemirror/legacy-modes/mode/swift";
 import { parser as jsParser } from "@lezer/javascript";
 import { parser as jsonParser } from "@lezer/json";
@@ -75,6 +77,16 @@ const languagesByExtension: Record<string, Language> = {
   // Markdown
   md: language(markdownParser),
   mdx: language(markdownParser),
+  // Shell. `detect.ts` has scored shell since it was written and can return
+  // "sh", so without these rows we classified a snippet as shell and then had
+  // nothing to colour it with. Lost in the Paseo v0.2.5 merge when this table
+  // took upstream's shape; see projects/paseo-v025-merge/audit-findings.md.
+  sh: StreamLanguage.define(shell),
+  bash: StreamLanguage.define(shell),
+  zsh: StreamLanguage.define(shell),
+  // SQL. Same story: "sql" is a detect.ts verdict. `standardSQL` is the dialect
+  // -neutral mode, which is the right default for snippets of unknown origin.
+  sql: StreamLanguage.define(standardSQL),
 };
 
 export function getLanguageForFile(filename: string): Language | null {
