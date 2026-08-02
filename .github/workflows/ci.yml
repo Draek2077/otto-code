@@ -269,6 +269,24 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # DIAG(windows-fork-crash): temporary kill/exit ledger for the
+          # "Worker forks emitted error" crashes. See scripts/vitest-kill-diag.cjs.
+          NODE_OPTIONS: >-
+            ${{ matrix.os == 'windows-latest'
+                && format('--require {0}\scripts\vitest-kill-diag.cjs', github.workspace)
+                || '' }}
+          OTTO_KILL_DIAG_FILE: >-
+            ${{ matrix.os == 'windows-latest'
+                && format('{0}\kill-diag.jsonl', runner.temp)
+                || '' }}
+
+      # DIAG(windows-fork-crash): dump the ledger so the job log carries it.
+      - name: Print worker kill diagnostics
+        if: always() && env.RUN_TESTS == 'true' && matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $diag = Join-Path $env:RUNNER_TEMP 'kill-diag.jsonl'
+          if (Test-Path $diag) { Get-Content $diag } else { Write-Host 'no kill-diag file was written' }
 
   desktop-tests:
     needs: changes
