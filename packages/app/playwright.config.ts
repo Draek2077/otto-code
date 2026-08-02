@@ -29,6 +29,14 @@ export default defineConfig({
   testDir: "./e2e",
   globalSetup: "./e2e/global-setup.ts",
   timeout: 60_000,
+  // Set by CI (see `E2E_GLOBAL_TIMEOUT_MINUTES` in ci.yml) and deliberately unset
+  // locally, where a run is interactive and interruptible. It exists so a shard
+  // that overruns still produces a report: Playwright stops itself and prints
+  // what it has, instead of being SIGKILLed by the runner's job cap with nothing
+  // to show. Note this is a whole-run budget, so it can fire mid-test.
+  globalTimeout: process.env.E2E_GLOBAL_TIMEOUT_MINUTES
+    ? Number(process.env.E2E_GLOBAL_TIMEOUT_MINUTES) * 60_000
+    : undefined,
   expect: {
     timeout: 10_000,
   },

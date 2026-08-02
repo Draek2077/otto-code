@@ -68,6 +68,27 @@ test("playwright shard labels match the shard denominator", () => {
   );
 });
 
+test("playwright's global timeout fires before the job cap kills the shard", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  const playwright = jobBlocks(workflow).get("playwright");
+  assert.ok(playwright, "no playwright job found");
+
+  const jobCap = /timeout-minutes: (\d+)/.exec(playwright.join("\n"));
+  const globalTimeout = /E2E_GLOBAL_TIMEOUT_MINUTES: "(\d+)"/.exec(playwright.join("\n"));
+  assert.ok(jobCap, "the playwright job has no timeout-minutes");
+  assert.ok(globalTimeout, "the playwright job does not set E2E_GLOBAL_TIMEOUT_MINUTES");
+
+  // Whichever of the two fires first decides what you learn from an overrun. The
+  // runner's cap SIGKILLs the shard and discards the report; Playwright's own
+  // global timeout stops cleanly and still prints results. Keep them in that
+  // order, with room for job setup, or an overrunning shard goes back to
+  // reporting nothing but "cancelled".
+  assert.ok(
+    Number(globalTimeout[1]) < Number(jobCap[1]),
+    `E2E_GLOBAL_TIMEOUT_MINUTES (${globalTimeout[1]}) must be below timeout-minutes (${jobCap[1]})`,
+  );
+});
+
 test("change gating allows superseded workflow runs to cancel", () => {
   const workflow = readFileSync(workflowPath, "utf8");
   const cancellationBlockingJobs = [...jobBlocks(workflow)]

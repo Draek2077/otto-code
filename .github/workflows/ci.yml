@@ -469,6 +469,17 @@ jobs:
     timeout-minutes: 50
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      # Stay below `timeout-minutes` above. When a shard runs past the job cap the
+      # runner SIGKILLs it, and a killed shard reports nothing at all: you learn it
+      # was cancelled and not one word about which tests failed. That is how this
+      # tier stayed undiagnosed after the v0.2.5 merge. Playwright's own global
+      # timeout ends the run cleanly and still prints the results it has, so it is
+      # the one that should fire first. The job cap stays as the backstop for a
+      # process wedged too hard for Playwright to report at all.
+      #
+      # The margin is wide because the cap covers job setup (install, browsers,
+      # two builds) as well as the run itself.
+      E2E_GLOBAL_TIMEOUT_MINUTES: "38"
       RUN_TESTS: >-
         ${{ github.event_name == 'workflow_dispatch' ||
             needs.changes.result != 'success' ||
