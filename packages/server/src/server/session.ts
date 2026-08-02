@@ -390,7 +390,7 @@ function coalesceToNull<T>(value: T | null | undefined): T | null {
 /**
  * A personality-memory scope arrives as a plain string (forward compat, like
  * roles and effort levels), so an unrecognized value is dropped here rather than
- * coerced â€” "project" and "global" are different claims, and guessing between
+ * coerced — "project" and "global" are different claims, and guessing between
  * them would silently widen or narrow a lesson's reach.
  */
 function readPersonalityMemoryScope(value: string | undefined): "project" | "global" | undefined {
@@ -823,7 +823,7 @@ export class Session {
   private readonly worktreesRoot: string | undefined;
   /** Daemon-scoped, shared with every other session. Held here for archive teardown. */
   private readonly lspService: LspService;
-  /** Same, for the solution sidecars â€” a directory nobody points at any more must not keep one. */
+  /** Same, for the solution sidecars — a directory nobody points at any more must not keep one. */
   private readonly solutionService: SolutionService;
 
   private agentManager: AgentManager;
@@ -869,7 +869,7 @@ export class Session {
   private readonly voiceCueGenerator: VoiceCueGenerator;
   private readonly personalityProfileGenerator: PersonalityProfileGenerator;
   // Refine's one-shot document rewriter. It lives on the session rather than on
-  // WorkspaceFilesSession because that class is deliberately file I/O only â€”
+  // WorkspaceFilesSession because that class is deliberately file I/O only —
   // it reaches no agent, and this is a model call that touches no file.
   private readonly refineGenerator: RefineGenerator;
   private readonly pushTokenStore: PushTokenStore;
@@ -1038,7 +1038,7 @@ export class Session {
       ottoHome,
       logger: this.sessionLogger,
       // Cross-workspace file access is bounded to the distinct paths of every
-      // known Otto workspace (and its project root) â€” the client may open files
+      // known Otto workspace (and its project root) — the client may open files
       // from any of them, not just the active one, but nothing outside them.
       resolveAllowedRoots: async () => {
         const [workspaces, projects] = await Promise.all([
@@ -1170,7 +1170,7 @@ export class Session {
             unarchive: false,
             // A room mention is a message, not an emergency. Interrupting threw
             // away whatever the mentioned agent was doing on behalf of someone
-            // who only meant to say something to it â€” and `@everyone` did that
+            // who only meant to say something to it — and `@everyone` did that
             // to a roomful at once. See docs/chat-lifecycle.md (Delivery).
             delivery: "queue",
             source: "system",
@@ -1411,7 +1411,7 @@ export class Session {
         }
 
         // `listAgents()` only sees agents loaded into memory, so a freshly
-        // restarted daemon has none until a chat is opened â€” and without a
+        // restarted daemon has none until a chat is opened — and without a
         // provider the whole report is null and the tab reads as broken. The
         // workspace's persisted agents answer the same question from disk.
         // Only `systemPrompt` survives there (the daemon append is composed at
@@ -1436,7 +1436,7 @@ export class Session {
         }
 
         // A workspace nobody has chatted in yet is the common case for this tab
-        // â€” you open it precisely to see what a *first* chat would carry. The
+        // — you open it precisely to see what a *first* chat would carry. The
         // provider only selects which filenames the scan looks for, so refusing
         // to answer without an agent meant a project full of context files
         // reported nothing at all, instantly and with no way to recover.
@@ -2055,7 +2055,7 @@ export class Session {
         }
 
         if (event.type === "background_shell_task_state") {
-          // Not Agent-shaped (no ManagedAgent, no tab/pane) â€” push the full
+          // Not Agent-shaped (no ManagedAgent, no tab/pane) — push the full
           // current list for this parent directly instead of routing through
           // the live-agent forwarding path.
           this.emit({
@@ -2066,7 +2066,7 @@ export class Session {
         }
 
         if (event.type === "suggested_task_state") {
-          // Suggested-task chips (spawn_task) â€” push the full current pending
+          // Suggested-task chips (spawn_task) — push the full current pending
           // list for this parent, same direct path as background shell tasks.
           this.emit({
             type: "suggested_tasks_changed",
@@ -2575,14 +2575,14 @@ export class Session {
       return;
     }
 
-    // Apply the same mode to each task independently â€” one agent/chat each, no
+    // Apply the same mode to each task independently — one agent/chat each, no
     // combining. Failures are collected so a partial success still starts the
     // rest; each failed task's chip stays pending.
     let succeeded = 0;
     const errors: string[] = [];
     for (const taskId of taskIds) {
       const task = this.agentManager.getSuggestedTaskEntry(taskId);
-      // Never act on a task that belongs to a different parent â€” treat a
+      // Never act on a task that belongs to a different parent — treat a
       // mismatched (or missing) id as not found rather than starting it.
       if (!task || task.parentAgentId !== parentAgentId) {
         errors.push(`${taskId}: suggested task not found`);
@@ -2648,13 +2648,13 @@ export class Session {
   /**
    * Create a new agent for a started suggested task, reusing the MCP branch of
    * createAgentCommand (worktree provisioning + workspace resolution baked in).
-   * The new agent inherits the parent agent's brain â€” provider/model plus its
+   * The new agent inherits the parent agent's brain — provider/model plus its
    * full config (personality snapshot, mode, features) minus the parent's
-   * title â€” so a started task reads as a continuation of the suggesting agent.
+   * title — so a started task reads as a continuation of the suggesting agent.
    *
    * Only `subagent` links the new agent to the parent (bound child in the
    * Subagents track, archive-cascades). `new_chat` and `worktree` are `detached`
-   * â€” independent top-level agents that outlive the parent's cancel/archive. We
+   * — independent top-level agents that outlive the parent's cancel/archive. We
    * keep `callerAgentId` set even when detached so the new agent still inherits
    * the parent's cwd/workspace/config; only the parent-id label is dropped.
    */
@@ -2697,7 +2697,7 @@ export class Session {
         initialPrompt: params.prompt,
         cwd: params.cwd ?? parent.cwd,
         callerAgentId: parent.id,
-        // Bound subagent â†’ child row in the parent's track. Detached â†’ its own
+        // Bound subagent → child row in the parent's track. Detached → its own
         // top-level tab, no parent link (mergeLabels strips the parent-id label).
         detached,
         background: true,
@@ -2716,7 +2716,7 @@ export class Session {
   ): Promise<void> {
     const { parentAgentId, taskIds, requestId } = msg;
     // Idempotent for the user: chips already gone are a no-op. Individual and
-    // "Dismiss all" both flow through here â€” one id or the whole queue.
+    // "Dismiss all" both flow through here — one id or the whole queue.
     let succeeded = 0;
     for (const taskId of taskIds) {
       // Only dismiss tasks that belong to this parent. A mismatched (or unknown)
@@ -3030,7 +3030,7 @@ export class Session {
 
   // Stream a full message aloud on demand (per-message playback button). Async
   // work is fire-and-forget; the correlated response is emitted from the promise
-  // once playback finishes, is canceled, or errors â€” mirroring the preview path.
+  // once playback finishes, is canceled, or errors — mirroring the preview path.
   private handleTtsSpeakRequest(
     requestId: string,
     text: string,
@@ -3269,7 +3269,7 @@ export class Session {
 
   // Connection check for the host Git providers settings section: resolves a
   // provider's host-level credentials and performs a single forced auth probe.
-  // User-initiated only â€” never called from polling or reconciliation paths.
+  // User-initiated only — never called from polling or reconciliation paths.
   private async handleHostingAuthStatusRequest(
     msg: Extract<SessionInboundMessage, { type: "hosting.auth_status.request" }>,
   ): Promise<void> {
@@ -4102,7 +4102,7 @@ export class Session {
   /**
    * The code-intelligence half: the ctags index (`code.symbols`/`code.outline`) and the
    * language-server family. Split from the file dispatcher above purely so neither
-   * switch grows past the complexity cap â€” one flat switch of every file-ish RPC was
+   * switch grows past the complexity cap — one flat switch of every file-ish RPC was
    * over it.
    */
   private dispatchCodeIntelligenceMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -4257,7 +4257,7 @@ export class Session {
               : {}),
             ...(entry.transferredFrom ? { transferredFrom: entry.transferredFrom } : {}),
           })),
-          // The exact injected text, never a reconstruction â€” the whole point of
+          // The exact injected text, never a reconstruction — the whole point of
           // the visibility requirement is that these two cannot differ.
           brief: view.brief.text,
           briefTokens: view.brief.estTokens,
@@ -4301,7 +4301,7 @@ export class Session {
 
   /**
    * The repo root a cwd belongs to, so a worktree and its main checkout share
-   * one project's lessons â€” the same resolution the spawn path uses.
+   * one project's lessons — the same resolution the spawn path uses.
    */
   private async resolveMemoryProjectRoot(cwd: string): Promise<string> {
     try {
@@ -4759,7 +4759,7 @@ export class Session {
       case "register_push_token":
         this.handleRegisterPushToken(msg.token);
         return;
-      // Host-level disk the agents filled â€” no per-agent or per-workspace
+      // Host-level disk the agents filled — no per-agent or per-workspace
       // family to belong to, so it lands here rather than growing the dispatch
       // chain. Both are synchronous: a directory listing, not IO worth awaiting.
       case "attachments.images.get_stats.request":
@@ -4929,10 +4929,10 @@ export class Session {
    *
    * It deletes **Otto's record only.** The provider's own transcript on disk
    * (Claude's `<projects>/<sessionId>.jsonl` and its sibling subagent tree, Codex
-   * threads, OpenCode sessions) is left in place by design â€” Otto never created
+   * threads, OpenCode sessions) is left in place by design — Otto never created
    * it, `claude --resume` still reads it, and deleting another tool's state is
    * not ours to do. The UI discloses that rather than staying silent about it.
-   * See docs/chat-lifecycle.md â€” Delete.
+   * See docs/chat-lifecycle.md — Delete.
    *
    * Returns the workspace id the record belonged to, so the caller can refresh
    * workspace counts once per affected workspace instead of once per chat.
@@ -4998,7 +4998,7 @@ export class Session {
    *
    * `dryRun` exists so the confirm dialog can quote a real number back to the
    * user before anything is destroyed. Same rule as the single delete: Otto's
-   * records only, never a provider's transcript â€” clearing in bulk is not a back
+   * records only, never a provider's transcript — clearing in bulk is not a back
    * door around that.
    */
   private async handleHistoryAgentsClearArchivedRequest(
@@ -5140,7 +5140,7 @@ export class Session {
   /**
    * Reclaim, dry-run by default. A cleared image is not recoverable and the
    * message that referenced it falls back to alt text, so the client previews
-   * first and quotes the real count and size back before committing â€” the same
+   * first and quotes the real count and size back before committing — the same
    * contract as `history.agents.clear_archived`.
    */
   private handleAttachmentsImagesClearRequest(
@@ -5190,7 +5190,7 @@ export class Session {
     agentId: string,
   ): Promise<{ agentId: string; archivedAt: string }> {
     // Observed subagents (Claude Task / ultracode fan-out) have no ManagedAgent
-    // and no stored record, so `archiveAgentCommand` would 404 them â€” the same
+    // and no stored record, so `archiveAgentCommand` would 404 them — the same
     // root cause the fetch path special-cases above. Archive them through the
     // registry instead (best-effort stop + retire the projection).
     // See docs/agent-lifecycle.md (Items 2 + 6).
@@ -5536,7 +5536,7 @@ export class Session {
 
       // The project's name is host-global state, and a project with no active
       // workspaces has no workspace descriptor to carry it. Announce the project
-      // itself on the project channel, to every session â€” that is what makes the
+      // itself on the project channel, to every session — that is what makes the
       // rename land instantly regardless of workspace count or which client asked.
       this.broadcastToAllSessions({
         type: "project.updated.notification",
@@ -5690,7 +5690,7 @@ export class Session {
 
   /**
    * The link set, filtered to pairs whose both endpoints are still live
-   * projects â€” so a link "disappears" the moment either project is removed or
+   * projects — so a link "disappears" the moment either project is removed or
    * archived, without needing the cascade to have run yet (gated-multi-root).
    */
   private async buildLiveProjectLinks(): Promise<{ projectAId: string; projectBId: string }[]> {
@@ -5814,12 +5814,12 @@ export class Session {
   }
 
   /**
-   * Refine â€” propose rewrites of the documents the client pinned.
+   * Refine — propose rewrites of the documents the client pinned.
    *
    * Nothing here reads or writes the filesystem: every document arrives on the
    * wire and every proposal goes back on it. Accepted results come back later
    * as ordinary `file.write.request`s, one per file, so the conditional-write
-   * precondition â€” not this handler â€” is what protects them.
+   * precondition — not this handler — is what protects them.
    */
   private async handleFileRefineRequest(msg: FileRefineRequest): Promise<void> {
     const respond = (result: FileRefineResult): void => {
@@ -6022,7 +6022,7 @@ export class Session {
   /**
    * UI-initiated preview RPCs behind the Preview toolbar button. Mirrors what
    * the agent-facing preview_* tools do (packages/server/src/server/preview/preview-tools.ts)
-   * but is driven by the app directly instead of an agent tool call â€” the
+   * but is driven by the app directly instead of an agent tool call — the
    * caller creates and places the browser tab itself, then reports the
    * binding back via preview.bind_tab so a later agent preview_start call
    * finds the same designated tab.
@@ -6258,7 +6258,7 @@ export class Session {
    * snapshot and fold its identity onto the create config. Availability is
    * re-checked here (the cwd may differ from where the picker resolved it); an
    * unavailable or unknown personality is skipped with a warning rather than
-   * failing the create â€” the agent still runs with the chosen brain, just
+   * failing the create — the agent still runs with the chosen brain, just
    * without personality identity. The brain fields are never overridden; only
    * `personalitySnapshot` and (when the caller set none) `systemPrompt` are added.
    */
@@ -6293,7 +6293,7 @@ export class Session {
     const snapshot: ResolvedPersonalitySnapshot = resolution.snapshot;
     // The one team rule: a member of the active team at spawn time carries the
     // frozen team layer, and the team prompt stacks directly ahead of the
-    // personality prompt. Caller-authored prompts still win â€” nothing composes.
+    // personality prompt. Caller-authored prompts still win — nothing composes.
     const teamSnapshot = resolveTeamSnapshotForPersonality(
       this.daemonConfigStore.get().agentTeams,
       snapshot.personalityId,
@@ -6316,7 +6316,7 @@ export class Session {
   /**
    * Resolve a roster personality against a *running* agent's cwd for a live
    * switch (agent.personality.set). Unlike the spawn-time soft-skip above, an
-   * unknown or unavailable personality throws â€” the RPC rejects with the reason
+   * unknown or unavailable personality throws — the RPC rejects with the reason
    * instead of half-applying.
    */
   private async resolvePersonalitySnapshotForAgent(
@@ -6332,7 +6332,7 @@ export class Session {
     if (!personality) {
       throw new Error(`Personality not found: ${personalityId}`);
     }
-    // Warm only the personality's own provider â€” a cold workspace snapshot
+    // Warm only the personality's own provider — a cold workspace snapshot
     // would otherwise fan out to every registered provider (network probes)
     // and stall the switch for seconds.
     const entries = await this.providerSnapshotManager.listProviders({
@@ -7339,7 +7339,7 @@ export class Session {
       .map((record) => this.buildStoredAgentPayload(record, registeredProviderIds));
 
     // Observed subagents are ephemeral registry projections (no ManagedAgent,
-    // no stored record) that otherwise reach clients only as live pushes â€”
+    // no stored record) that otherwise reach clients only as live pushes —
     // include them so a client that fetches mid-run (page refresh, reconnect)
     // learns about in-flight children instead of waiting for the provider's
     // next task event. The shared archived/label filters below apply to them
@@ -7384,7 +7384,7 @@ export class Session {
     // projections with no ManagedAgent record and are never written to
     // storage. A track row can still reference one after the client store
     // dropped it (placement remove, reconnect), so resolve the synthetic id
-    // straight from the registry â€” otherwise fetch_agent 404s a run that is
+    // straight from the registry — otherwise fetch_agent 404s a run that is
     // fine. See docs/agent-lifecycle.md (Item 1).
     if (this.agentManager.getObservedSubagentPayload(trimmed)) {
       return { ok: true, agentId: trimmed };
@@ -7414,7 +7414,7 @@ export class Session {
         error: `Agent identifier "${trimmed}" is ambiguous (${prefixMatches
           .slice(0, 5)
           .map((id) => id.slice(0, 8))
-          .join(", ")}${prefixMatches.length > 5 ? ", â€¦" : ""})`,
+          .join(", ")}${prefixMatches.length > 5 ? ", …" : ""})`,
       };
     }
 
@@ -7428,7 +7428,7 @@ export class Session {
         error: `Agent title "${trimmed}" is ambiguous (${titleMatches
           .slice(0, 5)
           .map((r) => r.id.slice(0, 8))
-          .join(", ")}${titleMatches.length > 5 ? ", â€¦" : ""})`,
+          .join(", ")}${titleMatches.length > 5 ? ", …" : ""})`,
       };
     }
 
@@ -7457,7 +7457,7 @@ export class Session {
     }
 
     // Retained generation transcripts (schedule / artifact) are internal agents
-    // that were closed after their run â€” no live agent, no stored record â€” but
+    // that were closed after their run — no live agent, no stored record — but
     // we snapshotted their final payload so the read-only viewer can open them.
     // See docs/safe-unattended.md.
     const retained = await this.agentManager.getRetainedTranscriptPayload(agentId);
@@ -7852,7 +7852,7 @@ export class Session {
     return this.workspaceDirectory.buildDescriptorMap(options);
   }
 
-  // external pathâ†’workspace adapter, not ownership. Used by archive-by-path flows
+  // external path→workspace adapter, not ownership. Used by archive-by-path flows
   // where the request carries a worktree path (unique to one workspace) rather
   // than a workspaceId. This is a directory lookup for an archive target, not a
   // status/ownership attribution.
@@ -8024,7 +8024,7 @@ export class Session {
         return null;
       }
       // Recreate the worktree directory from its kept branch BEFORE clearing
-      // archivedAt â€” the reconciler re-archives workspaces whose directory is
+      // archivedAt — the reconciler re-archives workspaces whose directory is
       // missing, so the record must point at a real directory first.
       await this.recreateOwningWorktreeForRestore(workspace, workspace.branch);
     }
@@ -8055,7 +8055,7 @@ export class Session {
 
     // Archiving through the default path (scope "workspace", worktreePath only)
     // resolves repoRoot=null, so deleteOttoWorktree's `git worktree remove`/
-    // `prune` is skipped and the admin registration survives â€” pinning the
+    // `prune` is skipped and the admin registration survives — pinning the
     // branch as "already checked out". Prune here frees any stale registration
     // whose working dir is missing (a no-op for live worktrees) so the recreate
     // below succeeds regardless of how the worktree was archived.
@@ -8120,7 +8120,7 @@ export class Session {
    *
    * Named for what it does rather than for the language servers it started as: the archive
    * teardown's last-reference rule is the same for both subsystems, and a second parallel hook
-   * would be a second thing to forget when a third subsystem starts a process. Never throws â€” a
+   * would be a second thing to forget when a third subsystem starts a process. Never throws — a
    * child that refuses to die must not fail an archive that has already happened.
    */
   private async stopWorkspaceProcesses(rootPath: string): Promise<void> {
@@ -8304,7 +8304,7 @@ export class Session {
     event: TerminalWorkspaceContributionChangedEvent,
   ): Promise<void> {
     // A terminal's activity contributes only to the workspace it carries. A
-    // terminal with no workspaceId attributes to nothing â€” status is per-id.
+    // terminal with no workspaceId attributes to nothing — status is per-id.
     if (!event.workspaceId) {
       return;
     }
@@ -8312,9 +8312,9 @@ export class Session {
   }
 
   // A git fact (branch, diff, dirty, PR) changed at `cwd`. Every workspace whose
-  // OWN cwd is this folder re-derives its git facts from that folder (id â†’ cwd)
+  // OWN cwd is this folder re-derives its git facts from that folder (id → cwd)
   // and emits its own per-id descriptor. This is a deliberate same-folder fan,
-  // not a cwd â†’ id ownership lookup: git never resolves which workspace owns a
+  // not a cwd → id ownership lookup: git never resolves which workspace owns a
   // path. See `workspaceIdsOnCheckout`.
   private async emitWorkspaceUpdateForCwd(
     cwd: string,
@@ -9448,7 +9448,7 @@ export class Session {
       const repoRoot = gitSnapshot?.git?.repoRoot ?? null;
 
       // The backing directory is removed only when no other active workspace
-      // still references it â€” the same last-reference rule archiveByScope applies.
+      // still references it — the same last-reference rule archiveByScope applies.
       const targetDir = resolve(existing.cwd);
       const activeWorkspaces = await this.listActiveWorkspaceRefs();
       const directoryWillBeRemoved = !activeWorkspaces.some(
@@ -9668,7 +9668,7 @@ export class Session {
         throw new Error(`Workspace not found: ${target.workspaceId}`);
       }
       if (!workspace.archivedAt) {
-        // Already live â€” reattach is idempotent.
+        // Already live — reattach is idempotent.
         return workspace;
       }
       const restored = await this.restoreArchivedWorkspaceRecord(workspace);
@@ -9744,7 +9744,7 @@ export class Session {
         }
 
         // Clearing attention is scoped to the workspace that OWNS the agent, by
-        // workspaceId â€” never by comparing cwd strings. A sibling workspace
+        // workspaceId — never by comparing cwd strings. A sibling workspace
         // sharing the same directory keeps its own agents' attention.
         const clearableAgentIds = agents
           .filter((agent) => !agent.archivedAt)
@@ -9977,7 +9977,7 @@ export class Session {
       const observedPayload = this.agentManager.getObservedSubagentPayload(msg.agentId);
       // Retained generation transcripts (schedule / artifact) are closed internal
       // agents: seed their snapshotted rows into the timeline store so fetchTimeline
-      // serves them, and return the stored payload â€” a pure read, no resume. See
+      // serves them, and return the stored payload — a pure read, no resume. See
       // docs/safe-unattended.md.
       let retainedPayload: AgentSnapshotPayload | null = null;
       if (
@@ -10397,7 +10397,7 @@ export class Session {
         return;
       }
 
-      // A queued message deliberately starts no run â€” waiting for one would
+      // A queued message deliberately starts no run — waiting for one would
       // stall for the whole turn and then time out. The entry id lets the
       // sender find its own message in the agent's queuedMessages.
       if (dispatchResult.queued) {
@@ -10640,7 +10640,7 @@ export class Session {
     });
   }
 
-  // â”€â”€ Orchestration graphs (projects/orchestration-graphs) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Orchestration graphs (projects/orchestration-graphs) ──────────────────
 
   private async handleRunsGraphsListRequest(
     msg: Extract<SessionInboundMessage, { type: "runs.graphs.list.request" }>,
@@ -10712,7 +10712,7 @@ export class Session {
     }
   }
 
-  // â”€â”€ Prompt templates (projects/orchestration-graphs) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Prompt templates (projects/orchestration-graphs) ──────────────────────
 
   private async handleRunsTemplatesListRequest(
     msg: Extract<SessionInboundMessage, { type: "runs.templates.list.request" }>,
@@ -10858,7 +10858,7 @@ export class Session {
     if (msg.type !== "rpc_error" && !isSessionRpcAllowed(this.scopes, msg.type)) {
       return;
     }
-    // JSON.stringify(msg) is only computed when trace is enabled â€” it runs for
+    // JSON.stringify(msg) is only computed when trace is enabled — it runs for
     // every outbound message otherwise, and trace is disabled by default.
     // Optional-chained because test logger stubs don't implement isLevelEnabled.
     if (this.sessionLogger.isLevelEnabled?.("trace")) {

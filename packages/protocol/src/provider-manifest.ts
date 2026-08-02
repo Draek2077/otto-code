@@ -81,7 +81,7 @@ const CLAUDE_MODES: AgentProviderModeDefinition[] = [
   {
     id: "dontAsk",
     label: "Don't Ask",
-    description: "Runs without prompting — actions not pre-approved are denied",
+    description: "Runs without prompting; actions not pre-approved are denied",
     // Guarded unattended mode: more dangerous than acceptEdits (edits only) but
     // safer than bypass (deny-by-default vs. run-everything), so it sits at the
     // "moderate" tier alongside Auto.
@@ -182,7 +182,7 @@ const MOCK_LOAD_TEST_MODES: AgentProviderModeDefinition[] = [
   {
     id: "dontAsk",
     label: "Don't Ask",
-    description: "Runs without prompting — actions not pre-approved are denied",
+    description: "Runs without prompting; actions not pre-approved are denied",
     icon: "ShieldCheck",
     colorTier: "moderate",
     // Dev-only mirror of Claude's guarded unattended mode so deterministic E2E
@@ -216,8 +216,7 @@ export const OMP_MODES: AgentProviderModeDefinition[] = [
   {
     id: "write",
     label: "Write Approval",
-    description:
-      "Launches OMP with write approval mode â€” reads are free, writes require approval.",
+    description: "Launches OMP with write approval mode: reads are free, writes require approval.",
     icon: "ShieldAlert",
     colorTier: "moderate",
   },

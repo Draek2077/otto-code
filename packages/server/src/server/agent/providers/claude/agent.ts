@@ -354,7 +354,7 @@ const DEFAULT_MODES: AgentMode[] = [
     // DENIED rather than run. This is the default unattended target — listed
     // before bypassPermissions so resolveDefaultAgentCreateConfig picks it as
     // the coercion target for schedules/loops/artifacts.
-    description: "Runs without prompting — actions not pre-approved are denied",
+    description: "Runs without prompting; actions not pre-approved are denied",
     isUnattended: true,
   },
   {

@@ -16,7 +16,7 @@ export interface FetchWorkspaceDescriptorsResult {
   /**
    * Project parents with no active workspaces. The daemon only rides these on
    * the first page of `fetchWorkspaces`, so a freshly-added project that has no
-   * workspace yet shows up here and nowhere else â€” drop it and the project is
+   * workspace yet shows up here and nowhere else — drop it and the project is
    * invisible to anything that derives projects from workspaces alone.
    */
   emptyProjects: ProjectDescriptor[];
