@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { getAgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import type {
@@ -530,7 +531,9 @@ test("OMP is a disabled built-in backed by the real OMP adapter", async () => {
 
   expect(registry.omp).toMatchObject({
     id: "omp",
-    label: "Oh My Pi",
+    // Otto ships this provider as "OMP"; the manifest is the source of truth
+    // for the label users see.
+    label: getAgentProviderDefinition("omp").label,
     enabled: false,
     derivedFromProviderId: null,
   });
@@ -812,7 +815,7 @@ test("enabled: false keeps provider metadata in registry", () => {
     id: "claude",
     label: "Claude",
     description: "Anthropic's multi-tool assistant with MCP support, streaming, and deep reasoning",
-    defaultModeId: "auto",
+    defaultModeId: getAgentProviderDefinition("claude").defaultModeId,
     enabled: false,
   });
   expect(registry.claude.modes).toEqual(

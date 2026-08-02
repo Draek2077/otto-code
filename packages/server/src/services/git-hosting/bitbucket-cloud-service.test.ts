@@ -160,8 +160,10 @@ describe("bitbucket cloud service", () => {
       { name: "Lint", status: "pending", url: null },
     ]);
     expect(status?.reviewDecision).toBe("changes_requested");
-    expect(status?.github).toBeUndefined();
-    expect(status?.bitbucket).toEqual({
+    // Per-forge facts ride in the neutral forgeSpecific envelope, tagged with
+    // the forge that produced them, so there is no bitbucket-named field.
+    expect(status?.forgeSpecific).toEqual({
+      forge: "bitbucket",
       mergeStrategiesAllowed: ["merge", "squash"],
       defaultMergeStrategy: "merge",
       approvalCount: 1,
@@ -282,9 +284,11 @@ describe("bitbucket cloud service", () => {
       query: "flux",
       kinds: ["github-issue", "github-pr"],
     });
-    expect(result.githubFeaturesEnabled).toBe(true);
+    // Neutral names on a neutral adapter: a Bitbucket service reports
+    // featuresEnabled, and its results are change_requests rather than PRs.
+    expect(result.featuresEnabled).toBe(true);
     expect(result.items).toHaveLength(1);
-    expect(result.items[0]?.kind).toBe("pr");
+    expect(result.items[0]?.kind).toBe("change_request");
     expect(requests).toHaveLength(1);
   });
 

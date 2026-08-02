@@ -452,22 +452,28 @@ export class ProviderSnapshotManager {
     return { provider, diagnostic };
   }
 
+  /**
+   * The removed-provider list may arrive either as a bare array or inside the
+   * options object. Both spellings are in use — the daemon-config subscriber
+   * passes the array, callers that also set other options pass
+   * `removeProviders` — and they used to be two separate removal passes, so
+   * whichever form a caller did not use silently removed nothing.
+   */
   applyMutableProviderConfig(
     mutableProviders: MutableDaemonConfig["providers"] | undefined,
-    removedProviderIds?: string[],
-    options: ApplyMutableProviderConfigOptions = {},
+    removedProviderIdsOrOptions?: string[] | ApplyMutableProviderConfigOptions,
+    maybeOptions: ApplyMutableProviderConfigOptions = {},
   ): AgentManagerProviderState {
-    if (removedProviderIds?.length && this.baseProviderOverrides) {
-      const removed = new Set(removedProviderIds);
-      this.baseProviderOverrides = Object.fromEntries(
-        Object.entries(this.baseProviderOverrides).filter(
-          ([providerId]) => !removed.has(providerId),
-        ),
-      );
-    }
+    const options = Array.isArray(removedProviderIdsOrOptions)
+      ? maybeOptions
+      : (removedProviderIdsOrOptions ?? maybeOptions);
+    const removedProviderIds = [
+      ...(Array.isArray(removedProviderIdsOrOptions) ? removedProviderIdsOrOptions : []),
+      ...(options.removeProviders ?? []),
+    ];
     this.baseProviderOverrides = omitProviderOverrides(
       this.baseProviderOverrides,
-      options.removeProviders ?? [],
+      removedProviderIds,
     );
     this.providerOverrides = applyMutableProviderConfigToOverrides(
       this.baseProviderOverrides,

@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { describe, expect, test, vi } from "vitest";
+import { getAgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import type {
@@ -120,8 +121,10 @@ describe("ProviderSnapshotManager public surface", () => {
       const codex = snapshot.find((entry) => entry.provider === "codex");
       expect(claude?.status).toBe("loading");
       expect(claude?.label).toBe("Claude");
-      expect(claude?.defaultModeId).toBe("auto");
-      expect(codex?.defaultModeId).toBe("auto-review");
+      // From the manifest rather than hardcoded: which permission mode a
+      // provider defaults to is a product choice, not this test's subject.
+      expect(claude?.defaultModeId).toBe(getAgentProviderDefinition("claude").defaultModeId);
+      expect(codex?.defaultModeId).toBe(getAgentProviderDefinition("codex").defaultModeId);
     } finally {
       manager.destroy();
     }
