@@ -56,6 +56,15 @@ type ControlMessage =
 const CONTROL_PING_INTERVAL_MS = 10_000;
 const CONTROL_STALE_TIMEOUT_MS = 30_000;
 const CONTROL_READY_TIMEOUT_MS = 8_000;
+// Every relay "connected" notification triggers an outbound dial, so an attacker holding many
+// client sockets with distinct connectionIds would otherwise make the daemon open one WSS
+// connection each. A daemon serves one user's devices; even a generous fleet of app instances and
+// tabs stays far below this cap.
+const MAX_DATA_SOCKETS = 32;
+// Deadline from dial until the socket has been handed to attachSocket (E2EE handshake included).
+// A socket that opens but never attaches — e.g. a client that never sends its handshake init —
+// would otherwise stay resident forever. Legitimate attach completes within seconds of open.
+const DATA_ATTACH_TIMEOUT_MS = 30_000;
 const RELAY_WEBSOCKET_OPTIONS = { handshakeTimeout: 10_000, perMessageDeflate: false } as const;
 
 function createDefaultRelayWebSocket(url: string): RelayWebSocketLike {
@@ -346,6 +355,13 @@ export function startRelayTransport({
     if (stopped) return;
     if (!connectionId) return;
     if (dataSockets.has(connectionId)) return;
+    if (dataSockets.size >= MAX_DATA_SOCKETS) {
+      relayLogger.warn(
+        { connectionId, size: dataSockets.size, max: MAX_DATA_SOCKETS },
+        "relay_data_socket_cap_reached",
+      );
+      return;
+    }
 
     const url = buildRelayWebSocketUrl({
       endpoint: relayEndpoint,
@@ -357,43 +373,49 @@ export function startRelayTransport({
     const socket = createWebSocket(url);
     dataSockets.set(connectionId, socket);
 
+    let attachStarted = false;
     let attached = false;
-    const openTimeout = setTimeout(() => {
+    const attachTimeout = setTimeout(() => {
       if (stopped) return;
-      if (socket.readyState === WebSocket.OPEN) return;
-      relayLogger.warn({ connectionId }, "relay_data_open_timeout_terminating");
+      if (attached) return;
+      relayLogger.warn({ connectionId }, "relay_data_attach_timeout_terminating");
       try {
         socket.terminate();
       } catch {
         // ignore
       }
-    }, 15_000);
+    }, DATA_ATTACH_TIMEOUT_MS);
+    const markAttached = () => {
+      attached = true;
+      clearTimeout(attachTimeout);
+    };
 
     socket.on("open", () => {
-      clearTimeout(openTimeout);
       relayLogger.info({ connectionId }, "relay_data_connected");
-      if (attached) return;
-      attached = true;
+      if (attachStarted) return;
+      attachStarted = true;
       const externalMetadata: ExternalSocketMetadata = {
         transport: "relay",
         externalSessionKey: `session:${connectionId}`,
         relayConnectionId: connectionId,
       };
       if (daemonKeyPair) {
+        // attachEncryptedSocket resolves after attachSocket ran, or after it closed the socket on
+        // handshake failure — either way the attach deadline no longer applies.
         void attachEncryptedSocket(
           socket,
           daemonKeyPair,
           relayLogger.child({ connectionId }),
           attachSocket,
           externalMetadata,
-        );
+        ).then(markAttached);
       } else {
-        void attachSocket(socket, externalMetadata);
+        void attachSocket(socket, externalMetadata).then(markAttached, () => undefined);
       }
     });
 
     socket.on("close", (code, reason) => {
-      clearTimeout(openTimeout);
+      clearTimeout(attachTimeout);
       relayLogger.warn(
         { code, reason: reason?.toString?.(), url, connectionId },
         "relay_data_disconnected",

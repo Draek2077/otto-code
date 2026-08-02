@@ -230,6 +230,79 @@ describe("RelayDurableObject control nudge/reset behavior", () => {
   });
 });
 
+describe("RelayDurableObject pending-frame byte caps", () => {
+  function createClientSocket(connectionId: string): MockSocket {
+    return createMockSocket({
+      version: "2",
+      role: "client",
+      connectionId,
+      serverId: "srv_test",
+      createdAt: 0,
+    });
+  }
+
+  const halfMiB = "x".repeat(512 * 1024);
+  const oneMiB = "x".repeat(1024 * 1024);
+
+  it("buffers client frames up to the per-connection byte cap, then closes the sender with 1009", () => {
+    const { state } = createMockState();
+    const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
+    const client = createClientSocket("clt_hoarder");
+
+    relay.webSocketMessage(client as unknown as WebSocket, halfMiB);
+    relay.webSocketMessage(client as unknown as WebSocket, halfMiB);
+    expect(client.close).not.toHaveBeenCalled();
+
+    relay.webSocketMessage(client as unknown as WebSocket, halfMiB);
+    expect(client.close).toHaveBeenCalledWith(1009, "Relay buffer full");
+  });
+
+  it("releases byte accounting when frames are flushed to a server data socket", () => {
+    const { state } = createMockState();
+    const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
+    const client = createClientSocket("clt_flush");
+    const serverData = createMockSocket();
+
+    relay.webSocketMessage(client as unknown as WebSocket, oneMiB);
+    (relay as unknown as { flushFrames(id: string, ws: WebSocket): void }).flushFrames(
+      "clt_flush",
+      serverData as unknown as WebSocket,
+    );
+    expect(serverData.send).toHaveBeenCalledTimes(1);
+
+    relay.webSocketMessage(client as unknown as WebSocket, oneMiB);
+    expect(client.close).not.toHaveBeenCalled();
+  });
+
+  it("releases byte accounting when the last client socket for a connection closes", () => {
+    const { state } = createMockState();
+    const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
+    const client = createClientSocket("clt_leaver");
+
+    relay.webSocketMessage(client as unknown as WebSocket, oneMiB);
+    relay.webSocketClose(client as unknown as WebSocket, 1001, "gone", true);
+
+    const reconnected = createClientSocket("clt_leaver");
+    relay.webSocketMessage(reconnected as unknown as WebSocket, oneMiB);
+    expect(reconnected.close).not.toHaveBeenCalled();
+  });
+
+  it("enforces the total byte cap across connectionIds", () => {
+    const { state } = createMockState();
+    const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
+
+    for (let i = 0; i < 16; i++) {
+      const client = createClientSocket(`clt_swarm_${i}`);
+      relay.webSocketMessage(client as unknown as WebSocket, oneMiB);
+      expect(client.close).not.toHaveBeenCalled();
+    }
+
+    const overflow = createClientSocket("clt_swarm_overflow");
+    relay.webSocketMessage(overflow as unknown as WebSocket, oneMiB);
+    expect(overflow.close).toHaveBeenCalledWith(1009, "Relay buffer full");
+  });
+});
+
 describe("relay worker endpoint routing", () => {
   it("routes missing v to legacy v1 isolated DO ids", async () => {
     const fetch = vi.fn(

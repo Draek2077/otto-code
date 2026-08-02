@@ -25,6 +25,17 @@ type RelayProtocolVersion = "1" | "2";
 const LEGACY_RELAY_VERSION: RelayProtocolVersion = "1";
 const CURRENT_RELAY_VERSION: RelayProtocolVersion = "2";
 
+// Client frames are buffered while no daemon data socket is attached. Cloudflare caps a single
+// WebSocket message at 1 MiB, so a count-only trim still admits ~200 MiB per connectionId — past
+// the Durable Object's 128 MB memory limit. Legitimate buffered traffic is only a client's
+// pre-attach opening frames (the E2EE handshake init, well under a kilobyte); large payloads such
+// as screenshots or file content flow only after the server data socket exists and are never
+// buffered here. So the byte caps sit far above the legitimate case while keeping the DO's worst
+// case small.
+const MAX_PENDING_FRAMES_PER_CONNECTION = 200;
+const MAX_PENDING_BYTES_PER_CONNECTION = 1024 * 1024; // fits one max-size (1 MiB) frame
+const MAX_PENDING_BYTES_TOTAL = 16 * 1024 * 1024; // across all connectionIds in this DO
+
 function resolveRelayVersion(rawValue: string | null): RelayProtocolVersion | null {
   if (rawValue == null) return LEGACY_RELAY_VERSION;
   const value = rawValue.trim();
@@ -133,6 +144,8 @@ interface CFResponseInit extends ResponseInit {
 export class RelayDurableObject {
   private state: DurableObjectState;
   private pendingFrames = new Map<string, Array<string | ArrayBuffer>>();
+  private pendingFrameBytes = new Map<string, number>();
+  private totalPendingFrameBytes = 0;
 
   constructor(state: DurableObjectState) {
     this.state = state;
@@ -249,20 +262,53 @@ export class RelayDurableObject {
     }, initialDelayMs);
   }
 
-  private bufferFrame(connectionId: string, message: string | ArrayBuffer): void {
+  private frameByteSize(message: string | ArrayBuffer): number {
+    // For strings this counts UTF-16 code units, not UTF-8 bytes (off by at most 3x) — close
+    // enough for a resource cap.
+    return typeof message === "string" ? message.length : message.byteLength;
+  }
+
+  private dropPendingFrames(connectionId: string): void {
+    this.pendingFrames.delete(connectionId);
+    const bytes = this.pendingFrameBytes.get(connectionId) ?? 0;
+    this.pendingFrameBytes.delete(connectionId);
+    this.totalPendingFrameBytes -= bytes;
+  }
+
+  /** Returns false when a byte cap refuses the frame; the caller decides what to do with the sender. */
+  private bufferFrame(connectionId: string, message: string | ArrayBuffer): boolean {
+    const size = this.frameByteSize(message);
+    const connectionBytes = this.pendingFrameBytes.get(connectionId) ?? 0;
+    if (
+      connectionBytes + size > MAX_PENDING_BYTES_PER_CONNECTION ||
+      this.totalPendingFrameBytes + size > MAX_PENDING_BYTES_TOTAL
+    ) {
+      return false;
+    }
     const existing = this.pendingFrames.get(connectionId) ?? [];
     existing.push(message);
+    let newConnectionBytes = connectionBytes + size;
+    this.totalPendingFrameBytes += size;
     // Prevent unbounded memory growth if a daemon never connects.
-    if (existing.length > 200) {
-      existing.splice(0, existing.length - 200);
+    if (existing.length > MAX_PENDING_FRAMES_PER_CONNECTION) {
+      for (const dropped of existing.splice(
+        0,
+        existing.length - MAX_PENDING_FRAMES_PER_CONNECTION,
+      )) {
+        const droppedSize = this.frameByteSize(dropped);
+        newConnectionBytes -= droppedSize;
+        this.totalPendingFrameBytes -= droppedSize;
+      }
     }
     this.pendingFrames.set(connectionId, existing);
+    this.pendingFrameBytes.set(connectionId, newConnectionBytes);
+    return true;
   }
 
   private flushFrames(connectionId: string, serverWs: WebSocket): void {
     const frames = this.pendingFrames.get(connectionId);
     if (!frames || frames.length === 0) return;
-    this.pendingFrames.delete(connectionId);
+    this.dropPendingFrames(connectionId);
     for (const frame of frames) {
       try {
         serverWs.send(frame);
@@ -481,7 +527,15 @@ export class RelayDurableObject {
     if (role === "client") {
       const servers = this.state.getWebSockets(`server:${connectionId}`);
       if (servers.length === 0) {
-        this.bufferFrame(connectionId, message);
+        if (!this.bufferFrame(connectionId, message)) {
+          // Cut the sender off rather than silently dropping its frames: a client whose frames
+          // vanish is in a worse state than one that knows it was disconnected.
+          try {
+            ws.close(1009, "Relay buffer full");
+          } catch {
+            // ignore
+          }
+        }
         return;
       }
       for (const target of servers) {
@@ -533,7 +587,7 @@ export class RelayDurableObject {
         return;
       }
 
-      this.pendingFrames.delete(connectionId);
+      this.dropPendingFrames(connectionId);
       // Last socket for this session closed: now clean up matching server-data socket.
       for (const serverWs of this.state.getWebSockets(`server:${connectionId}`)) {
         try {

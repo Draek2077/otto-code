@@ -329,6 +329,107 @@ describe("relay-transport control lifecycle", () => {
     expect(completed).toBe(true);
   });
 
+  test("caps the number of concurrent data sockets", () => {
+    const logger = createMockLogger();
+    const controller = startRelayTransport({
+      logger: logger as unknown as pino.Logger,
+      attachSocket: async () => {},
+      relayEndpoint: "relay.otto-code.ai:443",
+      relayUseTls: true,
+      serverId: "srv_test",
+      createWebSocket: relay.createWebSocket,
+    });
+    controllers.push(controller);
+
+    const control = relay.sockets[0];
+    control.open();
+    control.message(JSON.stringify({ type: "sync", connectionIds: [] }));
+    for (let i = 0; i < 40; i++) {
+      control.message(JSON.stringify({ type: "connected", connectionId: `clt_flood_${i}` }));
+    }
+
+    // 1 control socket + at most 32 data sockets; notifications past the cap are dropped.
+    expect(relay.sockets.length).toBe(33);
+    expect(hasLogMessage(logger, "warn", "relay_data_socket_cap_reached")).toBe(true);
+  });
+
+  test("terminates data sockets that never open within the attach deadline", async () => {
+    vi.useFakeTimers();
+    const logger = createMockLogger();
+    const controller = startRelayTransport({
+      logger: logger as unknown as pino.Logger,
+      attachSocket: async () => {},
+      relayEndpoint: "relay.otto-code.ai:443",
+      relayUseTls: true,
+      serverId: "srv_test",
+      createWebSocket: relay.createWebSocket,
+    });
+    controllers.push(controller);
+
+    const control = relay.sockets[0];
+    control.open();
+    control.message(JSON.stringify({ type: "sync", connectionIds: [] }));
+    control.message(JSON.stringify({ type: "connected", connectionId: "clt_never_opens" }));
+
+    const dataSocket = relay.sockets[1];
+    expect(dataSocket).toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(dataSocket.terminateCalls).toBe(1);
+    expect(hasLogMessage(logger, "warn", "relay_data_attach_timeout_terminating")).toBe(true);
+  });
+
+  test("terminates data sockets that open but never complete the E2EE attach", async () => {
+    vi.useFakeTimers();
+    const logger = createMockLogger();
+    const controller = startRelayTransport({
+      logger: logger as unknown as pino.Logger,
+      attachSocket: async () => {},
+      relayEndpoint: "relay.otto-code.ai:443",
+      relayUseTls: true,
+      serverId: "srv_test",
+      daemonKeyPair: generateKeyPair(),
+      createWebSocket: relay.createWebSocket,
+    });
+    controllers.push(controller);
+
+    const control = relay.sockets[0];
+    control.open();
+    control.message(JSON.stringify({ type: "sync", connectionIds: [] }));
+    control.message(JSON.stringify({ type: "connected", connectionId: "clt_silent" }));
+
+    const dataSocket = relay.sockets[1];
+    dataSocket.open();
+    // The client never sends its handshake init, so createDaemonChannel never resolves.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(dataSocket.terminateCalls).toBe(1);
+    expect(hasLogMessage(logger, "warn", "relay_data_attach_timeout_terminating")).toBe(true);
+  });
+
+  test("does not terminate data sockets that attach before the deadline", async () => {
+    vi.useFakeTimers();
+    const logger = createMockLogger();
+    const controller = startRelayTransport({
+      logger: logger as unknown as pino.Logger,
+      attachSocket: async () => {},
+      relayEndpoint: "relay.otto-code.ai:443",
+      relayUseTls: true,
+      serverId: "srv_test",
+      createWebSocket: relay.createWebSocket,
+    });
+    controllers.push(controller);
+
+    const control = relay.sockets[0];
+    control.open();
+    control.message(JSON.stringify({ type: "sync", connectionIds: [] }));
+    control.message(JSON.stringify({ type: "connected", connectionId: "clt_attached" }));
+
+    const dataSocket = relay.sockets[1];
+    dataSocket.open();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(dataSocket.terminateCalls).toBe(0);
+  });
+
   test("uses relayUseTls for control and data socket URLs", () => {
     const logger = createMockLogger();
     const controller = startRelayTransport({
