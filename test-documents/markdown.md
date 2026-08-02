@@ -136,3 +136,39 @@ Remote, which the viewer never fetches:
 
 Everything above this rule should have rendered. Compare against the `.adoc`
 file section by section.
+
+## GitHub alerts
+
+Five kinds, each an ordinary blockquote whose first line is the marker. The
+marker itself must not appear in the rendering.
+
+> [!NOTE]
+> Useful information a reader should notice even when skimming.
+
+> [!TIP]
+> An optional shortcut that makes something easier.
+
+> [!IMPORTANT]
+> Information a reader needs in order to succeed.
+
+> [!WARNING]
+> Something that needs immediate attention because of the risk.
+
+> [!CAUTION]
+> A consequence of a risky action.
+
+An ordinary blockquote, for contrast — this one keeps its plain accent:
+
+> Not an alert, just a quote.
+
+A marker that is not one of the five kinds stays literal text:
+
+> [!DANGER]
+> Renders with the marker still visible, because GitHub defines five kinds.
+
+Inside a fence the marker is code, never an alert:
+
+```md
+> [!NOTE]
+> This block must render as source, markers included.
+```

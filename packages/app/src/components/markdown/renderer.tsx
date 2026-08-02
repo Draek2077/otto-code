@@ -44,6 +44,7 @@ import {
 } from "./html-ish";
 import { MarkdownFence } from "./fence";
 import { applyTaskListMarkers } from "./task-lists";
+import { ALERT_ATTRIBUTE, applyGithubAlerts, type GithubAlertKind } from "./github-alerts";
 import { resolveInlineImageSize, type InlineImageDimensions } from "./inline-image-size";
 import { parseSvgIntrinsicSize } from "./svg-intrinsic-size";
 import {
@@ -77,9 +78,22 @@ function compactMarkdownStyleMapping(theme: Theme): Partial<MarkdownWithStableRe
   return { style: createCompactMarkdownStyles(theme) };
 }
 
-const defaultMarkdownParser = applyTaskListMarkers(
-  MarkdownIt({ typographer: true, linkify: true }),
+const defaultMarkdownParser = applyGithubAlerts(
+  applyTaskListMarkers(MarkdownIt({ typographer: true, linkify: true })),
 );
+
+/**
+ * Deliberately untranslated. These are GitHub's markdown vocabulary, written
+ * into the document's own source as `[!NOTE]`, and a reader comparing the
+ * rendering to the source should see the same word.
+ */
+const ALERT_LABELS: Record<GithubAlertKind, string> = {
+  note: "Note",
+  tip: "Tip",
+  important: "Important",
+  warning: "Warning",
+  caution: "Caution",
+};
 const EMPTY_TEXT_STYLE: TextStyle = {};
 /** A markdown `![]()` carries no width/height attributes; only HTML `<img>` does. */
 const EMPTY_IMAGE_DIMENSIONS: { width?: number; height?: number } = {};
@@ -701,8 +715,47 @@ export function withMarkdownLinkColor(children: ReactNode, color: unknown): Reac
   });
 }
 
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function createSharedMarkdownRules(): RenderRules {
   return {
+    /**
+     * A blockquote, or a GitHub alert when the parser tagged it as one.
+     *
+     * The `_VIEW_SAFE_` prefix is the markdown-display convention for the
+     * View-only copy of a style; using `styles.blockquote` directly here would
+     * hand text properties to a View.
+     */
+    blockquote: (
+      node: ASTNode,
+      children: ReactNode[],
+      _parent: ASTNode[],
+      styles: MarkdownStyles,
+    ) => {
+      const kind = node.attributes?.[ALERT_ATTRIBUTE] as GithubAlertKind | undefined;
+      if (!kind || !(kind in ALERT_LABELS)) {
+        return (
+          <View key={node.key} style={styles._VIEW_SAFE_blockquote}>
+            {children}
+          </View>
+        );
+      }
+      const suffix = capitalize(kind);
+      return (
+        <View
+          key={node.key}
+          style={[styles._VIEW_SAFE_blockquote, styles[`alert${suffix}`]]}
+          testID={`markdown-alert-${kind}`}
+        >
+          <Text style={[styles.alertTitle, styles[`alertTitle${suffix}`]]}>
+            {ALERT_LABELS[kind]}
+          </Text>
+          {children}
+        </View>
+      );
+    },
     text: (
       node: ASTNode,
       _children: ReactNode[],

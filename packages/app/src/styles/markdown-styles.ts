@@ -332,6 +332,29 @@ export function createMarkdownStyles(theme: Theme) {
     },
 
     // =========================================================================
+    // GITHUB ALERTS
+    // =========================================================================
+    // Only the accent varies per kind; the surface stays the ordinary
+    // blockquote's, so an alert reads as a blockquote that is telling you
+    // something rather than as a different kind of box. Colour assignment
+    // follows GitHub's own.
+    alertNote: { borderLeftColor: themeColorRef(theme, "statusInfo") },
+    alertTip: { borderLeftColor: themeColorRef(theme, "statusSuccess") },
+    alertImportant: { borderLeftColor: themeColorRef(theme, "primary") },
+    alertWarning: { borderLeftColor: themeColorRef(theme, "statusWarning") },
+    alertCaution: { borderLeftColor: themeColorRef(theme, "destructive") },
+    alertTitle: {
+      fontSize: theme.fontSize.sm,
+      fontWeight: "600",
+      marginBottom: theme.spacing[1],
+    },
+    alertTitleNote: { color: themeColorRef(theme, "statusInfo") },
+    alertTitleTip: { color: themeColorRef(theme, "statusSuccess") },
+    alertTitleImportant: { color: themeColorRef(theme, "primary") },
+    alertTitleWarning: { color: themeColorRef(theme, "statusWarning") },
+    alertTitleCaution: { color: themeColorRef(theme, "destructive") },
+
+    // =========================================================================
     // HORIZONTAL RULE
     // =========================================================================
 
