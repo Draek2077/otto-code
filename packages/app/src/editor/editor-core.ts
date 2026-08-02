@@ -36,6 +36,8 @@ import {
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { getLanguageForFile, getParserForFile, highlightCode } from "@otto-code/highlight";
+import { getMarkdownCommand, isMarkdownCommandName } from "./markdown/markdown-commands";
+import { isMarkdownPath } from "./markdown/markdown-path";
 import {
   DEFAULT_EDITOR_KEY_BINDINGS,
   type EditorCursorPosition,
@@ -44,6 +46,7 @@ import {
   type EditorHoverAnswer,
   type EditorKeyAction,
   type EditorKeyBinding,
+  type MarkdownCommandName,
   type EditorMatchInfo,
   type EditorPointerSelect,
   type EditorScrollMetrics,
@@ -166,6 +169,12 @@ export interface EditorCore {
   setWordWrap(enabled: boolean): void;
   /** Re-key the editor commands, so a rebind in Settings lands without a remount. */
   setKeyBindings(bindings: readonly EditorKeyBinding[]): void;
+  /**
+   * Run a markdown formatting command, the toolbar's entry point. Returns false
+   * when the command declined — outside markdown, or with nothing to change —
+   * so a button can stay honest about having done nothing.
+   */
+  runMarkdownCommand(name: MarkdownCommandName): boolean;
   /** Replace the whole problem set; see the contract's note on why it is never a delta. */
   setDiagnostics(diagnostics: readonly EditorDiagnostic[]): void;
   destroy(): void;
@@ -769,13 +778,6 @@ function buildSyntaxExtension(spec: EditorThemeSpec): Extension {
   return syntaxHighlighting(style, { fallback: true });
 }
 
-const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown"]);
-
-function isMarkdownPath(path: string): boolean {
-  const extension = path.split(".").pop()?.toLowerCase();
-  return extension !== undefined && MARKDOWN_EXTENSIONS.has(extension);
-}
-
 /**
  * Resolve a fence's info string to a grammar, so a ```ts block inside a
  * markdown file colours with the same parser a `.ts` tab uses.
@@ -882,7 +884,7 @@ function buildShortcutKeymap(
   options: EditorCoreOptions,
   bindings: readonly EditorKeyBinding[],
 ): Extension {
-  const handlers: Record<EditorKeyAction, (() => void) | undefined> = {
+  const handlers: Partial<Record<EditorKeyAction, (() => void) | undefined>> = {
     save: options.onSaveShortcut,
     find: options.onFindShortcut,
     goToLine: options.onGoToLineShortcut,
@@ -893,7 +895,15 @@ function buildShortcutKeymap(
   return keymap.of(
     bindings.map((binding) => ({
       key: binding.key,
-      run: () => {
+      run: (view) => {
+        // Markdown formatting is the editor's own work, not the host's: it edits
+        // this document and never leaves. It also DECLINES outside markdown, and
+        // returning false here is what hands the key to the next binding for the
+        // same combo — which is how one keymap serves `Mod-b` as bold in a `.md`
+        // file and as Go to definition in a `.ts` one.
+        if (isMarkdownCommandName(binding.action)) {
+          return getMarkdownCommand(binding.action)(view);
+        }
         const handler = handlers[binding.action];
         if (!handler) {
           return false;
@@ -1404,6 +1414,12 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       view.dispatch({
         effects: keymapCompartment.reconfigure(buildShortcutKeymap(options, bindings)),
       });
+    },
+    runMarkdownCommand: (name) => {
+      // Focus first: the toolbar button took focus on press, and a command that
+      // edits the document while the editor is blurred leaves the caret nowhere.
+      view.focus();
+      return getMarkdownCommand(name)(view);
     },
     setDiagnostics: (diagnostics) => {
       view.dispatch({ effects: setEditorDiagnostics.of(diagnostics) });

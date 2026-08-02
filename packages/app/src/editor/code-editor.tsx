@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import type { CodeEditorProps, EditorController } from "./editor-contract";
 import { createEditorCore, type EditorCore } from "./editor-core";
+import { isMarkdownPath } from "./markdown/markdown-path";
 
 // Web + Electron host: mounts the CM6 core straight into a DOM node. The raw
 // <div> wrapper is the sanctioned pattern for real DOM infrastructure (see
@@ -132,6 +133,9 @@ export function CodeEditor(props: CodeEditorProps) {
       selectLines: (startLine, endLine, options) => core.selectLines(startLine, endLine, options),
       selectAll: () => core.selectAll(),
       replaceSelection: (text) => core.replaceSelection(text),
+      runMarkdownCommand: (name) => {
+        core.runMarkdownCommand(name);
+      },
       getScrollMetrics: () => core.getScrollMetrics(),
       scrollToFraction: (fraction) => core.scrollToFraction(fraction),
       scrollToLineAtOffset: (line, offset) => core.scrollToLineAtOffset(line, offset),
@@ -208,7 +212,18 @@ export function CodeEditor(props: CodeEditorProps) {
     // it is what tells the shortcut registry that focus is in the file editor
     // rather than in some anonymous text field, so the editor's own keymap wins
     // the combos it binds.
-    <div style={WRAPPER_STYLE} data-pmono="" data-testid="code-editor-surface">
+    // A markdown file additionally carries `data-markdown-editor`, which
+    // focus-scope.ts resolves to the narrower `markdown-editor` scope. It is a
+    // separate attribute rather than a different testid for two reasons: an
+    // element gets only one testid, and the surface genuinely is still a code
+    // editor — everything the File Editor section binds has to keep working
+    // here, with the few markdown combos added on top.
+    <div
+      style={WRAPPER_STYLE}
+      data-pmono=""
+      data-testid="code-editor-surface"
+      {...(isMarkdownPath(props.path) ? { "data-markdown-editor": "" } : {})}
+    >
       <div ref={hostRef} style={HOST_STYLE} />
       {scrollbarOverlay}
     </div>

@@ -333,6 +333,40 @@ describe("keyboard-shortcuts", () => {
       context: { focusScope: "code-editor" },
       action: "editor.renameSymbol",
     },
+    // --- Markdown Editor: a narrower scope that INHERITS the one above ---
+    {
+      name: "runs markdown bold on Mod+B in a markdown file, not go-to-definition",
+      event: { key: "b", code: "KeyB", metaKey: true },
+      context: { isMac: true, focusScope: "markdown-editor" },
+      action: "editor.markdown.bold",
+    },
+    {
+      name: "keeps Save working in a markdown file, inherited from the File Editor scope",
+      event: { key: "s", code: "KeyS", metaKey: true },
+      context: { isMac: true, focusScope: "markdown-editor" },
+      action: "editor.save",
+    },
+    {
+      name: "keeps Find working in a markdown file, inherited the same way",
+      event: { key: "f", code: "KeyF", ctrlKey: true },
+      context: { isMac: false, focusScope: "markdown-editor" },
+      action: "editor.find",
+    },
+    {
+      name: "makes Mod+K a link in a markdown file",
+      event: { key: "k", code: "KeyK", metaKey: true },
+      context: { isMac: true, focusScope: "markdown-editor" },
+      action: "editor.markdown.link",
+    },
+    // The reason the markdown scope exists at all: claiming these combos at
+    // code-editor scope would take them away in every code file, where the
+    // markdown command declines and the key would simply die.
+    {
+      name: "leaves Mod+K as the command center in a code file",
+      event: { key: "k", code: "KeyK", metaKey: true },
+      context: { isMac: true, focusScope: "code-editor" },
+      action: "command-center.toggle",
+    },
     {
       name: "runs the editor's go-to-line on Mod+G, one combo across both platforms",
       event: { key: "g", code: "KeyG", ctrlKey: true },

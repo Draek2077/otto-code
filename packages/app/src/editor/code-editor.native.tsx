@@ -199,6 +199,7 @@ export function CodeEditor(props: CodeEditorProps) {
         sendToWebView({ type: "selectLines", startLine, endLine, reveal: options?.reveal }),
       selectAll: () => sendToWebView({ type: "selectAll" }),
       replaceSelection: (text) => sendToWebView({ type: "replaceSelection", text }),
+      runMarkdownCommand: (name) => sendToWebView({ type: "runMarkdownCommand", name }),
       setDiagnostics: (diagnostics) => sendToWebView({ type: "setDiagnostics", diagnostics }),
     }),
     [sendToWebView],

@@ -43,10 +43,12 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useAppSettings, type AppSettings } from "@/hooks/use-settings";
 import { isWeb } from "@/constants/platform";
 import { CodeEditor } from "@/editor/code-editor";
+import { MarkdownToolbarForPath } from "@/editor/markdown/markdown-toolbar";
 import type {
   CodeEditorProps,
   EditorController,
   EditorCursorPosition,
+  MarkdownCommandName,
   EditorMatchInfo,
   EditorPointerSelect,
   EditorScrollMetrics,
@@ -1248,6 +1250,15 @@ function EditorModeView({
     controllerRef.current?.focus();
   }, [applyFind, controllerRef]);
 
+  // The formatting toolbar runs the same commands the keymap does, through the
+  // controller. Nothing is tracked here: the command owns whether it applies.
+  const handleMarkdownCommand = useCallback(
+    (command: MarkdownCommandName) => {
+      controllerRef.current?.runMarkdownCommand(command);
+    },
+    [controllerRef],
+  );
+
   const [goToLineOpen, setGoToLineOpen] = useState(false);
   const openGoToLine = useCallback(() => setGoToLineOpen(true), []);
   const closeGoToLine = useCallback(() => {
@@ -1767,6 +1778,10 @@ function EditorModeView({
         onConflictOverwrite={handleConflictOverwrite}
         onConflictDismiss={dismissConflict}
       />
+
+      {/* Directly above the editing surface in both modes, and only for markdown.
+          On a phone it is the only way to reach these commands at all. */}
+      <MarkdownToolbarForPath path={path} onRun={handleMarkdownCommand} />
 
       {split ? (
         <View style={styles.splitRow}>

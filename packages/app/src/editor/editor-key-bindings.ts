@@ -21,6 +21,20 @@ import type { EditorKeyAction, EditorKeyBinding } from "./editor-contract";
 // nowhere, leaving the keystroke to reach the editor. See route-shortcut.ts.
 
 const EDITOR_KEY_ACTIONS: Record<string, EditorKeyAction> = {
+  // Markdown first, matching the registry's own order: `buildEditorKeyBindings`
+  // preserves it, and CM6 tries same-key bindings in array order. Bold has to be
+  // offered `Mod-b` before Go to definition is, or the markdown command never
+  // gets the chance to claim it.
+  "editor.markdown.bold": "markdownBold",
+  "editor.markdown.italic": "markdownItalic",
+  "editor.markdown.code": "markdownCode",
+  "editor.markdown.strikethrough": "markdownStrikethrough",
+  "editor.markdown.link": "markdownLink",
+  "editor.markdown.bulletList": "markdownBulletList",
+  "editor.markdown.orderedList": "markdownOrderedList",
+  "editor.markdown.taskList": "markdownTaskList",
+  "editor.markdown.toggleTask": "markdownToggleTask",
+  "editor.markdown.blockquote": "markdownBlockquote",
   "editor.save": "save",
   "editor.find": "find",
   "editor.goToLine": "goToLine",

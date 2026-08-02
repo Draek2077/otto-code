@@ -130,6 +130,9 @@ const applyCommand = (target: EditorCore, message: EditorCommand): void => {
     case "replaceSelection":
       target.replaceSelection(message.text);
       break;
+    case "runMarkdownCommand":
+      target.runMarkdownCommand(message.name);
+      break;
   }
 };
 

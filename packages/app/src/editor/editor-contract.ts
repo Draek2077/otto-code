@@ -223,7 +223,42 @@ export type EditorKeyAction =
   | "goToLine"
   | "goToDefinition"
   | "findReferences"
-  | "renameSymbol";
+  | "renameSymbol"
+  | MarkdownCommandName;
+
+/**
+ * Markdown formatting the editor performs itself.
+ *
+ * Unlike every other `EditorKeyAction`, these are NOT forwarded to the host:
+ * the core runs them against its own document. They also DECLINE outside
+ * markdown context, which is what lets `Mod-b` mean bold in a `.md` file and
+ * fall through to Go to definition in a `.ts` one from a single keymap.
+ *
+ * The same names are the toolbar's vocabulary, through
+ * `EditorController.runMarkdownCommand`, so a button and a key run identical
+ * code.
+ */
+export type MarkdownCommandName =
+  | "markdownBold"
+  | "markdownItalic"
+  | "markdownCode"
+  | "markdownStrikethrough"
+  | "markdownLink"
+  | "markdownImage"
+  | "markdownBulletList"
+  | "markdownOrderedList"
+  | "markdownTaskList"
+  | "markdownToggleTask"
+  | "markdownBlockquote"
+  | "markdownCodeFence"
+  | "markdownHorizontalRule"
+  | "markdownTable"
+  | "markdownHeading1"
+  | "markdownHeading2"
+  | "markdownHeading3"
+  | "markdownHeading4"
+  | "markdownHeading5"
+  | "markdownHeading6";
 
 export interface EditorKeyBinding {
   action: EditorKeyAction;
@@ -242,6 +277,20 @@ export interface EditorKeyBinding {
  * than silently giving phones a different editor from desktops.
  */
 export const DEFAULT_EDITOR_KEY_BINDINGS: readonly EditorKeyBinding[] = [
+  // Markdown first, and the order matters: `Mod-b` appears twice, and the
+  // markdown command declines outside markdown so the second entry gets the key
+  // in a code file. Same reason the Markdown Editor section precedes File Editor
+  // in the registry.
+  { action: "markdownBold", key: "Mod-b" },
+  { action: "markdownItalic", key: "Mod-i" },
+  { action: "markdownCode", key: "Mod-Shift-c" },
+  { action: "markdownStrikethrough", key: "Mod-Shift-x" },
+  { action: "markdownLink", key: "Mod-k" },
+  { action: "markdownBulletList", key: "Mod-Shift-u" },
+  { action: "markdownOrderedList", key: "Mod-Shift-o" },
+  { action: "markdownTaskList", key: "Mod-Shift-l" },
+  { action: "markdownToggleTask", key: "Mod-Enter" },
+  { action: "markdownBlockquote", key: "Mod-Shift-q" },
   { action: "save", key: "Mod-s" },
   { action: "find", key: "Mod-f" },
   { action: "goToLine", key: "Mod-g" },
@@ -291,6 +340,16 @@ export interface EditorController {
    * plus a clipboard read or write.
    */
   replaceSelection(text: string): void;
+  /**
+   * Run a markdown formatting command — the formatting toolbar's entry point,
+   * and the same code the keymap runs, so a button and a key can never diverge.
+   *
+   * Deliberately fire-and-forget rather than reporting whether the command
+   * applied: the answer would have to cross the native bridge as a reply, and
+   * nothing in the UI acts on it. A command that declines (outside markdown, or
+   * with nothing to change) simply leaves the document alone.
+   */
+  runMarkdownCommand(name: MarkdownCommandName): void;
   // Split-view scroll sync. Optional: the web host implements these; the
   // native webview host does not (split view is web/desktop only).
   getScrollMetrics?(): EditorScrollMetrics | null;
@@ -416,6 +475,7 @@ export type EditorWebViewInbound =
   | { type: "selectLines"; startLine: number; endLine: number; reveal?: boolean }
   | { type: "selectAll" }
   | { type: "replaceSelection"; text: string }
+  | { type: "runMarkdownCommand"; name: MarkdownCommandName }
   | { type: "setDiagnostics"; diagnostics: readonly EditorDiagnostic[] }
   | { type: "getDoc"; requestId: number }
   | { type: "getSelection"; requestId: number }

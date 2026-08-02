@@ -32,13 +32,47 @@ describe("buildEditorKeyBindings", () => {
     expect(buildEditorKeyBindings()).toEqual([...DEFAULT_EDITOR_KEY_BINDINGS]);
   });
 
-  it("takes only the File Editor section", () => {
+  it("takes the File Editor and Markdown Editor sections, and nothing else", () => {
     const actions = new Set(buildEditorKeyBindings().map((binding) => binding.action));
     expect(actions).toEqual(
-      new Set(["save", "find", "goToLine", "goToDefinition", "findReferences", "renameSymbol"]),
+      new Set([
+        "save",
+        "find",
+        "goToLine",
+        "goToDefinition",
+        "findReferences",
+        "renameSymbol",
+        "markdownBold",
+        "markdownItalic",
+        "markdownCode",
+        "markdownStrikethrough",
+        "markdownLink",
+        "markdownBulletList",
+        "markdownOrderedList",
+        "markdownTaskList",
+        "markdownToggleTask",
+        "markdownBlockquote",
+      ]),
     );
-    // No general binding leaks in: Mod-k is the command center, not an editor key.
-    expect(buildEditorKeyBindings().map((binding) => binding.key)).not.toContain("Mod-k");
+    // No general binding leaks in. Mod-k IS in the keymap now, but as the
+    // markdown link command rather than the command center: the editor claims it
+    // through a registry row of its own, scoped to markdown, not by accident.
+    const modK = buildEditorKeyBindings().filter((binding) => binding.key === "Mod-k");
+    expect(modK).toEqual([{ action: "markdownLink", key: "Mod-k" }]);
+  });
+
+  // The single most load-bearing detail of the markdown keymap. The commands
+  // decline outside markdown and CM6 tries same-key bindings in array order, so
+  // bold must be OFFERED Mod-b first for both meanings to survive.
+  it("offers markdown bold Mod-b before go-to-definition", () => {
+    const keys = buildEditorKeyBindings();
+    const bold = keys.findIndex((binding) => binding.action === "markdownBold");
+    const definition = keys.findIndex(
+      (binding) => binding.action === "goToDefinition" && binding.key === "Mod-b",
+    );
+    expect(bold).toBeGreaterThanOrEqual(0);
+    expect(definition).toBeGreaterThan(bold);
+    expect(keys[bold]?.key).toBe("Mod-b");
   });
 
   it("carries a user rebind into the editor keymap", () => {

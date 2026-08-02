@@ -6,6 +6,13 @@ export type KeyboardFocusScope =
   // aside for a text field also steps aside here, but the editor additionally
   // owns combos (Mod+B → Go to Definition) that mean nothing in a plain input.
   | "code-editor"
+  // The same editor holding a markdown file. A narrower "code-editor", and the
+  // one scope in this union with a PARENT: a markdown file still wants Save,
+  // Find and Go to line, so bindings scoped to `code-editor` match here too
+  // (see FOCUS_SCOPE_PARENT in keyboard-shortcuts.ts). It exists because some
+  // markdown combos must not be claimed in a code file — `Mod+K` is a link
+  // here and the command center everywhere else.
+  | "markdown-editor"
   | "editable"
   | "browser"
   | "other";
@@ -69,7 +76,21 @@ export type KeyboardActionId =
   | "editor.goToLine"
   | "editor.goToDefinition"
   | "editor.findReferences"
-  | "editor.renameSymbol";
+  | "editor.renameSymbol"
+  // Markdown Editor actions. Same non-dispatched arrangement as the File Editor
+  // ids above, with one addition: their CM6 commands DECLINE outside markdown
+  // context, so `Mod+B` runs bold in a `.md` file and falls through to Go to
+  // definition in a `.ts` one, from a single keymap that knows neither.
+  | "editor.markdown.bold"
+  | "editor.markdown.italic"
+  | "editor.markdown.code"
+  | "editor.markdown.strikethrough"
+  | "editor.markdown.link"
+  | "editor.markdown.bulletList"
+  | "editor.markdown.orderedList"
+  | "editor.markdown.taskList"
+  | "editor.markdown.toggleTask"
+  | "editor.markdown.blockquote";
 
 export type KeyboardShortcutPayload =
   | { index: number }

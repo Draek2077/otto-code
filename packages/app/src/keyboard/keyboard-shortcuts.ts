@@ -50,6 +50,7 @@ export type ShortcutSectionId =
   | "projects"
   | "panels"
   | "editor"
+  | "markdown-editor"
   | "agent-input";
 
 export interface KeyboardShortcutHelpSection {
@@ -130,6 +131,7 @@ const SHORTCUT_HELP_SECTION_TITLES: Record<ShortcutSectionId, string> = {
   projects: "Projects",
   panels: "Panels",
   editor: "File Editor",
+  "markdown-editor": "Markdown Editor",
   "agent-input": "Agent Input",
 };
 
@@ -139,6 +141,7 @@ const SHORTCUT_HELP_SECTION_LABEL_KEYS: Record<ShortcutSectionId, string> = {
   projects: "settings.shortcuts.sections.projects",
   panels: "settings.shortcuts.sections.panels",
   editor: "settings.shortcuts.sections.editor",
+  "markdown-editor": "settings.shortcuts.sections.markdownEditor",
   "agent-input": "settings.shortcuts.sections.agentInput",
 };
 
@@ -189,6 +192,16 @@ const SHORTCUT_HELP_LABEL_KEYS: Record<string, string> = {
   "editor-go-to-definition": "settings.shortcuts.help.editorGoToDefinition",
   "editor-find-references": "settings.shortcuts.help.editorFindReferences",
   "editor-rename-symbol": "settings.shortcuts.help.editorRenameSymbol",
+  "markdown-bold": "settings.shortcuts.help.markdownBold",
+  "markdown-italic": "settings.shortcuts.help.markdownItalic",
+  "markdown-code": "settings.shortcuts.help.markdownCode",
+  "markdown-strikethrough": "settings.shortcuts.help.markdownStrikethrough",
+  "markdown-link": "settings.shortcuts.help.markdownLink",
+  "markdown-bullet-list": "settings.shortcuts.help.markdownBulletList",
+  "markdown-ordered-list": "settings.shortcuts.help.markdownOrderedList",
+  "markdown-task-list": "settings.shortcuts.help.markdownTaskList",
+  "markdown-toggle-task": "settings.shortcuts.help.markdownToggleTask",
+  "markdown-blockquote": "settings.shortcuts.help.markdownBlockquote",
 };
 
 const SHORTCUT_HELP_NOTE_KEYS: Record<string, string> = {
@@ -1188,6 +1201,151 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     },
   },
 
+  // --- Markdown Editor ---
+  // Declared BEFORE the File Editor section, and that order is load-bearing
+  // twice over. `buildEditorKeyBindings` walks this array in order, so the CM6
+  // keymap gets bold's `Mod-b` ahead of Go to definition's — and because the
+  // markdown commands return false outside markdown context, the same keymap
+  // runs bold in a `.md` file and falls through to Go to definition in a `.ts`
+  // one without either binding knowing what file is open.
+  //
+  // The scope is `markdown-editor`, not `code-editor`, and that is the whole
+  // reason the scope exists. These rows claim combos the app uses globally
+  // (`Mod+K` is the command center, `Mod+B` toggles the left sidebar), and a
+  // row scoped to `code-editor` would claim them in EVERY code file, where the
+  // markdown command declines and the key would simply die. Scoped this way
+  // they are taken only where they are meant.
+  //
+  // Inside a markdown file `Mod+K` is therefore a link rather than the command
+  // center. That is the same deliberate trade the File Editor section already
+  // makes with `Mod+B`, and it matches every other markdown editor.
+  //
+  // NOT here, on purpose: heading levels. Every conventional combo for them
+  // (`Mod+1`, `Alt+1`, `Mod+Alt+1`) is already a workspace or tab jump, and
+  // taking navigation away inside one file type costs more than a heading
+  // shortcut is worth. Headings live on the formatting toolbar, where the
+  // command surface reaches them without a key.
+  {
+    id: "markdown-bold-mod-b",
+    action: "editor.markdown.bold",
+    combo: "Mod+B",
+    when: { focusScope: "markdown-editor" },
+    help: {
+      id: "markdown-bold",
+      section: "markdown-editor",
+      label: "Bold",
+      keys: ["mod", "B"],
+    },
+  },
+  {
+    id: "markdown-italic-mod-i",
+    action: "editor.markdown.italic",
+    combo: "Mod+I",
+    when: { focusScope: "markdown-editor" },
+    help: {
+      id: "markdown-italic",
+      section: "markdown-editor",
+      label: "Italic",
+      keys: ["mod", "I"],
+    },
+  },
+  {
+    id: "markdown-code-mod-shift-c",
+    action: "editor.markdown.code",
+    combo: "Mod+Shift+C",
+    when: { focusScope: "markdown-editor" },
+    help: {
+      id: "markdown-code",
+      section: "markdown-editor",
+      label: "Inline code",
+      keys: ["mod", "shift", "C"],
+    },
+  },
+  {
+    id: "markdown-strikethrough-mod-shift-x",
+    action: "editor.markdown.strikethrough",
+    combo: "Mod+Shift+X",
+    when: { focusScope: "markdown-editor" },
+    help: {
+      id: "markdown-strikethrough",
+      section: "markdown-editor",
+      label: "Strikethrough",
+      keys: ["mod", "shift", "X"],
+    },
+  },
+  {
+    id: "markdown-link-mod-k",
+    action: "editor.markdown.link",
+    combo: "Mod+K",
+    when: { focusScope: "markdown-editor" },
+    help: {
+      id: "markdown-link",
+      section: "markdown-editor",
+      label: "Insert link",
+      keys: ["mod", "K"],
+    },
+  },
+  {
+    id: "markdown-bullet-list-mod-shift-u",
+    action: "editor.markdown.bulletList",
+    combo: "Mod+Shift+U",
+    when: { focusScope: "markdown-editor" },
+    help: {
+      id: "markdown-bullet-list",
+      section: "markdown-editor",
+      label: "Bullet list",
+      keys: ["mod", "shift", "U"],
+    },
+  },
+  {
+    id: "markdown-ordered-list-mod-shift-o",
+    action: "editor.markdown.orderedList",
+    combo: "Mod+Shift+O",
+    when: { focusScope: "markdown-editor" },
+    help: {
+      id: "markdown-ordered-list",
+      section: "markdown-editor",
+      label: "Numbered list",
+      keys: ["mod", "shift", "O"],
+    },
+  },
+  {
+    id: "markdown-task-list-mod-shift-l",
+    action: "editor.markdown.taskList",
+    combo: "Mod+Shift+L",
+    when: { focusScope: "markdown-editor" },
+    help: {
+      id: "markdown-task-list",
+      section: "markdown-editor",
+      label: "Task list",
+      keys: ["mod", "shift", "L"],
+    },
+  },
+  {
+    id: "markdown-toggle-task-mod-enter",
+    action: "editor.markdown.toggleTask",
+    combo: "Mod+Enter",
+    when: { focusScope: "markdown-editor" },
+    help: {
+      id: "markdown-toggle-task",
+      section: "markdown-editor",
+      label: "Check/uncheck task",
+      keys: ["mod", "Enter"],
+    },
+  },
+  {
+    id: "markdown-blockquote-mod-shift-q",
+    action: "editor.markdown.blockquote",
+    combo: "Mod+Shift+Q",
+    when: { focusScope: "markdown-editor" },
+    help: {
+      id: "markdown-blockquote",
+      section: "markdown-editor",
+      label: "Blockquote",
+      keys: ["mod", "shift", "Q"],
+    },
+  },
+
   // --- File Editor ---
   // The only bindings here that carry `focusScope: "code-editor"`, and the only
   // ones the app does not dispatch. Three things follow from that, and all three
@@ -1401,30 +1559,59 @@ export function matchesKeyboardShortcutContext(
     when.editable === false &&
     (context.focusScope === "message-input" ||
       context.focusScope === "editable" ||
-      context.focusScope === "code-editor")
+      context.focusScope === "code-editor" ||
+      context.focusScope === "markdown-editor")
   ) {
     return false;
   }
   if (when.terminal === false && context.focusScope === "terminal") return false;
   if (when.commandCenter === false && context.commandCenterOpen) return false;
-  if (when.focusScope !== undefined && context.focusScope !== when.focusScope) return false;
+  if (when.focusScope !== undefined && !focusScopeSatisfies(context.focusScope, when.focusScope)) {
+    return false;
+  }
   return true;
+}
+
+/**
+ * The one place a focus scope is narrower than another.
+ *
+ * A markdown file is still a file: Save, Find and Go to line are declared once,
+ * on `code-editor`, and must keep matching when the narrower scope is the one
+ * actually focused. Without this every File Editor row would have to be
+ * duplicated per scope, and the two copies would drift.
+ */
+const FOCUS_SCOPE_PARENT: Partial<Record<KeyboardFocusScope, KeyboardFocusScope>> = {
+  "markdown-editor": "code-editor",
+};
+
+function focusScopeSatisfies(actual: KeyboardFocusScope, required: KeyboardFocusScope): boolean {
+  return actual === required || FOCUS_SCOPE_PARENT[actual] === required;
 }
 
 /**
  * How specific a binding is to the CURRENT context, for picking a winner when
  * two of them claim the same combo. Only meaningful for a binding that has
- * already passed `matchesWhen` — a declared `focusScope` has therefore matched
- * exactly, which means the binding named the surface that happens to be focused
- * and the other one did not.
+ * already passed `matchesWhen`, so a declared `focusScope` has matched either
+ * exactly or through the parent chain.
+ *
+ * Three ranks, because there are three ways to claim a combo:
+ *   2 — names the focused surface exactly (Markdown Editor in a `.md` file)
+ *   1 — names a scope the focused surface inherits from (File Editor there too)
+ *   0 — applies everywhere
  *
  * This is what makes the File Editor section OVERRIDE the general bindings while
- * the editor has focus, without any general binding having to opt out. Ties keep
- * the first match in `SHORTCUT_BINDINGS` order, so ordering still decides among
+ * the editor has focus, and the Markdown Editor section override File Editor
+ * inside a markdown file, without any binding having to opt out. Ties keep the
+ * first match in `SHORTCUT_BINDINGS` order, so ordering still decides among
  * equally specific bindings.
  */
-function bindingSpecificity(binding: ParsedShortcutBinding): number {
-  return binding.when?.focusScope !== undefined ? 1 : 0;
+function bindingSpecificity(
+  binding: ParsedShortcutBinding,
+  context: KeyboardShortcutContext,
+): number {
+  const scope = binding.when?.focusScope;
+  if (scope === undefined) return 0;
+  return scope === context.focusScope ? 2 : 1;
 }
 
 function resolvePayload(
@@ -1522,7 +1709,7 @@ function resolveInitialChordStep(input: {
       continue;
     }
     // Strictly greater, so equally specific bindings keep first-match-wins.
-    const specificity = bindingSpecificity(binding);
+    const specificity = bindingSpecificity(binding, context);
     if (specificity > singleComboSpecificity) {
       singleComboMatch = buildMatchFromBinding(binding, event);
       singleComboSpecificity = specificity;
@@ -1584,7 +1771,7 @@ function resolveAdvancingChordStep(input: {
       // chord rebound onto the editor has to win the same way a single combo
       // does. The still-advancing candidates collected below are discarded
       // whenever a completion is returned, so scanning on costs nothing.
-      const specificity = bindingSpecificity(binding);
+      const specificity = bindingSpecificity(binding, context);
       if (specificity > completedSpecificity) {
         completedMatch = buildMatchFromBinding(binding, event);
         completedSpecificity = specificity;
@@ -1698,6 +1885,7 @@ export function buildKeyboardShortcutHelpSections(
     ["projects", []],
     ["panels", []],
     ["editor", []],
+    ["markdown-editor", []],
     ["agent-input", []],
   ]);
 
@@ -1735,6 +1923,9 @@ export function buildKeyboardShortcutHelpSections(
     "projects",
     "panels",
     "editor",
+    // After File Editor: it reads as the narrower section it is, and it is the
+    // only one that does not apply to every file you can open.
+    "markdown-editor",
     "agent-input",
   ];
 
