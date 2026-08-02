@@ -45,11 +45,12 @@ export function ensurePanelsRegistered(): void {
   // rollback, comments, tree guides), so adopting the tab means merging that
   // file properly.
   //
-  // `working_diff` and `commit_diff` are LIVE tab kinds, not dormant ones:
-  // they are in the union (`workspace-tabs/model.ts`), they have identity
-  // builders (`workspace-tabs/identity.ts`), and the tab menu can open them.
-  // With no registered panel, opening one yields a dead tab. Either register a
-  // panel or remove the kinds from the union — leaving both halves as they are
-  // is the state that produces the dead tab.
+  // `working_diff` and `commit_diff` stay in the tab union
+  // (`workspace-tabs/model.ts`) because Otto inherits Paseo's tab model
+  // wholesale, but nothing can open one: `normalizeWorkspaceTabTarget`
+  // (`workspace-tabs/identity.ts`) deliberately returns null for both, which is
+  // what keeps the missing panel from ever becoming a dead tab. That null is
+  // load-bearing — if you register a diff panel here, add the matching branches
+  // there in the same change, and not before.
   panelsRegistered = true;
 }
