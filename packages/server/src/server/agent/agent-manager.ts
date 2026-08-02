@@ -2535,16 +2535,32 @@ export class AgentManager {
       },
       "agent.manager.close.start",
     );
-    // Drain queued provider events before deciding what is still running: a
+    // Let queued provider events land before deciding what is still running: a
     // child whose terminal status was already in flight when close was called
     // is recorded as the completion it was, rather than canceled on the way
-    // past. Whatever is still running after the drain cannot outlive the
-    // session that reported it, and left alone its status stays "running" so
-    // the rail shows a live subagent under a closed parent.
-    await this.flush();
+    // past. Whatever is still running after that cannot outlive the session
+    // that reported it, and left alone its status stays "running" so the rail
+    // shows a live subagent under a closed parent.
+    //
+    // One event-loop turn, not flush(): flush also drains persistence, and a
+    // close triggered from inside a persistence task then waits on itself.
+    await new Promise<void>((resolveTurn) => setImmediate(resolveTurn));
     this.cancelRunningProviderSubagents(agent);
     const closedAgent = this.prepareAgentForClosure(agent, "agent closed");
-    await agent.session.close();
+    // A provider that fails to clean up must not take the closure with it. The
+    // error still surfaces to the caller, but the record is persisted and the
+    // closed state emitted first, so the agent is resumable instead of stuck
+    // reading as live with no session behind it.
+    let closeError: unknown;
+    try {
+      await agent.session.close();
+    } catch (error) {
+      closeError = error;
+      this.logger.warn(
+        { err: error, agentId, provider: agent.provider },
+        "Provider session close failed; closing the agent anyway",
+      );
+    }
     this.timelineStore.delete(agentId);
     await this.persistSnapshot(closedAgent);
     this.emitClosedAgent(closedAgent, { persist: false });
@@ -2556,6 +2572,9 @@ export class AgentManager {
       },
       "agent.manager.close.complete",
     );
+    if (closeError) {
+      throw closeError;
+    }
   }
 
   async archiveAgent(agentId: string): Promise<{ archivedAt: string }> {
