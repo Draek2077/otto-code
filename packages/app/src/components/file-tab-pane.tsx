@@ -16,6 +16,7 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
+  Download,
   History,
   List,
   Save,
@@ -69,6 +70,9 @@ import { useEditorPrefsStore } from "@/editor/editor-prefs-store";
 import { GoToLineDialog } from "@/editor/go-to-line-dialog";
 import { useCodeIndexFeature } from "@/editor/use-code-index-feature";
 import { useMarkdownLinkTargets } from "@/editor/use-markdown-link-targets";
+import { useSessionStore } from "@/stores/session-store";
+import { exportMarkdownAsHtml } from "@/components/markdown/export-markdown-html";
+import { isMarkdownPath } from "@/editor/markdown/markdown-path";
 import type { MarkdownTaskToggleInput } from "@/components/markdown/task-context";
 import { setTaskCheckedAtLine } from "@/editor/markdown/markdown-format";
 import { useDefinitionSources } from "@/editor/use-definition-sources";
@@ -141,6 +145,7 @@ const ThemedList = withUnistyles(List);
 const ThemedHistory = withUnistyles(History);
 const ThemedSourceControl = withUnistyles(SourceControlPanelIcon);
 const ThemedWandStars = withUnistyles(WandStars);
+const ThemedDownload = withUnistyles(Download);
 const ThemedSave = withUnistyles(Save);
 const ThemedUndo2 = withUnistyles(Undo2);
 const ThemedWrapText = withUnistyles(WrapText);
@@ -478,6 +483,7 @@ function PreviewOnlyView({
   location,
   modeBarProps,
   toolbarLeadingSlot,
+  onExportHtml,
   fileInfo,
   onFileInfo,
   onOpenHistory,
@@ -490,6 +496,8 @@ function PreviewOnlyView({
   location: WorkspaceFileLocation;
   modeBarProps: FileViewModeBarProps | null;
   toolbarLeadingSlot: ReactNode;
+  /** Null when the document is not markdown, or the host cannot write it. */
+  onExportHtml: (() => void) | null;
   fileInfo: FilePreviewFileInfo | null;
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
   onOpenHistory: ((range: FileHistoryRange | null) => void) | null;
@@ -614,6 +622,7 @@ function PreviewOnlyView({
           onRefine={onRefine}
           showLeadingSeparator={Boolean(handleOpenHistory || onViewChanges)}
         />
+        <FileExportToolbarGroup onExportHtml={onExportHtml} />
         <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
         <ToolbarSeparator />
         {hasCodeIndex ? (
@@ -712,6 +721,25 @@ function PreviewOnlyView({
  * and no diff; everything in this group can only ever propose, and the proposal
  * is reviewed before a byte is written.
  */
+/**
+ * The export button, as a component so neither toolbar spends a branch of its
+ * cyclomatic-complexity budget on it. Same reason `FileAiToolbarGroup` exists.
+ */
+function FileExportToolbarGroup({ onExportHtml }: { onExportHtml: (() => void) | null }) {
+  const { t } = useTranslation();
+  if (!onExportHtml) {
+    return null;
+  }
+  return (
+    <ToolbarIconButton
+      label={t("editor.exportHtml.action")}
+      testID="file-export-html"
+      Icon={ThemedDownload}
+      onPress={onExportHtml}
+    />
+  );
+}
+
 function FileAiToolbarGroup({
   onRefine,
   showLeadingSeparator,
@@ -1139,6 +1167,7 @@ function EditorModeView({
   split,
   modeBarProps,
   toolbarLeadingSlot,
+  onExportHtml,
   controllerRef,
   onFileInfo,
   onOpenHistory,
@@ -1152,6 +1181,8 @@ function EditorModeView({
   split: boolean;
   modeBarProps: FileViewModeBarProps | null;
   toolbarLeadingSlot: ReactNode;
+  /** Null when the document is not markdown, or the host cannot write it. */
+  onExportHtml: (() => void) | null;
   controllerRef: RefObject<EditorController | null>;
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
   onOpenHistory: ((range: FileHistoryRange | null) => void) | null;
@@ -1773,6 +1804,7 @@ function EditorModeView({
           showLeadingSeparator
         />
         <FileAiToolbarGroup onRefine={onRefine} showLeadingSeparator />
+        <FileExportToolbarGroup onExportHtml={onExportHtml} />
         <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
         {/* Save/revert/history act on the FILE; outline and find navigate WITHIN
             it. The separator is the line between those two jobs, and both groups
@@ -2169,6 +2201,46 @@ export function FileTabPane({
     workspaceRoot,
   ]);
 
+  /**
+   * Export the document as standalone HTML beside itself.
+   *
+   * Exports the live buffer rather than what is on disk, so an unsaved edit is
+   * in the file you just produced. That is the opposite of Refine's rule above,
+   * and deliberately: Refine rewrites the source and must not race a pending
+   * save, while this only ever writes a separate generated file.
+   */
+  // Subscribed rather than read imperatively inside the memo: a getState() call
+  // there captures whatever client existed when the memo last ran, which is the
+  // stale-read this codebase has been bitten by before.
+  const exportClient = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
+  const onExportHtml = useMemo(() => {
+    const client = exportClient;
+    if (!client || !isMarkdownPath(location.path)) {
+      return null;
+    }
+    return () => {
+      void (async () => {
+        const markdown =
+          (await controllerRef.current?.getDoc()) ??
+          useEditorBufferStore.getState().buffers[
+            buildEditorBufferKey({ serverId, workspaceId, path: location.path })
+          ]?.baseline?.content ??
+          "";
+        const result = await exportMarkdownAsHtml({
+          writer: client,
+          cwd: workspaceRoot,
+          path: location.path,
+          markdown,
+        });
+        if (result.status === "written") {
+          toast.show(t("editor.exportHtml.written", { path: result.path }));
+        } else {
+          toast.error(t("editor.exportHtml.failed", { message: result.message }));
+        }
+      })();
+    };
+  }, [controllerRef, exportClient, location.path, serverId, t, toast, workspaceId, workspaceRoot]);
+
   const content =
     effectiveMode === "preview" ? (
       <PreviewOnlyView
@@ -2178,6 +2250,7 @@ export function FileTabPane({
         location={location}
         modeBarProps={modeBarProps}
         toolbarLeadingSlot={toolbarLeadingSlot}
+        onExportHtml={onExportHtml}
         fileInfo={fileInfo}
         onFileInfo={setFileInfo}
         onOpenHistory={onOpenHistory}
@@ -2193,6 +2266,7 @@ export function FileTabPane({
         split={effectiveMode === "split"}
         modeBarProps={modeBarProps}
         toolbarLeadingSlot={toolbarLeadingSlot}
+        onExportHtml={onExportHtml}
         controllerRef={controllerRef}
         onFileInfo={setFileInfo}
         onOpenHistory={onOpenHistory}

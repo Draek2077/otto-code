@@ -2453,6 +2453,11 @@ export const zhCN: TranslationResources = {
       markComplete: "标记为完成",
       markIncomplete: "标记为未完成",
     },
+    exportHtml: {
+      action: "导出为 HTML",
+      written: "已导出到 {{path}}",
+      failed: "无法导出：{{message}}",
+    },
     save: "保存",
     revert: "还原",
     cancel: "取消",
@@ -2798,6 +2803,35 @@ export const zhCN: TranslationResources = {
     subAgentActivity: "Sub-agent 活动",
     input: "输入",
     output: "输出",
+  },
+  // Tool-call group summaries are literal English pending the pre-release i18n
+  // sweep, like the Refine tab strings above.
+  toolCallGroup: {
+    editedFiles: {
+      one: "edited {{count}} file",
+      other: "edited {{count}} files",
+    },
+    commands: {
+      one: "ran {{count}} command",
+      other: "ran {{count}} commands",
+    },
+    readFiles: {
+      one: "read {{count}} file",
+      other: "read {{count}} files",
+    },
+    searches: {
+      one: "searched {{count}} time",
+      other: "searched {{count}} times",
+    },
+    otherTools: {
+      one: "used {{count}} other tool",
+      other: "used {{count}} other tools",
+    },
+    ottoCalls: {
+      one: "called Otto {{count}} time",
+      other: "called Otto {{count}} times",
+    },
+    and: "and",
   },
   renameModal: {
     rename: "重命名",

@@ -2531,6 +2531,11 @@ export const ru: TranslationResources = {
       markComplete: "Отметить выполненным",
       markIncomplete: "Снять отметку",
     },
+    exportHtml: {
+      action: "Экспорт в HTML",
+      written: "Экспортировано в {{path}}",
+      failed: "Не удалось экспортировать: {{message}}",
+    },
     save: "Сохранить",
     revert: "Откатить",
     cancel: "Отмена",
@@ -2884,6 +2889,35 @@ export const ru: TranslationResources = {
     subAgentActivity: "Субагентская деятельность",
     input: "Вход",
     output: "Выход",
+  },
+  // Tool-call group summaries are literal English pending the pre-release i18n
+  // sweep, like the Refine tab strings above.
+  toolCallGroup: {
+    editedFiles: {
+      one: "edited {{count}} file",
+      other: "edited {{count}} files",
+    },
+    commands: {
+      one: "ran {{count}} command",
+      other: "ran {{count}} commands",
+    },
+    readFiles: {
+      one: "read {{count}} file",
+      other: "read {{count}} files",
+    },
+    searches: {
+      one: "searched {{count}} time",
+      other: "searched {{count}} times",
+    },
+    otherTools: {
+      one: "used {{count}} other tool",
+      other: "used {{count}} other tools",
+    },
+    ottoCalls: {
+      one: "called Otto {{count}} time",
+      other: "called Otto {{count}} times",
+    },
+    and: "and",
   },
   renameModal: {
     rename: "Переименовать",

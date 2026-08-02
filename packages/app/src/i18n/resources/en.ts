@@ -2571,6 +2571,11 @@ export const en = {
       markComplete: "Mark complete",
       markIncomplete: "Mark incomplete",
     },
+    exportHtml: {
+      action: "Export as HTML",
+      written: "Exported to {{path}}",
+      failed: "Could not export: {{message}}",
+    },
     save: "Save",
     revert: "Revert",
     cancel: "Cancel",
@@ -2887,6 +2892,33 @@ export const en = {
     input: "Input",
     output: "Output",
   },
+  toolCallGroup: {
+    editedFiles: {
+      one: "edited {{count}} file",
+      other: "edited {{count}} files",
+    },
+    commands: {
+      one: "ran {{count}} command",
+      other: "ran {{count}} commands",
+    },
+    readFiles: {
+      one: "read {{count}} file",
+      other: "read {{count}} files",
+    },
+    searches: {
+      one: "searched {{count}} time",
+      other: "searched {{count}} times",
+    },
+    otherTools: {
+      one: "used {{count}} other tool",
+      other: "used {{count}} other tools",
+    },
+    ottoCalls: {
+      one: "called Otto {{count}} time",
+      other: "called Otto {{count}} times",
+    },
+    and: "and",
+  },
   renameModal: {
     rename: "Rename",
     saving: "Saving...",
@@ -2980,6 +3012,15 @@ export const en = {
         options: {
           interrupt: "Interrupt",
           queue: "Queue",
+        },
+      },
+      toolCallDetail: {
+        label: "Tool call display",
+        description: "How tool calls appear in the timeline",
+        accessibilityLabel: "Select tool call display ({{value}})",
+        options: {
+          overview: "Summary",
+          detailed: "Full detail",
         },
       },
       interfaceMode: {
@@ -3077,15 +3118,6 @@ export const en = {
       autoExpandReasoning: {
         label: "Always expand reasoning",
         description: "Show agent thinking and chain-of-thought blocks fully expanded by default",
-      },
-      toolCallDetail: {
-        label: "Tool call display",
-        description: "How tool calls appear in the timeline",
-        accessibilityLabel: "Select tool call display ({{value}})",
-        options: {
-          overview: "Summary",
-          detailed: "Full detail",
-        },
       },
     },
     preview: {
