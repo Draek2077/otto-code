@@ -18,6 +18,7 @@
     "*.lock",
     "**/*.gen.ts",
     "**/*.gen.tsx",
+    "**/*webview-html.ts",
     "AGENTS.md",
     "packages/server/AGENTS.md"
   ]
