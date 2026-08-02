@@ -473,17 +473,27 @@ async function connectToPackagedApp({
 }
 
 async function waitForPackagedAppPage(browser, deadline) {
+  let observedUrls = [];
   while (Date.now() < deadline) {
-    const page = browser
-      .contexts()
-      .flatMap((context) => context.pages())
-      .find((candidate) => candidate.url().startsWith("otto://app/"));
+    const pages = browser.contexts().flatMap((context) => context.pages());
+    const page = pages.find((candidate) => candidate.url().startsWith("otto://app/"));
     if (page) {
       return page;
     }
+    // Remember what WAS open. A bare "timed out" cannot distinguish a renderer
+    // that never opened from one that opened on the wrong URL (a failed
+    // protocol fetch lands on about:blank), and the packaged app logs nothing
+    // between creating the window and painting it.
+    if (pages.length > 0) {
+      observedUrls = pages.map((candidate) => candidate.url());
+    }
     await delay(250);
   }
-  throw new Error("Timed out waiting for the packaged otto://app/ renderer");
+  throw new Error(
+    `Timed out waiting for the packaged otto://app/ renderer. Pages seen: ${
+      observedUrls.length > 0 ? observedUrls.join(", ") : "(none — no renderer ever opened)"
+    }`,
+  );
 }
 
 async function assertPackagedRendererLoaded(page, deadline) {
@@ -873,6 +883,29 @@ async function smokePackagedDesktopApp({ appPath }) {
       daemonHome,
       deadline,
     });
+    // Renderer-side failures are invisible in the app's main-process log, which
+    // is silent between creating the window and painting it. Surfacing them here
+    // is the difference between "timed out" and knowing which request 404'd.
+    for (const context of browser.contexts()) {
+      context.on("page", (opened) => {
+        console.log(`Packaged desktop smoke: renderer page opened at ${opened.url()}`);
+        opened.on("console", (message) => {
+          if (message.type() === "error") {
+            console.log(`Packaged desktop smoke: renderer console error: ${message.text()}`);
+          }
+        });
+        opened.on("pageerror", (error) => {
+          console.log(`Packaged desktop smoke: renderer page error: ${error.message}`);
+        });
+        opened.on("requestfailed", (request) => {
+          console.log(
+            `Packaged desktop smoke: renderer request failed ${request.url()} — ${
+              request.failure()?.errorText ?? "unknown"
+            }`,
+          );
+        });
+      });
+    }
     page = await waitForPackagedAppPage(browser, deadline);
     await assertPackagedRendererLoaded(page, deadline);
     console.log("Packaged desktop smoke: real app renderer and preload bridge loaded");
