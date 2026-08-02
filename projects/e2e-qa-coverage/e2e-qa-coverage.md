@@ -70,14 +70,10 @@ npm run e2e:report                       # open Playwright's HTML report from th
 A full sweep should go to a file and be read afterwards, never watched:
 `npm run e2e > $env:TEMP\e2e-sweep.txt 2>&1`.
 
-**Browsers are a one-time install, not a per-run flag.** `npm run e2e:install` fetches the
-chromium build the pinned Playwright needs. Missing it produces
-`Executable doesn't exist at ...chromium_headless_shell-<rev>`, because headless mode launches
-the headless shell — having the full `chromium-<rev>` is not enough, and a bare
-`playwright install` after a version bump only lands what that version pins. Setting
-`E2E_BROWSER_CHANNEL=msedge` drives installed Edge instead; that is an escape hatch for a
-machine that can't download browsers, not the normal path, and it tests Edge rather than the
-browser CI runs.
+**Browsers install themselves now.** `npm run e2e` runs `browsers:install` as a `pre` hook, so a
+missing chromium downloads rather than failing the run. The rule that governs which browser, why
+it is not Electron's, and how to read the `Executable doesn't exist at ...` failure lives in
+[docs/testing.md](../../docs/testing.md#one-browser-and-which-one).
 
 Phase 1 adds Playwright `@cat:*` tags to every `test.describe`, so category runs become
 `--grep @cat:terminal` instead of filename globs, and the coverage check can verify tags too.

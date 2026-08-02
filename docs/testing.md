@@ -165,6 +165,55 @@ Codex MultiAgentV2 real tests use local Codex authentication rather than the Ope
 - Server: `packages/server/src/test-utils/vitest-setup.ts` loads `.env.test`, sets `OTTO_SUPERVISED=0`, and disables Git/SSH prompts. Add new global env shims here, not in individual tests.
 - App: `packages/app/vitest.setup.ts` provides `expo`/`__DEV__` shims and stubs a few native-only modules (`react-native-unistyles`, `react-native-svg`, `expo-linking`, `@xterm/addon-ligatures`). Stubbing here is for modules that have no meaningful Node behavior — not a license to mock app code.
 
+## One browser, and which one
+
+Otto ships inside Electron, so in production the app renders in **Electron's bundled Chromium** and
+the browser pane is a `<webview>` on that same engine. Automated tests do not drive that engine.
+Everything that needs a real browser drives **Playwright's bundled Chromium**, on every platform,
+in CI and locally alike.
+
+Those are two different Chromium builds, and keeping them different is deliberate. Playwright's
+build is pinned, downloadable, identical on Windows, macOS and Linux, and is what CI runs; chasing
+Electron's exact Chromium would mean booting Electron for tests that only need a DOM, which is
+slower, and platform-specific in a way that turns one failing assertion into three per-OS
+investigations. Where Electron genuinely _is_ the thing under test, a harness drives Electron
+directly: the packaged desktop smoke and the browser tab bridge E2E both do, and those are the
+right places for engine-specific behaviour to be proven.
+
+**The pin is the `playwright` version in the root `package.json`, and nothing else.** Never pin a
+Chromium revision by hand, and never point a config at an explicit `executablePath`. A revision
+written down anywhere other than that dependency is a second source of truth that will drift.
+
+Two tiers need the browser present:
+
+| Tier                | Command                | What it launches                                      |
+| ------------------- | ---------------------- | ----------------------------------------------------- |
+| `*.browser.test.ts` | `npm run test:browser` | Vitest browser mode, headless, the **headless shell** |
+| `packages/app/e2e/` | `npm run e2e`          | Playwright, `Desktop Chrome`, the **full chromium**   |
+
+`npm run browsers:install` fetches both, and both `test:browser` and `test:e2e` now run it as a
+`pre` hook, so a missing browser downloads itself instead of failing the run. When the browser is
+already present the hook costs about a second and touches no network.
+
+### When it still goes wrong
+
+The failure reads `Executable doesn't exist at ...chromium_headless_shell-<rev>`, and it is almost
+always **a missing install, not a version mismatch**. Two things make it look like a mismatch:
+
+- **Headless and headed are separate downloads.** Having `chromium-<rev>` is not enough for
+  `test:browser`, which launches the headless shell. `playwright install chromium` lands both.
+- **The browser cache is user-level, not repo-level.** `~/AppData/Local/ms-playwright` (or
+  `~/.cache/ms-playwright`) is shared by every project on the machine, so newer revisions another
+  project installed sit right next to the one this repo needs. Seeing a higher number in that
+  directory does not mean this repo is behind; it means some other repo is ahead. Read what
+  `npx playwright install --dry-run chromium` says this repo wants, then install that.
+
+`E2E_BROWSER_CHANNEL=msedge` drives an installed Edge instead of the downloaded Chromium. It is an
+escape hatch for a machine that cannot download browsers, and it tests Edge rather than the browser
+CI runs, so it must never be the default or appear in CI. The one standing exception is the demo
+capture pipeline, which sets it automatically on Windows; see
+[site-demos.md](site-demos.md).
+
 ## App end-to-end tiers (Playwright)
 
 The app's browser E2E suite in `packages/app/e2e/` runs a fully isolated stack per run —
