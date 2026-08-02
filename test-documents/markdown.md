@@ -172,3 +172,19 @@ Inside a fence the marker is code, never an alert:
 > [!NOTE]
 > This block must render as source, markers included.
 ```
+
+## HTML tables
+
+An HTML `<table>` now translates to a GFM table instead of unwrapping to a run
+of cell text. `thead`/`tbody` are wrappers and are ignored; the first row is the
+header.
+
+<table>
+  <thead>
+    <tr><th>Format</th><th>Rendered</th><th>Editable</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Markdown</td><td>yes</td><td>yes</td></tr>
+    <tr><td>AsciiDoc</td><td>yes</td><td>source only</td></tr>
+  </tbody>
+</table>

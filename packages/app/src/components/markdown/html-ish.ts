@@ -471,6 +471,9 @@ function translateTagToMarkdown(
     const inner = collapseToSingleLine(renderInlineTokens(children, options, true)).trim();
     return inner ? `${delimiter}${inner}${delimiter}` : "";
   }
+  if (token.name === "table") {
+    return renderTableToken(children, options);
+  }
   if (token.name === "blockquote") {
     return `\n\n${prefixLines(renderInlineTokens(children, options, true).trim(), "> ")}\n\n`;
   }
@@ -487,6 +490,65 @@ function translateTagToMarkdown(
 
 function collapseToSingleLine(value: string): string {
   return value.replace(/\s*\r?\n\s*/g, " ");
+}
+
+/**
+ * An HTML `<table>` as a GFM table.
+ *
+ * Without this a table unwrapped to a run of unseparated cell text: legible in
+ * the loosest sense, but it lost the one thing a table is for. `thead`/`tbody`
+ * are ignored as wrappers — the rows are found wherever they sit — and the
+ * first row becomes the header, which is what GFM requires and what an HTML
+ * table almost always means.
+ *
+ * A cell whose content will not fit a markdown row (a nested list, a second
+ * table, anything with a newline) is collapsed to one line. GFM has no way to
+ * express those, so the choice is between losing the layout and losing the
+ * table, and the table is worth more.
+ */
+function renderTableToken(children: HtmlToken[], options: HtmlishOptions): string {
+  const rows: string[][] = [];
+  for (let index = 0; index < children.length; index += 1) {
+    const token = children[index];
+    if (token.kind !== "tag" || token.closing || token.name !== "tr") {
+      continue;
+    }
+    const rowEnd = findMatchingClose(children, index, "tr");
+    if (rowEnd === null) {
+      continue;
+    }
+    const cells: string[] = [];
+    for (let cursor = index + 1; cursor < rowEnd; cursor += 1) {
+      const cell = children[cursor];
+      if (cell.kind !== "tag" || cell.closing || (cell.name !== "td" && cell.name !== "th")) {
+        continue;
+      }
+      const cellEnd = findMatchingClose(children, cursor, cell.name);
+      if (cellEnd === null) {
+        continue;
+      }
+      const inner = renderInlineTokens(children.slice(cursor + 1, cellEnd), options, true);
+      cells.push(collapseToSingleLine(inner).trim().replace(/\|/g, "\\|"));
+      cursor = cellEnd;
+    }
+    if (cells.length > 0) {
+      rows.push(cells);
+    }
+    index = rowEnd;
+  }
+
+  if (rows.length === 0) {
+    // No rows means nothing a GFM table could carry; fall back to the old
+    // behaviour rather than emitting an empty table.
+    return renderInlineTokens(children, options, true);
+  }
+
+  const columnCount = Math.max(...rows.map((row) => row.length));
+  const line = (cells: string[]) =>
+    `| ${Array.from({ length: columnCount }, (_unused, column) => cells[column] ?? "").join(" | ")} |`;
+  const [header, ...body] = rows;
+  const divider = `| ${Array.from({ length: columnCount }, () => "---").join(" | ")} |`;
+  return `\n\n${[line(header), divider, ...body.map(line)].join("\n")}\n\n`;
 }
 
 /**

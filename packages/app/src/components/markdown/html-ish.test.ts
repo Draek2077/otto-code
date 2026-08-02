@@ -458,7 +458,6 @@ describe("splitHtmlishMarkdown", () => {
 
   it("drops tags with no markdown equivalent but keeps their text", () => {
     expect(normalizeHtmlishMarkdown('<iframe src="x">fallback</iframe>')).toBe("fallback");
-    expect(normalizeHtmlishMarkdown("<table><tr><td>cell</td></tr></table>")).toBe("cell");
     expect(normalizeHtmlishMarkdown('<marquee onclick="evil()">text</marquee>')).toBe("text");
   });
 
@@ -502,3 +501,41 @@ function withoutArrayToSorted<T>(callback: () => T): T {
     }
   }
 }
+
+describe("html tables", () => {
+  it("translates a table to GFM rather than unwrapping it to cell text", () => {
+    const html = "<table><tr><th>Name</th><th>Size</th></tr><tr><td>a</td><td>1</td></tr></table>";
+    expect(normalizeHtmlishMarkdown(html).trim()).toBe("| Name | Size |\n| --- | --- |\n| a | 1 |");
+  });
+
+  it("ignores thead and tbody wrappers", () => {
+    const html =
+      "<table><thead><tr><th>h</th></tr></thead><tbody><tr><td>b</td></tr></tbody></table>";
+    expect(normalizeHtmlishMarkdown(html).trim()).toBe("| h |\n| --- |\n| b |");
+  });
+
+  it("escapes a pipe inside a cell so the row survives", () => {
+    const html = "<table><tr><th>a|b</th></tr><tr><td>c</td></tr></table>";
+    expect(normalizeHtmlishMarkdown(html)).toContain(String.raw`a\|b`);
+  });
+
+  it("pads a short row so every row has the same column count", () => {
+    const html = "<table><tr><th>a</th><th>b</th></tr><tr><td>c</td></tr></table>";
+    expect(normalizeHtmlishMarkdown(html).trim()).toBe("| a | b |\n| --- | --- |\n| c |  |");
+  });
+
+  it("keeps inline markup inside a cell", () => {
+    const html = "<table><tr><th><strong>x</strong></th></tr><tr><td><em>y</em></td></tr></table>";
+    expect(normalizeHtmlishMarkdown(html).trim()).toBe("| **x** |\n| --- |\n| *y* |");
+  });
+
+  // GFM cannot express a multi-line cell, so the table is worth more than the layout.
+  it("collapses a multi-line cell onto one row", () => {
+    const html = "<table><tr><th>a\n  b</th></tr><tr><td>c</td></tr></table>";
+    expect(normalizeHtmlishMarkdown(html).trim()).toBe("| a b |\n| --- |\n| c |");
+  });
+
+  it("falls back to plain text for a table with no rows", () => {
+    expect(normalizeHtmlishMarkdown("<table>orphan</table>").trim()).toBe("orphan");
+  });
+});
