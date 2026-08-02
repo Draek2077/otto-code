@@ -89,6 +89,7 @@ function createServer() {
   const agentManager = {
     subscribe: vi.fn(() => () => {}),
     setAgentAttentionCallback: vi.fn(),
+    setAgentActivelyWatchedProbe: vi.fn(),
     getMetricsSnapshot: vi.fn(() => ({
       total: 0,
       byLifecycle: {},
