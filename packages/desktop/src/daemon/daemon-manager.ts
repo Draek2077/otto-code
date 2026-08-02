@@ -37,7 +37,7 @@ import {
   closeLocalTransportSession,
 } from "./local-transport.js";
 import { createNodeEntrypointInvocation, resolveDaemonRunnerEntrypoint } from "./runtime-paths.js";
-import { respondToQuitConfirm } from "./quit-confirm.js";
+import { markQuitPreConfirmed, respondToQuitConfirm } from "./quit-confirm.js";
 import { runExternalCliJsonCommand, runExternalCliTextCommand } from "./cli/external.js";
 import {
   createDesktopSettingsCommandHandlers,
@@ -645,6 +645,12 @@ export function createDaemonCommandHandlers(options?: {
       return downloadAndInstallUpdate(
         { currentVersion, releaseChannel: await resolveRequestedReleaseChannel(args) },
         async () => {
+          // The user already agreed to this quit by pressing "Update now", and
+          // the installer is spawned before app.quit() lands. A "warn before
+          // quitting" prompt here would be asking a question that's already
+          // answered — and cancelling it wouldn't save the session anyway,
+          // because the installer taskkills the app on its way through.
+          markQuitPreConfirmed();
           await stopDesktopDaemon("app_update");
         },
       );

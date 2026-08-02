@@ -197,6 +197,11 @@ export class ManualDownloadUpdateRuntime implements AppUpdateRuntime {
   quitAndInstall(): void {
     console.warn("[auto-updater] Ignoring quitAndInstall: this build cannot install in place.");
   }
+
+  installDownloadedUpdate(): void {
+    // Nothing is ever downloaded on this path, so there is nothing to apply.
+    // Silent rather than warning: this runs on every quit.
+  }
 }
 
 async function fetchReleases(): Promise<unknown> {
