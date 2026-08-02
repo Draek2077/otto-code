@@ -651,9 +651,9 @@ type NumericUsageKey = {
   [K in keyof AgentUsage]-?: AgentUsage[K] extends number | undefined ? K : never;
 }[keyof AgentUsage];
 
-function assignUsageNumber(usage: AgentUsage, key: NumericUsageKey, value: number | undefined) {
+function addUsageNumber(usage: AgentUsage, key: NumericUsageKey, value: number | undefined) {
   if (value !== undefined) {
-    usage[key] = value;
+    usage[key] = (usage[key] ?? 0) + value;
   }
 }
 
@@ -839,11 +839,15 @@ function mergeOpenCodeStepFinishUsage(
     (cacheWriteTokens ?? 0);
   const cost = readPositiveFiniteNumber(part.cost);
 
-  assignUsageNumber(usage, "inputTokens", inputTokens);
-  assignUsageNumber(usage, "cachedInputTokens", cacheReadTokens);
-  assignUsageNumber(usage, "outputTokens", outputTokens);
+  // Added, not assigned. OpenCode's token leaves are per-step, so a turn that
+  // takes several step-finish parts reports each step's own counts; keeping only
+  // the last one silently under-counted every multi-step turn. (Its cost leaf is
+  // a running session total instead, which is why that one is handled apart.)
+  addUsageNumber(usage, "inputTokens", inputTokens);
+  addUsageNumber(usage, "cachedInputTokens", cacheReadTokens);
+  addUsageNumber(usage, "outputTokens", outputTokens);
   if (totalTokens > 0) {
-    usage.contextWindowUsedTokens = totalTokens;
+    usage.contextWindowUsedTokens = (usage.contextWindowUsedTokens ?? 0) + totalTokens;
   }
   if (cost !== undefined) {
     usage.totalCostUsd = options.totalCostUsd ?? (usage.totalCostUsd ?? 0) + cost;
