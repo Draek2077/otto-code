@@ -28,8 +28,8 @@ someone to run it by hand.
 | Compact/mobile layout smoke (viewport 375px: sidebar overlay, tab switcher lists all panes)                      | ❌     | resize viewport per key screen            | T1   | P1  |
 | Animations toggle disables page-fade veil (durations 0 when off, no flash on re-enable)                          | ✅     | `appearance-theme-animations.spec.ts`     | T1   | —   |
 | Command center lists and opens workspaces                                                                        | 🟡     | `command-center-workspaces.spec.ts`       | T1   | —   |
-| Sidebar help entry point                                                                                         | 🟡     | `sidebar-help.spec.ts`                    | T1   | —   |
-| Sidebar resize handle (drag, persisted width)                                                                    | 🟡     | `sidebar-resize-handle.spec.ts`           | T1   | —   |
+| Sidebar help entry point                                                                                         | ❌     | no sidebar help menu in Otto              | T1   | P2  |
+| Sidebar resize handle (drag, persisted width)                                                                    | ❌     | Otto's own handles carry no testIDs       | T1   | P1  |
 | Workspace focus mode (Ctrl+Shift+F chrome collapse)                                                              | 🟡     | `workspace-focus-mode.spec.ts`            | T1   | —   |
 
 ## 2. Hosts & connectivity

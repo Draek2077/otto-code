@@ -1,3 +1,17 @@
+/**
+ * UNWIRED(windowChrome): upstream's window-chrome obstruction model, with no
+ * caller in Otto yet.
+ *
+ * This file was `utils/desktop-window.tsx`, sitting beside the live
+ * `utils/desktop-window.ts`. Both resolve from the same specifier and `.ts`
+ * wins, so every one of the seven importers got the other file and none of the
+ * fifteen exports here were reachable. Worse than dead: an editor jumping to
+ * `@/utils/desktop-window` could land here, and a future import of
+ * `WindowChromeProvider` would have silently resolved to the wrong module.
+ * Renamed so the two stop shadowing each other and this becomes importable the
+ * day it is adopted. Tracked as a feature port in
+ * projects/paseo-v025-merge/audit-findings.md.
+ */
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { View, type ViewProps } from "react-native";
 import {
