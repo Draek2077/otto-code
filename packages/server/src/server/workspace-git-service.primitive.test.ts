@@ -121,6 +121,11 @@ function createPullRequestStatusResult(title = "Update feature"): PullRequestSta
       headRefName: "feature",
       isMerged: false,
     },
+    // Otto's forge layer decides feature availability from authState, and keeps
+    // githubFeaturesEnabled only as its derived back-compat mirror. A result
+    // carrying just the boolean leaves authState undefined, and the snapshot
+    // then reports features off no matter what the boolean says.
+    authState: "authenticated",
     githubFeaturesEnabled: true,
   };
 }
@@ -145,7 +150,7 @@ function createSnapshot(
   cwd: string,
   overrides?: {
     git?: Partial<WorkspaceGitRuntimeSnapshot["git"]>;
-    github?: Partial<WorkspaceGitRuntimeSnapshot["github"]>;
+    forge?: Partial<WorkspaceGitRuntimeSnapshot["forge"]>;
   },
 ): WorkspaceGitRuntimeSnapshot {
   const base: WorkspaceGitRuntimeSnapshot = {
@@ -165,8 +170,12 @@ function createSnapshot(
       hasRemote: true,
       diffStat: { additions: 1, deletions: 0 },
     },
-    github: {
+    // Otto's provider-neutral hosting layer (docs/git-providers.md) replaced the
+    // GitHub-specific `github` block with `forge`, which additionally carries
+    // the auth state that `featuresEnabled` is derived from.
+    forge: {
       featuresEnabled: true,
+      authState: "authenticated",
       pullRequest: {
         url: "https://github.com/acme/repo/pull/123",
         title: "Update feature",
@@ -190,17 +199,17 @@ function createSnapshot(
       ...base.git,
       ...overrides?.git,
     },
-    github: {
-      ...base.github,
-      ...overrides?.github,
+    forge: {
+      ...base.forge,
+      ...overrides?.forge,
       pullRequest:
-        overrides?.github && "pullRequest" in overrides.github
-          ? (overrides.github.pullRequest ?? null)
-          : base.github.pullRequest,
+        overrides?.forge && "pullRequest" in overrides.forge
+          ? (overrides.forge.pullRequest ?? null)
+          : base.forge.pullRequest,
       error:
-        overrides?.github && "error" in overrides.github
-          ? (overrides.github.error ?? null)
-          : base.github.error,
+        overrides?.forge && "error" in overrides.forge
+          ? (overrides.forge.error ?? null)
+          : base.forge.error,
     },
   };
 }
@@ -368,7 +377,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     // delivered by the poll, which this stub does not implement — so the warmed
     // snapshot reports GitHub as unavailable until a poll fills it in.
     const gitOnlySnapshot = createSnapshot(REPO_CWD, {
-      github: { featuresEnabled: false, pullRequest: null },
+      forge: { featuresEnabled: false, pullRequest: null },
     });
     await expect(service.getSnapshot(REPO_CWD)).resolves.toEqual(gitOnlySnapshot);
     expect(service.peekSnapshot(REPO_CWD)).toEqual(gitOnlySnapshot);
@@ -502,7 +511,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
           currentBranch: "feature",
           diffStat: { additions: 4, deletions: 2 },
         },
-        github: {
+        forge: {
           featuresEnabled: false,
           pullRequest: null,
           error: null,
@@ -625,7 +634,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
 
     await expect(validationRefresh).resolves.toEqual(
       createSnapshot(REPO_CWD, {
-        github: {
+        forge: {
           pullRequest: {
             url: "https://github.com/acme/repo/pull/123",
             title: "Fresh validation PR",
@@ -891,7 +900,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     // state — which is the second argument subscribers now receive alongside the snapshot.
     expect(listener).toHaveBeenCalledWith(
       expect.objectContaining({
-        github: expect.objectContaining({
+        forge: expect.objectContaining({
           pullRequest: expect.objectContaining({
             checksStatus: "pending",
           }),
@@ -1143,7 +1152,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     // Initial refresh is git-only (GitHub arrives via the poll, unimplemented in
     // this stub), so the current snapshot reports GitHub as unavailable.
     await expect(directRead).resolves.toEqual(
-      createSnapshot(REPO_CWD, { github: { featuresEnabled: false, pullRequest: null } }),
+      createSnapshot(REPO_CWD, { forge: { featuresEnabled: false, pullRequest: null } }),
     );
 
     selfHealRefresh.resolve(createCheckoutStatus(REPO_CWD));
