@@ -443,6 +443,42 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     };
   }, [props.agentId]);
 
+  // `onNearHistoryStart` above is reachable only from the scroll handler, and a
+  // transcript shorter than its viewport never produces a scroll event. A first
+  // page that does not fill the window — a tall viewport, a short page, a
+  // collapsed run of turns — therefore leaves older history unrequested with no
+  // scrollbar to ask for it, and the reader sees a conversation that starts in
+  // the middle of itself.
+  //
+  // Requesting data is not a scroll write, so this sits outside the rule in
+  // docs/chat-scrolling.md: the position is untouched either way, and follow /
+  // detach state is not consulted or changed.
+  const requestOlderHistoryWhenUnfilled = useCallback(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (
+      !scrollContainer ||
+      !historyStartReadyRef.current ||
+      !hasOlderHistory ||
+      isLoadingOlderHistory ||
+      scrollContainer.scrollHeight > scrollContainer.clientHeight
+    ) {
+      return;
+    }
+    onNearHistoryStart();
+  }, [hasOlderHistory, isLoadingOlderHistory, onNearHistoryStart]);
+
+  // Re-checked after each page lands: pages are small, so several may be needed
+  // before the content outgrows a tall viewport. `hasOlderHistory` going false
+  // ends it, and `isLoadingOlderHistory` keeps requests from overlapping.
+  useEffect(() => {
+    requestOlderHistoryWhenUnfilled();
+  }, [
+    requestOlderHistoryWhenUnfilled,
+    segments.historyMounted.length,
+    segments.historyVirtualized.length,
+    segments.liveHead.length,
+  ]);
+
   useLayoutEffect(() => {
     if (!isActivationReady) {
       return;
@@ -519,6 +555,10 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
 
     updateScrollMetrics();
     const observer = new ResizeObserver(() => {
+      // A window growing taller can un-fill a transcript that used to overflow,
+      // which is the other way to end up with no scroll event and unrequested
+      // history.
+      requestOlderHistoryWhenUnfilled();
       if (!followOutputRef.current) {
         // A bubble growing as its markdown settles, an image finally loading, the
         // mobile keyboard resizing the viewport: none of it may move the reader.
@@ -536,7 +576,12 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     return () => {
       observer.disconnect();
     };
-  }, [restoreScrollAnchor, scheduleStickToBottom, updateScrollMetrics]);
+  }, [
+    requestOlderHistoryWhenUnfilled,
+    restoreScrollAnchor,
+    scheduleStickToBottom,
+    updateScrollMetrics,
+  ]);
 
   // After every commit, before paint. Whatever that render did to the document
   // above the anchored row (a run of actions folding into a group, a group
