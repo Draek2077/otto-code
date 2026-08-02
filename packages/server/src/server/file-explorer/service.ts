@@ -150,6 +150,33 @@ function fileRevision(stats: BigIntStats): string {
   return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}`;
 }
 
+/**
+ * Compares a caller's recorded mtime against the file's current one, allowing a
+ * single millisecond of slack.
+ *
+ * The wire carries millisecond ISO strings while filesystems keep sub-millisecond
+ * stamps, and Node derives `mtime` from `mtimeNs` under bigint stats but from a
+ * float `mtimeMs` otherwise. Those two roundings can land a millisecond apart for
+ * the very same untouched file, so a caller that read its mtime through a plain
+ * stat could be told its save conflicted with itself. The slack is smaller than
+ * the resolution the string can express, so it cannot mask a real edit: any write
+ * that actually changed the file moves the stamp far further than that.
+ */
+function matchesExpectedModifiedAt(expected: string | undefined, current: string): boolean {
+  if (expected === current) {
+    return true;
+  }
+  if (expected === undefined) {
+    return false;
+  }
+  const expectedMs = Date.parse(expected);
+  const currentMs = Date.parse(current);
+  if (Number.isNaN(expectedMs) || Number.isNaN(currentMs)) {
+    return false;
+  }
+  return Math.abs(expectedMs - currentMs) <= 1;
+}
+
 export async function listDirectoryEntries({
   root,
   relativePath = ".",
@@ -297,7 +324,7 @@ export async function writeExplorerFile({
   const currentHash = sha256Hex(currentBytes);
   const unchanged = expectedHash
     ? expectedHash === currentHash
-    : expectedModifiedAt === currentModifiedAt;
+    : matchesExpectedModifiedAt(expectedModifiedAt, currentModifiedAt);
   if (!unchanged) {
     return buildConflictResult(currentBytes, currentModifiedAt);
   }
