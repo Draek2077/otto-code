@@ -2391,6 +2391,12 @@ export class AgentManager {
         // provider history into an empty timeline.
         await this.deleteCommittedTimeline(agentId);
         this.timelineStore.delete(agentId);
+        // The provider children are part of that same replaced state. Leaving
+        // them behind carries children of the previous session across a reload
+        // whose whole point is to re-read from disk.
+        for (const removal of this.providerSubagents.deleteParent(agentId)) {
+          this.dispatch({ type: "provider_subagent", event: removal });
+        }
       }
 
       // Preserve existing labels and timeline during reload.
@@ -3130,6 +3136,11 @@ export class AgentManager {
     } else if (!nextRecord.internal) {
       this.dispatchArchivedStoredAgent(nextRecord);
     }
+
+    // Same cascade archiveAgent performs. Reached when the parent was already
+    // closed, which is exactly when it is easy to miss: without it a closed
+    // orchestrator archives alone and its managed children stay behind.
+    await this.cascadeArchiveChildren(agentId);
 
     await this.fireAgentArchived(agentId);
 
