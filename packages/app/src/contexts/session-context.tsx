@@ -826,6 +826,20 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         voiceRuntime?.onTurnEvent(serverId, agentId, event.type);
       }
 
+      // AI prompt suggestion (composer ghost text): store the latest, and clear a
+      // stale one when the next turn begins so it never lingers across turns.
+      if (event.type === "prompt_suggestion") {
+        useSessionStore.getState().setAgentPromptSuggestion(serverId, agentId, event.suggestion);
+      } else if (event.type === "turn_started") {
+        useSessionStore.getState().setAgentPromptSuggestion(serverId, agentId, null);
+      }
+
+      // Plan rate-limit status: keep the latest per agent. A recovery ("allowed")
+      // is stored too so the composer's warning strip clears itself.
+      if (event.type === "rate_limit_updated") {
+        useSessionStore.getState().setAgentRateLimit(serverId, agentId, event.info);
+      }
+
       agentStreamReducerQueue.enqueue(agentId, {
         event: streamEvent,
         seq,
