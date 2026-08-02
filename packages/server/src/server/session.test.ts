@@ -277,10 +277,22 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
       // so every later agent_update is dropped and the test fails somewhere far away with no
       // mention of this method. Default it here rather than per-test for that reason.
       listObservedSubagentPayloads: vi.fn(() => []),
+      // Per-agent mutations load the agent first. The loader awaits any
+      // in-flight close, then takes the already-live agent and stops. Both
+      // defaults keep that path from reaching storage-backed resume, which no
+      // config-setter test is trying to exercise.
+      waitForAgentClose: vi.fn(async () => {}),
+      getAgent: vi.fn(() => ({}) as never),
       ...options.agentManager,
     }),
     agentStorage: asAgentStorage({
       list: vi.fn().mockResolvedValue([]),
+      // Every per-agent mutation loads the agent first and refuses to touch an
+      // archived one, which reads the record twice. Left unstubbed the config
+      // setters fail with "get was called but not stubbed" from inside the
+      // load, nowhere near the request under test. null means "no stored
+      // record", which is the not-archived answer.
+      get: vi.fn().mockResolvedValue(null),
       ...options.agentStorage,
     }),
     projectRegistry: options.projectRegistry ?? {
