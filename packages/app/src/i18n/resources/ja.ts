@@ -2507,6 +2507,8 @@ export const ja: TranslationResources = {
       blockquote: "引用",
       table: "表",
       horizontalRule: "区切り線",
+      showMarkers: "Markdown ソースを表示",
+      hideMarkers: "Markdown 記号を隠す",
     },
     save: "保存",
     revert: "元に戻す",

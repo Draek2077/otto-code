@@ -69,6 +69,7 @@ const mount = (message: Extract<EditorWebViewInbound, { type: "mount" }>): void 
     cleanDoc: message.cleanDoc,
     theme: message.theme,
     wordWrap: message.wordWrap,
+    markdownLivePreview: message.markdownLivePreview,
     onDirtyChanged: (dirty) => sendToNative({ type: "dirtyChanged", dirty }),
     onMatchInfo: (info) => sendToNative({ type: "matchInfo", info }),
     onCursorMoved: (position) => sendToNative({ type: "cursorMoved", position }),
@@ -129,6 +130,9 @@ const applyCommand = (target: EditorCore, message: EditorCommand): void => {
       break;
     case "replaceSelection":
       target.replaceSelection(message.text);
+      break;
+    case "setMarkdownLivePreview":
+      target.setMarkdownLivePreview(message.enabled);
       break;
     case "runMarkdownCommand":
       target.runMarkdownCommand(message.name);

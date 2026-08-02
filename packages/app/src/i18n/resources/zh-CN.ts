@@ -2440,6 +2440,8 @@ export const zhCN: TranslationResources = {
       blockquote: "引用",
       table: "表格",
       horizontalRule: "分隔线",
+      showMarkers: "显示 Markdown 源码",
+      hideMarkers: "隐藏 Markdown 标记",
     },
     save: "保存",
     revert: "还原",

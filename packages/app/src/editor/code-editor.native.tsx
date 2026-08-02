@@ -217,6 +217,7 @@ export function CodeEditor(props: CodeEditorProps) {
       cleanDoc: callbacksRef.current.cleanDoc,
       theme: callbacksRef.current.theme,
       wordWrap: callbacksRef.current.wordWrap,
+      markdownLivePreview: callbacksRef.current.markdownLivePreview,
     });
     const queued = pendingMessagesRef.current.splice(0);
     for (const queuedMessage of queued) {
@@ -290,6 +291,14 @@ export function CodeEditor(props: CodeEditorProps) {
     }
     sendToWebView({ type: "setWordWrap", enabled: props.wordWrap });
   }, [props.wordWrap, sendToWebView]);
+
+  const livePreview = props.markdownLivePreview;
+  useEffect(() => {
+    if (!bridgeReadyRef.current) {
+      return;
+    }
+    sendToWebView({ type: "setMarkdownLivePreview", enabled: livePreview ?? false });
+  }, [livePreview, sendToWebView]);
 
   const diagnostics = props.diagnostics;
   useEffect(() => {

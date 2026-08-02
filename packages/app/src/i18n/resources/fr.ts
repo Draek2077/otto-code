@@ -2546,6 +2546,8 @@ export const fr: TranslationResources = {
       blockquote: "Citation",
       table: "Tableau",
       horizontalRule: "Séparateur",
+      showMarkers: "Afficher la source Markdown",
+      hideMarkers: "Masquer les marqueurs Markdown",
     },
     save: "Enregistrer",
     revert: "Rétablir",

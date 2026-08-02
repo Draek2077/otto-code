@@ -382,6 +382,12 @@ export interface CodeEditorProps {
   theme: EditorThemeSpec;
   /** Soft-wrap long lines instead of scrolling horizontally; live-togglable. */
   wordWrap: boolean;
+  /**
+   * Hide markdown markers except on the line being edited. Ignored for files
+   * that are not markdown: the decorations come from the markdown parse tree,
+   * so there is nothing to hide in a `.ts` file and no need to gate the flag.
+   */
+  markdownLivePreview?: boolean;
   onDirtyChanged?: (dirty: boolean) => void;
   onMatchInfo?: (info: EditorMatchInfo | null) => void;
   /** Caret/selection moved; drives the status bar's Ln/Col readout. */
@@ -460,11 +466,13 @@ export type EditorWebViewInbound =
       cleanDoc: string;
       theme: EditorThemeSpec;
       wordWrap: boolean;
+      markdownLivePreview?: boolean;
     }
   | { type: "setDoc"; doc: string }
   | { type: "setCleanDoc"; doc: string }
   | { type: "setTheme"; theme: EditorThemeSpec }
   | { type: "setWordWrap"; enabled: boolean }
+  | { type: "setMarkdownLivePreview"; enabled: boolean }
   | { type: "setFind"; find: EditorFindState | null }
   | { type: "findNext" }
   | { type: "findPrevious" }

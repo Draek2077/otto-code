@@ -2535,6 +2535,8 @@ export const es: TranslationResources = {
       blockquote: "Cita",
       table: "Tabla",
       horizontalRule: "Separador",
+      showMarkers: "Mostrar el código Markdown",
+      hideMarkers: "Ocultar los marcadores Markdown",
     },
     save: "Guardar",
     revert: "Revertir",

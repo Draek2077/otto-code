@@ -37,6 +37,10 @@ import {
 import { tags } from "@lezer/highlight";
 import { getLanguageForFile, getParserForFile, highlightCode } from "@otto-code/highlight";
 import { getMarkdownCommand, isMarkdownCommandName } from "./markdown/markdown-commands";
+import {
+  markdownLivePreviewExtension,
+  setMarkdownLivePreview,
+} from "./markdown/markdown-live-preview";
 import { isMarkdownPath } from "./markdown/markdown-path";
 import {
   DEFAULT_EDITOR_KEY_BINDINGS,
@@ -84,6 +88,7 @@ export interface EditorCoreOptions {
   cleanDoc?: string;
   theme: EditorThemeSpec;
   wordWrap: boolean;
+  markdownLivePreview?: boolean;
   onDirtyChanged?: (dirty: boolean) => void;
   onMatchInfo?: (info: EditorMatchInfo | null) => void;
   onCursorMoved?: (position: EditorCursorPosition) => void;
@@ -175,6 +180,8 @@ export interface EditorCore {
    * so a button can stay honest about having done nothing.
    */
   runMarkdownCommand(name: MarkdownCommandName): boolean;
+  /** Hide markdown markers except on the line being edited. */
+  setMarkdownLivePreview(enabled: boolean): void;
   /** Replace the whole problem set; see the contract's note on why it is never a delta. */
   setDiagnostics(diagnostics: readonly EditorDiagnostic[]): void;
   destroy(): void;
@@ -774,6 +781,28 @@ function buildSyntaxExtension(spec: EditorThemeSpec): Extension {
     { tag: tags.meta, color: s.meta },
     { tag: tags.heading, color: s.heading },
     { tag: tags.link, color: s.link },
+    // Markdown prose. Colour alone cannot carry emphasis in a document whose
+    // whole point is emphasis, so these are the one place the highlighter sets
+    // weight and decoration rather than just a hue. Headings additionally step
+    // up in size, which is what makes a document's shape legible in the source
+    // view without any live-preview rendering.
+    { tag: tags.strong, fontWeight: "bold" },
+    { tag: tags.emphasis, fontStyle: "italic" },
+    { tag: tags.strikethrough, textDecoration: "line-through" },
+    { tag: tags.monospace, color: s.string },
+    { tag: tags.heading1, color: s.heading, fontWeight: "bold", fontSize: "1.5em" },
+    { tag: tags.heading2, color: s.heading, fontWeight: "bold", fontSize: "1.3em" },
+    { tag: tags.heading3, color: s.heading, fontWeight: "bold", fontSize: "1.15em" },
+    { tag: tags.heading4, color: s.heading, fontWeight: "bold" },
+    { tag: tags.heading5, color: s.heading, fontWeight: "bold" },
+    { tag: tags.heading6, color: s.heading, fontWeight: "bold" },
+    // The markers themselves recede: they are syntax, not content, and at full
+    // strength they compete with the text they are marking up.
+    { tag: tags.processingInstruction, color: s.punctuation },
+    { tag: tags.contentSeparator, color: s.punctuation },
+    { tag: tags.quote, color: s.comment, fontStyle: "italic" },
+    { tag: tags.list, color: s.punctuation },
+    { tag: tags.url, color: s.link, textDecoration: "underline" },
   ]);
   return syntaxHighlighting(style, { fallback: true });
 }
@@ -1132,6 +1161,10 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
         },
       }),
       buildLanguageExtension(options.path),
+      // Always mounted, and seeded from the option: the field is what the toggle
+      // flips, and mounting it conditionally would mean a remount to turn live
+      // preview on. The plugin costs nothing while the field is false.
+      markdownLivePreviewExtension(options.markdownLivePreview ?? false),
       themeCompartment.of([
         buildThemeExtension(options.theme),
         buildSyntaxExtension(options.theme),
@@ -1414,6 +1447,9 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       view.dispatch({
         effects: keymapCompartment.reconfigure(buildShortcutKeymap(options, bindings)),
       });
+    },
+    setMarkdownLivePreview: (enabled) => {
+      view.dispatch({ effects: setMarkdownLivePreview.of(enabled) });
     },
     runMarkdownCommand: (name) => {
       // Focus first: the toolbar button took focus on press, and a command that

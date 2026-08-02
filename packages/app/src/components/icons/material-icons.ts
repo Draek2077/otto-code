@@ -233,6 +233,7 @@ export const Waypoints = createMaterialSymbolIcon("Waypoints");
 export const Workspaces = createMaterialSymbolIcon("Workspaces");
 export const WrapText = createMaterialSymbolIcon("WrapText");
 export const Wrench = createMaterialSymbolIcon("Wrench");
+export const Visibility = createMaterialSymbolIcon("Visibility");
 export const X = createMaterialSymbolIcon("X");
 export const XCircle = createMaterialSymbolIcon("XCircle");
 export const Zap = createMaterialSymbolIcon("Zap");

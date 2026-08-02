@@ -2520,6 +2520,8 @@ export const ptBR: TranslationResources = {
       blockquote: "Citação",
       table: "Tabela",
       horizontalRule: "Divisor",
+      showMarkers: "Mostrar o código Markdown",
+      hideMarkers: "Ocultar os marcadores Markdown",
     },
     save: "Salvar",
     revert: "Reverter",

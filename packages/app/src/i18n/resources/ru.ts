@@ -2518,6 +2518,8 @@ export const ru: TranslationResources = {
       blockquote: "Цитата",
       table: "Таблица",
       horizontalRule: "Разделитель",
+      showMarkers: "Показать исходный Markdown",
+      hideMarkers: "Скрыть маркеры Markdown",
     },
     save: "Сохранить",
     revert: "Откатить",

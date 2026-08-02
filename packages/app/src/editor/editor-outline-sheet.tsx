@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type ReactElement, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type RefObject,
+} from "react";
 import { FlatList, Modal, Pressable, Text, View } from "react-native";
 import type { ListRenderItemInfo } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -9,6 +17,11 @@ import { useSessionStore } from "@/stores/session-store";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { isWeb } from "@/constants/platform";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
+import { extractMarkdownHeadings } from "@otto-code/highlight";
+import { isMarkdownPath } from "./markdown/markdown-path";
+
+/** Per heading level, in px. Enough to read as nesting without pushing H6 off the row. */
+const HEADING_INDENT = 10;
 
 const KIND_GLYPH: Record<CodeSymbolLocation["kind"], string> = {
   function: "ƒ",
@@ -18,6 +31,46 @@ const KIND_GLYPH: Record<CodeSymbolLocation["kind"], string> = {
   property: "p",
 };
 
+/**
+ * One outline row, from either of the two sources this sheet has.
+ *
+ * Code symbols come from the daemon's `code.outline`; markdown headings are
+ * extracted from the open buffer on the client, because a heading is not a
+ * `CodeSymbolKind` and adding one would break the wire enum for older clients
+ * (see markdown-headings.ts). Both are flattened into this shape so there is one
+ * list, one row component, and one keyboard path.
+ */
+interface OutlineEntry {
+  key: string;
+  name: string;
+  line: number;
+  glyph: string;
+  /** Heading nesting; always 0 for code symbols, which have no hierarchy here. */
+  depth: number;
+}
+
+function entryFromSymbol(symbol: CodeSymbolLocation): OutlineEntry {
+  return {
+    key: `${symbol.name}:${symbol.line}:${symbol.column}`,
+    name: symbol.name,
+    line: symbol.line,
+    glyph: KIND_GLYPH[symbol.kind],
+    depth: 0,
+  };
+}
+
+function entriesFromHeadings(document: string): OutlineEntry[] {
+  return extractMarkdownHeadings(document).map((heading) => ({
+    key: `h${heading.level}:${heading.line}`,
+    // An empty heading still gets a row: it is a real position in the document,
+    // and a gap in the outline would be more confusing than a blank label.
+    name: heading.text,
+    line: heading.line,
+    glyph: `H${heading.level}`,
+    depth: heading.level - 1,
+  }));
+}
+
 export function EditorOutlineSheet({
   serverId,
   workspaceRoot,
@@ -25,6 +78,7 @@ export function EditorOutlineSheet({
   visible,
   onClose,
   onSelectLine,
+  getDocument,
 }: {
   serverId: string;
   workspaceRoot: string;
@@ -32,22 +86,36 @@ export function EditorOutlineSheet({
   visible: boolean;
   onClose: () => void;
   onSelectLine: (line: number) => void;
+  /**
+   * The open buffer's text, for markdown. Supplied by the file pane through the
+   * editor controller; absent when there is no editor (the outline is then
+   * daemon-only, which for markdown means empty).
+   */
+  getDocument?: () => Promise<string>;
 }) {
   const { t } = useTranslation();
   // Ungated on compact: the app's overlay bar is wanted on mobile web too,
   // where the platform otherwise draws its dated one. No-ops off web.
   const showWebScrollbar = isWeb;
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
-  const [symbols, setSymbols] = useState<CodeSymbolLocation[]>([]);
+  const [symbols, setSymbols] = useState<OutlineEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const listRef = useRef<FlatList<CodeSymbolLocation>>(null);
+  const listRef = useRef<FlatList<OutlineEntry>>(null);
   const scrollbar = useWebScrollViewScrollbar(listRef, {
     enabled: showWebScrollbar,
   });
 
+  // Markdown reads the OPEN BUFFER, not the daemon: the outline of a document
+  // you are editing should follow the heading you just typed, and the daemon
+  // only knows what is on disk. Everything else asks `code.outline` as before.
+  const markdown = isMarkdownPath(path);
+
   useEffect(() => {
-    if (!visible || !client) {
+    if (!visible) {
+      return;
+    }
+    if (!markdown && !client) {
       return;
     }
     let active = true;
@@ -55,9 +123,11 @@ export function EditorOutlineSheet({
     setError(null);
     const load = async () => {
       try {
-        const result = await client.getCodeOutline(workspaceRoot, path);
+        const entries = markdown
+          ? entriesFromHeadings((await getDocument?.()) ?? "")
+          : ((await client?.getCodeOutline(workspaceRoot, path)) ?? []).map(entryFromSymbol);
         if (active) {
-          setSymbols(result);
+          setSymbols(entries);
         }
       } catch (caught) {
         if (active) {
@@ -73,7 +143,7 @@ export function EditorOutlineSheet({
     return () => {
       active = false;
     };
-  }, [client, path, visible, workspaceRoot]);
+  }, [client, getDocument, markdown, path, visible, workspaceRoot]);
 
   const handleSelect = useCallback(
     (line: number) => {
@@ -84,16 +154,13 @@ export function EditorOutlineSheet({
   );
 
   const renderRow = useCallback(
-    (info: ListRenderItemInfo<CodeSymbolLocation>) => (
-      <OutlineRow symbol={info.item} onSelect={handleSelect} />
+    (info: ListRenderItemInfo<OutlineEntry>) => (
+      <OutlineRow entry={info.item} onSelect={handleSelect} />
     ),
     [handleSelect],
   );
 
-  const keyExtractor = useCallback(
-    (symbol: CodeSymbolLocation) => `${symbol.name}:${symbol.line}:${symbol.column}`,
-    [],
-  );
+  const keyExtractor = useCallback((entry: OutlineEntry) => entry.key, []);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -128,10 +195,10 @@ function OutlineBody({
 }: {
   error: string | null;
   loadingEmpty: boolean;
-  symbols: CodeSymbolLocation[];
-  renderRow: (info: ListRenderItemInfo<CodeSymbolLocation>) => ReactElement;
-  keyExtractor: (symbol: CodeSymbolLocation) => string;
-  listRef: RefObject<FlatList<CodeSymbolLocation> | null>;
+  symbols: OutlineEntry[];
+  renderRow: (info: ListRenderItemInfo<OutlineEntry>) => ReactElement;
+  keyExtractor: (entry: OutlineEntry) => string;
+  listRef: RefObject<FlatList<OutlineEntry> | null>;
   scrollbar: ReturnType<typeof useWebScrollViewScrollbar>;
   showWebScrollbar: boolean;
 }) {
@@ -166,27 +233,30 @@ function OutlineBody({
 }
 
 function OutlineRow({
-  symbol,
+  entry,
   onSelect,
 }: {
-  symbol: CodeSymbolLocation;
+  entry: OutlineEntry;
   onSelect: (line: number) => void;
 }) {
-  const handlePress = useCallback(() => onSelect(symbol.line), [onSelect, symbol.line]);
+  const handlePress = useCallback(() => onSelect(entry.line), [onSelect, entry.line]);
+  // Headings indent by level, so the outline reads as the document's shape
+  // rather than a flat list of titles. Code symbols are all depth 0.
+  const indentStyle = useMemo(() => ({ paddingLeft: entry.depth * HEADING_INDENT }), [entry.depth]);
   return (
     <Pressable
       onPress={handlePress}
       style={rowStyle}
-      testID={`editor-outline-symbol-${symbol.name}`}
+      testID={`editor-outline-symbol-${entry.name}`}
       accessibilityRole="button"
     >
-      <Text style={styles.glyph} dataSet={CODE_SURFACE_DATASET}>
-        {KIND_GLYPH[symbol.kind]}
+      <Text style={[styles.glyph, indentStyle]} dataSet={CODE_SURFACE_DATASET}>
+        {entry.glyph}
       </Text>
       <Text style={styles.symbolName} numberOfLines={1} dataSet={CODE_SURFACE_DATASET}>
-        {symbol.name}
+        {entry.name}
       </Text>
-      <Text style={styles.symbolLine}>{symbol.line}</Text>
+      <Text style={styles.symbolLine}>{entry.line}</Text>
     </Pressable>
   );
 }

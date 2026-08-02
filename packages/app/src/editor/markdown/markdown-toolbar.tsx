@@ -18,6 +18,7 @@ import {
   HorizontalRule,
   Image as ImageIcon,
   TableChart,
+  Visibility,
 } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { compactUp, useIconSize, type Theme } from "@/styles/theme";
@@ -41,6 +42,7 @@ const ThemedAddLink = withUnistyles(AddLink);
 const ThemedImage = withUnistyles(ImageIcon);
 const ThemedTableChart = withUnistyles(TableChart);
 const ThemedHorizontalRule = withUnistyles(HorizontalRule);
+const ThemedVisibility = withUnistyles(Visibility);
 
 // The markdown formatting strip, shown above the editor for markdown files.
 //
@@ -149,6 +151,13 @@ const TOOLBAR_GROUPS: ToolbarGroup[] = [
 
 const iconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
+// Hoisted so the object identity is stable across renders.
+const LIVE_PREVIEW_ON = { selected: true };
+const LIVE_PREVIEW_OFF = { selected: false };
+function livePreviewState(on: boolean) {
+  return on ? LIVE_PREVIEW_ON : LIVE_PREVIEW_OFF;
+}
+
 function ToolbarButton({
   command,
   Icon,
@@ -192,6 +201,9 @@ function ToolbarButton({
 
 export interface MarkdownToolbarProps {
   onRun: (command: MarkdownCommandName) => void;
+  /** Whether markers are currently hidden off the caret's line. */
+  livePreview: boolean;
+  onToggleLivePreview: () => void;
 }
 
 /**
@@ -202,25 +214,54 @@ export interface MarkdownToolbarProps {
  */
 export function MarkdownToolbarForPath({
   path,
-  onRun,
+  ...props
 }: {
   path: string;
 } & MarkdownToolbarProps) {
   if (!isMarkdownPath(path)) {
     return null;
   }
-  return <MarkdownToolbar onRun={onRun} />;
+  return <MarkdownToolbar {...props} />;
 }
 
-export function MarkdownToolbar({ onRun }: MarkdownToolbarProps) {
+export function MarkdownToolbar({ onRun, livePreview, onToggleLivePreview }: MarkdownToolbarProps) {
   const { t } = useTranslation();
   // Doubled on compact like every other icon-only control, which here is also
   // what makes the buttons a real touch target.
   const iconSize = useIconSize();
   const groups = useMemo(() => TOOLBAR_GROUPS, []);
+  const livePreviewLabel = t(
+    livePreview ? "editor.markdownToolbar.showMarkers" : "editor.markdownToolbar.hideMarkers",
+  );
+  const livePreviewStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.button,
+      (Boolean(hovered) || pressed) && styles.buttonHovered,
+      livePreview && styles.buttonActive,
+    ],
+    [livePreview],
+  );
 
   return (
     <View style={styles.bar} testID="markdown-toolbar">
+      {/* Pinned outside the scroller: it is the one control that changes what
+          the whole document looks like, so it must not scroll out of reach. */}
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger
+          accessibilityRole="button"
+          accessibilityLabel={livePreviewLabel}
+          accessibilityState={livePreviewState(livePreview)}
+          testID="markdown-toolbar-live-preview"
+          onPress={onToggleLivePreview}
+          style={livePreviewStyle}
+        >
+          <ThemedVisibility size={iconSize.md} uniProps={iconColorMapping} />
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="center" offset={8}>
+          <Text style={styles.tooltipText}>{livePreviewLabel}</Text>
+        </TooltipContent>
+      </Tooltip>
+      <View style={styles.separator} />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -281,6 +322,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   buttonHovered: {
     backgroundColor: theme.colors.surfaceHover,
+  },
+  buttonActive: {
+    backgroundColor: theme.colors.surface2,
   },
   tooltipText: {
     color: theme.colors.foreground,

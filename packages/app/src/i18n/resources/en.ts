@@ -2558,6 +2558,8 @@ export const en = {
       blockquote: "Blockquote",
       table: "Table",
       horizontalRule: "Divider",
+      showMarkers: "Show markdown source",
+      hideMarkers: "Hide markdown markers",
     },
     save: "Save",
     revert: "Revert",

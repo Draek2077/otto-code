@@ -1178,6 +1178,8 @@ function EditorModeView({
   const byteSize = useBufferByteSize(buffer);
 
   const wordWrap = useEditorPrefsStore((state) => state.wordWrap);
+  const livePreview = useEditorPrefsStore((state) => state.markdownLivePreview);
+  const toggleLivePreview = useEditorPrefsStore((state) => state.toggleMarkdownLivePreview);
   const toggleWordWrap = useEditorPrefsStore((state) => state.toggleWordWrap);
   // Only the buttons with a real binding get a hint; revert, history, outline
   // and wrap have none, and inventing one would be a lie the tooltip cannot
@@ -1249,6 +1251,13 @@ function EditorModeView({
     setMatchInfo(null);
     controllerRef.current?.focus();
   }, [applyFind, controllerRef]);
+
+  // The live buffer, for anything that outlines or indexes what is on screen
+  // rather than what is on disk. Markdown's outline is built from this.
+  const readDocument = useCallback(
+    async () => (await controllerRef.current?.getDoc()) ?? "",
+    [controllerRef],
+  );
 
   // The formatting toolbar runs the same commands the keymap does, through the
   // controller. Nothing is tracked here: the command owns whether it applies.
@@ -1678,6 +1687,7 @@ function EditorModeView({
       initialDoc={buffer.draft ?? buffer.baseline.content}
       cleanDoc={buffer.baseline.content}
       wordWrap={wordWrap}
+      markdownLivePreview={livePreview}
       rulerColumn={rulerColumn}
       docSyncDebounceMs={split ? SPLIT_DOC_SYNC_DEBOUNCE_MS : undefined}
       onDirtyChanged={onDirtyChanged}
@@ -1781,7 +1791,12 @@ function EditorModeView({
 
       {/* Directly above the editing surface in both modes, and only for markdown.
           On a phone it is the only way to reach these commands at all. */}
-      <MarkdownToolbarForPath path={path} onRun={handleMarkdownCommand} />
+      <MarkdownToolbarForPath
+        path={path}
+        onRun={handleMarkdownCommand}
+        livePreview={livePreview}
+        onToggleLivePreview={toggleLivePreview}
+      />
 
       {split ? (
         <View style={styles.splitRow}>
@@ -1838,6 +1853,7 @@ function EditorModeView({
             visible={outlineOpen}
             onClose={closeOutline}
             onSelectLine={jumpToLineInBuffer}
+            getDocument={readDocument}
           />
           <DefinitionPickerDialog
             name={definitionPickerName}

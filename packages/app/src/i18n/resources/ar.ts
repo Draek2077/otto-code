@@ -2469,6 +2469,8 @@ export const ar: TranslationResources = {
       blockquote: "اقتباس",
       table: "جدول",
       horizontalRule: "فاصل",
+      showMarkers: "إظهار مصدر Markdown",
+      hideMarkers: "إخفاء علامات Markdown",
     },
     save: "حفظ",
     revert: "تراجع",

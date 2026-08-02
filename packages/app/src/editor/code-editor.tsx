@@ -72,6 +72,7 @@ export function CodeEditor(props: CodeEditorProps) {
       cleanDoc: callbacksRef.current.cleanDoc,
       theme: callbacksRef.current.theme,
       wordWrap: callbacksRef.current.wordWrap,
+      markdownLivePreview: callbacksRef.current.markdownLivePreview,
       // This host draws the overlay bar below, so the platform's own must never
       // paint — not even for the frame before the overlay takes over.
       hideNativeScrollbar: true,
@@ -167,6 +168,10 @@ export function CodeEditor(props: CodeEditorProps) {
   useEffect(() => {
     coreRef.current?.setWordWrap(props.wordWrap);
   }, [props.wordWrap]);
+
+  useEffect(() => {
+    coreRef.current?.setMarkdownLivePreview(props.markdownLivePreview ?? false);
+  }, [props.markdownLivePreview]);
 
   // Rebinding a shortcut in Settings must land on an editor that is already
   // open, not only on the next remount. Keyed by value for the same reason the

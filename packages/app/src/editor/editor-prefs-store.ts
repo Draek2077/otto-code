@@ -9,6 +9,16 @@ import { createJSONStorage, persist } from "zustand/middleware";
 interface EditorPrefsState {
   wordWrap: boolean;
   toggleWordWrap: () => void;
+  /**
+   * Hide markdown markers except on the line being edited.
+   *
+   * Defaults ON, unlike every other preference here. Live preview is the point
+   * of editing markdown in a markdown editor rather than a text editor, and a
+   * feature nobody discovers is a feature nobody has. The toolbar toggle is one
+   * tap away for anyone who wants the raw source back.
+   */
+  markdownLivePreview: boolean;
+  toggleMarkdownLivePreview: () => void;
 }
 
 export const useEditorPrefsStore = create<EditorPrefsState>()(
@@ -16,6 +26,9 @@ export const useEditorPrefsStore = create<EditorPrefsState>()(
     (set) => ({
       wordWrap: false,
       toggleWordWrap: () => set((state) => ({ wordWrap: !state.wordWrap })),
+      markdownLivePreview: true,
+      toggleMarkdownLivePreview: () =>
+        set((state) => ({ markdownLivePreview: !state.markdownLivePreview })),
     }),
     {
       name: "editor-prefs",
