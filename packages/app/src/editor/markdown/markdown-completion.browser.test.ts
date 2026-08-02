@@ -110,6 +110,21 @@ async function completionLabels(host: HTMLElement): Promise<string[]> {
   return [];
 }
 
+/**
+ * Wait for the popup, then take the selected row with Enter.
+ *
+ * The wait is not slop. CodeMirror refuses to accept a completion within
+ * `interactionDelay` (75ms) of the popup opening, so that a keystroke already in
+ * flight when the list appears cannot accidentally pick a row for you. Pressing
+ * Enter the instant a row renders therefore inserts a newline instead, which is
+ * exactly what a real user would get if they typed that fast.
+ */
+async function acceptFirstCompletion(host: HTMLElement): Promise<void> {
+  await completionLabels(host);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  press(host, "Enter");
+}
+
 /** The secondary column: the heading a link anchor points at. */
 function completionDetails(host: HTMLElement): string[] {
   return Array.from(
@@ -150,22 +165,20 @@ describe("markdown link completion", () => {
     const { core, host } = mount({ path: "docs/guide.md" });
     core.replaceSelection("[the guide](deep");
     requestCompletion(host);
-    await completionLabels(host);
-    press(host, "Enter");
+    await acceptFirstCompletion(host);
 
     // `docs/other/deep.md` seen from `docs/guide.md`. A workspace-relative path
     // would only resolve inside this app; this one resolves anywhere.
-    expect(await core.getDoc()).toBe("[the guide](other/deep.md)");
+    expect(await core.getDoc()).toBe("[the guide](other/deep.md");
   });
 
   it("climbs out of the directory when the target sits above it", async () => {
     const { core, host } = mount({ path: "docs/guide.md" });
     core.replaceSelection("[home](READ");
     requestCompletion(host);
-    await completionLabels(host);
-    press(host, "Enter");
+    await acceptFirstCompletion(host);
 
-    expect(await core.getDoc()).toBe("[home](../README.md)");
+    expect(await core.getDoc()).toBe("[home](../README.md");
   });
 
   it("offers this document's headings after a hash", async () => {
