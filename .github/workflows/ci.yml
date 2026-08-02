@@ -156,6 +156,13 @@ jobs:
           node-version: "24"
           cache: "npm"
 
+      # Pure file analysis (no deps, under a second), so it runs before install
+      # and fails fast. docs/testing.md promises this gate; without it the E2E
+      # coverage matrix silently drifts, which is how 21 imported specs reached
+      # main unmapped.
+      - name: Check E2E coverage matrix
+        run: npm run e2e:coverage
+
       - name: Install dependencies
         run: node scripts/npm-retry.mjs ci
 

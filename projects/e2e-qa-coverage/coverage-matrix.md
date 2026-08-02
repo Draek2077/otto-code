@@ -27,6 +27,10 @@ someone to run it by hand.
 | First-time wizard flow (enters via `/setup`, happy path + Skip, idempotent, `hasCompletedSetupWizard` persisted) | ✅     | `first-time-wizard.spec.ts`               | T1   | —   |
 | Compact/mobile layout smoke (viewport 375px: sidebar overlay, tab switcher lists all panes)                      | ❌     | resize viewport per key screen            | T1   | P1  |
 | Animations toggle disables page-fade veil (durations 0 when off, no flash on re-enable)                          | ✅     | `appearance-theme-animations.spec.ts`     | T1   | —   |
+| Command center lists and opens workspaces                                                                        | 🟡     | `command-center-workspaces.spec.ts`       | T1   | —   |
+| Sidebar help entry point                                                                                         | 🟡     | `sidebar-help.spec.ts`                    | T1   | —   |
+| Sidebar resize handle (drag, persisted width)                                                                    | 🟡     | `sidebar-resize-handle.spec.ts`           | T1   | —   |
+| Workspace focus mode (Ctrl+Shift+F chrome collapse)                                                              | 🟡     | `workspace-focus-mode.spec.ts`            | T1   | —   |
 
 ## 2. Hosts & connectivity
 
@@ -65,6 +69,14 @@ someone to run it by hand.
 | Workspace setup runtime + streaming                                                             | ✅     | `workspace-setup-runtime.spec.ts`, `workspace-setup-streaming.spec.ts` | T1   | —   |
 | Gated multi-root: preview any file, edit gates (unlinked / linked-lifts-live / outside-project) | ✅     | `multi-root-edit-gate.spec.ts`                                         | T1   | —   |
 | Per-worktree diff base configuration                                                            | ❌     | pending diff-base project ship                                         | T1   | P2  |
+| Add-project flow (form, validation, appears in sidebar)                                         | 🟡     | `add-project-flow.spec.ts`                                             | T1   | —   |
+| Add project from GitHub (clone + register)                                                      | 🟡     | `add-project-github.real.spec.ts`                                      | T3   | —   |
+| Directory bootstrap on first project add                                                        | 🟡     | `directory-bootstrap.spec.ts`                                          | T1   | —   |
+| New-workspace composer draft survives the create flow                                           | 🟡     | `new-workspace-composer-draft.spec.ts`                                 | T1   | —   |
+| New-workspace mode cycling stays safe across providers                                          | 🟡     | `new-workspace-mode-cycle-safety.spec.ts`                              | T1   | —   |
+| Sidebar project grouping                                                                        | 🟡     | `sidebar-project-grouping.spec.ts`                                     | T1   | —   |
+| Sidebar reorder (drag projects/workspaces)                                                      | 🟡     | `sidebar-reorder.spec.ts`                                              | T1   | —   |
+| Workspace pin keyboard shortcut                                                                 | 🟡     | `sidebar-workspace-pin-shortcut.spec.ts`                               | T1   | —   |
 
 ## 4. Chat: composer & timeline
 
@@ -88,6 +100,8 @@ someone to run it by hand.
 | Rate-limit warning strip in composer (allowed/warning/rejected states)             | ✅     | `rate-limit-warning-strip.spec.ts`           | T1   | —   |
 | Friendly tool display names (canonical map + MCP humanizer)                        | ✅     | `tool-display-names.spec.ts`                 | T1   | —   |
 | Steer queue (queued steering drains at idle)                                       | ❌     | charter not shipped; spec lands with feature | T1   | P2  |
+| Add a changed file to the chat composer                                            | 🟡     | `add-changed-file-to-chat.spec.ts`           | T1   | —   |
+| Tool-call shimmer while a call is running                                          | 🟡     | `tool-call-shimmer.spec.ts`                  | T1   | —   |
 
 ## 5. Agent lifecycle & control
 
@@ -108,6 +122,9 @@ someone to run it by hand.
 | Rewind on openai-compat provider (conversation rewind)                                                       | ✅     | `rewind-flow.openai-compat.local.spec.ts`                                                                                                                                  | T2   | —   |
 | Observed subagents: read-only track rows appear for provider subagents                                       | ❌     | mock-agent subagent events → rows                                                                                                                                          | T1   | P1  |
 | Subagent liveness (elapsed, current tool, tool count)                                                        | ❌     | pending charter ship                                                                                                                                                       | T1   | P2  |
+| Archived Codex agent reopens from persistence                                                                | 🟡     | `archived-codex-agent.real.spec.ts`                                                                                                                                        | T3   | —   |
+| Provider subagent rows (announce, settle, drill-in)                                                          | 🟡     | `provider-subagents.real.spec.ts`                                                                                                                                          | T3   | —   |
+| Viewed-agent timeline retention across navigation                                                            | 🟡     | `viewed-agent-timelines.spec.ts`                                                                                                                                           | T1   | —   |
 
 ## 6. Providers & models
 
@@ -125,6 +142,7 @@ someone to run it by hand.
 | Settled action run collapses into one action group (tool row only inside the expanded group)   | 🟡     | asserted incidentally by `openai-compat-resume.local.spec.ts`       | T1   | P2  |
 | Custom provider profiles (Z.AI / Qwen / custom binaries) render + validate                     | ❌     | catalog/settings-level assertions, no live calls                    | T1   | P2  |
 | Effort selector per-model (effort unification)                                                 | ❌     | model picker shows correct effort levels per catalog                | T1   | P2  |
+| Provider removal (settings, disappears from pickers)                                           | 🟡     | `provider-removal.spec.ts`                                          | T1   | —   |
 
 ## 7. Personalities & teams
 
@@ -149,6 +167,7 @@ someone to run it by hand.
 | Protocol queries (OSC etc.)                | ✅     | `terminal-protocol-query.spec.ts`       | T1   | —   |
 | Split + resize                             | ✅     | `terminal-split-resize.spec.ts`         | T1   | —   |
 | Terminal tab rename                        | ✅     | `workspace-terminal-tab-rename.spec.ts` | T1   | —   |
+| Terminal recovers from a stuck size        | 🟡     | `terminal-stuck-size.spec.ts`           | T1   | —   |
 
 ## 9. Files, editor & search
 
@@ -163,6 +182,7 @@ someone to run it by hand.
 | Editor dirty guard (dot, no-autosave, confirm-on-close, second-file open, buffer survives switch) | ✅     | `editor-dirty-guard.spec.ts`                                        | T1   | —   |
 | File rendering: mermaid/images/CSV in preview mode                                                | ❌     | mermaid, AsciiDoc and relative images shipped; add per-format smoke | T1   | P2  |
 | AI Refactor flow (real agent behind selection refactor)                                           | ❌     | good T2 candidate — deterministic small refactor                    | T2   | P2  |
+| File editing (open, edit, save round-trip)                                                        | 🟡     | `file-editing.spec.ts`                                              | T1   | —   |
 
 ## 10. Git & Changes
 
@@ -177,6 +197,7 @@ someone to run it by hand.
 | Commit CTA writer-agent confirm dialog (spawn not assertable: writer is an internal agent)    | ✅     | `changes-commit-agent-cta.spec.ts`          | T1   | —   |
 | Push CTA reconcile: CTA returns after commit → re-dirty (CI-green; Windows-local EPERM noise) | 🟡     | `git-cta-push-reconcile.spec.ts`            | T1   | P1  |
 | Bitbucket Cloud forge parity (PR pane against Bitbucket fixtures)                             | ❌     | mirror `pr-pane` with Bitbucket fixture set | T1   | P2  |
+| Commit diff panel (open a commit, render its diff)                                            | 🟡     | `commit-diff-panel.spec.ts`                 | T1   | —   |
 
 ## 11. Settings & i18n
 

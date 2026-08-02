@@ -238,6 +238,14 @@ export function armGpuStartupPaintWatchdog(): void {
   if (process.platform !== "linux") {
     return;
   }
+  // Honour the same escape hatch the fallback check uses. Without this,
+  // OTTO_FORCE_GPU=1 clears the markers at startup and the watchdog quietly
+  // relaunches into software rendering 15s later, undoing it. It also keeps the
+  // watchdog out of harnesses (E2E, dev against a cold Metro bundle) where first
+  // paint is bundle-bound rather than GPU-bound and a relaunch is never right.
+  if (process.env.OTTO_FORCE_GPU === "1") {
+    return;
+  }
   startupPaintTimer = setTimeout(() => {
     if (hasLinuxSoftwareRenderingArgs(process.argv)) {
       // Already on the recovery flags and still not painting — relaunching

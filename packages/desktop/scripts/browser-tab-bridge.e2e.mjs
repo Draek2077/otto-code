@@ -422,6 +422,11 @@ async function main() {
           EXPO_DEV_URL: `http://localhost:${expoPort}`,
           OTTO_ELECTRON_REMOTE_DEBUGGING_PORT: String(cdpPort),
           OTTO_ELECTRON_USER_DATA_DIR: userData,
+          // First paint here waits on a cold Metro bundle, which routinely runs
+          // past the 15s GPU startup-paint watchdog. Left armed, the watchdog
+          // reads that as a hung GPU and relaunches into software rendering,
+          // tearing down the window this run is driving.
+          OTTO_FORCE_GPU: "1",
           OTTO_ELECTRON_FLAGS: `--remote-debugging-address=127.0.0.1 --remote-debugging-port=${cdpPort}`,
         },
       },

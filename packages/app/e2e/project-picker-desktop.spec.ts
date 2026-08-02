@@ -58,9 +58,12 @@ test("cancelling the Browse dialog keeps the typed path and adds nothing", async
   await browse.click();
 
   const dialogOptions = await waitForDirectoryDialog(page);
+  // createDirectory lets the user make the folder from inside the picker, so a
+  // brand-new project does not have to be created out-of-band first.
   expect(dialogOptions).toEqual({
     directory: true,
     multiple: false,
+    createDirectory: true,
   });
   // A cancelled dialog must not wipe what the user already typed, and must not
   // open anything by itself.

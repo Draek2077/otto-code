@@ -117,26 +117,13 @@ const EXPECTED_CLAUDE_MODELS = [
   },
 ] as const;
 
-const EXPECTED_CLAUDE_CONTEXT_MODELS = [
-  {
-    id: "claude-fable-5[1m]",
-    model: "Fable 5 1M",
-    descriptionFragment: "1M context window",
-  },
-  {
-    id: "claude-sonnet-5[1m]",
-    model: "Sonnet 5 1M",
-    descriptionFragment: "1M context window",
-  },
-] as const;
-
+// Otto carries a `[1m]` row ONLY for models the Claude Code CLI reports at
+// `window:200000`. Fable 5 and Sonnet 5 are native 1M, so their plain ids
+// already resolve to a 1M window and a second "1M" row would just duplicate the
+// same model. See model-manifest.ts for the full rule.
+// Deduped by id because the list above names Opus 5 twice.
 const EXPECTED_CLAUDE_CATALOG_MODELS = [
-  ...new Map(
-    [...EXPECTED_CLAUDE_MODELS, ...EXPECTED_CLAUDE_CONTEXT_MODELS].map((model) => [
-      model.id,
-      model,
-    ]),
-  ).values(),
+  ...new Map(EXPECTED_CLAUDE_MODELS.map((model) => [model.id, model])).values(),
 ];
 
 let claudeModelIdsFromJson: string[] = [];
