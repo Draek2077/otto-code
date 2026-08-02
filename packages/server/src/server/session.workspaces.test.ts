@@ -371,7 +371,8 @@ function createWorkspaceRuntimeSnapshot(
   cwd: string,
   overrides?: {
     git?: Partial<WorkspaceGitRuntimeSnapshot["git"]>;
-    github?: Partial<WorkspaceGitRuntimeSnapshot["github"]>;
+    github?: Partial<WorkspaceGitRuntimeSnapshot["forge"]>;
+    forge?: Partial<WorkspaceGitRuntimeSnapshot["forge"]>;
   },
 ): WorkspaceGitRuntimeSnapshot {
   const base: WorkspaceGitRuntimeSnapshot = {
@@ -391,7 +392,7 @@ function createWorkspaceRuntimeSnapshot(
       hasRemote: true,
       diffStat: { additions: 1, deletions: 0 },
     },
-    github: {
+    forge: {
       featuresEnabled: true,
       pullRequest: {
         url: "https://github.com/acme/repo/pull/123",
@@ -411,18 +412,27 @@ function createWorkspaceRuntimeSnapshot(
       ...base.git,
       ...overrides?.git,
     },
-    github: {
-      ...base.github,
-      ...overrides?.github,
-      pullRequest:
-        overrides?.github && "pullRequest" in overrides.github
-          ? (overrides.github.pullRequest ?? null)
-          : base.github.pullRequest,
-      error:
-        overrides?.github && "error" in overrides.github
-          ? (overrides.github.error ?? null)
-          : base.github.error,
-    },
+    // Otto's neutral hosting block. `github` overrides are still accepted as an
+    // alias since every fixture here describes GitHub, and featuresEnabled is
+    // paired with the authState it is derived from.
+    forge: buildForgeRuntimeFixture(base.forge, overrides?.github ?? overrides?.forge),
+  };
+}
+
+function buildForgeRuntimeFixture(
+  base: WorkspaceGitRuntimeSnapshot["forge"],
+  overrides?: Partial<WorkspaceGitRuntimeSnapshot["forge"]>,
+): WorkspaceGitRuntimeSnapshot["forge"] {
+  const featuresEnabled = overrides?.featuresEnabled ?? base.featuresEnabled;
+  return {
+    ...base,
+    ...overrides,
+    featuresEnabled,
+    authState: overrides?.authState ?? (featuresEnabled ? "authenticated" : "no_remote"),
+    ...(featuresEnabled ? { forge: overrides?.forge ?? "github" } : {}),
+    pullRequest:
+      overrides && "pullRequest" in overrides ? (overrides.pullRequest ?? null) : base.pullRequest,
+    error: overrides && "error" in overrides ? (overrides.error ?? null) : base.error,
   };
 }
 
@@ -532,11 +542,16 @@ class CreateAgentTestClient implements AgentClient {
  */
 function createDefaultProjectRegistryStub(): SessionOptions["projectRegistry"] {
   const projects = new Map<string, PersistedProjectRecord>();
-  return {
+  const registry: SessionOptions["projectRegistry"] = {
     initialize: async () => {},
     existsOnDisk: async () => true,
     list: async () => Array.from(projects.values()),
     get: async (projectId: string) => projects.get(projectId) ?? null,
+    // Reads through this object's own list/upsert rather than the map directly,
+    // so the many tests that swap those in place are seen here too. Closing over
+    // the map instead left this resolving against private state the overrides
+    // never reached, and it minted a fresh project where the test had seeded an
+    // archived one to be reopened.
     getOrCreateActiveByRoot: async (input: {
       rootPath: string;
       kind: PersistedProjectKind;
@@ -544,19 +559,20 @@ function createDefaultProjectRegistryStub(): SessionOptions["projectRegistry"] {
       projectKey?: string;
       timestamp: string;
     }) => {
-      const existing = Array.from(projects.values()).find(
+      const known = await registry.list();
+      const existing = known.find(
         (project) => project.rootPath === input.rootPath && !project.archivedAt,
       );
       if (existing) return existing;
       const project = createPersistedProjectRecord({
-        projectId: `prj_test_${projects.size + 1}`,
+        projectId: `prj_test_${known.length + 1}`,
         rootPath: input.rootPath,
         kind: input.kind,
         displayName: input.displayName,
         createdAt: input.timestamp,
         updatedAt: input.timestamp,
       });
-      projects.set(project.projectId, project);
+      await registry.upsert(project);
       return project;
     },
     upsert: async (record: PersistedProjectRecord) => {
@@ -570,6 +586,7 @@ function createDefaultProjectRegistryStub(): SessionOptions["projectRegistry"] {
       projects.delete(projectId);
     },
   };
+  return registry;
 }
 
 function createSessionForWorkspaceTests(
@@ -5335,7 +5352,7 @@ test("archive_workspace_request archives a worktree-kind workspace and removes t
           hasRemote: false,
           diffStat: null,
         },
-        github: {
+        forge: {
           featuresEnabled: false,
           pullRequest: null,
           error: null,
@@ -6187,7 +6204,7 @@ test("fetch_workspaces_response reads runtime fields from passive workspace git 
       aheadOfOrigin: 3,
       behindOfOrigin: 1,
     },
-    github: {
+    forge: {
       pullRequest: {
         url: "https://github.com/acme/repo/pull/456",
         title: "Ship runtime payloads",
@@ -6354,7 +6371,7 @@ test("workspace_update includes updated runtime fields", async () => {
       currentBranch: "feature/runtime-payloads",
       isDirty: true,
     },
-    github: {
+    forge: {
       pullRequest: {
         url: "https://github.com/acme/repo/pull/789",
         title: "Updated runtime payloads",

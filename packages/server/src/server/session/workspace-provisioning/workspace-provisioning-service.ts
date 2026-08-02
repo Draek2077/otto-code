@@ -305,8 +305,13 @@ export function createWorkspaceProvisioningService(deps: {
           left.workspaceId.localeCompare(right.workspaceId),
       )[0];
     if (archived) {
+      // Reopen whenever the project still exists, archived or not.
+      // ensureWorkspaceRecordUnarchived reopens the project alongside the
+      // workspace; requiring an already-active project meant archiving a
+      // project and then reopening its directory silently created a second
+      // workspace on the same cwd instead of restoring the original.
       const project = await projectRegistry.get(archived.projectId);
-      if (project && !project.archivedAt) return ensureWorkspaceRecordUnarchived(archived);
+      if (project) return ensureWorkspaceRecordUnarchived(archived);
     }
     return createWorkspaceForDirectory(normalizedCwd);
   }
