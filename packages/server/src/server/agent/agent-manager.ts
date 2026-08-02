@@ -5188,11 +5188,21 @@ export class AgentManager {
     try {
       const { timeline, subagents } = await this.readProviderHistory(agent);
       for (const event of timeline) {
-        this.recordTimeline(
+        const row = this.recordTimeline(
           agent.id,
           event.item,
           event.timestamp ? { timestamp: event.timestamp } : undefined,
         );
+        // Broadcast here too, not only on the forced path. A caller that asked
+        // for one and happened to take this branch — a second loader joining an
+        // already-primed agent, say — otherwise got a silent hydration.
+        if (options?.broadcast) {
+          this.dispatchStream(agent.id, event, {
+            seq: row.seq,
+            epoch: this.timelineStore.getEpoch(agent.id),
+            timestamp: row.timestamp,
+          });
+        }
       }
       // Only replaces the children once history actually produced some, so a
       // read that yielded nothing does not empty a rail that was correct.
@@ -5738,7 +5748,12 @@ export class AgentManager {
       },
       "agent.manager.turn.completed",
     );
-    agent.lastUsage = this.withContextComposition(agent.id, event.usage);
+    // A completion without usage means "nothing further to report", not "the
+    // turn used nothing". Providers that stream usage_updated during the turn
+    // and then complete with no usage were having the turn's own numbers wiped.
+    if (event.usage) {
+      agent.lastUsage = this.withContextComposition(agent.id, event.usage);
+    }
     // Then upgrade the estimate to the provider's own split where it can report
     // one (async, non-blocking — see `refreshContextCategories`).
     this.refreshContextCategories(agent);
