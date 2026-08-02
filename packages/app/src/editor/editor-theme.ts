@@ -80,6 +80,21 @@ function withAlpha(color: string, alpha: number): string {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
 }
 
+// CM6 mounts its tooltips in its own DOM — the app document on web, a standalone
+// webview document on native — so the shadow token has to cross as a CSS string
+// instead of as the React Native object every other popup spreads. This is the
+// same composition Unistyles performs for views on web (offset + radius + the
+// colour at `shadowOpacity`), which is what keeps the editor's hover card at the
+// app's popup elevation rather than at a hand-tuned approximation that drifts
+// every time the token is retuned.
+// `shadowColor` already carries its alpha (see the shadow tokens in theme.ts), so
+// it goes through untouched and `shadowOpacity` is deliberately not consulted:
+// reading it here would multiply in a second alpha and paint the tooltip solid.
+function toCssBoxShadow(shadow: Theme["shadow"]["md"]): string {
+  const { width, height } = shadow.shadowOffset;
+  return `${width}px ${height}px ${shadow.shadowRadius}px ${shadow.shadowColor}`;
+}
+
 // `rulerColumn` is left null here — it comes from device-local app settings,
 // not the theme, so the host merges it into the spec (see file-tab-pane).
 export function buildEditorThemeSpec(theme: Theme): EditorThemeSpec {
@@ -120,6 +135,7 @@ export function buildEditorThemeSpec(theme: Theme): EditorThemeSpec {
     // panel, and lighter than the deepened code well the tooltip floats over.
     tooltipBackground: theme.colors.surface2,
     tooltipBorder: theme.colors.border,
+    tooltipShadow: toCssBoxShadow(theme.shadow.md),
     selectionBackground: theme.colors.terminal.selectionBackground,
     cursor: theme.colors.foreground,
     cursorWidth: CURSOR_WIDTH_PX,

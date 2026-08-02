@@ -311,8 +311,10 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     borderRadius: theme.borderRadius.md,
   },
+  // Matches `headerIconSlotStyle.slotHovered` — this trigger sits in the same
+  // header row as the toggles it borrows its chrome from.
   triggerHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceToggleHover,
   },
   // Zero-size anchor for the collapsed mode — exists only so the dropdown has
   // a position to open from; must never take layout space or catch pointers.

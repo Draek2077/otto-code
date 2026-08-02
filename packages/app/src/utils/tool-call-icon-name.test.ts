@@ -45,12 +45,22 @@ describe("resolveToolCallIconName", () => {
     expect(icon).toBe("sparkles");
   });
 
-  it("does not special-case skill tool names", () => {
+  it("uses the handyman glyph for skill tool names", () => {
     const icon = resolveToolCallIconName("skill", {
       type: "plain_text",
       label: "Skill output",
     });
 
-    expect(icon).toBe("wrench");
+    expect(icon).toBe("handyman");
+  });
+
+  it("lets an explicit plain_text icon win over the skill default", () => {
+    const icon = resolveToolCallIconName("Skill", {
+      type: "plain_text",
+      label: "Skill output",
+      icon: "sparkles",
+    });
+
+    expect(icon).toBe("sparkles");
   });
 });

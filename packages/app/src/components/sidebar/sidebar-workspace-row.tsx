@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState, type Ref } from "react";
+import { memo, useCallback, useMemo, useState, type ReactNode, type Ref } from "react";
 import { useIsLspBusy } from "@/stores/lsp-activity-store";
 import { useTranslation } from "react-i18next";
 import { View, Text, Pressable } from "react-native";
@@ -38,6 +38,7 @@ import {
   SidebarWorkspaceTrailingActionBase,
   SidebarWorkspaceTrailingActionOverlay,
   SidebarWorkspaceTrailingActionSlot,
+  useFloatingRowActions,
 } from "@/components/sidebar/sidebar-workspace-row-content";
 
 function noop() {}
@@ -262,6 +263,10 @@ function WorkspaceRowBody({
   onMarkAsRead,
   archiveShortcutKeys,
 }: WorkspaceRowBodyProps) {
+  const { t } = useTranslation();
+  const { settings } = useAppSettings();
+  const showDiffStat = settings.workspaceToolsPlacement !== "workspaceList";
+  const floatActions = useFloatingRowActions();
   const isLspBusy = useIsLspBusy(workspace.serverId, workspace.workspaceDirectory ?? null);
   const isTouchPlatform = platformIsNative;
   const draggable = Boolean(drag);
@@ -299,6 +304,26 @@ function WorkspaceRowBody({
           scriptIconKind = hasRunningService ? "service" : "command";
         }
         const workspaceRowStyle = getWorkspaceRowStyle({ isDragging, selected, isHovered });
+        const trailing = buildWorkspaceRowTrailing({
+          t,
+          showDiffStat,
+          floatActions,
+          workspace,
+          isHovered,
+          isTouchPlatform,
+          isCreating,
+          showShortcutBadge,
+          shortcutNumber,
+          archiveLabel,
+          archiveStatus,
+          archivePendingLabel,
+          archiveShortcutKeys,
+          onArchive,
+          onCopyBranchName,
+          onCopyPath,
+          onRename,
+          onMarkAsRead,
+        });
         const rowContent = (
           <SidebarWorkspaceRowContent
             workspace={workspace}
@@ -310,24 +335,9 @@ function WorkspaceRowBody({
             isCreating={isCreating}
             shortcutNumber={shortcutNumber}
             showShortcutBadge={showShortcutBadge}
+            floatingTrailing={trailing.floating}
           >
-            <WorkspaceRowTrailingActions
-              workspace={workspace}
-              isHovered={isHovered}
-              isTouchPlatform={isTouchPlatform}
-              isCreating={isCreating}
-              showShortcutBadge={showShortcutBadge}
-              shortcutNumber={shortcutNumber}
-              archiveLabel={archiveLabel}
-              archiveStatus={archiveStatus}
-              archivePendingLabel={archivePendingLabel}
-              archiveShortcutKeys={archiveShortcutKeys}
-              onArchive={onArchive}
-              onCopyBranchName={onCopyBranchName}
-              onCopyPath={onCopyPath}
-              onRename={onRename}
-              onMarkAsRead={onMarkAsRead}
-            />
+            {trailing.flow}
           </SidebarWorkspaceRowContent>
         );
         return (
@@ -402,7 +412,19 @@ function WorkspaceRowBody({
   );
 }
 
-function WorkspaceRowTrailingActions({
+/**
+ * Splits this row's trailing controls into the part that reserves width in the
+ * title line and the part that floats over the row's right edge. See the twin in
+ * sidebar-workspace-list.tsx for why this is a function and not a component.
+ *
+ * The difference here is the diff stat: it is real content, not a hover
+ * affordance, so it keeps its reserved slot on every platform. Only the kebab
+ * floats, and it paints over the diff stat instead of the old opacity swap.
+ */
+function buildWorkspaceRowTrailing({
+  t,
+  showDiffStat,
+  floatActions,
   workspace,
   isHovered,
   isTouchPlatform,
@@ -419,6 +441,9 @@ function WorkspaceRowTrailingActions({
   onCopyPath,
   onRename,
 }: {
+  t: ReturnType<typeof useTranslation>["t"];
+  showDiffStat: boolean;
+  floatActions: boolean;
   workspace: SidebarWorkspaceEntry;
   isHovered: boolean;
   isTouchPlatform: boolean;
@@ -434,56 +459,77 @@ function WorkspaceRowTrailingActions({
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
   onRename?: () => void;
-}) {
-  const { t } = useTranslation();
-  const { settings } = useAppSettings();
-  const showDiffStat = settings.workspaceToolsPlacement !== "workspaceList";
+}): { flow: ReactNode; floating: ReactNode } {
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
   const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
+  // The shortcut badge owns this corner when it is on, so the kebab yields.
   const showKebabInSlot = showKebab && !showShortcut;
-  const shouldRenderActionSlot = Boolean(onArchive || (showDiffStat && workspace.diffStat));
+  const hasDiffStat = Boolean(showDiffStat && workspace.diffStat);
+  const creating = isCreating ? (
+    <Text style={styles.workspaceCreatingText}>{t("sidebar.workspace.status.creating")}</Text>
+  ) : null;
+  const diffStat =
+    showDiffStat && workspace.diffStat ? (
+      <DiffStat additions={workspace.diffStat.additions} deletions={workspace.diffStat.deletions} />
+    ) : null;
+  const kebab = onArchive ? (
+    <SidebarWorkspaceMenu
+      workspaceKey={workspace.workspaceKey}
+      onCopyPath={onCopyPath}
+      onCopyBranchName={onCopyBranchName}
+      onRename={onRename}
+      onMarkAsRead={onMarkAsRead}
+      serverId={workspace.serverId}
+      workspaceId={workspace.workspaceId}
+      onArchive={onArchive}
+      archiveLabel={archiveLabel}
+      archiveStatus={archiveStatus}
+      archivePendingLabel={archivePendingLabel}
+      archiveShortcutKeys={archiveShortcutKeys}
+    />
+  ) : null;
 
-  return (
-    <>
-      {isCreating ? (
-        <Text style={styles.workspaceCreatingText}>{t("sidebar.workspace.status.creating")}</Text>
-      ) : null}
-      {shouldRenderActionSlot ? (
-        <SidebarWorkspaceTrailingActionSlot>
-          <SidebarWorkspaceTrailingActionBase
-            visible={Boolean(
-              showDiffStat && workspace.diffStat && !showKebabInSlot && !showShortcut,
-            )}
-          >
-            {showDiffStat && workspace.diffStat ? (
-              <DiffStat
-                additions={workspace.diffStat.additions}
-                deletions={workspace.diffStat.deletions}
-              />
-            ) : null}
-          </SidebarWorkspaceTrailingActionBase>
-          <SidebarWorkspaceTrailingActionOverlay visible={showKebabInSlot}>
-            {onArchive ? (
-              <SidebarWorkspaceMenu
-                workspaceKey={workspace.workspaceKey}
-                onCopyPath={onCopyPath}
-                onCopyBranchName={onCopyBranchName}
-                onRename={onRename}
-                onMarkAsRead={onMarkAsRead}
-                serverId={workspace.serverId}
-                workspaceId={workspace.workspaceId}
-                onArchive={onArchive}
-                archiveLabel={archiveLabel}
-                archiveStatus={archiveStatus}
-                archivePendingLabel={archivePendingLabel}
-                archiveShortcutKeys={archiveShortcutKeys}
-              />
-            ) : null}
-          </SidebarWorkspaceTrailingActionOverlay>
-        </SidebarWorkspaceTrailingActionSlot>
-      ) : null}
-    </>
-  );
+  if (floatActions) {
+    return {
+      // Reserve only for the diff stat, and only when there is one. With no diff
+      // stat the row reserves nothing and the workspace name runs the full width.
+      flow: hasDiffStat ? (
+        <>
+          {creating}
+          <SidebarWorkspaceTrailingActionSlot>
+            <SidebarWorkspaceTrailingActionBase visible={!showShortcut}>
+              {diffStat}
+            </SidebarWorkspaceTrailingActionBase>
+          </SidebarWorkspaceTrailingActionSlot>
+        </>
+      ) : (
+        creating
+      ),
+      floating: showKebabInSlot ? kebab : null,
+    };
+  }
+
+  return {
+    flow:
+      onArchive || hasDiffStat ? (
+        <>
+          {creating}
+          <SidebarWorkspaceTrailingActionSlot>
+            <SidebarWorkspaceTrailingActionBase
+              visible={hasDiffStat && !showKebabInSlot && !showShortcut}
+            >
+              {diffStat}
+            </SidebarWorkspaceTrailingActionBase>
+            <SidebarWorkspaceTrailingActionOverlay visible={showKebabInSlot}>
+              {kebab}
+            </SidebarWorkspaceTrailingActionOverlay>
+          </SidebarWorkspaceTrailingActionSlot>
+        </>
+      ) : (
+        creating
+      ),
+    floating: null,
+  };
 }
 
 function getWorkspaceRowStyle({

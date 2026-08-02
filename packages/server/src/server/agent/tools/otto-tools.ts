@@ -749,9 +749,14 @@ const GET_AGENT_ACTIVITY_DEFAULT_LIMIT = 50;
 function resolveBareSpawnTitleAndPrompt(input: {
   title: string | undefined;
   initialPrompt: string | undefined;
-}): { title: string | undefined; initialPrompt: string } {
+}): { title: string | undefined; titleIsPlaceholder: boolean; initialPrompt: string } {
+  const usesPlaceholderTitle = !input.title && !input.initialPrompt;
   return {
-    title: input.title ?? (input.initialPrompt ? undefined : DEFAULT_BARE_AGENT_TITLE),
+    title: input.title ?? (usesPlaceholderTitle ? DEFAULT_BARE_AGENT_TITLE : undefined),
+    // The placeholder is a stand-in, not a name the caller picked, so it must not
+    // suppress auto-naming — otherwise the chat reads "New chat" forever and the
+    // app renders it as a permanent loading skeleton (resolveWorkspaceAgentTabLabel).
+    titleIsPlaceholder: usesPlaceholderTitle,
     initialPrompt: input.initialPrompt ?? DEFAULT_BARE_AGENT_INITIAL_PROMPT,
   };
 }
@@ -1961,6 +1966,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           provider: brain.providerModel,
           ...(personalityConfig ? { config: personalityConfig } : {}),
           title: bareSpawn.title,
+          titleIsPlaceholder: bareSpawn.titleIsPlaceholder,
           initialPrompt: bareSpawn.initialPrompt,
           cwd: resolvedArgs.cwd,
           workspaceId: resolvedArgs.workspaceId,

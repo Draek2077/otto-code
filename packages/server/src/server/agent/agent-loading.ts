@@ -131,14 +131,11 @@ export async function ensureAgentLoaded(
     }
 
     await deps.agentManager.hydrateTimelineFromProvider(agentId, {
-      // A getter, not a snapshot: a second loader that wants the timeline
+      // Read late, not pinned: a second loader that wants the timeline
       // broadcast can join while history is still streaming, and it upgrades
-      // this same options object. Reading the boolean up front pinned the value
-      // taken before the join, so the upgrade never reached the hydration that
-      // was actually running.
-      get broadcast() {
-        return pendingOptions.broadcastTimeline;
-      },
+      // this same options object. Passing the boolean pinned the value taken
+      // before the join, so the upgrade never reached the running hydration.
+      broadcast: () => pendingOptions.broadcastTimeline,
     });
     return deps.agentManager.getAgent(agentId) ?? snapshot;
   })();

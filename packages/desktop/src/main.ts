@@ -25,10 +25,14 @@ import {
   shell,
   webContents,
 } from "electron";
-import { isForwardableOttoShortcutInput } from "./browser-shortcut-forwarding.js";
 import {
+  clearOttoBrowserProfile,
+  getLegacyOttoBrowserProfileSession,
   getOttoBrowserProfileSession,
+  getOttoBrowserProfileSessions,
+  listOttoBrowserProfileGuests,
   OTTO_BROWSER_PROFILE_PARTITION,
+  readLegacyOttoBrowserIds,
 } from "./features/browser-profile.js";
 import { createDaemonCommandHandlers, registerDaemonManager } from "./daemon/daemon-manager.js";
 import { parsePassthroughCliArgsFromArgv, runPassthroughCli } from "./daemon/cli/passthrough.js";
@@ -68,13 +72,15 @@ import {
   decideBrowserWindowOpenRequest,
   getOttoBrowserIdForWebContents,
   getOttoBrowserWebContentsForHostWindow,
+  getOttoBrowserWebviewRegistry,
   isOttoBrowserWebviewAttach,
   listRegisteredOttoBrowserIds,
   PendingBrowserWindowOpenRequests,
   prepareOttoBrowserWebContents,
   registerAttachedOttoBrowser,
   registerBrowserWebviewNavigationGuards,
-  unregisterOttoBrowser,
+  unregisterOttoBrowserFromHost,
+  unregisterOttoBrowserHost,
   setWorkspaceActiveOttoBrowserId,
 } from "./features/browser-webviews/index.js";
 import {
@@ -135,6 +141,7 @@ import {
 import { registerCrashDialog, showStartupErrorDialog } from "./crash-dialog.js";
 import { autoUpdateInstalledSkills } from "./integrations/skills/index.js";
 import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.js";
+import { BrowserKeyboard } from "./features/browser-keyboard/index.js";
 import {
   getCachedMinimizeOnCloseSetting,
   refreshTrayVisibility,
@@ -154,9 +161,6 @@ const APP_NAME = process.env.OTTO_TEST_APP_NAME?.trim() || "Otto";
 // How long a quit waits for the update revalidation, and then for the installer
 // to take over the quit, before exiting hard anyway.
 const UPDATE_QUIT_DEADLINE_MS = 5_000;
-
-const BROWSER_SHORTCUT_EVENT = "otto:event:browser-shortcut";
-const BROWSER_FORWARDED_KEY_EVENT = "otto:event:browser-forwarded-key";
 
 const DESKTOP_SMOKE_ENV = "OTTO_DESKTOP_SMOKE";
 const DESKTOP_SMOKE_STOP_REQUEST = "otto-smoke-stop";
@@ -327,19 +331,13 @@ type PendingWebviewAttach =
   | { kind: "visualizer" };
 const pendingWebviewAttaches: PendingWebviewAttach[] = [];
 
-function isBrowserRefreshInput(input: Electron.Input): boolean {
-  if (input.type !== "keyDown" || input.alt || input.shift) {
-    return false;
-  }
-  return (input.meta || input.control) && input.key.toLowerCase() === "r";
-}
-
-function isBrowserLocationInput(input: Electron.Input): boolean {
-  if (input.type !== "keyDown" || input.alt || input.shift) {
-    return false;
-  }
-  return (input.meta || input.control) && input.key.toLowerCase() === "l";
-}
+// Owns every key a browser guest sees: it gives the page first refusal on
+// ordinary shortcuts, keeps guest keystrokes from reaching the composer, and
+// forwards only the chords the renderer published as host-owned. The renderer
+// publishes that policy over "otto:browser:set-shortcut-policy" on mount, so
+// this must be constructed at module scope, before the first window loads.
+const browserKeyboard = new BrowserKeyboard(getOttoBrowserWebviewRegistry());
+browserKeyboard.registerIpc();
 
 function showBrowserWebviewContextMenu(
   win: BrowserWindow,
@@ -566,6 +564,11 @@ ipcMain.handle("otto:browser:register-attached", (event, rawInput: unknown) => {
   if (!registered) {
     throw new Error("Attached browser registration was rejected");
   }
+  const guest = webContents.fromId(input.webContentsId);
+  if (!guest) {
+    throw new Error("Attached browser guest disappeared after registration");
+  }
+  browserKeyboard.attach({ contents: guest, hostContents: event.sender });
   log.info("[browser-webview] registered", {
     browserId: input.browserId,
     webContentsId: input.webContentsId,
@@ -579,9 +582,38 @@ ipcMain.handle("otto:browser:register-attached", (event, rawInput: unknown) => {
   }
 });
 
-ipcMain.handle("otto:browser:unregister-workspace-browser", (_event, browserId: unknown) => {
-  if (typeof browserId === "string" && browserId.trim().length > 0) {
-    unregisterOttoBrowser(browserId.trim());
+ipcMain.handle("otto:browser:unregister-workspace-browser", async (event, browserId: unknown) => {
+  if (typeof browserId !== "string" || browserId.trim().length === 0) {
+    return;
+  }
+  const normalizedBrowserId = browserId.trim();
+  // Scoped to the window that asked. The same browser can be open in another
+  // window, and closing the tab here must not pull it out from under that one.
+  const hasOtherHost = getOttoBrowserWebviewRegistry().hasBrowserInOtherHostWindow(
+    event.sender.id,
+    normalizedBrowserId,
+  );
+  unregisterOttoBrowserFromHost(event.sender.id, normalizedBrowserId);
+  // COMPAT(browserProfile): added in v0.1.108; remove after 2027-01-15.
+  // Tabs created before the shared partition still own a per-browser session;
+  // reclaim it once the last window holding this browser lets go.
+  const legacyProfile = hasOtherHost
+    ? null
+    : getLegacyOttoBrowserProfileSession(session, normalizedBrowserId);
+  if (!legacyProfile) {
+    return;
+  }
+  try {
+    await clearOttoBrowserProfile({
+      profileSessions: [legacyProfile],
+      listGuests: () => [],
+      logReloadError: () => {},
+    });
+  } catch (error) {
+    log.warn("[browser-profile] failed to clear legacy tab profile", {
+      browserId: normalizedBrowserId,
+      error,
+    });
   }
 });
 
@@ -633,12 +665,26 @@ ipcMain.handle("otto:browser:open-devtools", (event, browserId: unknown) => {
   return result;
 });
 
-ipcMain.handle("otto:browser:clear-partition", async (_event, browserId: unknown) => {
-  if (typeof browserId !== "string" || browserId.trim().length === 0) {
-    return;
-  }
-  const partition = `persist:otto-browser-${browserId}`;
-  await session.fromPartition(partition).clearStorageData();
+// Settings -> Browser Data -> Clear. Wipes the shared browser partition plus
+// every legacy per-browser partition the renderer still knows about, then
+// reloads the live guests so they do not keep serving cleared state.
+ipcMain.handle("otto:browser:clear-profile", async (_event, rawLegacyBrowserIds: unknown) => {
+  const profileSessions = getOttoBrowserProfileSessions(
+    session,
+    readLegacyOttoBrowserIds(rawLegacyBrowserIds),
+  );
+  const profileSession = profileSessions[0];
+  await clearOttoBrowserProfile({
+    profileSessions,
+    listGuests: () =>
+      listOttoBrowserProfileGuests({
+        profileSession,
+        webContents: webContents.getAllWebContents(),
+      }),
+    logReloadError: (webContentsId, error) => {
+      log.warn("[browser-profile] failed to reload guest", { webContentsId, error });
+    },
+  });
 });
 
 ipcMain.handle("otto:browser:capture-element", async (event, browserId: unknown, rect: unknown) => {
@@ -723,6 +769,10 @@ protocol.registerSchemesAsPrivileged([
 
 function getPreloadPath(): string {
   return path.join(__dirname, "preload.js");
+}
+
+function getBrowserKeyboardPreloadPath(): string {
+  return path.join(__dirname, "features", "browser-keyboard", "guest-preload.js");
 }
 
 function getAppDistDir(): string {
@@ -874,6 +924,8 @@ async function createWindow(
     pendingOpenProjectStore.delete(webContentsId);
     clearPendingWindowReveal(webContentsId);
     agentNavigationInbox.removeWindow(webContentsId);
+    unregisterOttoBrowserHost(webContentsId);
+    browserKeyboard.detachHost(webContentsId);
   });
 
   // Windows/Linux: hide the last visible window to the tray instead of letting it
@@ -972,17 +1024,22 @@ async function createWindow(
     }
     pendingWebviewAttaches.push({ kind: "browser" });
     webPreferences.nodeIntegration = false;
-    webPreferences.nodeIntegrationInSubFrames = false;
+    // The sandboxed keyboard preload must run in every frame so focused iframes
+    // keep the same page-first shortcut boundary. Node integration stays off.
+    webPreferences.nodeIntegrationInSubFrames = true;
     webPreferences.nodeIntegrationInWorker = false;
     webPreferences.contextIsolation = true;
     webPreferences.sandbox = true;
     webPreferences.webSecurity = true;
     webPreferences.webviewTag = false;
     webPreferences.allowRunningInsecureContent = false;
+    // Order matters: drop whatever preload the renderer asked for first, then
+    // install the main-process-owned path. The renderer never gets to choose.
     delete webPreferences.preload;
     delete params.preload;
     delete (webPreferences as { preloadURL?: string }).preloadURL;
     delete (params as { preloadURL?: string }).preloadURL;
+    webPreferences.preload = getBrowserKeyboardPreloadPath();
   });
   mainWindow.webContents.on("did-attach-webview", (_event, contents) => {
     const pending = pendingWebviewAttaches.shift() ?? null;
@@ -1004,37 +1061,9 @@ async function createWindow(
       // once it knows this guest's webContentsId; main only primes it here.
       prepareOttoBrowserWebContents(contents);
     }
-    contents.on("before-input-event", (event, input) => {
-      if (isBrowserRefreshInput(input)) {
-        event.preventDefault();
-        if (contents.isLoadingMainFrame()) {
-          contents.stop();
-        } else {
-          contents.reload();
-        }
-        return;
-      }
-      if (isBrowserLocationInput(input)) {
-        event.preventDefault();
-        const focusedBrowserId = getOttoBrowserIdForWebContents(contents);
-        mainWindow.webContents.send(BROWSER_SHORTCUT_EVENT, {
-          action: "focus-url",
-          ...(focusedBrowserId ? { browserId: focusedBrowserId } : {}),
-        });
-        return;
-      }
-      if (isForwardableOttoShortcutInput(input)) {
-        event.preventDefault();
-        mainWindow.webContents.send(BROWSER_FORWARDED_KEY_EVENT, {
-          key: input.key,
-          code: input.code,
-          meta: input.meta,
-          control: input.control,
-          shift: input.shift,
-          alt: input.alt,
-        });
-      }
-    });
+    // Reserved shortcuts (reload, force-reload, focus-url) and host-owned chord
+    // forwarding are handled by browserKeyboard.attach(), which runs once the
+    // renderer completes registration and the guest has a browserId to scope to.
     contents.setWindowOpenHandler(({ url, disposition, frameName, features, postBody }) => {
       const decision = decideBrowserWindowOpenRequest({
         url,

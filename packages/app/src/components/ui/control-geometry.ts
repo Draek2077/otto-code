@@ -66,6 +66,13 @@ export const switchGeometry = {
   thumbTravel: SWITCH_TRACK_WIDTH - SWITCH_THUMB_SIZE - (SWITCH_TRACK_HEIGHT - SWITCH_THUMB_SIZE),
 };
 
+// A segment sits INSIDE its track, so its corners have to be tighter than the
+// track's by exactly the inset, or the two curves fight and the segment's
+// corners poke past the container's.
+function nestedRadius(containerRadius: number, inset: number): number {
+  return Math.max(0, containerRadius - inset);
+}
+
 function fieldLineHeight(fontSize: number): number {
   return Math.round(fontSize * FIELD_TEXT_LINE_HEIGHT_RATIO);
 }
@@ -129,6 +136,11 @@ export function createControlGeometry(theme: Theme) {
     minHeight: controlHeights.compact,
     justifyContent: CONTROL_CENTER_JUSTIFY_CONTENT,
   } satisfies { minHeight: number; justifyContent: "center" };
+  // xs shares sm's track radius rather than stepping down to borderRadius.sm:
+  // that is 2, and minus the 2px inset the thumb would come out square.
+  const segmentedContainerXsRadius = theme.borderRadius.md;
+  const segmentedContainerSmRadius = theme.borderRadius.md;
+  const segmentedContainerMdRadius = theme.borderRadius.lg;
 
   return {
     buttonXs: {
@@ -196,32 +208,41 @@ export function createControlGeometry(theme: Theme) {
       opacity: theme.opacity[50],
     },
     switchControl,
+    // Otto's segmented control is a boxed track with an inset thumb, NOT
+    // upstream's bare pill row. The track owns a fill and a radius, the segment
+    // is inset by `padding` and takes the matching nested radius. Zeroing the
+    // padding or dropping the container radius here does not just flatten the
+    // control, it leaves segmented-control.tsx painting a square `surface2`
+    // block behind fully-round segments. See docs/design.md.
     segmentedContainerXs: {
       minHeight: controlHeights.tight,
-      padding: 0,
+      padding: SEGMENTED_TIGHT_INSET,
+      borderRadius: segmentedContainerXsRadius,
     },
     segmentedContainerSm: {
       minHeight: controlHeights.compact,
-      padding: 0,
+      padding: SEGMENTED_COMPACT_INSET,
+      borderRadius: segmentedContainerSmRadius,
     },
     segmentedContainerMd: {
       minHeight: controlHeights.field,
-      padding: 0,
+      padding: SEGMENTED_FIELD_INSET,
+      borderRadius: segmentedContainerMdRadius,
     },
     segmentedSegmentXs: {
       minHeight: controlHeights.tight - SEGMENTED_TIGHT_INSET * 2,
       paddingHorizontal: theme.spacing[3],
-      borderRadius: theme.borderRadius.full,
+      borderRadius: nestedRadius(segmentedContainerXsRadius, SEGMENTED_TIGHT_INSET),
     },
     segmentedSegmentSm: {
       minHeight: controlHeights.compact - SEGMENTED_COMPACT_INSET * 2,
-      paddingHorizontal: theme.spacing[3],
-      borderRadius: theme.borderRadius.full,
+      paddingHorizontal: theme.spacing[4],
+      borderRadius: nestedRadius(segmentedContainerSmRadius, SEGMENTED_COMPACT_INSET),
     },
     segmentedSegmentMd: {
       minHeight: controlHeights.field - SEGMENTED_FIELD_INSET * 2,
-      paddingHorizontal: theme.spacing[4],
-      borderRadius: theme.borderRadius.full,
+      paddingHorizontal: theme.spacing[6],
+      borderRadius: nestedRadius(segmentedContainerMdRadius, SEGMENTED_FIELD_INSET),
     },
     segmentedLabelXs: {
       fontSize: theme.fontSize.xs,
@@ -230,7 +251,7 @@ export function createControlGeometry(theme: Theme) {
       fontSize: theme.fontSize.sm,
     },
     segmentedLabelMd: {
-      fontSize: theme.fontSize.sm,
+      fontSize: theme.fontSize.base,
     },
   };
 }

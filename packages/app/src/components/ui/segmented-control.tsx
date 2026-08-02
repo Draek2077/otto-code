@@ -68,9 +68,19 @@ export function SegmentedControl<T extends string>({
   style,
   testID,
 }: SegmentedControlProps<T>) {
-  const containerSizeStyle = size === "sm" ? styles.containerSm : styles.containerMd;
-  const baseSegmentSizeStyle = size === "sm" ? styles.segmentSm : styles.segmentMd;
-  const labelSizeStyle = size === "sm" ? styles.labelSm : styles.labelMd;
+  // Keyed off the size union, and read during render because Unistyles styles
+  // must not be dereferenced at module scope. The ternary this replaces had no
+  // branch for "xs" and silently rendered it at md, which is what left the file
+  // editor's mode bar 44px tall.
+  const containerSizeStyle = {
+    xs: styles.containerXs,
+    sm: styles.containerSm,
+    md: styles.containerMd,
+  }[size];
+  const baseSegmentSizeStyle = { xs: styles.segmentXs, sm: styles.segmentSm, md: styles.segmentMd }[
+    size
+  ];
+  const labelSizeStyle = { xs: styles.labelXs, sm: styles.labelSm, md: styles.labelMd }[size];
   const iconSize = segmentedIconSize[size];
 
   const containerStyle = useMemo(
@@ -204,8 +214,15 @@ const styles = StyleSheet.create((theme) => {
     container: {
       flexDirection: "row",
       alignItems: "stretch",
-      backgroundColor: theme.colors.surface2,
+      // The well the thumbs sit in. `surfaceControlTrack`, not `surface2`: the
+      // fill has to read as a recess in BOTH ramps, and light's is compressed
+      // enough at the top that surface2 paints white-on-white. See the token's
+      // note in `theme.ts`.
+      backgroundColor: theme.colors.surfaceControlTrack,
       gap: 2,
+    },
+    containerXs: {
+      ...geometry.segmentedContainerXs,
     },
     containerSm: {
       ...geometry.segmentedContainerSm,
@@ -237,6 +254,9 @@ const styles = StyleSheet.create((theme) => {
       flexShrink: 0,
       gap: theme.spacing[1],
     },
+    segmentXs: {
+      ...geometry.segmentedSegmentXs,
+    },
     segmentSm: {
       ...geometry.segmentedSegmentSm,
     },
@@ -250,6 +270,10 @@ const styles = StyleSheet.create((theme) => {
       flexBasis: 0,
       minWidth: 0,
     },
+    // The thumb is `surface0` — the page background — lifted off the recessed
+    // track by fill contrast and a soft shadow, with no outline on either. That
+    // only works because `surfaceControlTrack` is a real step away from the page
+    // in both ramps; against the old `surface2` on light it was white on white.
     segmentSelected: {
       backgroundColor: theme.colors.surface0,
       shadowColor: "#000",
@@ -289,6 +313,13 @@ const styles = StyleSheet.create((theme) => {
     label: {
       color: theme.colors.foregroundMuted,
       fontWeight: theme.fontWeight.normal,
+    },
+    labelXs: {
+      ...geometry.segmentedLabelXs,
+      fontSize: {
+        xs: geometry.segmentedLabelXs.fontSize + 2,
+        md: geometry.segmentedLabelXs.fontSize,
+      },
     },
     labelSm: {
       ...geometry.segmentedLabelSm,

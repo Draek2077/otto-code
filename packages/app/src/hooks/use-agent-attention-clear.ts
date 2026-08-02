@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import {
+  isAttentionRaisedWhileActivelyViewed,
   shouldClearAgentAttention,
   type AgentAttentionClearTrigger,
 } from "@/utils/agent-attention";
@@ -98,16 +99,22 @@ export function useAgentAttentionClear({
   useEffect(() => {
     const isActivelyViewed = isScreenFocused && isAppVisible;
     if (
-      !prevRequiresAttentionRef.current &&
-      Boolean(requiresAttention) &&
-      prevActivelyViewedRef.current &&
-      isActivelyViewed
+      isAttentionRaisedWhileActivelyViewed({
+        wasRequiringAttention: prevRequiresAttentionRef.current,
+        requiresAttention,
+        wasActivelyViewed: prevActivelyViewedRef.current,
+        isActivelyViewed,
+      })
     ) {
+      // Keep the deferred flag for the case where the clear below is refused
+      // (a pending permission must keep its badge); clearAttention resets it
+      // once the clear actually lands.
       deferredFocusEntryClearRef.current = true;
+      clearAttention("active-view");
     }
     prevRequiresAttentionRef.current = Boolean(requiresAttention);
     prevActivelyViewedRef.current = isActivelyViewed;
-  }, [isAppVisible, isScreenFocused, requiresAttention]);
+  }, [clearAttention, isAppVisible, isScreenFocused, requiresAttention]);
 
   useEffect(() => {
     const enteredScreenFocus = !prevScreenFocusedRef.current && isScreenFocused && isAppVisible;

@@ -307,7 +307,17 @@ export interface SubscribeOptions {
 
 interface HydrateTimelineOptions {
   force?: boolean;
-  broadcast?: boolean;
+  /**
+   * A thunk when the answer can still change: a second loader can ask for the
+   * timeline to be broadcast while history is already streaming, and it upgrades
+   * the shared options the running hydration reads. A plain boolean pins the
+   * value taken before that upgrade, so the running hydration never saw it.
+   */
+  broadcast?: boolean | (() => boolean);
+}
+
+function shouldBroadcastHydration(broadcast: HydrateTimelineOptions["broadcast"]): boolean {
+  return typeof broadcast === "function" ? broadcast() : broadcast === true;
 }
 
 export type ImportablePersistedAgentQueryOptions = ListImportableSessionsOptions & {
@@ -5235,7 +5245,7 @@ export class AgentManager {
         // Broadcast here too, not only on the forced path. A caller that asked
         // for one and happened to take this branch — a second loader joining an
         // already-primed agent, say — otherwise got a silent hydration.
-        if (options?.broadcast) {
+        if (shouldBroadcastHydration(options?.broadcast)) {
           this.dispatchStream(agent.id, event, {
             seq: row.seq,
             epoch: this.timelineStore.getEpoch(agent.id),
@@ -5246,7 +5256,11 @@ export class AgentManager {
       // Only replaces the children once history actually produced some, so a
       // read that yielded nothing does not empty a rail that was correct.
       if (subagents.length > 0) {
-        this.rebuildProviderSubagentsFromHistory(agent, subagents, options?.broadcast === true);
+        this.rebuildProviderSubagentsFromHistory(
+          agent,
+          subagents,
+          shouldBroadcastHydration(options?.broadcast),
+        );
       }
     } catch {
       // ignore history failures
@@ -5289,7 +5303,11 @@ export class AgentManager {
     this.timelineStore.delete(agent.id);
     this.timelineStore.initialize(agent.id, { timestamp: new Date().toISOString() });
     agent.historyPrimed = true;
-    this.rebuildProviderSubagentsFromHistory(agent, subagents, options.broadcast === true);
+    this.rebuildProviderSubagentsFromHistory(
+      agent,
+      subagents,
+      shouldBroadcastHydration(options.broadcast),
+    );
 
     for (const event of timeline) {
       const row = this.recordTimeline(
@@ -5297,7 +5315,7 @@ export class AgentManager {
         event.item,
         event.timestamp ? { timestamp: event.timestamp } : undefined,
       );
-      if (options.broadcast) {
+      if (shouldBroadcastHydration(options.broadcast)) {
         this.dispatchStream(agent.id, event, {
           seq: row.seq,
           epoch: this.timelineStore.getEpoch(agent.id),

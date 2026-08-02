@@ -1,4 +1,6 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+// Aliased: `renderHoverContent` already takes a `markdown` parameter.
+import { markdown as markdownSupport, markdownLanguage } from "@codemirror/lang-markdown";
 import {
   bracketMatching,
   HighlightStyle,
@@ -33,7 +35,7 @@ import {
   type TooltipView,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
-import { getParserForFile, highlightCode } from "@otto-code/highlight";
+import { getLanguageForFile, getParserForFile, highlightCode } from "@otto-code/highlight";
 import {
   DEFAULT_EDITOR_KEY_BINDINGS,
   type EditorCursorPosition,
@@ -489,10 +491,10 @@ function buildThemeExtension(spec: EditorThemeSpec): Extension {
       color: spec.foreground,
       border: `1px solid ${spec.tooltipBorder}`,
       borderRadius: "6px",
-      // The app's `md` elevation, translated: its shadow tokens are React Native
-      // objects (shadowColor/Offset/Radius), which do not cross into CSS, and this
-      // module cannot import them anyway.
-      boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
+      // The app's `md` elevation, composed into CSS by buildEditorThemeSpec: the
+      // shadow tokens are React Native objects (shadowColor/Offset/Radius) which
+      // do not cross into CSS, and this module cannot import them anyway.
+      boxShadow: spec.tooltipShadow,
     },
     ".cm-otto-hover": {
       maxWidth: "560px",
@@ -767,7 +769,59 @@ function buildSyntaxExtension(spec: EditorThemeSpec): Extension {
   return syntaxHighlighting(style, { fallback: true });
 }
 
+const MARKDOWN_EXTENSIONS = new Set(["md", "mdx", "markdown"]);
+
+function isMarkdownPath(path: string): boolean {
+  const extension = path.split(".").pop()?.toLowerCase();
+  return extension !== undefined && MARKDOWN_EXTENSIONS.has(extension);
+}
+
+/**
+ * Resolve a fence's info string to a grammar, so a ```ts block inside a
+ * markdown file colours with the same parser a `.ts` tab uses.
+ *
+ * The info may be a language name (`typescript`) or an extension (`ts`), and
+ * both spellings are common in the wild. `filenameForHoverLanguage` already
+ * owns the name → extension table for hover code blocks; reusing it is what
+ * keeps this from becoming a second, drifting copy of that map. Anything it
+ * doesn't name is tried as a bare extension, which covers every grammar the
+ * parser registry knows under its own suffix.
+ */
+function markdownFenceLanguage(info: string): Language | null {
+  // A fence may carry attributes: ```ts title="x".
+  const tag = info.trim().split(/\s+/, 1)[0]?.toLowerCase();
+  if (!tag) {
+    return null;
+  }
+  const named = filenameForHoverLanguage(tag);
+  if (named !== null) {
+    const language = getLanguageForFile(named);
+    if (language) {
+      return language;
+    }
+  }
+  return getLanguageForFile(`fence.${tag}`);
+}
+
 function buildLanguageExtension(path: string): Extension {
+  // Markdown is the one format the editor *edits* rather than merely colours,
+  // so it takes the full LanguageSupport instead of a bare parser: that is what
+  // carries list continuation (Enter), markup-aware Backspace, GFM tables and
+  // task lists, and paste-a-URL-over-a-selection-to-make-a-link. The keymap
+  // rides at Prec.high but each of its commands returns false outside markdown
+  // context, so it never shadows the default keymap in a code fence.
+  if (isMarkdownPath(path)) {
+    return markdownSupport({
+      // The GFM dialect, not strict CommonMark: tables, task lists and
+      // strikethrough are what people actually write.
+      base: markdownLanguage,
+      codeLanguages: markdownFenceLanguage,
+      // No autocompletion extension is mounted, so the HTML tag source would be
+      // inert data plus dead bundle weight. Flip this back on when Phase 2 adds
+      // the link/heading completion sources.
+      completeHTMLTags: false,
+    });
+  }
   const parser = getParserForFile(path);
   if (!parser) {
     return [];

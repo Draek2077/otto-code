@@ -21,6 +21,10 @@ interface HeaderToggleButtonProps extends Omit<PressableProps, "style" | "onPres
   tooltipSide: "left" | "right" | "top" | "bottom";
   tooltipDelayDuration?: number;
   style?: StyleProp<ViewStyle>;
+  // Persistent on-state — holds the slot chrome while the toggle is enabled, the
+  // same way the sidebar's Settings button marks the surface you are already on.
+  // An enabled feature should read as enabled without needing a hover to prove it.
+  active?: boolean;
   // Composed onto the underlying trigger Pressable (e.g. a tutorial anchor).
   anchorRef?: Ref<View>;
   children: ReactNode | ((state: HeaderToggleButtonState) => ReactNode);
@@ -34,6 +38,7 @@ export function HeaderToggleButton({
   tooltipDelayDuration = 0,
   style,
   disabled,
+  active = false,
   anchorRef,
   children,
   ...props
@@ -51,10 +56,11 @@ export function HeaderToggleButton({
   const combinedStyle = useCallback(
     ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
       headerIconSlotStyle.slot,
+      !disabled && active && headerIconSlotStyle.slotActive,
       !disabled && (Boolean(hovered) || Boolean(pressed)) && headerIconSlotStyle.slotHovered,
       style,
     ],
-    [disabled, style],
+    [active, disabled, style],
   );
 
   return (
@@ -90,8 +96,17 @@ export const headerIconSlotStyle = StyleSheet.create((theme) => ({
     },
     borderRadius: theme.borderRadius.lg,
   },
+  // Selected is the resting shade — the same fill the explorer's selected tab
+  // uses, so a toggled-on title-bar button and a selected tab match. Hover is
+  // ONE step off it, and is applied AFTER selected in `combinedStyle`, so
+  // pointing at a toggled-on button lifts it rather than flattening it back.
+  // Both are derived per mode in `theme.ts`: no single literal steps the same
+  // direction on light and dark.
   slotHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceToggleHover,
+  },
+  slotActive: {
+    backgroundColor: theme.colors.surfaceToggleSelected,
   },
 }));
 

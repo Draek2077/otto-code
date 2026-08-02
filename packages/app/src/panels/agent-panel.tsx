@@ -2,7 +2,15 @@ import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
 import { isExternalPreviewServerId } from "@otto-code/protocol/messages";
 import type { TFunction } from "i18next";
 import { SquarePen } from "@/components/icons/material-icons";
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import ReanimatedAnimated from "react-native-reanimated";
@@ -52,6 +60,9 @@ import {
 } from "@/panels/agent-panel-load-state";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import { SidebarCallout } from "@/components/sidebar-callout";
+import { i18n } from "@/i18n/i18next";
+import { resolveAgentTabTitle } from "@/panels/agent-tab-title";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { RenderProfile } from "@/utils/render-profiler";
 import { buildDraftPanelDescriptor } from "@/panels/draft-panel-descriptor";
@@ -265,19 +276,8 @@ function formatProviderLabel(provider: Agent["provider"]): string {
     .join(" ");
 }
 
-function resolveWorkspaceAgentTabLabel(title: string | null | undefined): string | null {
-  if (typeof title !== "string") {
-    return null;
-  }
-  const normalized = title.trim();
-  if (!normalized) {
-    return null;
-  }
-  if (normalized.toLowerCase() === "new agent" || normalized.toLowerCase() === "new chat") {
-    return null;
-  }
-  return normalized;
-}
+// Tab naming lives in @/panels/agent-tab-title: a tab always has a name, and
+// "loading" means a load is actually in flight rather than standing in for one.
 
 function shouldStoreFetchedAgentInActiveDirectory(agent: Agent): boolean {
   return !agent.archivedAt && Boolean(agent.projectPlacement);
@@ -335,6 +335,9 @@ function buildAgentDescriptorState(agent: Agent | null) {
     // No fallback provider: an unhydrated agent must not borrow another
     // provider's logo. Empty resolves to the neutral Bot icon instead.
     provider: agent?.provider ?? "",
+    // Distinguishes "still fetching this agent" from "fetched, and it has no
+    // title" — only the former is a loading state.
+    isHydrated: agent !== null,
     title: agent?.title ?? null,
     status: agent?.status ?? null,
     pendingPermissionCount: agent?.pendingPermissions.length ?? 0,
@@ -357,14 +360,18 @@ function useAgentPanelDescriptor(
     }),
   );
   const provider = descriptorState.provider;
-  const label = resolveWorkspaceAgentTabLabel(descriptorState.title);
+  const { label, titleState } = resolveAgentTabTitle({
+    title: descriptorState.title,
+    isHydrated: descriptorState.isHydrated,
+    fallbackLabel: i18n.t("workspace.tabs.fallback.agent"),
+  });
   const icon = getProviderIcon(provider);
 
   return {
-    label: label ?? "",
-    tooltip: label ?? "",
+    label,
+    tooltip: label,
     subtitle: provider ? `${formatProviderLabel(provider)} agent` : "Agent",
-    titleState: label ? "ready" : "loading",
+    titleState,
     icon,
     statusBucket: descriptorState.status
       ? deriveSidebarStateBucket({
@@ -777,6 +784,7 @@ function ChatAgentContent({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
+  const isPaneVisible = useRetainedPanelActive();
   const { api: toastApi, toast: toastState, dismiss: dismissToast } = useToastHost();
   const { isArchivingAgent } = useArchiveAgent();
   const streamViewRef = useRef<AgentStreamViewHandle>(null);
@@ -820,6 +828,29 @@ function ChatAgentContent({
   const agentHistorySyncGeneration = useSessionStore((state) =>
     agentId ? (state.sessions[serverId]?.agentHistorySyncGeneration?.get(agentId) ?? -1) : -1,
   );
+  // Per-agent catch-up status from the viewed-timeline sync. Until this agent's
+  // subscription is acknowledged and caught up, the transcript on screen may be
+  // behind the daemon, so the state machine holds "ready" back.
+  const viewedTimelineSync = useSessionStore(
+    (state) => state.sessions[serverId]?.viewedTimelineSync ?? null,
+  );
+  const subscribeToVisibilityCatchUp = useCallback(
+    (listener: () => void) => viewedTimelineSync?.subscribe(listener) ?? (() => {}),
+    [viewedTimelineSync],
+  );
+  const readTimelineStatus = useCallback(
+    () =>
+      !agentId || !viewedTimelineSync
+        ? ("ready" as const)
+        : viewedTimelineSync.getAgentTimelineStatus(agentId),
+    [agentId, viewedTimelineSync],
+  );
+  const timelineStatus = useSyncExternalStore(
+    subscribeToVisibilityCatchUp,
+    readTimelineStatus,
+    readTimelineStatus,
+  );
+  const visibilityCatchUpStatus = isPaneVisible ? timelineStatus : "ready";
   const hasActiveCreateHandoff = useCreateFlowStore((state) =>
     findActiveCreateHandoff({ pendingByDraftId: state.pendingByDraftId, serverId, agentId }),
   );
@@ -998,10 +1029,7 @@ function ChatAgentContent({
       continuity,
       hasHydratedHistoryBefore,
       isArchived: agentState.archivedAt != null,
-      // Paseo gates the ready state on per-agent visibility catch-up. The app
-      // does not surface that signal yet (the sync owns it internally), so
-      // report ready and keep today's behaviour.
-      visibilityCatchUpStatus: "ready",
+      visibilityCatchUpStatus,
     },
   });
 
@@ -1153,6 +1181,7 @@ function ChatAgentContent({
     viewState.tag === "ready" &&
     viewState.sync.status === "catching_up" &&
     viewState.sync.ui === "overlay";
+  const showHistorySyncError = viewState.tag === "ready" && viewState.sync.status === "sync_error";
 
   return (
     <ChatAgentReadyContent
@@ -1172,6 +1201,7 @@ function ChatAgentContent({
       handleComposerHeightChange={handleComposerHeightChange}
       handleMessageSent={handleMessageSent}
       showHistorySyncOverlay={showHistorySyncOverlay}
+      showHistorySyncError={showHistorySyncError}
       cwd={agentCwd}
       onAttentionInputFocus={attentionController.clearOnInputFocus}
       onAttentionPromptSend={attentionController.clearOnPromptSend}
@@ -1197,6 +1227,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   handleComposerHeightChange,
   handleMessageSent,
   showHistorySyncOverlay,
+  showHistorySyncError,
   cwd,
   onAttentionInputFocus,
   onAttentionPromptSend,
@@ -1218,6 +1249,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   handleComposerHeightChange: (height: number) => void;
   handleMessageSent: () => void;
   showHistorySyncOverlay: boolean;
+  showHistorySyncError: boolean;
   cwd: string;
   onAttentionInputFocus: () => void;
   onAttentionPromptSend: () => void;
@@ -1344,6 +1376,14 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
           <ChatMetricsBar serverId={serverId} agentId={agentId} />
 
           {contentContainer}
+
+          {showHistorySyncError ? (
+            <SidebarCallout
+              title={t("agentPanel.states.timelineSyncFailed")}
+              variant="error"
+              testID="agent-timeline-sync-error"
+            />
+          ) : null}
 
           {composerSection}
 

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Text } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
@@ -12,7 +13,9 @@ import { useVisualizerSurface } from "@/visualizer/use-visualizer-surface";
 const ThemedWaypoints = withUnistyles(Waypoints);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const accentColorMapping = (theme: Theme) => ({ color: theme.colors.primary });
+// `accentBright` — the same accent the Sidebar and Explorer toggles use for their
+// on-state, so every enabled header toggle reads as one family.
+const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accentBright });
 
 // Accent while the Visualizer is on screen — either surface — so the button
 // reads as the state toggle it now is.
@@ -23,10 +26,12 @@ function resolveGlyphColor(input: { showing: boolean; hovered: boolean }) {
   return input.hovered ? foregroundColorMapping : mutedColorMapping;
 }
 
-// Same slot chrome as the neighboring "..." menu trigger and explorer toggle.
-function triggerStyle({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) {
-  return [
+// Same slot chrome as the neighboring "..." menu trigger and explorer toggle,
+// held while a Visualizer surface is open so the on-state needs no hover.
+function resolveTriggerStyle(showing: boolean) {
+  return ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
     headerIconSlotStyle.slot,
+    showing && headerIconSlotStyle.slotActive,
     (Boolean(hovered) || Boolean(pressed)) && headerIconSlotStyle.slotHovered,
   ];
 }
@@ -55,6 +60,8 @@ export function WorkspaceVisualizerButton({
   // smaller md glyph shared with the "..." trigger.
   const glyphSize = isCompact ? iconSize.lg : iconSize.md;
   const { showing, toggle } = useVisualizerSurface(serverId, workspaceId);
+  const isShowing = showing !== null;
+  const triggerStyle = useMemo(() => resolveTriggerStyle(isShowing), [isShowing]);
 
   if (!workspaceId) {
     return null;
@@ -76,7 +83,7 @@ export function WorkspaceVisualizerButton({
         {({ hovered }: { hovered?: boolean }) => (
           <ThemedWaypoints
             size={glyphSize}
-            uniProps={resolveGlyphColor({ showing: showing !== null, hovered: Boolean(hovered) })}
+            uniProps={resolveGlyphColor({ showing: isShowing, hovered: Boolean(hovered) })}
           />
         )}
       </TooltipTrigger>

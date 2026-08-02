@@ -72,6 +72,7 @@ import type { VoiceCallerContext, VoiceSpeakHandler } from "./voice-types.js";
 import {
   computeNotificationPlan,
   isPushEligibleAttentionReason,
+  isTargetActivelyWatched,
   type ClientPresenceState,
 } from "./agent-attention-policy.js";
 import {
@@ -833,6 +834,17 @@ export class VoiceAssistantWebSocketServer {
         this.logger.warn({ err, agentId: params.agentId }, "Failed to broadcast agent attention");
       });
     });
+
+    // Lets the manager skip raising an unread badge on a chat a client already
+    // has open. Same presence rules the notification plan uses, so the badge and
+    // the OS notification cannot disagree about who is watching.
+    this.agentManager.setAgentActivelyWatchedProbe((agentId) =>
+      isTargetActivelyWatched({
+        allStates: this.collectClientPresenceStates(),
+        focusTarget: { kind: "agent", id: agentId },
+        nowMs: Date.now(),
+      }),
+    );
 
     this.providerUsageService = new ProviderUsageService({
       logger: this.logger,
@@ -2793,6 +2805,17 @@ export class VoiceAssistantWebSocketServer {
       ...loggedMetrics,
     };
     this.logger.info(loggedMetrics, "ws_runtime_metrics");
+  }
+
+  private collectClientPresenceStates(): ClientPresenceState[] {
+    const states: ClientPresenceState[] = [];
+    for (const connection of this.sessions.values()) {
+      if (connection.kind !== "trusted") {
+        continue;
+      }
+      states.push(this.getClientActivityState(connection.session));
+    }
+    return states;
   }
 
   private getClientActivityState(session: Session): ClientPresenceState {

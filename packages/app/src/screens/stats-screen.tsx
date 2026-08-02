@@ -51,9 +51,9 @@ import {
   Moon,
   Palette,
   Puzzle,
+  Robot,
   Scissors,
   Send,
-  Sparkles,
   Trash2,
   Upload,
   Wrench,
@@ -76,7 +76,7 @@ const ThemedAlarmClock = withUnistyles(AlarmClock);
 const ThemedDollarSign = withUnistyles(DollarSign);
 const ThemedMessageSquare = withUnistyles(MessageSquare);
 const ThemedScissors = withUnistyles(Scissors);
-const ThemedSparkles = withUnistyles(Sparkles);
+const ThemedRobot = withUnistyles(Robot);
 
 type RollupWindow = keyof ActivityStatsRollups;
 type TileFormat = "count" | "tokens" | "usd";
@@ -204,7 +204,7 @@ function buildBreakdownTiles(counters: ActivityCounters): TileDef[] {
     {
       key: "generations",
       label: "Background generations",
-      Icon: ThemedSparkles,
+      Icon: ThemedRobot,
       value: counters.generationsTokensIn + counters.generationsTokensOut,
       format: "tokens",
     },

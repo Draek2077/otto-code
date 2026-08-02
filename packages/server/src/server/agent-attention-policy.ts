@@ -39,6 +39,37 @@ function isFocusedOnTarget(
   return state.focusedTerminalId === target.id;
 }
 
+/**
+ * True when some present, app-visible client is looking straight at this target.
+ *
+ * Attention is an unread signal, so raising it for a chat the reader already has
+ * open produces a badge that flashes on and is immediately cleared again. The
+ * clear is a round trip behind the raise, so it can never be flicker-free.
+ * Suppressing at the source is the only way to not show it at all.
+ *
+ * Deliberately the same presence rules {@link computeNotificationPlan} uses, so
+ * the badge and the OS notification cannot disagree about who is watching.
+ */
+export function isTargetActivelyWatched(input: {
+  allStates: ClientPresenceState[];
+  focusTarget: AttentionFocusTarget | null;
+  nowMs: number;
+}): boolean {
+  for (const state of input.allStates) {
+    const clampedActivityAtMs =
+      state.lastActivityAtMs === null ? null : Math.min(state.lastActivityAtMs, input.nowMs);
+    const isPresent =
+      clampedActivityAtMs !== null && input.nowMs - clampedActivityAtMs <= PRESENCE_THRESHOLD_MS;
+    if (!isPresent) {
+      continue;
+    }
+    if (state.appVisible && isFocusedOnTarget(state, input.focusTarget)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function computeNotificationPlan({
   allStates,
   focusTarget,

@@ -25,14 +25,14 @@ import {
   Layers,
   MessageSquare,
   Puzzle,
+  Robot,
   Scissors,
   Server,
-  Sparkles,
 } from "@/components/icons/material-icons";
 
 const ThemedMessageSquare = withUnistyles(MessageSquare);
 const ThemedPuzzle = withUnistyles(Puzzle);
-const ThemedSparkles = withUnistyles(Sparkles);
+const ThemedRobot = withUnistyles(Robot);
 const ThemedScissors = withUnistyles(Scissors);
 const ThemedServer = withUnistyles(Server);
 const ThemedLayers = withUnistyles(Layers);
@@ -59,7 +59,7 @@ function kindIcon(kind: string): typeof ThemedMessageSquare {
     case "subagent":
       return ThemedPuzzle;
     case "generation":
-      return ThemedSparkles;
+      return ThemedRobot;
     case "compaction":
       return ThemedScissors;
     default:

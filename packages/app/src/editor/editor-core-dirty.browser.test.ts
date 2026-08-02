@@ -29,6 +29,7 @@ const THEME: EditorThemeSpec = {
   scrollbarHandle: "#8a8a8a",
   tooltipBackground: "#2a2a2a",
   tooltipBorder: "#3a3a3a",
+  tooltipShadow: "0px 6px 16px rgba(0, 0, 0, 0.6)",
   selectionBackground: "#2b3a55",
   cursor: "#e6e6e6",
   cursorWidth: 2,

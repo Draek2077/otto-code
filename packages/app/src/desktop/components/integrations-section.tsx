@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { ArrowUpRight, Terminal, Blocks, Check } from "@/components/icons/material-icons";
+import { ArrowUpRight, Terminal, Handyman, Check } from "@/components/icons/material-icons";
 import { settingsStyles } from "@/styles/settings";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { Button } from "@/components/ui/button";
@@ -189,7 +189,7 @@ export function IntegrationsSection() {
         <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
           <View style={settingsStyles.rowContent}>
             <View style={styles.rowTitleRow}>
-              <Blocks size={theme.iconSize.md} color={theme.colors.foreground} />
+              <Handyman size={theme.iconSize.md} color={theme.colors.foreground} />
               <Text style={settingsStyles.rowTitle}>{t("settings.integrations.skills.title")}</Text>
             </View>
             <Text style={settingsStyles.rowHint}>

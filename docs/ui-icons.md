@@ -50,6 +50,25 @@ packages/app/src/components/icons/material-icons.ts   — the actual icon compon
    `packages/app/src/components/icons/material-icons.ts`.
 5. Run `npm run typecheck`.
 
+## Reserved glyphs
+
+A few concepts own a glyph app-wide, so the same idea reads the same everywhere. Do
+not spend these on anything else, and do not draw the concept with a different icon.
+
+| Concept               | Icon                    | Where it appears                                                                                   |
+| --------------------- | ----------------------- | -------------------------------------------------------------------------------------------------- |
+| Skill                 | `Handyman` (`handyman`) | Settings → Integrations skills row, the chat tool-call rail for `Skill` calls, any future skill UI |
+| Background generation | `Robot` (`robot_2`)     | The `generation` usage kind — the Usage ledger row and the Stats "Background generations" tile     |
+
+The `artificer` personality role used to wear `Handyman`; it moved to `Architecture` when
+the skill reservation landed. See `packages/app/src/provider-selection/role-icons.ts`.
+
+Skill tool calls resolve their glyph client-side in `tool-call-icon-name.ts`, from the
+tool name, not from the wire. `ToolCallIconName` is a `z.enum` on the WebSocket schema
+(`messages.ts`), so `handyman` is added to the client-only `ToolCallIcon` union next to
+`otto` rather than to the protocol enum — an old client must never meet an icon name it
+cannot parse.
+
 ## Why "outlined", unfilled by default
 
 Material Symbols ships three families (`outlined`, `rounded`, `sharp`) and a filled

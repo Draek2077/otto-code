@@ -19,6 +19,17 @@ function activeFooterIconButtonStyle(state: { hovered?: boolean; pressed?: boole
   return [...footerIconButtonStyle(state), styles.footerIconButtonActive];
 }
 
+// Accent marks the surface you are already on — the same `accentBright` the
+// header's Sidebar, Explorer, Visualizer and Voice Cues toggles use for their
+// on-state. Hover stays plain foreground: hovering a button is not the same
+// claim as being on its page.
+function footerIconColor(theme: SidebarTheme, state: { active: boolean; hovered: boolean }) {
+  if (state.active) {
+    return theme.colors.accentBright;
+  }
+  return state.hovered ? theme.colors.foreground : theme.colors.foregroundMuted;
+}
+
 export function FooterIconButton({
   buttonRef,
   onPress,
@@ -63,11 +74,35 @@ export function FooterIconButton({
       {({ hovered }) => (
         <Icon
           size={isCompactLayout ? baseIconSize * 1.5 : baseIconSize}
-          color={active || hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+          color={footerIconColor(theme, { active, hovered: Boolean(hovered) })}
         />
       )}
     </Pressable>
   );
+}
+
+export type SidebarFooterNavItem = "home" | "settings" | "stats";
+
+/**
+ * Which footer destination the current route is on, so the row marks Home and
+ * Metrics the same way the Settings screen already marks its own button.
+ *
+ * Substring matches, not equality: each of these has a host-scoped twin
+ * (`/h/<serverId>/open-project`, `/h/<serverId>/settings`) and Settings has
+ * section sub-routes (`/settings/projects/...`). Ordered most specific first —
+ * nothing here is a substring of another, but the order documents the intent.
+ */
+export function resolveSidebarFooterActiveItem(pathname: string): SidebarFooterNavItem | undefined {
+  if (pathname.includes("/stats")) {
+    return "stats";
+  }
+  if (pathname.includes("/settings")) {
+    return "settings";
+  }
+  if (pathname.includes("/open-project")) {
+    return "home";
+  }
+  return undefined;
 }
 
 function FooterNavTooltipContent({ label }: { label: string }) {
@@ -98,7 +133,7 @@ export function SidebarFooterNavRow({
   onHome: () => void;
   onSettings: () => void;
   onStats: () => void;
-  activeItem?: "home" | "settings" | "stats";
+  activeItem?: SidebarFooterNavItem;
   settingsButtonRef?: Ref<View>;
 }) {
   return (

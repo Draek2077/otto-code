@@ -986,7 +986,7 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
   },
   searchHeader: {
-    paddingBottom: theme.spacing[2] - 2.75,
+    paddingBottom: theme.spacing[1],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
@@ -1007,7 +1007,10 @@ const styles = StyleSheet.create((theme) => ({
       md: theme.spacing[2] - 5,
     },
     paddingRight: theme.spacing[2] + 5,
-    paddingTop: theme.spacing[2] - 2.75,
+    // Paired with searchHeader's paddingBottom: collapsed, these two are the
+    // whole band, so they stay equal to keep the field centered. Changing one
+    // without the other tilts the bar.
+    paddingTop: theme.spacing[1],
   },
   // The replace band mirrors the search row's horizontal geometry but forms its
   // own full pane-toolbar-height row with the input vertically centered (no
@@ -1024,10 +1027,12 @@ const styles = StyleSheet.create((theme) => ({
       md: theme.spacing[2] - 5,
     },
     paddingRight: theme.spacing[2] + 5,
-    // A touch taller than a bare pane-toolbar row so the expanded header's lower
-    // divider settles onto the neighboring pane's toolbar line; the input stays
-    // centered in the band (alignItems: "center").
-    height: PANE_TOOLBAR_HEIGHT + 5,
+    // A touch taller than a bare pane-toolbar row, with the input centered in
+    // the band (alignItems: "center"). This height alone governs how far the
+    // expanded header's lower divider sits below the collapsed one, because
+    // searchHeader drops its paddingBottom while open — so tune the open band
+    // here, and leave queryRow's paddingTop to the collapsed bar.
+    height: PANE_TOOLBAR_HEIGHT + 3.75,
   },
   queryInput: {
     flex: 1,

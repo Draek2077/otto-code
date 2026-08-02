@@ -136,20 +136,24 @@ export function GitActionsSplitButton({
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.splitButtonPrimary,
       Boolean(fill) && styles.fillItem,
+      // `surfaceToggleHover` matches `headerIconSlotStyle.slotHovered`, so every
+      // hoverable thing in the workspace header row lands on one backdrop. The
+      // sidebar-tools and mobile diff-toolbar copies of this button inherit it
+      // too — same control, same chrome.
       (Boolean(hovered) || pressed) &&
-        inlineUnistylesStyle({ backgroundColor: theme.colors.surfaceHover }),
+        inlineUnistylesStyle({ backgroundColor: theme.colors.surfaceToggleHover }),
       primaryDisabled && styles.splitButtonPrimaryDisabled,
     ],
-    [fill, primaryDisabled, theme.colors.surfaceHover],
+    [fill, primaryDisabled, theme.colors.surfaceToggleHover],
   );
 
   const caretTriggerStyle = useCallback(
     ({ hovered, pressed, open }: { hovered: boolean; pressed: boolean; open: boolean }) => [
       styles.splitButtonCaret,
       (hovered || pressed || open) &&
-        inlineUnistylesStyle({ backgroundColor: theme.colors.surfaceHover }),
+        inlineUnistylesStyle({ backgroundColor: theme.colors.surfaceToggleHover }),
     ],
-    [theme.colors.surfaceHover],
+    [theme.colors.surfaceToggleHover],
   );
 
   // With nothing to show, render nothing rather than an empty row. In the

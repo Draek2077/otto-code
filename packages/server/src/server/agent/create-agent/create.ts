@@ -88,6 +88,12 @@ export interface CreateAgentFromMcpInput {
   kind: "mcp";
   provider: string;
   title?: string;
+  /**
+   * True when `title` is our own placeholder for a bare spawn rather than a name
+   * the caller chose. A caller's title must win over auto-naming; a placeholder
+   * must not, or the chat is stuck on the filler name forever.
+   */
+  titleIsPlaceholder?: boolean;
   initialPrompt?: string;
   config?: Partial<AgentSessionConfig>;
   cwd?: string;
@@ -394,6 +400,12 @@ async function resolveMcpCreateAgent(
     initialPrompt: trimmedPrompt,
   });
   const isInternal = input.internal ?? input.config?.internal ?? false;
+  // A bare spawn ("just open a new chat") carries a placeholder title so the tab
+  // has something to show immediately. It must still auto-name once the first
+  // exchange exists, so it does not count as a caller-chosen title here. The
+  // placeholder rides along as provisionalTitle, which is exactly what
+  // AgentAutoTitle overwrites (and it still declines to touch a user rename).
+  const callerChoseTitle = input.titleIsPlaceholder ? null : explicitTitle;
   const mcpSessionConfig = buildMcpSessionConfig({
     input,
     resolvedProviderModel,
@@ -418,7 +430,7 @@ async function resolveMcpCreateAgent(
     background: input.background,
     promptFailure: input.promptFailure ?? "log",
     autoTitle:
-      trimmedPrompt && !explicitTitle && !isInternal
+      trimmedPrompt && !callerChoseTitle && !isInternal
         ? {
             cwd: resolvedCwd,
             firstAgentContext: { prompt: trimmedPrompt },

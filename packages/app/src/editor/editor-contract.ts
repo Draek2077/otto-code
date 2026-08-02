@@ -67,6 +67,12 @@ export interface EditorThemeSpec {
   tooltipBackground: string;
   /** Border for those surfaces — the real border colour, not the ruler half-strength. */
   tooltipBorder: string;
+  /**
+   * CSS `box-shadow` for those surfaces, composed from the app's `md` elevation
+   * token. A string rather than the token itself because CM6 styles a DOM the
+   * app's stylesheet never reaches.
+   */
+  tooltipShadow: string;
   selectionBackground: string;
   cursor: string;
   /**

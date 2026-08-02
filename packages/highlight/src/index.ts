@@ -11,6 +11,8 @@ export { highlightCode, highlightLine } from "./highlighter.js";
 export { detectLanguage } from "./detect.js";
 export { extractSymbols } from "./symbols.js";
 export type { CodeSymbol, SymbolKind } from "./symbols.js";
+export { extractMarkdownHeadings } from "./markdown-headings.js";
+export type { MarkdownHeading } from "./markdown-headings.js";
 export { darkHighlightColors, lightHighlightColors } from "./colors.js";
 export type { SyntaxThemeId, SyntaxThemeOption, SyntaxColors } from "./themes.js";
 export {

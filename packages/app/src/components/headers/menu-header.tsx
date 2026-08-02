@@ -80,6 +80,7 @@ export function SidebarMenuToggle({
       testID={testID}
       nativeID={nativeID}
       style={style}
+      active={!isMobile && isOpen}
       accessible
       accessibilityRole="button"
       accessibilityLabel={isOpen ? t("shell.menu.close") : t("shell.menu.open")}

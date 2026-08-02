@@ -53,6 +53,9 @@ import { buildWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attach
 import { useIconSize } from "@/styles/theme";
 
 const MIN_CHAT_WIDTH = 400;
+// Files / Search / Changes / PR pill height, trimmed 2px below what
+// spacing[2] would give. Scoped to this row on purpose — see styles.tab.
+const TAB_VERTICAL_PADDING = 7;
 function logExplorerSidebar(_event: string, _details: Record<string, unknown>): void {}
 
 interface ExplorerSidebarProps {
@@ -725,7 +728,10 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
-    paddingVertical: theme.spacing[2],
+    // Deliberately off the spacing scale: spacing[2] (8) makes these pills 2px
+    // taller than they want to read inside the fixed-height sidebar header.
+    // Local to this tab row — do not promote it into the shared control geometry.
+    paddingVertical: TAB_VERTICAL_PADDING,
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
   },

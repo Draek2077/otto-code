@@ -1,11 +1,16 @@
 // PROVENANCE: Otto's theme set is authored locally in this fork and is NOT
-// inherited from upstream Otto. `light`/`dark` predate the fork, but the theme
+// inherited from upstream Paseo. `light`/`dark` predate the fork, but the theme
 // variants (`zinc`/`midnight`/`claude`/`ghostty`, added in 2f77674c5, plus
 // `daylight`/`evergreen`/`cyberpunk`/`pastel`, plus
 // `meadow`/`terracotta`/`horizon`/`powder`) were created in Otto. During
 // upstream merges, resolve
 // conflicts in this file in favor of the Otto side — do not pull theme changes
-// from Otto.
+// from Paseo.
+//
+// Resolving THIS file to ours is only half the job. Anything that styles
+// against these tokens (control-geometry.ts, the ui/ components) has to be
+// resolved the same way, or upstream geometry ends up driving Otto's palette.
+// That is exactly what v0.2.5 did to the segmented control.
 import { Platform } from "react-native";
 import { darkHighlightColors, lightHighlightColors } from "@otto-code/highlight";
 import { resolveChatMaxWidth, useIsCompactFormFactor } from "@/constants/layout";
@@ -454,15 +459,47 @@ function buildLightSemanticColors(tint: LightThemeConfig) {
     surfaceSidebar: tint.surfaceSidebar, // Sidebar background (darker than main)
     surfaceSidebarHover: tint.surfaceSidebarHover,
     surfaceWorkspace: tint.surface0, // Workspace main background
+    // The recessed well behind a segmented control's thumbs. Derived per mode
+    // rather than pinned to one surface step, because the two ramps are not
+    // symmetric: light is compressed at the top (#ffffff / #fafafa / #f4f4f5 sit
+    // within 4% of each other), so `surface2` — correct on dark — paints a track
+    // indistinguishable from the page. The sidebar's hover step is the shallowest
+    // light fill that still reads as a recess against white.
+    surfaceControlTrack: tint.surfaceSidebarHover,
+    // The header toggles' two-rung ladder. `surfaceToggleSelected` is the
+    // explorer sidebar's selected-tab fill, so a toggled-on title-bar button and
+    // a selected tab are the same shade; `surfaceToggleHover` is ONE step past
+    // it, in whichever direction the mode moves — down toward ink on light, up
+    // toward light on dark. Both rungs come from the tint's own ramp rather than
+    // computed alpha, so every theme's author picked them.
+    surfaceToggleSelected: tint.surfaceSidebarHover,
+    surfaceToggleHover: tint.surface3,
     // Hover/press chrome for icon buttons and compact triggers. Translucent
     // so the same token reads identically on any surface, base or elevated.
     surfaceHover: "rgba(0, 0, 0, 0.06)",
-    // Chat speech bubbles: 75%-alpha surface fills so the chat background
-    // (including the black chat scope) tints through. Derived here, not in
-    // components — web CSSVars mode emits var(--...) for theme color reads
-    // inside stylesheets, so string math there produces invalid CSS.
+    // Chat speech bubbles: surface fills at partial alpha so the chat
+    // background tints through. Derived here, not in components — web CSSVars
+    // mode emits var(--...) for theme color reads inside stylesheets, so string
+    // math there produces invalid CSS.
+    //
+    // The alpha is NOT shared across modes, and the two are tuned separately.
+    // Light needs 75% (`bf`): its surfaces sit only a step off a bright canvas,
+    // and any thinner the bubble stops reading as raised at all. Dark and the
+    // black chat scope need 50% (`80`): against a near-black canvas the same
+    // 75% reads as an opaque grey slab. Change one, re-check the other.
+    //
+    // The assistant fill is `surface2` DEEPENED, and alpha is not what fixes it.
+    // On the neutral light theme raw `surface2` (#f4f4f5) sits 11 levels off a
+    // #ffffff canvas — invisible even at full opacity, and any alpha only pulls
+    // it further toward the canvas. `surface3` already carries a hand-deepened
+    // value for this same reason (see the light tint below); `surface2` cannot
+    // be deepened at the tint, because badges, inputs and sheets all read it and
+    // they sit on elevated surfaces where it is already correct. So the step is
+    // taken here, for this token only. It lands the assistant bubble between the
+    // canvas and the user bubble, which is the elevation order the two sides are
+    // supposed to read in.
     surfaceUserBubble: `${tint.surface3}bf`,
-    surfaceAssistantBubble: `${tint.surface2}bf`,
+    surfaceAssistantBubble: deepenHex(tint.surface2),
     // In-place busy scrim (e.g. the workspace-archiving overlay): 80%-alpha
     // app background so the content underneath dims through. Same rule as the
     // bubbles above — derived here, never `${surface0}cc` in a stylesheet.
@@ -760,13 +797,24 @@ function buildDarkSemanticColors(tint: DarkThemeConfig) {
     surfaceSidebar: tint.surfaceSidebar,
     surfaceSidebarHover: tint.surfaceSidebarHover,
     surfaceWorkspace: tint.surface1,
+    // Segmented-control well — see the light builder's note for why this is
+    // derived per mode. Dark has room in its ramp, so the elevated step is the
+    // recess: `surfaceSidebarHover` here would sit within a hair of the page.
+    surfaceControlTrack: tint.surface2,
+    // Header toggle ladder — see the light builder's note. The selected rung is
+    // the same token in both modes; only the step off it flips, and on dark that
+    // is `surface2` rather than `surface3`, which is a lifted mid-grey and would
+    // read as a hard highlight rather than a nudge.
+    surfaceToggleSelected: tint.surfaceSidebarHover,
+    surfaceToggleHover: tint.surface2,
     // Hover/press chrome for icon buttons and compact triggers. Translucent
     // so the same token reads identically on any surface, base or elevated.
     surfaceHover: "rgba(255, 255, 255, 0.07)",
     // Chat speech bubbles — see the light builder's note; must stay derived
-    // inside the theme builders, never via string math in stylesheets.
-    surfaceUserBubble: `${tint.surface3}bf`,
-    surfaceAssistantBubble: `${tint.surface2}bf`,
+    // inside the theme builders, never via string math in stylesheets. Dark
+    // runs 50% where light runs 75%; the alphas are tuned per mode, not shared.
+    surfaceUserBubble: `${tint.surface3}80`,
+    surfaceAssistantBubble: `${tint.surface2}80`,
     // In-place busy scrim — see the light builder's note.
     surfaceScrim: `${tint.surface0}cc`,
     // Code-showing surfaces — see the light builder's note.
@@ -1173,24 +1221,56 @@ const commonTheme: CommonTheme = {
   layout: { chatMaxWidth: resolveChatMaxWidth("default") },
 };
 
+// The elevation scale. `md` is the popup step — tooltips, dropdown and context
+// menus, comboboxes, autocompletes, hover cards and toasts all spread it, so
+// these numbers are what separates a floating surface from the canvas.
+//
+// Two things make that separation load-bearing rather than decorative:
+// `popover` resolves to `surface0` (see buildDarkSemanticColors), so a popup has
+// *no* fill contrast against the app background and only the border plus this
+// shadow tell the eye it is floating; and dark surfaces here start at #1e1e22
+// rather than near-black, which is exactly why a black shadow reads on them.
+//
+// ALPHA MUST RIDE INSIDE `shadowColor`. Do not move it out to `shadowOpacity`;
+// on web these render as fully opaque black.
+//
+// Unistyles hoists a *theme* `shadowColor` into a CSS variable so themes stay
+// swappable at runtime, and composes only the geometry into the rule:
+//
+//   .unistyles_xxx { box-shadow: 0 3px 8px var(--shadow-md-shadow-color) }
+//   :root.light    { --shadow-md-shadow-color: <this string> }
+//
+// The variable carries the colour and nothing else, so `shadowOpacity` is
+// silently discarded and the shadow paints at full strength. Only the geometry
+// responds to edits, which makes the failure very convincing: offset and blur
+// change while opacity appears frozen. Styles built from literals rather than
+// theme tokens do not go through the variable path and do compose
+// `shadowOpacity` correctly, so a working example elsewhere proves nothing here.
+//
+// `shadowOpacity: 1` is kept for native. iOS multiplies it into the colour's
+// own alpha (CALayer semantics), so 1 means "use the alpha in the string" there
+// while staying inert on web. Android ignores both and uses `elevation`.
 const darkShadow = {
   sm: {
-    shadowColor: "rgba(0, 0, 0, 0.25)",
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    elevation: 2,
+    shadowColor: "rgba(0, 0, 0, 0.20)",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 1,
   },
   md: {
-    shadowColor: "rgba(0, 0, 0, 0.20)",
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: "rgba(0, 0, 0, 0.40)",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 1,
     shadowRadius: 8,
-    elevation: 8,
+    elevation: 3,
   },
   lg: {
-    shadowColor: "rgba(0, 0, 0, 0.40)",
-    shadowOffset: { width: 0, height: 12 },
-    shadowRadius: 24,
-    elevation: 8,
+    shadowColor: "rgba(0, 0, 0, 0.50)",
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    elevation: 6,
   },
 } as const;
 
@@ -1207,24 +1287,36 @@ function buildDarkTheme(semanticColors: ReturnType<typeof buildDarkSemanticColor
   } as const;
 }
 
+// Same steps as `darkShadow`, tuned down: light surfaces need less alpha to read,
+// and going heavier here turns a clean popup into a smudge. The alpha rides in
+// `shadowColor` for the reason spelled out above `darkShadow`.
+//
+// These alphas sit near the 0.02 / 0.04 / 0.08 they replaced, which were
+// invisible on every display. What makes these read is the geometry, not the ink:
+// the old steps spread the same alpha over a 16-24px blur, so nothing anywhere
+// was dark enough to see. Concentrating it into a tighter blur buys the
+// separation without darkening the popup's surroundings.
 const lightShadow = {
   sm: {
-    shadowColor: "rgba(0, 0, 0, 0.02)",
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-    elevation: 2,
+    shadowColor: "rgba(0, 0, 0, 0.05)",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 1,
   },
   md: {
-    shadowColor: "rgba(0, 0, 0, 0.04)",
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 16,
-    elevation: 4,
+    shadowColor: "rgba(0, 0, 0, 0.12)",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 3,
   },
   lg: {
-    shadowColor: "rgba(0, 0, 0, 0.08)",
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 24,
-    elevation: 8,
+    shadowColor: "rgba(0, 0, 0, 0.16)",
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    elevation: 6,
   },
 } as const;
 
@@ -1295,10 +1387,19 @@ function buildBlackVariantColors(tint: BlackVariantTint) {
     surface2: tint.surface2,
     surface3: tint.surface3,
     surface4: tint.surface4,
+    // Re-derived from this variant's lifted surface2, same as the dark builder:
+    // inherited unchanged, these would keep the dark variant's un-lifted fills
+    // and read as grey slabs on the black canvas. `surfaceToggleSelected` is not
+    // re-derived — it tracks `surfaceSidebarHover`, which this variant also
+    // leaves to the base theme, so the two stay in step.
+    surfaceControlTrack: tint.surface2,
+    surfaceToggleHover: tint.surface2,
     // Re-derive the bubble fills from this variant's lifted surfaces so the
     // black scope doesn't inherit the dark variant's tint through the merge.
-    surfaceUserBubble: `${tint.surface3}bf`,
-    surfaceAssistantBubble: `${tint.surface2}bf`,
+    // Same 50% alpha as dark — the black canvas is the extreme case the dark
+    // figure was picked for.
+    surfaceUserBubble: `${tint.surface3}80`,
+    surfaceAssistantBubble: `${tint.surface2}80`,
     // Scrim re-derived from the black canvas, matching the surface0 override.
     surfaceScrim: "#000000cc",
     // The code well inverts on black. Everywhere else it is surface0 scaled

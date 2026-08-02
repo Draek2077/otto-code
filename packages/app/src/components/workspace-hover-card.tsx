@@ -595,11 +595,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
     paddingTop: theme.spacing[2],
     width: HOVER_CARD_WIDTH,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    ...theme.shadow.md,
     zIndex: 1000,
   },
   cardHeader: {

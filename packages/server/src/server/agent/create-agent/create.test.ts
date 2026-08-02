@@ -519,3 +519,67 @@ test("session create keeps an explicit title after the initial prompt settles", 
     rmSync(workdir, { recursive: true, force: true });
   }
 });
+
+// A bare spawn ("just open a new chat") gets a placeholder title so its tab has
+// something to show. The placeholder must not count as a caller-chosen title, or
+// auto-naming never runs and the chat reads "New chat" forever — which the app
+// renders as a permanent loading skeleton.
+function createBareSpawnHarness() {
+  const snapshot = {
+    id: "agent-bare",
+    provider: "claude",
+    cwd: "/tmp/otto-bare-spawn",
+    runtimeInfo: null,
+  } as ManagedAgent;
+  const scheduleAutoTitle = vi.fn();
+  const dependencies: Parameters<typeof createAgentCommand>[0] = {
+    agentManager: {
+      createAgent: vi.fn(async () => snapshot),
+      getAgent: vi.fn(() => snapshot),
+    } as unknown as Parameters<typeof createAgentCommand>[0]["agentManager"],
+    agentStorage: {} as Parameters<typeof createAgentCommand>[0]["agentStorage"],
+    logger: createTestLogger(),
+    providerSnapshotManager: {
+      resolveCreateConfig: vi.fn(async () => ({})),
+    } as Parameters<typeof createAgentCommand>[0]["providerSnapshotManager"],
+    scheduleAutoTitle,
+  };
+  return { dependencies, scheduleAutoTitle };
+}
+
+test("mcp bare spawn still auto-names, with the placeholder as the provisional title", async () => {
+  const { dependencies, scheduleAutoTitle } = createBareSpawnHarness();
+
+  await createAgentCommand(dependencies, {
+    kind: "mcp",
+    provider: "claude",
+    cwd: "/tmp/otto-bare-spawn",
+    workspaceId: "ws-bare",
+    title: "New chat",
+    titleIsPlaceholder: true,
+    initialPrompt: "Briefly introduce yourself and ask what I'd like to work on.",
+    background: true,
+    notifyOnFinish: false,
+  });
+
+  expect(scheduleAutoTitle).toHaveBeenCalledWith(
+    expect.objectContaining({ agentId: "agent-bare", provisionalTitle: "New chat" }),
+  );
+});
+
+test("mcp create still lets an explicit caller title win over auto-naming", async () => {
+  const { dependencies, scheduleAutoTitle } = createBareSpawnHarness();
+
+  await createAgentCommand(dependencies, {
+    kind: "mcp",
+    provider: "claude",
+    cwd: "/tmp/otto-bare-spawn",
+    workspaceId: "ws-bare",
+    title: "Review the auth migration",
+    initialPrompt: "Start with the token refresh path.",
+    background: true,
+    notifyOnFinish: false,
+  });
+
+  expect(scheduleAutoTitle).not.toHaveBeenCalled();
+});

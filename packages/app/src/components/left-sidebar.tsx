@@ -29,7 +29,11 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
-import { FooterIconButton, SidebarFooterNavRow } from "@/components/sidebar/sidebar-footer-nav";
+import {
+  FooterIconButton,
+  resolveSidebarFooterActiveItem,
+  SidebarFooterNavRow,
+} from "@/components/sidebar/sidebar-footer-nav";
 import { SidebarActiveTeamSwitchers } from "@/components/active-team-switcher";
 import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/sidebar-display-preferences-menu";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -531,6 +535,9 @@ function SidebarFooter({
 }) {
   const newAgentKeys = useShortcutKeys("new-agent");
   const settingsAnchorRef = useTutorialAnchor("settings");
+  // Home and Metrics mark themselves the same way Settings already does on its
+  // own screen (which renders its own footer row and hardcodes "settings").
+  const activeFooterItem = resolveSidebarFooterActiveItem(usePathname());
 
   return (
     <View style={styles.sidebarFooter}>
@@ -540,6 +547,7 @@ function SidebarFooter({
         onHome={handleHome}
         onSettings={handleSettings}
         onStats={handleStats}
+        activeItem={activeFooterItem}
         settingsButtonRef={settingsAnchorRef}
       />
       <View style={styles.footerIconRow}>

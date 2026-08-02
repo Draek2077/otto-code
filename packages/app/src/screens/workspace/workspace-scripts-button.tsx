@@ -627,8 +627,10 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
   },
+  // Matches `headerIconSlotStyle.slotHovered` — this trigger sits in the same
+  // header row as the toggles it borrows its chrome from.
   ghostButtonHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceToggleHover,
   },
   splitButtonPrimary: {
     paddingHorizontal: theme.spacing[3],
@@ -636,7 +638,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   splitButtonPrimaryHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceToggleHover,
   },
   // Zero-size anchor for the collapsed mode — exists only so the dropdown has a
   // position to open from; must never take layout space or catch pointers.

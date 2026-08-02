@@ -103,15 +103,33 @@ describe("control geometry", () => {
     expect(geometry.formTextInputMd.paddingVertical).toBe(11);
   });
 
-  it("keeps segmented controls ghost with fully rounded segments in a button-sized track", () => {
+  // Otto's segmented control is a boxed track with an inset thumb, not
+  // upstream's bare pill row. Both halves of that contract live here because
+  // the v0.2.5 merge took upstream's geometry while keeping Otto's component,
+  // which left a square surface2 block behind fully-round segments.
+  it("insets segmented thumbs inside a track whose corners stay outside theirs", () => {
     const geometry = createControlGeometry(theme);
 
-    expect(geometry.segmentedContainerXs.padding).toBe(0);
-    expect(geometry.segmentedContainerSm.padding).toBe(0);
-    expect(geometry.segmentedContainerMd.padding).toBe(0);
-    expect(geometry.segmentedSegmentXs.borderRadius).toBe(9999);
-    expect(geometry.segmentedSegmentSm.borderRadius).toBe(9999);
-    expect(geometry.segmentedSegmentMd.borderRadius).toBe(9999);
+    // Every thumb keeps a real curve; a nested radius must never reach 0.
+    expect(geometry.segmentedSegmentXs.borderRadius).toBeGreaterThan(0);
+    expect(geometry.segmentedSegmentSm.borderRadius).toBeGreaterThan(0);
+    expect(geometry.segmentedSegmentMd.borderRadius).toBeGreaterThan(0);
+
+    expect(geometry.segmentedContainerXs.padding).toBe(2);
+    expect(geometry.segmentedContainerSm.padding).toBe(2);
+    expect(geometry.segmentedContainerMd.padding).toBe(3);
+
+    // The track owns a radius, and each thumb's is tighter by exactly the inset.
+    expect(geometry.segmentedSegmentXs.borderRadius).toBe(
+      geometry.segmentedContainerXs.borderRadius - geometry.segmentedContainerXs.padding,
+    );
+    expect(geometry.segmentedSegmentSm.borderRadius).toBe(
+      geometry.segmentedContainerSm.borderRadius - geometry.segmentedContainerSm.padding,
+    );
+    expect(geometry.segmentedSegmentMd.borderRadius).toBe(
+      geometry.segmentedContainerMd.borderRadius - geometry.segmentedContainerMd.padding,
+    );
+
     expect(geometry.segmentedContainerXs.minHeight).toBe(geometry.buttonXs.minHeight);
     expect(geometry.segmentedContainerSm.minHeight).toBe(geometry.buttonSm.minHeight);
     expect(geometry.segmentedContainerMd.minHeight).toBe(geometry.buttonMd.minHeight);
@@ -128,16 +146,24 @@ describe("control geometry", () => {
     expect(geometry.buttonSm.minHeight).toBe(32);
     expect(geometry.buttonMd.minHeight).toBe(44);
 
-    // Same size name means the same label size on every control kind.
+    // xs and sm share their label size with the matching button tier. md does
+    // not: a segmented md is a 44px track heading a panel, and it takes the
+    // base reading size rather than a button's sm label.
     expect(geometry.segmentedLabelXs.fontSize).toBe(12);
     expect(geometry.segmentedLabelXs.fontSize).toBe(geometry.buttonTextXs.fontSize);
     expect(geometry.segmentedLabelSm.fontSize).toBe(14);
     expect(geometry.segmentedLabelSm.fontSize).toBe(geometry.buttonText.fontSize);
-    expect(geometry.segmentedLabelMd.fontSize).toBe(geometry.buttonText.fontSize);
+    expect(geometry.segmentedLabelMd.fontSize).toBe(16);
 
-    // Same size name means the same horizontal padding on every control kind.
+    // A segment carries more horizontal padding than the button of the same
+    // name: it is a thumb in a track, not a standalone control, so its label
+    // needs room to sit off the track's inner edge.
     expect(geometry.segmentedSegmentXs.paddingHorizontal).toBe(geometry.buttonXs.paddingHorizontal);
-    expect(geometry.segmentedSegmentSm.paddingHorizontal).toBe(geometry.buttonSm.paddingHorizontal);
-    expect(geometry.segmentedSegmentMd.paddingHorizontal).toBe(geometry.buttonMd.paddingHorizontal);
+    expect(geometry.segmentedSegmentSm.paddingHorizontal).toBeGreaterThan(
+      geometry.buttonSm.paddingHorizontal,
+    );
+    expect(geometry.segmentedSegmentMd.paddingHorizontal).toBeGreaterThan(
+      geometry.buttonMd.paddingHorizontal,
+    );
   });
 });

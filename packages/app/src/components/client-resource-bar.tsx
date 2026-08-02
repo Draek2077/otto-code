@@ -1,8 +1,10 @@
-import type { ReactElement } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { ScrollView, Text, View, type LayoutChangeEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 
 import { useResourceSnapshot } from "@/diagnostics/resource-report/use-resource-snapshot";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { resolveResourceBarLayout } from "@/components/client-resource-bar.layout";
 import { compactUp, SPACING } from "@/styles/theme";
 
 // A dense readout of everything the resource monitor currently knows, pinned to
@@ -13,17 +15,31 @@ import { compactUp, SPACING } from "@/styles/theme";
 //
 // It scrolls horizontally in its own container rather than wrapping: the value
 // order is the diagnosis order, and reflowing it into ragged rows at narrow
-// widths would scramble that.
-
-interface ResourceField {
-  label: string;
-  value: string;
-  /** Muted when the reading is unavailable on this platform. */
-  missing?: boolean;
-}
+// widths would scramble that. Scrolling is the floor, not the plan — the strip
+// first shortens its labels and then sheds its least diagnostic groups so that a
+// narrow window still shows a readable gauge rather than a scrollable one. See
+// `client-resource-bar.layout.ts` for the rules and the drop order.
 
 export function ClientResourceBar(): ReactElement | null {
   const { latest, elapsedMs, samples, topGrowth, running } = useResourceSnapshot();
+  const isCompact = useIsCompactFormFactor();
+  // Measured on the bar itself, so the strip reacts to the window rather than to
+  // a breakpoint: a half-width desktop window gets the same treatment a small one
+  // does. Padding is subtracted here because the layout estimate is content-only.
+  const [barWidth, setBarWidth] = useState(0);
+  const handleBarLayout = useCallback(
+    (event: LayoutChangeEvent) => setBarWidth(event.nativeEvent.layout.width),
+    [],
+  );
+  const horizontalPadding = (isCompact ? SPACING[3] : SPACING[6]) * 2;
+  const layout = useMemo(
+    () =>
+      resolveResourceBarLayout({
+        availableWidth: barWidth > 0 ? barWidth - horizontalPadding : 0,
+        isCompact,
+      }),
+    [barWidth, horizontalPadding, isCompact],
+  );
 
   if (!running && samples === 0) {
     return (
@@ -44,103 +60,63 @@ export function ClientResourceBar(): ReactElement | null {
     );
   }
 
-  const groups: Array<{ title: string; fields: ResourceField[] }> = [
-    {
-      title: "Frames",
-      fields: [
-        { label: "fps", value: formatNumber(latest.metrics["frames.fps"], 1) },
-        { label: "p95", value: formatMs(latest.metrics["frames.p95FrameMs"]) },
-        { label: "worst", value: formatMs(latest.metrics["frames.worstFrameMs"]) },
-        { label: "long", value: formatNumber(latest.metrics["frames.longFrames"], 0) },
-      ],
-    },
-    {
-      title: "Memory",
-      fields: [
-        { label: "js heap", value: formatBytes(latest.metrics["heap.usedBytes"]) },
-        { label: "dom nodes", value: formatCount(latest.metrics["dom.nodes"]) },
-      ],
-    },
-    {
-      title: "Cache",
-      fields: [
-        { label: "queries", value: formatCount(latest.metrics["query.queries"]) },
-        { label: "unobserved", value: formatCount(latest.metrics["query.unobserved"]) },
-        { label: "observers", value: formatCount(latest.metrics["query.observers"]) },
-      ],
-    },
-    {
-      title: "Timers",
-      fields: [
-        { label: "intervals", value: formatCount(latest.metrics["runtime.liveIntervals"]) },
-        { label: "timeouts", value: formatCount(latest.metrics["runtime.pendingTimeouts"]) },
-      ],
-    },
-    {
-      title: "Daemon traffic",
-      fields: [
-        { label: "messages", value: formatCount(latest.metrics["traffic.messages"]) },
-        { label: "bytes", value: formatBytes(latest.metrics["traffic.bytes"]) },
-        { label: "handler", value: formatSeconds(latest.metrics["traffic.handlerMs"]) },
-        {
-          label: "of session",
-          value: formatShare(latest.metrics["traffic.handlerMs"], latest.uptimeMs),
-        },
-      ],
-    },
-    {
-      title: "Chat state",
-      fields: [
-        {
-          label: "stream items",
-          value: formatCount(latest.metrics["store.session.sessions.*.agentStreamTail.*.length"]),
-        },
-        {
-          label: "agents",
-          value: formatCount(latest.metrics["store.session.sessions.*.agents.size"]),
-        },
-        {
-          label: "workspaces",
-          value: formatCount(latest.metrics["store.session.sessions.*.workspaces.size"]),
-        },
-      ],
-    },
-    {
-      title: "Session",
-      fields: [
-        { label: "observed", value: formatDuration(elapsedMs) },
-        { label: "samples", value: String(samples) },
-        {
-          label: "fastest growth",
-          value: topGrowth
-            ? `${shortKey(topGrowth.key)} +${formatGrowth(topGrowth.slopePerHour)}/h`
-            : "none",
-        },
-      ],
-    },
-  ];
+  // Every reading the strip can show, keyed by field id. Built whole regardless
+  // of what the current width keeps: the formatters are cheap, and building only
+  // the surviving subset would put a width check in front of each metric read.
+  const values: Record<string, string> = {
+    fps: formatNumber(latest.metrics["frames.fps"], 1),
+    p95: formatMs(latest.metrics["frames.p95FrameMs"]),
+    worst: formatMs(latest.metrics["frames.worstFrameMs"]),
+    longFrames: formatNumber(latest.metrics["frames.longFrames"], 0),
+    heap: formatBytes(latest.metrics["heap.usedBytes"]),
+    domNodes: formatCount(latest.metrics["dom.nodes"]),
+    queries: formatCount(latest.metrics["query.queries"]),
+    unobserved: formatCount(latest.metrics["query.unobserved"]),
+    observers: formatCount(latest.metrics["query.observers"]),
+    intervals: formatCount(latest.metrics["runtime.liveIntervals"]),
+    timeouts: formatCount(latest.metrics["runtime.pendingTimeouts"]),
+    messages: formatCount(latest.metrics["traffic.messages"]),
+    bytes: formatBytes(latest.metrics["traffic.bytes"]),
+    handler: formatSeconds(latest.metrics["traffic.handlerMs"]),
+    ofSession: formatShare(latest.metrics["traffic.handlerMs"], latest.uptimeMs),
+    streamItems: formatCount(latest.metrics["store.session.sessions.*.agentStreamTail.*.length"]),
+    agents: formatCount(latest.metrics["store.session.sessions.*.agents.size"]),
+    workspaces: formatCount(latest.metrics["store.session.sessions.*.workspaces.size"]),
+    observed: formatDuration(elapsedMs),
+    samples: String(samples),
+    growth: topGrowth
+      ? `${shortKey(topGrowth.key)} +${formatGrowth(topGrowth.slopePerHour)}/h`
+      : "none",
+  };
+
+  const isShort = layout.labelMode === "short";
 
   return (
-    <View style={styles.bar}>
+    <View style={styles.bar} onLayout={handleBarLayout}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.content}
       >
-        {groups.map((group, index) => (
-          <View key={group.title} style={styles.group}>
+        {layout.groups.map((group, index) => (
+          <View key={group.id} style={styles.group}>
             {index > 0 && <View style={styles.divider} />}
             <View style={styles.groupInner}>
-              <Text style={styles.groupTitle}>{group.title}</Text>
+              <Text style={styles.groupTitle}>{isShort ? group.shortTitle : group.title}</Text>
               <View style={styles.fields}>
-                {group.fields.map((field) => (
-                  <View key={field.label} style={styles.field}>
-                    <Text style={styles.fieldLabel}>{field.label}</Text>
-                    <Text style={field.missing ? styles.fieldValueMuted : styles.fieldValue}>
-                      {field.value}
-                    </Text>
-                  </View>
-                ))}
+                {group.fields.map((field) => {
+                  const value = values[field.id] ?? MISSING_VALUE;
+                  return (
+                    <View key={field.id} style={styles.field}>
+                      <Text style={styles.fieldLabel}>{isShort ? field.short : field.label}</Text>
+                      <Text
+                        style={value === MISSING_VALUE ? styles.fieldValueMuted : styles.fieldValue}
+                      >
+                        {value}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             </View>
           </View>
@@ -150,35 +126,40 @@ export function ClientResourceBar(): ReactElement | null {
   );
 }
 
+// What a reading that this platform cannot supply renders as. Compared against
+// (not just printed) so those cells render muted — a dash in the same weight as a
+// real number reads as a value.
+const MISSING_VALUE = "—";
+
 function formatNumber(value: number | undefined, digits: number): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  if (typeof value !== "number" || !Number.isFinite(value)) return MISSING_VALUE;
   return value.toFixed(digits);
 }
 
 function formatCount(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  if (typeof value !== "number" || !Number.isFinite(value)) return MISSING_VALUE;
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 10_000) return `${(value / 1000).toFixed(1)}k`;
   return String(Math.round(value));
 }
 
 function formatMs(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  if (typeof value !== "number" || !Number.isFinite(value)) return MISSING_VALUE;
   return `${value.toFixed(1)}ms`;
 }
 
 function formatSeconds(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  if (typeof value !== "number" || !Number.isFinite(value)) return MISSING_VALUE;
   return `${(value / 1000).toFixed(1)}s`;
 }
 
 function formatShare(part: number | undefined, whole: number): string {
-  if (typeof part !== "number" || !Number.isFinite(part) || whole <= 0) return "—";
+  if (typeof part !== "number" || !Number.isFinite(part) || whole <= 0) return MISSING_VALUE;
   return `${((part / whole) * 100).toFixed(2)}%`;
 }
 
 function formatBytes(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  if (typeof value !== "number" || !Number.isFinite(value)) return MISSING_VALUE;
   const units = ["B", "KB", "MB", "GB"];
   let scaled = value;
   let unitIndex = 0;
@@ -199,7 +180,7 @@ function formatDuration(ms: number): string {
 }
 
 function formatGrowth(value: number): string {
-  if (!Number.isFinite(value)) return "—";
+  if (!Number.isFinite(value)) return MISSING_VALUE;
   if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(1)}k`;
   return value.toFixed(value < 10 ? 1 : 0);

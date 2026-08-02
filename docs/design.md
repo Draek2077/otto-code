@@ -271,3 +271,17 @@ The bespoke pills in `packages/app/src/screens/settings/host-page.tsx:97-116`, `
 | Trigger-anchored menu                               | `packages/app/src/components/ui/dropdown-menu.tsx` (used in `sidebar-workspace-list.tsx`, theme picker)                                                                                                                                                                                                  |
 | Right-click / long-press menu                       | `packages/app/src/components/ui/context-menu.tsx` (used in `sidebar-workspace-list.tsx`)                                                                                                                                                                                                                 |
 | Headers (back, screen, menu)                        | `packages/app/src/components/headers/back-header.tsx`, `screen-header.tsx`, `menu-header.tsx`                                                                                                                                                                                                            |
+
+---
+
+## 15. Elevation
+
+Three steps, `theme.shadow.sm` / `md` / `lg` (`packages/app/src/styles/theme.ts`), authored per scheme. Anything that floats spreads one of them rather than authoring shadow props inline.
+
+`md` is the popup step. Tooltips, dropdown and context menus, comboboxes, autocompletes, the workspace hover card and toasts all spread it, so retuning `md` moves every popup in the app at once. `lg` is for dialogs and command palettes; `sm` is for things lifted only slightly off the page, like a drag preview or the scroll-to-bottom button.
+
+**The shadow is the only thing separating a popup from the canvas.** `popover` resolves to `surface0` — the same fill as the app background — so a floating surface has no fill contrast and only its border and its shadow say it is floating. That makes these values load-bearing, not decoration; an elevation weak enough to be invisible leaves popups reading as holes punched in the page. Dark surfaces start around `#1e1e22` rather than near-black precisely so a black shadow still has somewhere to land.
+
+**The alpha belongs inside `shadowColor` as an `rgba()` string, never in `shadowOpacity`.** Unistyles hoists a theme `shadowColor` into a CSS variable and composes only the geometry into the rule, so `shadowOpacity` is dropped on web and the shadow paints at full strength. `shadowOpacity: 1` stays in the token for iOS, which multiplies it into the colour's own alpha. See [unistyles.md](unistyles.md) for the emitted CSS and for why offset edits appear to work while opacity edits do not.
+
+Surfaces CM6 owns are the exception, because the app stylesheet cannot reach the DOM they mount in. Those cross as a composed CSS string on the editor theme spec (`tooltipShadow` in `packages/app/src/editor/editor-contract.ts`), built from the same `md` token so the editor's hover card cannot drift from the app's popups.

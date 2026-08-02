@@ -1,7 +1,7 @@
 /**
  * The upstream base this fork is currently merged up to.
  *
- * Otto is a fork of Otto (see docs/upstream-merges.md). These values are
+ * Otto is a fork of Paseo (see docs/upstream-merges.md). These values are
  * surfaced in Settings → About next to the Otto app version so users can tell
  * which upstream fixes are available under the hood.
  *
@@ -19,5 +19,5 @@
  * — that step is part of the merge playbook in docs/upstream-merges.md, and
  * this path is on that doc's audit exclusion list.
  */
-export const UPSTREAM_BASE_NAME = "Otto";
-export const UPSTREAM_BASE_VERSION = "0.1.106";
+export const UPSTREAM_BASE_NAME = "Paseo";
+export const UPSTREAM_BASE_VERSION = "0.2.5";

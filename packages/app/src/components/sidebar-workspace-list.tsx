@@ -23,6 +23,7 @@ import {
   useEffect,
   useRef,
   type ReactElement,
+  type ReactNode,
   type MutableRefObject,
   type Ref,
 } from "react";
@@ -117,6 +118,7 @@ import {
   SidebarWorkspaceTrailingActionBase,
   SidebarWorkspaceTrailingActionOverlay,
   SidebarWorkspaceTrailingActionSlot,
+  useFloatingRowActions,
 } from "@/components/sidebar/sidebar-workspace-row-content";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -403,6 +405,7 @@ function ProjectRowTrailingActions({
   isMobileBreakpoint,
   isProjectActive,
   diffStat,
+  floatActions,
   onBeginWorkspaceSetup,
   onRemoveProject,
   removeProjectStatus,
@@ -415,6 +418,8 @@ function ProjectRowTrailingActions({
   isMobileBreakpoint: boolean;
   isProjectActive: boolean;
   diffStat: { additions: number; deletions: number } | null;
+  /** See `useFloatingRowActions` — hover platforms float, the rest reserve. */
+  floatActions: boolean;
   onBeginWorkspaceSetup: () => void;
   onRemoveProject?: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
@@ -423,6 +428,46 @@ function ProjectRowTrailingActions({
   const actionsVisible = isHovered || platformIsNative || isMobileBreakpoint;
   const hasKebabMenu = Boolean(onRemoveProject || onReopenWorktree);
   const shouldRenderKebabSlot = Boolean(hasKebabMenu || diffStat);
+
+  if (floatActions) {
+    // Nothing here reserves width for a control the user cannot see: the "+" and
+    // the kebab mount only while hovered and paint over the row's right edge, so
+    // the project name gets the whole row at rest and never reflows on hover.
+    // The diff stat is real content, so it stays in flow and the overlay covers
+    // it — the same swap the reserved branch below does with opacity.
+    return (
+      <>
+        {diffStat ? (
+          <View style={styles.projectTrailingActions}>
+            <DiffStat additions={diffStat.additions} deletions={diffStat.deletions} />
+          </View>
+        ) : null}
+        {isHovered && (worktreeTarget || hasKebabMenu) ? (
+          <View style={styles.projectFloatingTrailingActions}>
+            {worktreeTarget ? (
+              <NewWorktreeButton
+                displayName={displayName}
+                onPress={onBeginWorkspaceSetup}
+                visible
+                showShortcutHint={isProjectActive}
+                testID={`sidebar-project-new-worktree-${project.projectKey}`}
+              />
+            ) : null}
+            {hasKebabMenu ? (
+              <ProjectKebabMenu
+                projectKey={project.projectKey}
+                projectPath={project.iconWorkingDir}
+                onRemoveProject={onRemoveProject}
+                removeProjectStatus={removeProjectStatus}
+                onReopenWorktree={onReopenWorktree}
+              />
+            ) : null}
+          </View>
+        ) : null}
+      </>
+    );
+  }
+
   return (
     <View style={styles.projectTrailingActions}>
       {worktreeTarget ? (
@@ -613,7 +658,18 @@ function ProjectKebabMenu({
   );
 }
 
-function WorkspaceRowRightGroup({
+/**
+ * Splits a workspace row's trailing controls into the part that reserves width
+ * in the title line and the part that floats over the row's right edge.
+ *
+ * A plain function rather than a component so one copy of the kebab's prop list
+ * can be routed to either destination. `flow` is deliberately `null` (not an
+ * empty fragment) when nothing needs reserving: SidebarWorkspaceRowContent then
+ * skips the trailing container entirely, which also drops the title row's gap.
+ */
+function buildWorkspaceRowTrailing({
+  t,
+  floatActions,
   workspace,
   isHovered,
   isTouchPlatform,
@@ -631,6 +687,8 @@ function WorkspaceRowRightGroup({
   onRename,
   onOpenBaseCheckout,
 }: {
+  t: ReturnType<typeof useTranslation>["t"];
+  floatActions: boolean;
   workspace: SidebarWorkspaceEntry;
   isHovered: boolean;
   isTouchPlatform: boolean;
@@ -647,43 +705,53 @@ function WorkspaceRowRightGroup({
   onCopyPath?: () => void;
   onRename?: () => void;
   onOpenBaseCheckout?: () => void;
-}) {
-  const { t } = useTranslation();
+}): { flow: ReactNode; floating: ReactNode } {
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
   const showKebab = Boolean(onArchive && (isHovered || isTouchPlatform));
+  // The shortcut badge owns this corner when it is on, so the kebab yields.
   const showKebabInSlot = showKebab && !showShortcut;
-  const shouldRenderActionSlot = Boolean(onArchive);
+  const creating = isCreating ? (
+    <Text style={styles.workspaceCreatingText}>{t("sidebar.workspace.status.creating")}</Text>
+  ) : null;
+  const kebab = onArchive ? (
+    <SidebarWorkspaceMenu
+      workspaceKey={workspace.workspaceKey}
+      serverId={workspace.serverId}
+      workspaceId={workspace.workspaceId}
+      onCopyPath={onCopyPath}
+      onCopyBranchName={onCopyBranchName}
+      onRename={onRename}
+      onMarkAsRead={onMarkAsRead}
+      onOpenBaseCheckout={onOpenBaseCheckout}
+      onArchive={onArchive}
+      archiveLabel={archiveLabel}
+      archiveStatus={archiveStatus}
+      archivePendingLabel={archivePendingLabel}
+      archiveShortcutKeys={archiveShortcutKeys}
+    />
+  ) : null;
 
-  return (
-    <>
-      {isCreating ? (
-        <Text style={styles.workspaceCreatingText}>{t("sidebar.workspace.status.creating")}</Text>
-      ) : null}
-      {shouldRenderActionSlot ? (
+  if (floatActions) {
+    // The kebab is the only trailing control here, and it is hover-only, so the
+    // row reserves nothing for it — the workspace name gets the full width.
+    return { flow: creating, floating: showKebabInSlot ? kebab : null };
+  }
+
+  return {
+    flow: onArchive ? (
+      <>
+        {creating}
         <SidebarWorkspaceTrailingActionSlot>
           <SidebarWorkspaceTrailingActionOverlay visible={showKebabInSlot}>
-            {onArchive ? (
-              <SidebarWorkspaceMenu
-                workspaceKey={workspace.workspaceKey}
-                serverId={workspace.serverId}
-                workspaceId={workspace.workspaceId}
-                onCopyPath={onCopyPath}
-                onCopyBranchName={onCopyBranchName}
-                onRename={onRename}
-                onMarkAsRead={onMarkAsRead}
-                onOpenBaseCheckout={onOpenBaseCheckout}
-                onArchive={onArchive}
-                archiveLabel={archiveLabel}
-                archiveStatus={archiveStatus}
-                archivePendingLabel={archivePendingLabel}
-                archiveShortcutKeys={archiveShortcutKeys}
-              />
-            ) : null}
+            {kebab}
           </SidebarWorkspaceTrailingActionOverlay>
         </SidebarWorkspaceTrailingActionSlot>
-      ) : null}
-    </>
-  );
+      </>
+    ) : (
+      creating
+    ),
+    floating: null,
+  };
 }
 
 function ProjectIcon({
@@ -1164,6 +1232,7 @@ function ProjectHeaderRow({
 }: ProjectHeaderRowProps) {
   const [isHovered, setIsHovered] = useState(false);
   const isMobileBreakpoint = useIsCompactFormFactor();
+  const floatActions = useFloatingRowActions();
   const isDeveloperMode = useIsDeveloperMode();
   // Merge the sidebar-row anchor onto the row's existing drag-activator ref so a
   // reveal (tutorial / active-workspace) can measure this project block.
@@ -1259,6 +1328,7 @@ function ProjectHeaderRow({
         isMobileBreakpoint={isMobileBreakpoint}
         isProjectActive={isProjectActive}
         diffStat={diffStat}
+        floatActions={floatActions}
         onBeginWorkspaceSetup={handleBeginWorkspaceSetup}
         onRemoveProject={onRemoveProject}
         removeProjectStatus={removeProjectStatus}
@@ -1376,7 +1446,9 @@ function WorkspaceRowInner({
   onOpenBaseCheckout,
   archiveShortcutKeys,
 }: WorkspaceRowInnerProps) {
+  const { t } = useTranslation();
   const _isCompact = useIsCompactFormFactor();
+  const floatActions = useFloatingRowActions();
   const isTouchPlatform = platformIsNative;
   const interaction = useLongPressDragInteraction({
     drag,
@@ -1427,6 +1499,25 @@ function WorkspaceRowInner({
           selected,
           isHovered,
         });
+        const trailing = buildWorkspaceRowTrailing({
+          t,
+          floatActions,
+          workspace,
+          isHovered,
+          isTouchPlatform,
+          isCreating,
+          showShortcutBadge,
+          shortcutNumber,
+          archiveLabel,
+          archiveStatus,
+          archivePendingLabel,
+          archiveShortcutKeys,
+          onArchive,
+          onCopyBranchName,
+          onCopyPath,
+          onRename,
+          onOpenBaseCheckout,
+        });
         const rowContent = (
           <SidebarWorkspaceRowContent
             workspace={workspace}
@@ -1437,24 +1528,9 @@ function WorkspaceRowInner({
             isCreating={isCreating}
             shortcutNumber={shortcutNumber}
             showShortcutBadge={showShortcutBadge}
+            floatingTrailing={trailing.floating}
           >
-            <WorkspaceRowRightGroup
-              workspace={workspace}
-              isHovered={isHovered}
-              isTouchPlatform={isTouchPlatform}
-              isCreating={isCreating}
-              showShortcutBadge={showShortcutBadge}
-              shortcutNumber={shortcutNumber}
-              archiveLabel={archiveLabel}
-              archiveStatus={archiveStatus}
-              archivePendingLabel={archivePendingLabel}
-              archiveShortcutKeys={archiveShortcutKeys}
-              onArchive={onArchive}
-              onCopyBranchName={onCopyBranchName}
-              onCopyPath={onCopyPath}
-              onRename={onRename}
-              onOpenBaseCheckout={onOpenBaseCheckout}
-            />
+            {trailing.flow}
           </SidebarWorkspaceRowContent>
         );
         return (
@@ -2781,6 +2857,24 @@ const styles = StyleSheet.create((theme) => ({
     // slot below reserves the button's real footprint so this gap is honest.
     gap: 2,
     flexShrink: 0,
+  },
+  // Hover-revealed "+" and kebab, painted over the row's right edge on hover
+  // platforms so they cost the project name no width at rest. `right` matches
+  // projectShortcutBadgeOverlay: absolute offsets are measured from the row's
+  // border box, so it has to add the row's own horizontal padding back to land
+  // on the content edge. Opaque in the row's hovered background for the same
+  // reason as floatingTrailingOverlay — it covers the label tail and diff stat.
+  projectFloatingTrailingActions: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    right: theme.spacing[2],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    paddingLeft: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surfaceSidebarHover,
   },
   // The shared trailing slot only reserves 18px, but the right-anchored kebab
   // overlay is compactUp(24) wide — without this the kebab chrome bleeds left

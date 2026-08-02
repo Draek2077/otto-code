@@ -146,6 +146,16 @@ place the "Paseo" literal is allowed to live. Do not move the name/version into
 the display code or i18n strings; the rebrand pass would rewrite them on the next
 merge that touches those files.
 
+That exclusion cuts both ways: because step 3 skips this file, a rebrand pass that
+wrongly rewrites it is invisible to the audit. The v0.2.5 merge did exactly that,
+and About shipped "Based on Otto v0.1.106" until someone read it. So assert the
+literal directly, every merge:
+
+```bash
+grep -q 'UPSTREAM_BASE_NAME = "Paseo"' packages/app/src/utils/upstream-base-version.ts \
+  || echo 'FAIL: the rebrand pass ate the upstream base name'
+```
+
 ### 5. Regenerate lockfiles and verify
 
 ```bash
@@ -217,7 +227,24 @@ same subsystems from scratch.
 | Merged     | Upstream tag | Upstream sha | Otto version | Deliberately skipped                                                            |
 | ---------- | ------------ | ------------ | ------------ | ------------------------------------------------------------------------------- |
 | 2026-07-12 | v0.1.106     | `c05e337cd`  | 0.5.x        | —                                                                               |
-| _pending_  | v0.2.0       | _untagged_   | 0.6.5        | Hub (`a414f8ea8`) — **permanent**; upstream's client-side subagent presentation |
+| 2026-08-01 | v0.2.5       | `6fc491e62`  | 0.7.5        | Hub (`a414f8ea8`) — **permanent**; upstream's client-side subagent presentation |
+
+The v0.2.5 row also left behind things nobody chose to skip. Large conflicted
+files were resolved wholesale to OURS, which drops upstream hunks silently: no
+conflict marker, no failing test, nothing to grep. `packages/desktop/src/main.ts`
+lost the entire browser-keyboard wiring and the `clear-profile` handler while
+`preload.ts` and the app kept the THEIRS side that calls them, so both surfaced
+later as "No handler registered for ...". `packages/desktop/src/features/editor-targets/`
+came in whole and was never wired up, so seven editors upstream supports are
+still invisible in Otto.
+
+**A wholesale-OURS resolution is a decision, so record it in the table above.**
+Two mechanical sweeps catch what slips through, and both belong in step 5:
+
+```bash
+# every channel the preload invokes must have a main-process handler
+# every exported symbol should have at least one non-test caller
+```
 
 ### Standing decisions
 

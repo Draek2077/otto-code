@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeNotificationPlan,
   isPushEligibleAttentionReason,
+  isTargetActivelyWatched,
   type ClientPresenceState,
   PRESENCE_THRESHOLD_MS,
 } from "./agent-attention-policy.js";
@@ -230,5 +231,84 @@ describe("isPushEligibleAttentionReason", () => {
     expect(isPushEligibleAttentionReason("finished")).toBe(true);
     expect(isPushEligibleAttentionReason("permission")).toBe(true);
     expect(isPushEligibleAttentionReason("error")).toBe(false);
+  });
+});
+
+describe("isTargetActivelyWatched", () => {
+  const nowMs = Date.parse("2026-04-19T12:00:00.000Z");
+  const staleAtMs = nowMs - PRESENCE_THRESHOLD_MS - 1;
+  const presentAtMs = nowMs - PRESENCE_THRESHOLD_MS + 1;
+  const agent = { kind: "agent", id: "agent-1" } as const;
+
+  it("reports a present, visible client focused on the agent", () => {
+    expect(
+      isTargetActivelyWatched({
+        allStates: [state({ focusedAgentId: "agent-1", lastActivityAtMs: presentAtMs })],
+        focusTarget: agent,
+        nowMs,
+      }),
+    ).toBe(true);
+  });
+
+  it("ignores a client focused on a different agent", () => {
+    expect(
+      isTargetActivelyWatched({
+        allStates: [state({ focusedAgentId: "agent-2", lastActivityAtMs: presentAtMs })],
+        focusTarget: agent,
+        nowMs,
+      }),
+    ).toBe(false);
+  });
+
+  it("ignores a backgrounded client even when it is focused on the agent", () => {
+    expect(
+      isTargetActivelyWatched({
+        allStates: [
+          state({ appVisible: false, focusedAgentId: "agent-1", lastActivityAtMs: presentAtMs }),
+        ],
+        focusTarget: agent,
+        nowMs,
+      }),
+    ).toBe(false);
+  });
+
+  it("ignores a stale client so an abandoned window keeps raising attention", () => {
+    expect(
+      isTargetActivelyWatched({
+        allStates: [state({ focusedAgentId: "agent-1", lastActivityAtMs: staleAtMs })],
+        focusTarget: agent,
+        nowMs,
+      }),
+    ).toBe(false);
+  });
+
+  it("reports true when any one of several clients is watching", () => {
+    expect(
+      isTargetActivelyWatched({
+        allStates: [
+          state({ focusedAgentId: "agent-2", lastActivityAtMs: presentAtMs }),
+          state({ focusedAgentId: "agent-1", lastActivityAtMs: presentAtMs }),
+        ],
+        focusTarget: agent,
+        nowMs,
+      }),
+    ).toBe(true);
+  });
+
+  it("is false with no clients connected", () => {
+    expect(isTargetActivelyWatched({ allStates: [], focusTarget: agent, nowMs })).toBe(false);
+  });
+
+  it("agrees with computeNotificationPlan about who is watching", () => {
+    const watching = [state({ focusedAgentId: "agent-1", lastActivityAtMs: presentAtMs })];
+    expect(isTargetActivelyWatched({ allStates: watching, focusTarget: agent, nowMs })).toBe(true);
+    expect(
+      computeNotificationPlan({
+        allStates: watching,
+        focusTarget: agent,
+        pushEligible: true,
+        nowMs,
+      }),
+    ).toEqual({ inAppRecipientIndex: null, shouldPush: false });
   });
 });

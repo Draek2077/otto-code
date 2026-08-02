@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import {
   Brain,
   Eye,
+  Handyman,
   MicVocal,
   Pencil,
   Search,
@@ -34,6 +35,7 @@ const ICON_COMPONENTS: Record<ToolCallIcon, ToolCallIconComponent> = {
   sparkles: Sparkles,
   brain: Brain,
   mic_vocal: MicVocal,
+  handyman: Handyman,
   otto: OttoLogo,
 };
 

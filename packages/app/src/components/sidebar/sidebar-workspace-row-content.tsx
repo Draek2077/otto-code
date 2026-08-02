@@ -7,6 +7,8 @@ import { StatusBucketIcon, isAttentionStatusBucket } from "@/components/status-b
 import { GitHostingIcon } from "@/components/icons/git-hosting-icon";
 import { WorkspaceHoverCard } from "@/components/workspace-hover-card";
 import { ThemedBlobLoader } from "@/components/blob-loader";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { isNative as platformIsNative } from "@/constants/platform";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { usePrefetchWorkspaceCheckoutStatus } from "@/hooks/use-prefetch-workspace-checkout-status";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -26,6 +28,21 @@ const ThemedGlobe = withUnistyles(Globe);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
 
 type SidebarWorkspaceScriptIconKind = "service" | "command";
+
+/**
+ * Whether a row's hover-revealed controls may float over its right edge instead
+ * of reserving width in the title line.
+ *
+ * Only where hover exists. On native and in compact layouts `onHoverIn` never
+ * fires, so those controls are permanently on screen (see the `isHovered ||
+ * isNative || isCompact` rule in packages/app/CLAUDE.md) — floating them there
+ * would park them on top of the label forever. Reserved layout is correct on
+ * those platforms and stays.
+ */
+export function useFloatingRowActions(): boolean {
+  const isCompact = useIsCompactFormFactor();
+  return !platformIsNative && !isCompact;
+}
 
 export function SidebarWorkspaceRowFrame({
   workspace,
@@ -71,6 +88,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   isCreating = false,
   shortcutNumber = null,
   showShortcutBadge = false,
+  floatingTrailing = null,
   children,
 }: {
   workspace: SidebarWorkspaceEntry;
@@ -83,6 +101,12 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   isCreating?: boolean;
   shortcutNumber?: number | null;
   showShortcutBadge?: boolean;
+  /**
+   * Trailing controls painted over the title row's right edge. Costs the label
+   * no width, so pass hover-revealed controls here rather than as `children`.
+   */
+  floatingTrailing?: ReactNode;
+  /** Trailing content that reserves width in the title row. */
   children?: ReactNode;
 }) {
   const {
@@ -115,7 +139,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
               </Text>
               {scriptIconKind ? <WorkspaceScriptIcon kind={scriptIconKind} /> : null}
             </View>
-            <View style={sidebarWorkspaceRowStyles.rowRight}>{children}</View>
+            {children ? <View style={sidebarWorkspaceRowStyles.rowRight}>{children}</View> : null}
           </View>
           {subtitle ? (
             <Text style={styles.workspaceSubtitle} numberOfLines={1}>
@@ -130,6 +154,9 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
           ) : null}
         </View>
       </View>
+      {floatingTrailing ? (
+        <View style={sidebarWorkspaceRowStyles.floatingTrailingOverlay}>{floatingTrailing}</View>
+      ) : null}
       {showShortcutBadge && shortcutNumber !== null ? (
         <View style={styles.shortcutBadgeOverlay} pointerEvents="none">
           <SidebarWorkspaceShortcutBadge number={shortcutNumber} />
@@ -267,6 +294,31 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
     lineHeight: 14,
   },
   hidden: { opacity: 0 },
+  /**
+   * Hover-revealed controls painted over the title row's right edge. Anchored to
+   * the row's content box, height-matched to the title line (`lineHeight: 20`)
+   * so it centers on the title rather than on a row grown by a subtitle or PR
+   * badge. Reserves no width, so the label is full-width at rest and the row
+   * never reflows when the pointer arrives.
+   *
+   * Opaque because it covers real content — the tail of a truncated label, and
+   * the diff stat in the status grouping. `surfaceSidebarHover` is the row's own
+   * hovered/selected background, and this only renders while hovered, so it
+   * reads as part of the row. The one mismatch is the pressed state
+   * (`surface2`), a flash on the way to navigating away.
+   */
+  floatingTrailingOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    height: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    paddingLeft: theme.spacing[2],
+    backgroundColor: theme.colors.surfaceSidebarHover,
+    borderRadius: theme.borderRadius.md,
+  },
   trailingActionSlot: {
     position: "relative",
     minWidth: 18,

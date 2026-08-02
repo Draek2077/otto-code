@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { Text } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { RecordVoiceOver, VoiceOverOff } from "@/components/icons/material-icons";
@@ -15,7 +15,9 @@ const ThemedRecordVoiceOver = withUnistyles(RecordVoiceOver);
 const ThemedVoiceOverOff = withUnistyles(VoiceOverOff);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const accentColorMapping = (theme: Theme) => ({ color: theme.colors.primary });
+// `accentBright` — the same accent the Sidebar and Explorer toggles use for their
+// on-state, so every enabled header toggle reads as one family.
+const accentColorMapping = (theme: Theme) => ({ color: theme.colors.accentBright });
 
 // Accent while cues can speak, so the button reads as the state toggle it is —
 // same convention as the Visualizer button beside it.
@@ -26,10 +28,12 @@ function resolveGlyphColor(input: { unmuted: boolean; hovered: boolean }) {
   return input.hovered ? foregroundColorMapping : mutedColorMapping;
 }
 
-// Same slot chrome as the neighboring Visualizer button and "..." menu trigger.
-function triggerStyle({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) {
-  return [
+// Same slot chrome as the neighboring Visualizer button and "..." menu trigger,
+// held while cues are unmuted so the on-state is visible without a hover.
+function resolveTriggerStyle(unmuted: boolean) {
+  return ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
     headerIconSlotStyle.slot,
+    unmuted && headerIconSlotStyle.slotActive,
     (Boolean(hovered) || Boolean(pressed)) && headerIconSlotStyle.slotHovered,
   ];
 }
@@ -77,6 +81,7 @@ export function WorkspaceVoiceCuesButton() {
     void updateSettings({ agentVoiceCuesMuted: unmuted });
   }, [unmuted, updateSettings]);
   const Glyph = unmuted ? ThemedRecordVoiceOver : ThemedVoiceOverOff;
+  const triggerStyle = useMemo(() => resolveTriggerStyle(unmuted), [unmuted]);
 
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>

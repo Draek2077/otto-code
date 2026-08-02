@@ -1,7 +1,10 @@
 import type { ToolCallDetail, ToolCallIconName } from "@otto-code/protocol/agent-types";
 import { isOttoToolName } from "@otto-code/protocol/tool-name-normalization";
 
-export type ToolCallIcon = ToolCallIconName | "otto";
+// `handyman` is client-only, like `otto`: the wire enum stays as-is so an old
+// client never meets an icon name it cannot parse. Skills are resolved from the
+// tool NAME here, not sent by the daemon.
+export type ToolCallIcon = ToolCallIconName | "otto" | "handyman";
 
 const TOOL_DETAIL_ICON_NAMES: Record<ToolCallDetail["type"], ToolCallIcon> = {
   shell: "square_terminal",
@@ -30,6 +33,11 @@ export function resolveToolCallIconName(toolName: string, detail?: ToolCallDetai
   }
   if (lowerName === "speak") {
     return "mic_vocal";
+  }
+  // Handyman is the app-wide glyph for a skill. Every provider that surfaces a
+  // skill invocation names the tool "Skill" (Claude, Codex, OpenCode).
+  if (lowerName === "skill") {
+    return "handyman";
   }
   if (isOttoToolName(lowerName)) {
     return "otto";

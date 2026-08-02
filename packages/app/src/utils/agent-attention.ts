@@ -13,7 +13,32 @@ export type AgentAttentionClearTrigger =
   | "focus-entry"
   | "input-focus"
   | "prompt-send"
-  | "agent-blur";
+  | "agent-blur"
+  | "active-view";
+
+/**
+ * True when attention was just raised on a chat the reader is already looking at.
+ *
+ * DIVERGENCE(activeViewAttentionClear): upstream Paseo only clears attention on a
+ * transition (entering the screen, focusing the composer) or on leaving the agent.
+ * None of those fire when a turn finishes while you are sitting in the chat with
+ * the composer already holding DOM focus, so the dot sticks in the tab strip and
+ * the sidebar until you switch tabs. A "needs attention" badge on the chat you are
+ * actively watching carries no information, so we clear it on the spot instead.
+ */
+export function isAttentionRaisedWhileActivelyViewed(input: {
+  wasRequiringAttention: boolean;
+  requiresAttention: boolean | null | undefined;
+  wasActivelyViewed: boolean;
+  isActivelyViewed: boolean;
+}): boolean {
+  return (
+    !input.wasRequiringAttention &&
+    Boolean(input.requiresAttention) &&
+    input.wasActivelyViewed &&
+    input.isActivelyViewed
+  );
+}
 
 const ATTENTION_REASON_PRIORITY = {
   permission: 0,

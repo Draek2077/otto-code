@@ -84,6 +84,37 @@ mounts—never at module evaluation time.
 
 [`useUnistyles()`](https://www.unistyl.es/v3/references/use-unistyles) is different. It gives React access to the current theme/runtime and can make a component re-render when those values change. Use it for values that must be rendered through React props, such as icon colors or small escape hatches. Do not expect direct reads from `UnistylesRuntime` to re-render a component; [issue #817](https://github.com/jpudysz/react-native-unistyles/issues/817) is a useful reminder of that invariant.
 
+### A Theme Shadow Silently Drops `shadowOpacity` On Web
+
+Put the alpha inside `shadowColor` as an `rgba()` string. Never move it out to `shadowOpacity`, or the shadow paints at full strength.
+
+When `shadowColor` comes from a theme token, Unistyles hoists it into a CSS variable so themes stay swappable at runtime, and composes only the geometry into the rule:
+
+```css
+.unistyles_pu55lmskkn {
+  box-shadow: 0 3px 8px var(--shadow-md-shadow-color);
+}
+:root.light {
+  --shadow-md-shadow-color: #000;
+}
+```
+
+The variable carries the colour and nothing else. `shadowOpacity` never reaches the stylesheet, so `shadowColor: "#000"` with `shadowOpacity: 0.07` renders as **solid black**.
+
+This failure is unusually convincing, so recognise it by shape rather than rediscovering it. Offset and blur edits land immediately, because the geometry does get composed into the class. Opacity edits appear to do nothing. The natural reading is "hot reload is stale" or "the value is not low enough yet", and both send you tuning a number the renderer is discarding. If geometry moves and alpha does not, stop and read the emitted CSS.
+
+Styles built from literals rather than theme tokens do not take the variable path and compose `shadowOpacity` correctly, which is why a working example elsewhere in the app proves nothing. Compare the segmented control's `rgba(0, 0, 0, 0.08) 0px 1px 2px` against any theme-sourced popup.
+
+Keep `shadowOpacity: 1` in the token for native. iOS multiplies it into the colour's own alpha (CALayer semantics), so `1` means "use the alpha in the string", while staying inert on web. Android ignores both and uses `elevation`.
+
+To read what is actually rendering, attach to the dev desktop's CDP endpoint (see [development.md](development.md)) and dump the rules rather than reasoning about the pipeline:
+
+```js
+[...document.styleSheets]
+  .flatMap((s) => [...s.cssRules])
+  .filter((r) => r.cssText.includes("box-shadow"));
+```
+
 ## Dynamic Pixel Styles On Web
 
 Avoid feeding changing pixel values such as `{ top, left }`, `{ maxHeight }`, or `{ minWidth }` into the `style` prop of Unistyles-managed React Native components on web. The web runtime hashes each distinct style object by value and appends a CSS rule to `#unistyles-web`; those rules are not reclaimed during the page lifetime, so pointer-driven positioning can turn into steady stylesheet growth.

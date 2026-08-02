@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Agent } from "@/stores/session-store";
-import { pickAttentionAgent, shouldClearAgentAttention } from "@/utils/agent-attention";
+import {
+  isAttentionRaisedWhileActivelyViewed,
+  pickAttentionAgent,
+  shouldClearAgentAttention,
+} from "@/utils/agent-attention";
 
 function createAgent(input: Partial<Agent> & Pick<Agent, "id">): Agent {
   const { id, ...rest } = input;
@@ -264,5 +268,69 @@ describe("pickAttentionAgent", () => {
         }),
       ]),
     ).toBe("error-agent");
+  });
+});
+
+describe("isAttentionRaisedWhileActivelyViewed", () => {
+  const watching = {
+    wasRequiringAttention: false,
+    requiresAttention: true,
+    wasActivelyViewed: true,
+    isActivelyViewed: true,
+  };
+
+  it("fires when a turn finishes on the chat the reader is already watching", () => {
+    expect(isAttentionRaisedWhileActivelyViewed(watching)).toBe(true);
+  });
+
+  it("does not fire when attention was already raised", () => {
+    expect(isAttentionRaisedWhileActivelyViewed({ ...watching, wasRequiringAttention: true })).toBe(
+      false,
+    );
+  });
+
+  it("does not fire when attention is being cleared rather than raised", () => {
+    expect(isAttentionRaisedWhileActivelyViewed({ ...watching, requiresAttention: false })).toBe(
+      false,
+    );
+  });
+
+  it("does not fire when the reader only just arrived, so focus-entry owns the clear", () => {
+    expect(isAttentionRaisedWhileActivelyViewed({ ...watching, wasActivelyViewed: false })).toBe(
+      false,
+    );
+  });
+
+  it("does not fire when the chat is no longer actively viewed", () => {
+    expect(isAttentionRaisedWhileActivelyViewed({ ...watching, isActivelyViewed: false })).toBe(
+      false,
+    );
+  });
+});
+
+describe("shouldClearAgentAttention with the active-view trigger", () => {
+  const base = {
+    agentId: "agent-1",
+    isConnected: true,
+    requiresAttention: true,
+    trigger: "active-view" as const,
+  };
+
+  it("clears a finished turn the reader is watching", () => {
+    expect(shouldClearAgentAttention({ ...base, attentionReason: "finished" })).toBe(true);
+  });
+
+  it("keeps a pending permission badge even while watched", () => {
+    expect(shouldClearAgentAttention({ ...base, attentionReason: "permission" })).toBe(false);
+  });
+
+  it("is not blocked by a deferred focus-entry clear", () => {
+    expect(
+      shouldClearAgentAttention({
+        ...base,
+        attentionReason: "finished",
+        hasDeferredFocusEntryClear: true,
+      }),
+    ).toBe(true);
   });
 });

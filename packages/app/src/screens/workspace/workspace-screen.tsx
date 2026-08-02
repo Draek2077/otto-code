@@ -2,6 +2,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -205,6 +206,7 @@ import {
   resolveSideFileOpenPlacement,
   resolveWorkspaceNewChatPlacement,
 } from "@/screens/workspace/workspace-pane-state";
+import { selectVisibleAgentIds } from "@/screens/workspace/visible-agent-ids";
 import {
   buildWorkspacePaneContentModel,
   WorkspacePaneContent,
@@ -1347,6 +1349,7 @@ function PlainExplorerToggle({
         tooltipLabel={t("workspace.tabs.explorer.toggle")}
         tooltipKeys={explorerToggleKeys}
         tooltipSide="left"
+        active={isExplorerOpen}
         accessible
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
@@ -1374,6 +1377,7 @@ function PlainExplorerToggle({
       tooltipKeys={explorerToggleKeys}
       tooltipSide="left"
       style={styles.compactHeaderActionButton}
+      active={isExplorerOpen}
       accessible
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
@@ -2563,9 +2567,11 @@ function WorkspaceScreenContent({
     ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
       styles.sourceControlButton,
       showExplorerDiffStat && styles.sourceControlButtonWithStats,
+      // Chrome held while the explorer is open, matching the other header toggles.
+      isExplorerOpen && styles.sourceControlButtonActive,
       (Boolean(hovered) || Boolean(pressed)) && styles.sourceControlButtonHovered,
     ],
-    [showExplorerDiffStat],
+    [isExplorerOpen, showExplorerDiffStat],
   );
   const explorerToggleAccessibilityState = useMemo(
     () => ({ expanded: isExplorerOpen }),
@@ -2735,6 +2741,36 @@ function WorkspaceScreenContent({
       }),
     [visibleUiTabs, workspaceLayout],
   );
+  // Selective timeline delivery: the daemon only forwards agent_stream events for
+  // agents this client has declared it is viewing. Without this declaration the
+  // subscription set stays empty and no live message ever reaches the transcript;
+  // the rows still land in the daemon's timeline, so a reload appears to "fix" it.
+  const viewedTimelineSync = useSessionStore(
+    (state) => state.sessions[normalizedServerId]?.viewedTimelineSync ?? null,
+  );
+  const visibleAgentIds = useMemo(
+    () =>
+      selectVisibleAgentIds({
+        layout: workspaceLayout,
+        tabs: visibleUiTabs,
+        routeFocused: isRouteFocused,
+        focusedPaneOnly: isMobile || isFocusModeEnabled || !supportsDesktopPaneSplits(),
+      }),
+    [isFocusModeEnabled, isMobile, isRouteFocused, visibleUiTabs, workspaceLayout],
+  );
+  useLayoutEffect(() => {
+    if (!persistenceKey || !viewedTimelineSync) {
+      return;
+    }
+    viewedTimelineSync.replaceVisibleAgentIds(persistenceKey, visibleAgentIds);
+  }, [persistenceKey, viewedTimelineSync, visibleAgentIds]);
+  useEffect(() => {
+    if (!persistenceKey || !viewedTimelineSync) {
+      return;
+    }
+    return () => viewedTimelineSync.replaceVisibleAgentIds(persistenceKey, []);
+  }, [persistenceKey, viewedTimelineSync]);
+
   const setFocusedAgentId = useSessionStore((state) => state.setFocusedAgentId);
   const setFocusedTerminalId = useSessionStore((state) => state.setFocusedTerminalId);
   const focusedPaneAgentId = useMemo(() => {
@@ -4370,6 +4406,7 @@ function WorkspaceScreenContent({
                 tooltipKeys={explorerToggleKeys}
                 tooltipSide="left"
                 style={styles.compactHeaderActionButton}
+                active={isExplorerOpen}
                 accessible
                 accessibilityRole="button"
                 accessibilityLabel={explorerToggleLabel}
@@ -4393,6 +4430,7 @@ function WorkspaceScreenContent({
                 tooltipLabel={t("workspace.tabs.explorer.toggle")}
                 tooltipKeys={explorerToggleKeys}
                 tooltipSide="left"
+                active={isExplorerOpen}
                 accessible
                 accessibilityRole="button"
                 accessibilityLabel={explorerToggleLabel}
@@ -4876,8 +4914,10 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: compactUp(theme.spacing[2]),
     borderRadius: theme.borderRadius.lg,
   },
+  // Hover and selection colors are shared with `headerIconSlotStyle` — see the
+  // comments there, and the token derivations in `theme.ts`.
   headerActionButtonHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceToggleHover,
   },
   // Fixed touch-target box for the mobile "..." trigger — doubled alongside the
   // icon it wraps (`theme.iconSize.md`/`.lg`) so the icon keeps breathing room
@@ -4923,7 +4963,10 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
   },
   sourceControlButtonHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surfaceToggleHover,
+  },
+  sourceControlButtonActive: {
+    backgroundColor: theme.colors.surfaceToggleSelected,
   },
   sourceControlDiffStat: {
     paddingLeft: 5,

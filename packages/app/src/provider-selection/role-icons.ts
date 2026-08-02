@@ -7,6 +7,7 @@
 // personality's colored provider glyph. See buildTeamRoleEntry.
 import type { PersonalityRole } from "@otto-code/protocol/messages";
 import {
+  Architecture,
   Assignment,
   CalendarMonth,
   DataObject,
@@ -14,7 +15,6 @@ import {
   EditNote,
   Forum,
   Gavel,
-  Handyman,
   type IconComponent,
   Lightbulb,
   Schema,
@@ -24,7 +24,8 @@ import {
 export const ROLE_ICONS: Record<PersonalityRole, IconComponent> = {
   // Surfaces
   chatter: Forum, // conversation
-  artificer: Handyman, // crafts/builds artifacts
+  // Not Handyman: that glyph is reserved app-wide for "skill".
+  artificer: Architecture, // drafting compass — crafts/builds artifacts
   scheduler: CalendarMonth, // calendar (distinct from the schedules feature's clock)
   // Thinking workers
   researcher: TravelExplore, // surveys/explores
