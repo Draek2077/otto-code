@@ -1,0 +1,35 @@
+# Weekly advisory gate over the SHIPPED dependency closure, the counterpart to
+# the quiet Dependabot alert feed (.github/dependabot.yml explains why npm is
+# excluded from Dependabot version updates). Raw `npm audit` reports ~70
+# advisories here, almost all in Expo/Metro/RN build tooling that npm classifies
+# as production but that never executes in a shipped build; a per-PR gate on
+# that would be noise the team learns to ignore. So this runs weekly, off the
+# PR path, and scripts/audit-shipped.mjs fails only on high/critical advisories
+# that reach code Otto actually ships. A red run here means either fix the
+# dependency or record a reachability analysis in
+# findings/dependency-vulnerabilities/ and prune the entry point. Never ignore it.
+name: Audit shipped dependencies
+
+on:
+  schedule:
+    # Mondays 08:00 UTC, alongside the Dependabot actions schedule.
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-shipped:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      # Needs only package-lock.json and registry access; no install.
+      - name: Audit the shipped closure
+        run: node scripts/audit-shipped.mjs
