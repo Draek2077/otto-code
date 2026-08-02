@@ -59,7 +59,7 @@ export async function installCli(): Promise<InstallStatus> {
 
   const { shellUpdated } = await ensurePathInShellRc();
   if (shellUpdated) {
-    log.info("[integrations] Updated shell rc with ~/.local/bin PATH");
+    log.info("[integrations] Registered ~/.local/bin on PATH");
   }
 
   return getCliInstallStatus();

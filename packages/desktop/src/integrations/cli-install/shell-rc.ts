@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import log from "electron-log/main";
+import { ensureWindowsUserPath } from "./windows-path.js";
 
 export interface ShellRcInfo {
   shell: string;
@@ -68,6 +69,21 @@ export function pathAlreadyContainsLocalBin(): boolean {
 }
 
 export async function ensurePathInShellRc(): Promise<{ shellUpdated: boolean }> {
+  // Windows has no rc file. `~/.local/bin` is a POSIX convention that Windows
+  // never puts on PATH, so without this the shim we just wrote is unreachable.
+  // The registry is authoritative here: process.env.PATH was inherited from
+  // Explorer at launch and can be stale.
+  if (process.platform === "win32") {
+    const binDir = path.join(os.homedir(), ".local", "bin");
+    try {
+      const { updated } = await ensureWindowsUserPath(binDir);
+      return { shellUpdated: updated };
+    } catch (err) {
+      log.warn("[integrations] Failed to register ~/.local/bin on the user PATH", { binDir, err });
+      return { shellUpdated: false };
+    }
+  }
+
   if (pathAlreadyContainsLocalBin()) {
     return { shellUpdated: false };
   }
