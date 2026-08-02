@@ -781,6 +781,12 @@ function createOttoWorktreeForMcpTest(options: {
             ...(workflowOptions?.resolveDefaultBranch
               ? { resolveDefaultBranch: workflowOptions.resolveDefaultBranch }
               : {}),
+            // Both registries are required deps: worktree creation reads the
+            // workspace list to reject a directory that already backs a live
+            // workspace. The helper builds them just above, and passing only
+            // workspaceProvisioning left them undefined.
+            projectRegistry,
+            workspaceRegistry,
             workspaceGitService,
             workspaceProvisioning,
           }),
@@ -4411,9 +4417,13 @@ describe("update_schedule MCP tool", () => {
       every: "10m",
     });
 
+    // An interval stays an interval rather than being rewritten to cron. Cron
+    // can only express intervals that divide evenly into an hour, so "7m" as
+    // "*/7 * * * *" would fire at :00 through :56 and then skew by four
+    // minutes; everyMs holds the cadence the caller actually asked for.
     expect(update).toHaveBeenCalledWith({
       id: "schedule-1",
-      cadence: { type: "cron", expression: "*/10 * * * *" },
+      cadence: { type: "every", everyMs: 600_000 },
     });
   });
 
@@ -4467,7 +4477,7 @@ describe("update_schedule MCP tool", () => {
 
     expect(update).toHaveBeenCalledWith({
       id: "schedule-1",
-      cadence: { type: "cron", expression: "*/10 * * * *" },
+      cadence: { type: "every", everyMs: 600_000 },
     });
   });
 
@@ -4475,7 +4485,7 @@ describe("update_schedule MCP tool", () => {
     {
       label: "whitespace cron field",
       input: { id: "schedule-1", every: "10m", cron: "   " },
-      cadence: { type: "cron", expression: "*/10 * * * *" },
+      cadence: { type: "every", everyMs: 600_000 },
     },
     {
       label: "blank every field for cron cadence",

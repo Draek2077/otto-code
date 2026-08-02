@@ -3856,6 +3856,43 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     },
   );
 
+  // The counterpart to create_heartbeat, and the reason it exists separately
+  // from delete_schedule: create_heartbeat stamps the caller as the target, but
+  // delete_schedule takes a bare id and would happily let one agent delete
+  // another's heartbeat. This one refuses anything the caller does not own.
+  registerTool(
+    "delete_heartbeat",
+    {
+      title: "Delete heartbeat",
+      description: "Delete one of your own heartbeats.",
+      inputSchema: {
+        id: z.string(),
+      },
+      outputSchema: {
+        success: z.boolean(),
+      },
+    },
+    async ({ id }) => {
+      if (!scheduleService) {
+        throw new Error("Schedule service is not configured");
+      }
+      if (!callerAgentId) {
+        throw new Error("delete_heartbeat requires an agent-scoped session");
+      }
+
+      const schedule = await scheduleService.inspect(id);
+      if (schedule.target.type !== "agent" || schedule.target.agentId !== callerAgentId) {
+        throw new Error(`Heartbeat ${id} does not belong to caller ${callerAgentId}`);
+      }
+
+      await scheduleService.delete(id);
+      return {
+        content: [],
+        structuredContent: ensureValidJson({ success: true }),
+      };
+    },
+  );
+
   registerTool(
     "list_schedules",
     {
