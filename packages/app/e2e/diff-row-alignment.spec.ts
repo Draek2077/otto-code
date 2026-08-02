@@ -224,7 +224,15 @@ test("changes diff keeps code rows aligned with the gutter", async ({ page }) =>
   });
 });
 
-test("changes file actions open from the kebab and right-click", async ({ page }) => {
+// DEFERRED(paseoDiffTab): the Paseo v0.2.5 merge appended three tests to this
+// file. Otto's own three (gutter alignment, flat/tree lists, code-size changes)
+// are untouched and still run; these three drive upstream's working-diff panel,
+// which Otto does not register — `working-diff-panel`, `changes-open-tab`,
+// `diff-file-N-toggle`, `diff-file-N-actions` and `files-sort-label` all exist
+// nowhere in src. Otto's Changes view builds `diff-file-N` and
+// `diff-file-N-body` only. Un-skip alongside the diff-tab adoption described in
+// panels/register-panels.ts.
+test.skip("changes file actions open from the kebab and right-click", async ({ page }) => {
   const workspace = await createWorkspaceWithMountedTabDiff({ includeDeletedFile: true });
   await useUnwrappedDiffLines(page);
   await openWorkspaceChanges(page, workspace);
@@ -243,7 +251,8 @@ test("changes file actions open from the kebab and right-click", async ({ page }
   await expect(page.getByTestId("workspace-tab-file_src/use-mounted-tab-set.ts")).toBeVisible();
 });
 
-test("Changes switches between inline and full-tab navigation", async ({ page }) => {
+// DEFERRED(paseoDiffTab): see the note above.
+test.skip("Changes switches between inline and full-tab navigation", async ({ page }) => {
   const workspace = await createWorkspaceWithMountedTabDiff({ includeDeletedFile: true });
   await useUnwrappedDiffLines(page);
   await openWorkspaceChanges(page, workspace);
@@ -357,7 +366,10 @@ test("changes diff switches between flat and tree file lists", async ({ page }) 
   await expectFlatFileList(page);
 });
 
-test("workspace file panes keep their controls on shared alignment rails", async ({ page }) => {
+// DEFERRED(paseoDiffTab): see the note above.
+test.skip("workspace file panes keep their controls on shared alignment rails", async ({
+  page,
+}) => {
   const workspace = await createWorkspaceWithMountedTabDiff();
   await openWorkspaceChanges(page, workspace);
 
