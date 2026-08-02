@@ -2265,7 +2265,16 @@ export class AgentManager {
     }
     const launchContext = await this.buildLaunchContext(resolvedAgentId, client, storedConfig.cwd);
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
-    const session = await client.resumeSession(handle, providerLaunchConfig, launchContext);
+    // The purpose reaches the provider. Resuming an archived agent just to read
+    // its history is not the same as resuming it to work in, and a provider that
+    // cannot tell the difference does the full interactive setup for a session
+    // nobody is going to type into.
+    const session = await client.resumeSession(
+      handle,
+      providerLaunchConfig,
+      launchContext,
+      options?.purpose ? { purpose: options.purpose } : undefined,
+    );
     return this.registerSession(session, storedConfig, resolvedAgentId, options);
   }
 
@@ -2320,16 +2329,32 @@ export class AgentManager {
       const initialTitle = resolveImportedAgentTitle(importedConfig, timelineRows);
 
       handedToRegistration = true;
-      return this.registerSession(imported.session, importedConfig, resolvedAgentId, {
-        labels: input.labels,
-        workspaceId: input.workspaceId,
-        timelineRows,
-        timelineNextSeq: timelineRows.length + 1,
-        persistence: imported.persistence,
-        historyPrimed: true,
-        initialTitle,
-        publishWhenReady: true,
-      });
+      const registered = await this.registerSession(
+        imported.session,
+        importedConfig,
+        resolvedAgentId,
+        {
+          labels: input.labels,
+          workspaceId: input.workspaceId,
+          timelineRows,
+          timelineNextSeq: timelineRows.length + 1,
+          persistence: imported.persistence,
+          historyPrimed: true,
+          initialTitle,
+          publishWhenReady: true,
+        },
+      );
+      // The provider reports the imported thread's children alongside its
+      // timeline. Applied after registration so the parent exists to hang them
+      // off; without this an imported session arrives with an empty subagent
+      // rail even though the thread had children.
+      for (const event of imported.providerSubagentEvents ?? []) {
+        this.dispatch({
+          type: "provider_subagent",
+          event: this.providerSubagents.apply(resolvedAgentId, event.provider, event.event),
+        });
+      }
+      return registered;
     } finally {
       if (!handedToRegistration) {
         await this.closeUnregisteredSession(imported.session);

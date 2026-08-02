@@ -2645,6 +2645,15 @@ test("importProviderSession imports the selected session without listing and pub
       OTTO_AGENT_ID: imported.id,
       OTTO_AGENT_CWD: workdir,
     },
+    // Otto carries the daemon-wide behavior toggles on every launch context;
+    // providers that cannot honor one ignore it.
+    agentBehaviors: {
+      promptSuggestions: true,
+      agentProgressSummaries: true,
+      notifyOnFinishDefault: true,
+      todoNudge: true,
+      todoReconcileOnIdle: true,
+    },
   });
   expect(imported.lifecycle).toBe("idle");
   expect(imported.historyPrimed).toBe(true);
