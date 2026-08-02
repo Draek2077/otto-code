@@ -168,7 +168,7 @@ function createDefaultDaemonEnv(extraEnv) {
 }
 
 function createIsolatedDesktopEnv({ home, listen, userData, cdpPort }) {
-  return {
+  const env = {
     ...process.env,
     OTTO_HOME: home,
     OTTO_LISTEN: listen,
@@ -182,6 +182,16 @@ function createIsolatedDesktopEnv({ home, listen, userData, cdpPort }) {
     OTTO_FORCE_GPU: "1",
     OTTO_ELECTRON_FLAGS: `--remote-debugging-address=127.0.0.1 --remote-debugging-port=${cdpPort}`,
   };
+  // OTTO_DESKTOP_SMOKE means two different things depending on who reads it.
+  // after-pack.js reads it as "run the packaged smoke once packing finishes";
+  // main.ts reads it as "this launch is a daemon-only smoke run" and returns
+  // through runDesktopSmokeIfRequested without ever creating a window. Inherited
+  // from the build process into the app we launch here, the second meaning won:
+  // the app started a daemon, waited on stdin, and exited, while this harness
+  // sat out its full deadline waiting for a renderer that by design was never
+  // coming. Strip it so the launch is an ordinary GUI start.
+  delete env.OTTO_DESKTOP_SMOKE;
+  return env;
 }
 
 function configureIsolatedDaemonHome(home, listen) {
