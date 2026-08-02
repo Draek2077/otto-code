@@ -50,7 +50,7 @@ describe("checkout status projection", () => {
       {
         number: 993,
         repoOwner: "Draek2077",
-        repoName: "otto",
+        repoName: "otto-code",
         url: "https://github.com/Draek2077/otto-code/pull/993",
         title: "Auto-merge UX",
         state: "open",

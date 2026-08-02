@@ -22,6 +22,7 @@ import { toCheckoutError } from "../../checkout-git-utils.js";
 import { isGitHubPullRequestStatusFacts } from "../../../services/github-facts.js";
 import { getCommitFileDiff, listCheckoutCommits } from "../../../utils/checkout-git.js";
 import {
+  asEmittedPrStatusPayload,
   buildCheckoutPrStatusPayloadFromSnapshot,
   buildCheckoutStatusPayloadFromSnapshot,
 } from "../../checkout/status-projection.js";
@@ -434,11 +435,9 @@ export class CheckoutSession {
           // The PR poll refreshed no git state; say so on the wire rather than
           // passing off the last git measurement as a fresh checkout status.
           prStatusOnly: meta?.prStatusOnly === true,
-          prStatus: buildCheckoutPrStatusPayloadFromSnapshot({
-            cwd,
-            requestId,
-            snapshot,
-          }),
+          prStatus: asEmittedPrStatusPayload(
+            buildCheckoutPrStatusPayloadFromSnapshot({ cwd, requestId, snapshot }),
+          ),
         },
       });
     } catch (error) {
@@ -1411,11 +1410,9 @@ export class CheckoutSession {
       const snapshot = await this.workspaceGitService.getSnapshot(cwd);
       this.host.emit({
         type: "checkout_pr_status_response",
-        payload: buildCheckoutPrStatusPayloadFromSnapshot({
-          cwd,
-          requestId,
-          snapshot,
-        }),
+        payload: asEmittedPrStatusPayload(
+          buildCheckoutPrStatusPayloadFromSnapshot({ cwd, requestId, snapshot }),
+        ),
       });
     } catch (error) {
       this.host.emit({

@@ -1,4 +1,5 @@
 import { isBitbucketPullRequestStatusFacts } from "../../services/git-hosting/bitbucket-facts.js";
+import { isGitHubPullRequestStatusFacts } from "../../services/github-facts.js";
 import type {
   CheckoutPrStatusResponse,
   CheckoutStatusResponse,
@@ -11,7 +12,41 @@ type CheckoutPrStatusPayload = Extract<
   SessionOutboundMessage,
   { type: "checkout_pr_status_response" }
 >["payload"];
-type CheckoutPrStatusPayloadStatus = NonNullable<CheckoutPrStatusPayload["status"]>;
+/**
+ * Producer-side shapes. `forge` carries `.default("github")` on the wire, which
+ * makes it required in the parsed (output) type but optional to send — and a
+ * daemon that has not resolved a forge must send nothing rather than assert
+ * GitHub. These aliases say that: omit the defaulted field, let the schema fill
+ * it in on parse.
+ */
+type CheckoutPrStatusPayloadStatus = Omit<
+  NonNullable<CheckoutPrStatusPayload["status"]>,
+  "forge"
+> & { forge?: string };
+type CheckoutPrStatusEmittedPayload = Omit<
+  CheckoutPrStatusResponse["payload"],
+  "forge" | "status"
+> & {
+  forge?: string;
+  status: CheckoutPrStatusPayloadStatus | null;
+};
+
+/**
+ * The one place the producer shape meets the parsed shape.
+ *
+ * `forge` is `.optional().default("github")` on the wire, so it is optional to
+ * send and required once parsed — the default exists so an *old* daemon's
+ * omission still reads as GitHub, and it stays until the floor reaches v0.1.106.
+ * A new daemon that resolved no forge must send nothing rather than assert
+ * GitHub, so omitting it here is correct even though the parsed type says
+ * otherwise. Named rather than inlined so this is not mistaken for a
+ * convenience cast.
+ */
+export function asEmittedPrStatusPayload(
+  payload: CheckoutPrStatusEmittedPayload,
+): CheckoutPrStatusResponse["payload"] {
+  return payload as CheckoutPrStatusResponse["payload"];
+}
 
 export function buildCheckoutStatusPayloadFromSnapshot(params: {
   cwd: string;
@@ -129,16 +164,23 @@ export function buildCheckoutPrStatusPayloadFromSnapshot({
   cwd: string;
   requestId: string;
   snapshot: WorkspaceGitRuntimeSnapshot;
-}): CheckoutPrStatusResponse["payload"] {
+}): CheckoutPrStatusEmittedPayload {
+  // The resolved brand, which includes self-hosted host names the per-host probe
+  // settled on. Left absent when nothing resolved: the wire schema defaults it,
+  // and an absent brand reads as "unknown" rather than a wrong one.
+  const resolvedForge = snapshot.forge.forge;
   const provider = snapshot.forge.provider ?? "github";
   return {
     cwd,
-    forge: provider,
-    status: normalizeCheckoutPrStatusPayload(snapshot.forge.pullRequest),
+    ...(resolvedForge === undefined ? {} : { forge: resolvedForge }),
+    status: normalizeCheckoutPrStatusPayload(snapshot.forge.pullRequest, resolvedForge),
     // Legacy GitHub-only flag: old clients read this, so it must stay false
     // for non-GitHub providers (they would otherwise render GitHub UI against
     // a Bitbucket workspace).
     githubFeaturesEnabled: provider === "github" && snapshot.forge.featuresEnabled,
+    // The richer signal that supersedes the boolean above. It is a required
+    // field on the wire and was simply never emitted.
+    authState: snapshot.forge.authState,
     hosting: {
       provider,
       featuresEnabled: snapshot.forge.featuresEnabled,
@@ -154,20 +196,38 @@ export function buildCheckoutPrStatusPayloadFromSnapshot({
   };
 }
 
+/**
+ * `resolvedForge` is the brand the forge resolver settled on for the workspace,
+ * and it is deliberately not derived from `forgeSpecific.forge`. Those are two
+ * different things: a Codeberg workspace resolves to the Forgejo brand while its
+ * facts are tagged with the `gitea` family they follow. Promoting the family tag
+ * would label Codeberg as Gitea, and defaulting it to `github` — which this used
+ * to do — labels every unresolved forge as GitHub and makes the client render
+ * GitHub affordances against a GitLab merge request.
+ */
 export function normalizeCheckoutPrStatusPayload(
   status: WorkspaceGitRuntimeSnapshot["forge"]["pullRequest"],
+  resolvedForge?: string,
 ): CheckoutPrStatusPayloadStatus | null {
   if (!status) {
     return null;
   }
+  const projectPath =
+    status.projectPath ??
+    (status.repoOwner && status.repoName ? `${status.repoOwner}/${status.repoName}` : undefined);
   const payload: CheckoutPrStatusPayloadStatus = {
-    forge: status.forgeSpecific?.forge ?? "github",
+    ...(resolvedForge === undefined ? {} : { forge: resolvedForge }),
     number: status.number,
     url: status.url,
     title: status.title,
     state: status.state,
     repoOwner: status.repoOwner,
     repoName: status.repoName,
+    // Prefer what the adapter reported: a nested GitLab namespace
+    // (group/subgroup/repo) cannot be rebuilt from two fields, which is the
+    // whole reason projectPath exists. Fall back to owner/name for adapters
+    // that do not report it.
+    ...(projectPath === undefined ? {} : { projectPath }),
     baseRefName: status.baseRefName,
     headRefName: status.headRefName,
     isMerged: status.isMerged,
@@ -179,6 +239,14 @@ export function normalizeCheckoutPrStatusPayload(
   };
   if (status.forgeSpecific) {
     payload.forgeSpecific = status.forgeSpecific;
+    // COMPAT(forgeSpecific): added in v0.1.106, remove after 2026-12-27. Clients
+    // that predate forgeSpecific read GitHub merge facts off `github`, so keep
+    // mirroring them there until the daemon floor >= v0.1.106. The forge tag is
+    // dropped from the mirror: the old field is GitHub-only by definition.
+    if (isGitHubPullRequestStatusFacts(status.forgeSpecific)) {
+      const { forge: _forge, ...githubFacts } = status.forgeSpecific;
+      payload.github = githubFacts;
+    }
   }
   // The legacy hosting block is Bitbucket-shaped; only a Bitbucket-tagged facts
   // envelope belongs in it. Old clients read this; new ones read forgeSpecific.

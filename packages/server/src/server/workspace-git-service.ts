@@ -2033,6 +2033,13 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
 
     return {
       cwd: target.cwd,
+      // Stamped from the same measurement that produced `git`. The target has
+      // tracked this all along and the wire projection reads it as `gitStateAt`,
+      // but combineSnapshot never carried it across, so the field was always
+      // undefined and clients had nothing to reject an out-of-order status push
+      // with. It is excluded from the emission fingerprint on purpose (see
+      // rememberSnapshot), so stamping it cannot cause spurious emissions.
+      gitLoadedAtMs: target.latestGitLoadedAtMs,
       git: target.latestGit,
       forge: target.latestForge ?? buildForgeUnavailableSnapshot(),
     };

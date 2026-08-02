@@ -299,10 +299,19 @@ function buildDefaultTestServiceDeps() {
 }
 
 function createService(options?: CreateServiceTestOptions) {
+  const { github, ...rest } = options ?? {};
   return new WorkspaceGitServiceImpl({
     logger: createLogger() as unknown as pino.Logger,
     ottoHome: "/tmp/otto-test",
-    deps: { ...buildDefaultTestServiceDeps(), ...options },
+    deps: {
+      ...buildDefaultTestServiceDeps(),
+      ...rest,
+      // A `github` option has to land on forgeOverrides, which is where the
+      // forge resolver looks. Spread at the top level it becomes an ignored
+      // `deps.github` and the caller silently gets the default stub instead of
+      // the one it just configured.
+      ...(github ? { forgeOverrides: { github } } : {}),
+    },
   });
 }
 
@@ -787,7 +796,7 @@ describe("WorkspaceGitServiceImpl", () => {
     const github = createGitHubServiceStub() as GitHubService & {
       retainCurrentPullRequestStatusPoll?: unknown;
     };
-    type PolledPrStatus = WorkspaceGitRuntimeSnapshot["github"]["pullRequest"];
+    type PolledPrStatus = WorkspaceGitRuntimeSnapshot["forge"]["pullRequest"];
     let emitPollStatus: ((status: PolledPrStatus) => void) | null = null;
     github.retainCurrentPullRequestStatusPoll = vi.fn(
       (input: { onStatus: (status: PolledPrStatus) => void }) => {
@@ -820,7 +829,7 @@ describe("WorkspaceGitServiceImpl", () => {
       { prStatusOnly: boolean },
     ];
     expect(meta).toEqual({ prStatusOnly: true });
-    expect(snapshot.github.pullRequest?.title).toBe("Checks finished");
+    expect(snapshot.forge.pullRequest?.title).toBe("Checks finished");
     // Same git block as before the poll: it refreshed nothing about the tree.
     expect(snapshot.git).toEqual(createSnapshot(REPO_CWD).git);
 
