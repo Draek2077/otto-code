@@ -41,6 +41,15 @@ function createFinishNotificationScenario(
   Reflect.set(callerAgent, "config", { title: "Caller Agent" });
 
   const agentManager: AgentManager = Object.create(AgentManager.prototype);
+  // A prototype-only stub has no instance fields, so the real
+  // waitForAgentClose reads an undefined map. Agent loading awaits any
+  // in-flight close before touching an agent, so every path through here
+  // reaches it.
+  Reflect.set(
+    agentManager,
+    "waitForAgentClose",
+    vi.fn(async () => {}),
+  );
   Reflect.set(agentManager, "getAgent", (agentId: string) => {
     if (agentId === "child-agent") {
       return childAgent;
@@ -136,6 +145,15 @@ test("sendPromptToAgent forwards the client message id as run options", async ()
 
   const streamAgentSpy = vi.fn(() => (async function* noop() {})());
   const agentManager: AgentManager = Object.create(AgentManager.prototype);
+  // A prototype-only stub has no instance fields, so the real
+  // waitForAgentClose reads an undefined map. Agent loading awaits any
+  // in-flight close before touching an agent, so every path through here
+  // reaches it.
+  Reflect.set(
+    agentManager,
+    "waitForAgentClose",
+    vi.fn(async () => {}),
+  );
   Reflect.set(
     agentManager,
     "getAgent",
@@ -219,6 +237,15 @@ it("does not notify archived callers", async () => {
   const replaceAgentRunSpy = vi.fn(() => (async function* noop() {})());
 
   const agentManager: AgentManager = Object.create(AgentManager.prototype);
+  // A prototype-only stub has no instance fields, so the real
+  // waitForAgentClose reads an undefined map. Agent loading awaits any
+  // in-flight close before touching an agent, so every path through here
+  // reaches it.
+  Reflect.set(
+    agentManager,
+    "waitForAgentClose",
+    vi.fn(async () => {}),
+  );
   Reflect.set(
     agentManager,
     "getAgent",
