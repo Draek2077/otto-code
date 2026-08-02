@@ -164,6 +164,7 @@ export class TurnRevealTicker {
   private target: number;
   private turnKey: string;
   private wasVisible = true;
+  private pendingReturnSnap = false;
   private readonly isOnScreen: () => boolean;
   private readonly listeners = new Set<() => void>();
 
@@ -185,25 +186,51 @@ export class TurnRevealTicker {
    * `tick`. A hidden chat pane freezes its stream data (see the stream view),
    * so the target the reveal converged on while you were away is stale, and
    * coming back re-reads the live buffers and jumps the target by everything
-   * the agent produced meanwhile, in the SAME render. That is why `tick` can
-   * never see it. Left paced, the whole backlog types itself out on re-entry:
-   * the chat visibly rushes for a couple of seconds before settling on where
-   * the turn actually is. Stay caught up while hidden and snap on the first
-   * render back, so re-entry shows the settled state and only text arriving
-   * after you return types out.
+   * the agent produced meanwhile. That is why `tick` can never see it. Left
+   * paced, the whole backlog types itself out on re-entry: the chat visibly
+   * rushes for a couple of seconds before settling on where the turn actually
+   * is. Stay caught up while hidden and snap on the way back in, so re-entry
+   * shows the settled state and only text arriving after you return types out.
+   *
+   * `dataSettled` is what makes that snap land on the RIGHT number, and its
+   * absence is why the first version of this fix did nothing. The jump does
+   * NOT arrive in the same render as the return: the stream view runs its
+   * items through `useDeferredValue`, so the first render back still carries
+   * the frozen target. Snapping there snaps to the stale value, and the live
+   * target lands a render later with the return already consumed — pacing the
+   * away backlog exactly as before. So the return is LATCHED and re-snaps on
+   * every render until one arrives carrying live data.
    */
-  update(params: { turnKey: string; target: number; enabled: boolean; visible?: boolean }): void {
+  update(params: {
+    turnKey: string;
+    target: number;
+    enabled: boolean;
+    visible?: boolean;
+    /**
+     * Whether `target` was computed from live stream data rather than a
+     * deferred (stale) snapshot. Callers with no deferral pipeline omit it.
+     */
+    dataSettled?: boolean;
+  }): void {
     // A caller with no panel context (transcript dialog, tests) is always on.
     const visible = params.visible ?? true;
+    const dataSettled = params.dataSettled ?? true;
     if (params.turnKey !== this.turnKey) {
       this.turnKey = params.turnKey;
       this.revealed = params.target <= NEW_TURN_SNAP_THRESHOLD_CHARS ? 0 : params.target;
     }
     this.target = params.target;
-    const returnedToScreen = visible && !this.wasVisible;
+    if (visible && !this.wasVisible) {
+      this.pendingReturnSnap = true;
+    }
     this.wasVisible = visible;
-    if (!params.enabled || !visible || returnedToScreen || this.revealed > params.target) {
+    if (!params.enabled || !visible || this.pendingReturnSnap || this.revealed > params.target) {
       this.revealed = params.target;
+    }
+    // Hold the latch until the target is trustworthy. Releasing it on a stale
+    // render is what let the backlog through.
+    if (this.pendingReturnSnap && dataSettled) {
+      this.pendingReturnSnap = false;
     }
   }
 
@@ -239,6 +266,7 @@ export function useTurnRevealTicker(params: {
   target: number;
   enabled: boolean;
   visible?: boolean;
+  dataSettled?: boolean;
 }): TurnRevealTicker {
   const [ticker] = useState(() => new TurnRevealTicker({ ...params, isOnScreen: getIsAppVisible }));
   ticker.update(params);

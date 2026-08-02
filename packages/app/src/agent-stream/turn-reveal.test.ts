@@ -279,6 +279,45 @@ describe("TurnRevealTicker", () => {
     assert.ok(ticker.getRevealed() > 40_000 && ticker.getRevealed() < 40_400);
   });
 
+  it("holds the return snap until the target stops being a deferred snapshot", () => {
+    // The regression the `visible` axis alone did not catch. The stream view
+    // defers its items, so re-entry renders TWICE: once still carrying the
+    // frozen target, then again with the live one. Snapping on the first and
+    // clearing the return there left the second render to pace the whole away
+    // backlog — the rush, exactly as before the fix.
+    const ticker = new TurnRevealTicker({ turnKey: "u1", target: 1000 });
+    ticker.update({ turnKey: "u1", target: 1000, enabled: true, visible: false });
+
+    // First render back: visible, but the deferred items are still the frozen ones.
+    ticker.update({
+      turnKey: "u1",
+      target: 1000,
+      enabled: true,
+      visible: true,
+      dataSettled: false,
+    });
+    // Second render: deferral catches up and the target jumps by the away period.
+    ticker.update({
+      turnKey: "u1",
+      target: 40_000,
+      enabled: true,
+      visible: true,
+      dataSettled: true,
+    });
+    assert.equal(ticker.getRevealed(), 40_000);
+
+    // And the latch is spent — text arriving after the return still types.
+    ticker.update({
+      turnKey: "u1",
+      target: 40_400,
+      enabled: true,
+      visible: true,
+      dataSettled: true,
+    });
+    ticker.tick();
+    assert.ok(ticker.getRevealed() > 40_000 && ticker.getRevealed() < 40_400);
+  });
+
   it("does not type out a new turn that started while the pane was hidden", () => {
     const ticker = new TurnRevealTicker({ turnKey: "u1", target: 1000 });
     ticker.update({ turnKey: "u1", target: 1000, enabled: true, visible: false });

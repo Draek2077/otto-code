@@ -127,6 +127,14 @@ export const MAX_RULER_COLUMN = 240;
 export const DEFAULT_MOUNTED_WORKSPACE_LIMIT = 5;
 export const MIN_MOUNTED_WORKSPACE_LIMIT = 2;
 export const MAX_MOUNTED_WORKSPACE_LIMIT = 12;
+// How many tabs a pane keeps mounted. See `mountedTabLimit`. The bounds live
+// here rather than next to the resolver in
+// `screens/workspace/mounted-tab-retention.ts` for the same reason
+// WORKSPACE_TABS_RAIL_MAX_WIDTH lives in constants/layout: this layer clamps the
+// stored value and must not reach into `screens/` to do it. The per-device
+// defaults, which are behavior rather than persistence, stay in the resolver.
+export const MIN_MOUNTED_TAB_LIMIT = 2;
+export const MAX_MOUNTED_TAB_LIMIT = 12;
 
 export type ToolCallDetailLevel = "overview" | "detailed";
 
@@ -272,6 +280,23 @@ export interface AppSettings {
   // user's habits, not of the project or the host. See
   // docs/client-performance.md and `screens/workspace/workspace-deck-retention.ts`.
   mountedWorkspaceLimit: number;
+  // How many tabs a single pane keeps mounted at once. The frontmost tab plus
+  // the most recently visited ones stay resident and hidden; past this many the
+  // least-recently-used is unmounted and pays a full remount when it is next
+  // opened — the whole transcript's render model, layout, markdown and syntax
+  // highlighting in one blocking render, plus a timeline refetch if its stream
+  // buffers were released meanwhile.
+  //
+  // `null` — the default — means "match this device", which resolves to 6 on a
+  // desktop-class machine and 3 on a compact form factor. A number is an
+  // explicit user choice and is honoured on every device, clamped only to
+  // [MIN_MOUNTED_TAB_LIMIT, MAX_MOUNTED_TAB_LIMIT].
+  //
+  // Device-local for the same reason `mountedWorkspaceLimit` is: how much memory
+  // to spend on resident tabs is a property of this machine, not of the project
+  // or the host. Resolver and reasoning:
+  // `screens/workspace/mounted-tab-retention.ts`.
+  mountedTabLimit: number | null;
   chatWidth: ChatWidth;
   // Chat tabs + chat pane use a pure black background with dark-theme colors
   // in both light and dark modes (see the `black` scoped theme key).
@@ -546,6 +571,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   defaultTabOrientation: "horizontal",
   verticalTabRailWidth: null,
   mountedWorkspaceLimit: DEFAULT_MOUNTED_WORKSPACE_LIMIT,
+  mountedTabLimit: null,
   chatWidth: "default",
   blackTabBackground: false,
   groupConsecutiveActions: true,
@@ -956,6 +982,14 @@ function pickWorkspaceLayoutSettings(stored: Partial<AppSettings>): Partial<AppS
   if (mountedWorkspaceLimit !== null) {
     result.mountedWorkspaceLimit = mountedWorkspaceLimit;
   }
+  // `null` is a real stored value here (match this device), so only `undefined`
+  // means "nothing usable was stored, keep the default".
+  if ("mountedTabLimit" in stored) {
+    const mountedTabLimit = parseMountedTabLimit(stored.mountedTabLimit);
+    if (mountedTabLimit !== undefined) {
+      result.mountedTabLimit = mountedTabLimit;
+    }
+  }
   if (
     typeof stored.workspaceTitleSource === "string" &&
     VALID_WORKSPACE_TITLE_SOURCES.has(stored.workspaceTitleSource)
@@ -1316,6 +1350,32 @@ export function parseMountedWorkspaceLimit(value: unknown): number | null {
     MAX_MOUNTED_WORKSPACE_LIMIT,
     Math.max(MIN_MOUNTED_WORKSPACE_LIMIT, Math.floor(numericValue)),
   );
+}
+
+/**
+ * Parse a stored or typed `mountedTabLimit`. Unlike the workspace limit this has
+ * a meaningful "no choice" value, so the two failure-ish inputs are distinct:
+ * `undefined` means the field was absent or unparseable and the caller should
+ * keep what it had, while an explicitly empty string means the user cleared the
+ * field and wants the per-device default back.
+ */
+export function parseMountedTabLimit(value: unknown): number | null | undefined {
+  if (value === null) {
+    return null;
+  }
+  if (typeof value === "string" && value.trim().length === 0) {
+    return null;
+  }
+  let numericValue = NaN;
+  if (typeof value === "number") {
+    numericValue = value;
+  } else if (typeof value === "string") {
+    numericValue = Number(value);
+  }
+  if (!Number.isFinite(numericValue)) {
+    return undefined;
+  }
+  return Math.min(MAX_MOUNTED_TAB_LIMIT, Math.max(MIN_MOUNTED_TAB_LIMIT, Math.floor(numericValue)));
 }
 
 export function parseClampedFontSize(

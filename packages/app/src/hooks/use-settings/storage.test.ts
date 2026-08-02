@@ -8,7 +8,10 @@ import {
   DEFAULT_UI_FONT_SIZE,
   loadAppSettingsFromStorage,
   loadSettingsFromStorage,
+  MAX_MOUNTED_TAB_LIMIT,
+  MIN_MOUNTED_TAB_LIMIT,
   parseClampedFontSize,
+  parseMountedTabLimit,
   parseTerminalScrollbackLines,
   saveAppSettings,
   type SettingsDeps,
@@ -608,6 +611,44 @@ describe("parseTerminalScrollbackLines", () => {
   it("clamps negative values to the minimum and rejects non-numeric strings", () => {
     expect(parseTerminalScrollbackLines("-10")).toBe(0);
     expect(parseTerminalScrollbackLines("abc")).toBeNull();
+  });
+});
+
+describe("parseMountedTabLimit", () => {
+  // Tri-state on purpose: this setting has a real "no choice" value, so
+  // "cleared" and "unparseable" must not collapse into the same answer.
+  it("reads an explicitly cleared field as match-this-device", () => {
+    expect(parseMountedTabLimit("")).toBeNull();
+    expect(parseMountedTabLimit("   ")).toBeNull();
+    expect(parseMountedTabLimit(null)).toBeNull();
+  });
+
+  it("reports unparseable input as undefined so the caller keeps what it had", () => {
+    expect(parseMountedTabLimit("abc")).toBeUndefined();
+    expect(parseMountedTabLimit(undefined)).toBeUndefined();
+    expect(parseMountedTabLimit({})).toBeUndefined();
+  });
+
+  it("clamps a number to the retention bounds", () => {
+    expect(parseMountedTabLimit(6)).toBe(6);
+    expect(parseMountedTabLimit("99")).toBe(MAX_MOUNTED_TAB_LIMIT);
+    expect(parseMountedTabLimit(1)).toBe(MIN_MOUNTED_TAB_LIMIT);
+  });
+});
+
+describe("mountedTabLimit persistence", () => {
+  it("defaults to match-this-device and round-trips an explicit choice", async () => {
+    expect(DEFAULT_APP_SETTINGS.mountedTabLimit).toBeNull();
+
+    const deps = makeDeps();
+    const queryClient = new QueryClient();
+
+    await saveAppSettings({ queryClient, updates: { mountedTabLimit: 8 }, deps });
+    expect((await loadAppSettingsFromStorage(deps)).mountedTabLimit).toBe(8);
+
+    // And clearing it goes back to match-this-device rather than sticking on 8.
+    await saveAppSettings({ queryClient, updates: { mountedTabLimit: null }, deps });
+    expect((await loadAppSettingsFromStorage(deps)).mountedTabLimit).toBeNull();
   });
 });
 

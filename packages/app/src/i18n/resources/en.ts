@@ -2567,6 +2567,10 @@ export const en = {
       tableColumnDelete: "Delete column",
       tableAlign: "Column alignment",
     },
+    taskList: {
+      markComplete: "Mark complete",
+      markIncomplete: "Mark incomplete",
+    },
     save: "Save",
     revert: "Revert",
     cancel: "Cancel",
@@ -3024,6 +3028,12 @@ export const en = {
         description:
           "How many workspaces stay loaded so switching back to them is instant. Past this many, the one you used least recently is unloaded and reloads next time you open it. Set it to at least the number you actually switch between — below that, every switch unloads the workspace you are about to return to. Higher uses more memory.",
         accessibilityLabel: "Workspaces kept loaded",
+      },
+      mountedTabLimit: {
+        label: "Tabs kept loaded",
+        description:
+          "How many tabs in a pane stay loaded so switching back to them is instant. Past this many, the one you used least recently is unloaded and rebuilds its whole transcript next time you open it. Leave empty to match this device ({{auto}}). Higher uses more memory.",
+        accessibilityLabel: "Tabs kept loaded",
       },
       terminalScrollback: {
         label: "Terminal scrollback",

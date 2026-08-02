@@ -804,6 +804,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       // every return to a busy chat replays the away-period backlog as a
       // typing rush. See TurnRevealTicker.update.
       visible: isActive,
+      // The reveal target above is computed from the DEFERRED items, so the
+      // first render after reactivation still carries the frozen counts and
+      // the live ones land in the follow-up render. The ticker holds its
+      // return-snap until this says the target is live; snapping on the stale
+      // render is what made the rush survive the `visible` fix.
+      dataSettled:
+        deferredStreamItems === effectiveStreamItems && deferredStreamHead === effectiveStreamHead,
     });
 
     // The growing end of the live turn: the last assistant item the reveal spans

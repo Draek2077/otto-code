@@ -122,7 +122,7 @@ import {
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
-import { useAppSettingValue, useSettings } from "@/hooks/use-settings";
+import { useAppSettingValue, useSettings, type AppSettings } from "@/hooks/use-settings";
 import {
   confirmBrowserToolsOffBeforeOpening,
   useBrowserToolsWarningCopy,
@@ -213,6 +213,7 @@ import {
   type WorkspacePaneContentModel,
 } from "@/screens/workspace/workspace-pane-content";
 import { useMountedTabSet } from "@/screens/workspace/use-mounted-tab-set";
+import { resolveMountedTabLimit } from "@/screens/workspace/mounted-tab-retention";
 import { WorkspaceFocusProvider } from "@/workspace/focus";
 import { shouldSeedEmptyWorkspaceDraft } from "@/screens/workspace/workspace-empty-draft-seed";
 import {
@@ -2274,6 +2275,10 @@ function WorkspaceCenterContent({
   );
 }
 
+// Module-level so the subscription is stable: this screen must re-render when
+// the tab retention limit changes and on nothing else in settings.
+const selectMountedTabLimit = (settings: AppSettings) => settings.mountedTabLimit;
+
 function WorkspaceScreenContent({
   serverId,
   workspaceId,
@@ -2310,6 +2315,14 @@ function WorkspaceScreenContent({
   const suppressBrowserToolsWarning = useAppSettingValue(
     (settings) => settings.suppressBrowserToolsWarning,
   );
+  // How many of the focused pane's tabs stay mounted behind the frontmost one.
+  // Unset resolves per device, which on this path is usually the compact one.
+  // See screens/workspace/mounted-tab-retention.ts.
+  const mountedTabLimitSetting = useAppSettingValue(selectMountedTabLimit);
+  const mountedTabLimit = resolveMountedTabLimit({
+    setting: mountedTabLimitSetting,
+    isCompact: isMobile,
+  });
   const { handleRetryHost, handleManageHost, handleDismissMissingWorkspace } =
     useWorkspaceRouteActions(normalizedServerId);
 
@@ -4186,7 +4199,7 @@ function WorkspaceScreenContent({
   const { mountedTabIds: mountedFocusedPaneTabIdsSet } = useMountedTabSet({
     activeTabId,
     allTabIds: focusedPaneTabIds,
-    cap: 3,
+    cap: mountedTabLimit,
   });
   const mountedFocusedPaneTabIds = useMemo(
     () => focusedPaneTabIds.filter((tabId) => mountedFocusedPaneTabIdsSet.has(tabId)),

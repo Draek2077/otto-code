@@ -50,6 +50,8 @@ import {
   getWorkspacePaneDescriptors,
 } from "@/screens/workspace/workspace-pane-state";
 import { useMountedTabSet } from "@/screens/workspace/use-mounted-tab-set";
+import { resolveMountedTabLimit } from "@/screens/workspace/mounted-tab-retention";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import {
   WorkspacePaneContent,
   type WorkspacePaneContentModel,
@@ -929,6 +931,13 @@ function SplitPaneView({
   const stableOnFocusPane = useStableEvent(onFocusPane);
   const padding = useWindowControlsPadding("tabRow");
   const { settings } = useAppSettings();
+  const isCompactFormFactor = useIsCompactFormFactor();
+  // How many of this pane's tabs stay mounted behind the frontmost one. The
+  // user's choice wins; unset resolves per device. See mounted-tab-retention.ts.
+  const mountedTabLimit = resolveMountedTabLimit({
+    setting: settings.mountedTabLimit,
+    isCompact: isCompactFormFactor,
+  });
   const resolvedTabOrientation = pane.tabOrientation ?? settings.defaultTabOrientation;
   const handleToggleTabOrientation = useCallback(() => {
     useWorkspaceLayoutStore
@@ -954,7 +963,7 @@ function SplitPaneView({
   const { mountedTabIds } = useMountedTabSet({
     activeTabId: activeTabDescriptor?.tabId ?? null,
     allTabIds: paneTabIds,
-    cap: 3,
+    cap: mountedTabLimit,
   });
   const mountedPaneTabIds = useMemo(
     () => paneTabIds.filter((tabId) => mountedTabIds.has(tabId)),

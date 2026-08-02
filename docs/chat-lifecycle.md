@@ -231,6 +231,29 @@ Closing a tab on a **subagent** (any chat with `parentAgentId`) is **layout-only
 
 The asymmetry is intentional: a subagent's home is the parent's track, not the tab. Tabs are ephemeral viewing slots; the track is the persistent record of the parent's children.
 
+## A chat you are not looking at
+
+A chat pane has three states, and only the first one renders:
+
+| State               | What it is                                                                                      |
+| ------------------- | ----------------------------------------------------------------------------------------------- |
+| **Active**          | The frontmost tab of a focused pane in a focused workspace                                      |
+| **Mounted, hidden** | Still in the pane's mounted-tab LRU (cap 3) or a background workspace, parked at `display:none` |
+| **Unmounted**       | Past the LRU, tab closed, or never opened                                                       |
+
+Stream state does not depend on any of this. `agent_stream` is reduced into `agentStreamTail` for every agent on the host, including chats that were never opened, so checklists tick over, turns complete, and tokens accrue whether or not a surface exists. Buffers are released only under the retention rule in `timeline/agent-stream-retention.ts`, and that release also drops the timeline cursor so the next open refetches rather than rendering an empty chat.
+
+**Hidden means frozen, and the freeze is a contract every reader has to honour.** `useRetainedPanelActive()` says whether the slot is on screen; readers of the stream buffers hold the last reference they saw while it is false (`AgentStreamSection`, `AgentStreamView`, `usePinnedTaskList`). A reader that skips this re-renders the whole panel body on every 48ms flush of a background agent, and animates against a surface nobody can see. Add a reader, freeze it too.
+
+### Re-entry must show the settled state, never replay it
+
+Coming back to a chat that has been working for a while must land on where the turn actually _is_. Two mechanisms enforce that, and both are easy to half-implement:
+
+- `TurnRevealTicker` stays caught up while hidden and snaps on the way back in, so only text arriving _after_ you return types out.
+- The snap is **latched** until the target is computed from live data (`dataSettled`). The stream view runs its items through `useDeferredValue`, so the first render after reactivation still carries the frozen target. The original fix snapped on that render and consumed the return, and the live target then landed a render later with nothing left to suppress, so the away backlog paced out exactly as before, capped at `MAX_PENDING_CHARS` (~2s of visible typing rush). The `visible` axis alone is not enough; anything gated on "the pane came back" has to survive the deferred render behind it.
+
+The unit tests for this must model **two** renders back (stale then live). A single-render test passes against both the broken and the fixed ticker, which is how the first version shipped.
+
 ## The subagents track
 
 The collapsible track above the composer in a chat's pane (`packages/app/src/subagents/track.tsx`). Membership rule (`packages/app/src/subagents/select.ts`):

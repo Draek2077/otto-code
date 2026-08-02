@@ -2516,6 +2516,10 @@ export const ja: TranslationResources = {
       tableColumnDelete: "列を削除",
       tableAlign: "列の配置",
     },
+    taskList: {
+      markComplete: "完了にする",
+      markIncomplete: "未完了にする",
+    },
     save: "保存",
     revert: "元に戻す",
     cancel: "キャンセル",
@@ -3012,6 +3016,12 @@ export const ja: TranslationResources = {
         description:
           "切り替えを即座に行えるよう、読み込んだままにしておくワークスペースの数です。この数を超えると、最後に使ってから最も時間が経ったワークスペースが解放され、次に開いたときに再読み込みされます。実際に行き来する数以上に設定してください。それより小さいと、切り替えのたびにこれから戻ろうとしているワークスペースが解放されます。大きくするほどメモリを多く使います。",
         accessibilityLabel: "読み込んだままにするワークスペース数",
+      },
+      mountedTabLimit: {
+        label: "読み込んだままにするタブ数",
+        description:
+          "切り替えを即座に行えるよう、ペイン内で読み込んだままにしておくタブの数です。この数を超えると、最後に使ってから最も時間が経ったタブが解放され、次に開いたときに会話全体を再構築します。空欄にするとこのデバイスに合わせます（{{auto}}）。大きくするほどメモリを多く使います。",
+        accessibilityLabel: "読み込んだままにするタブ数",
       },
       terminalScrollback: {
         label: "ターミナルスクロールバック",

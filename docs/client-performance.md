@@ -261,6 +261,21 @@ that corrects its first conclusion.
   textbook LRU thrashing. This is why the default is 5 rather than a rounder 3 or 4: it covers a
   four-workspace rotation with one spare. Raising it costs memory, not frame rate — 3 → 6 resident
   trees was within run-to-run noise on every frame metric the soak can read.
+- **Tabs inside a pane are evicted the same way, at `mountedTabLimit`.** `useMountedTabSet` keeps
+  the frontmost tab plus the most recently visited others mounted (parked at `display: none` by
+  `RetainedPanel`) and unmounts the rest. The setting is device-local and defaults to **match this
+  device**: 6 on a desktop-class machine, 3 on a compact form factor, resolved by
+  `resolveMountedTabLimit` in `screens/workspace/mounted-tab-retention.ts` (Settings › General ›
+  _Tabs kept loaded_; an explicit number is clamped to 2–12). It was a hard-coded 3 for every device
+  until it became a setting.
+  - **An explicit choice is honoured on every device.** The form factor picks the default only.
+    Narrowing a number the user typed would make the setting a suggestion, and they are the one who
+    knows what their machine has.
+  - **Evicting a tab is far more expensive than retaining one**, which is why the floor is 2 and why
+    the desktop default moved up. A retained tab costs memory and almost no CPU (every reader of the
+    stream buffers freezes while hidden — see [chat-lifecycle.md](chat-lifecycle.md)). Remounting one
+    rebuilds the entire transcript — render model, layout, markdown, syntax highlighting — in a
+    single blocking render, plus a timeline refetch if its stream buffers were released meanwhile.
 - **Navigation asks the daemon for one thing per workspace visited, and nothing per revisit.**
   Returning to a workspace used to re-issue `fetch_agent_timeline`, re-ask for setup status, and
   re-subscribe terminals, none of which had changed. The three invariants that keep it at the floor:

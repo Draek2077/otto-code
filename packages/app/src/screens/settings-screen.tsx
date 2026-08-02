@@ -62,6 +62,7 @@ import { VisualizerSection } from "@/screens/settings/visualizer-section";
 import {
   useAppSettings,
   useSettings,
+  parseMountedTabLimit,
   parseMountedWorkspaceLimit,
   parseTerminalScrollbackLines,
   type AppSettings,
@@ -141,6 +142,7 @@ import ProjectSettingsScreen, {
   confirmDiscardProjectSettingsChanges,
 } from "@/screens/project-settings-screen";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { resolveMountedTabLimit } from "@/screens/workspace/mounted-tab-retention";
 import { isNative, isWeb } from "@/constants/platform";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
@@ -447,6 +449,8 @@ interface GeneralSectionProps {
   handleLanguageChange: (language: AppLanguage) => void;
   handleTerminalScrollbackLinesChange: (lines: number) => void;
   handleMountedWorkspaceLimitChange: (limit: number) => void;
+  // `null` = match this device. See AppSettings.mountedTabLimit.
+  handleMountedTabLimitChange: (limit: number | null) => void;
   handlePreviewServerCloseBehaviorChange: (behavior: PreviewServerCloseBehavior) => void;
   handlePreviewAutoStartOnRestoreChange: (enabled: boolean) => void;
 }
@@ -542,6 +546,7 @@ function GeneralSection({
   handleLanguageChange,
   handleTerminalScrollbackLinesChange,
   handleMountedWorkspaceLimitChange,
+  handleMountedTabLimitChange,
   handlePreviewServerCloseBehaviorChange,
   handlePreviewAutoStartOnRestoreChange,
 }: GeneralSectionProps) {
@@ -606,6 +611,39 @@ function GeneralSection({
   useEffect(() => {
     setMountedWorkspaceLimitValue(String(settings.mountedWorkspaceLimit));
   }, [settings.mountedWorkspaceLimit]);
+
+  // `null` means "match this device", and an empty field is how the user says
+  // that — so the field is blank rather than showing a number they did not pick.
+  const isCompactFormFactor = useIsCompactFormFactor();
+  const autoMountedTabLimit = resolveMountedTabLimit({
+    setting: null,
+    isCompact: isCompactFormFactor,
+  });
+  const [mountedTabLimitValue, setMountedTabLimitValue] = useState(
+    settings.mountedTabLimit === null ? "" : String(settings.mountedTabLimit),
+  );
+
+  const handleMountedTabLimitChangeText = useCallback((value: string) => {
+    setMountedTabLimitValue(value.replace(/[^\d]/g, ""));
+  }, []);
+
+  const commitMountedTabLimit = useCallback(() => {
+    const parsed = parseMountedTabLimit(mountedTabLimitValue);
+    // undefined = unparseable, so keep what was there. null = cleared, which is
+    // a deliberate choice to go back to the per-device default.
+    const nextValue = parsed === undefined ? settings.mountedTabLimit : parsed;
+    // Echo the clamped value back, so typing 99 visibly becomes the maximum.
+    setMountedTabLimitValue(nextValue === null ? "" : String(nextValue));
+    if (nextValue !== settings.mountedTabLimit) {
+      handleMountedTabLimitChange(nextValue);
+    }
+  }, [handleMountedTabLimitChange, mountedTabLimitValue, settings.mountedTabLimit]);
+
+  useEffect(() => {
+    setMountedTabLimitValue(
+      settings.mountedTabLimit === null ? "" : String(settings.mountedTabLimit),
+    );
+  }, [settings.mountedTabLimit]);
 
   const handleTerminalScrollbackChangeText = useCallback((value: string) => {
     setTerminalScrollbackValue(value.replace(/[^\d]/g, ""));
@@ -767,6 +805,33 @@ function GeneralSection({
               style={styles.terminalScrollbackInput}
               accessibilityLabel={t("settings.general.mountedWorkspaceLimit.accessibilityLabel")}
               testID="settings-mounted-workspace-limit-input"
+            />
+          </View>
+          <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.general.mountedTabLimit.label")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.general.mountedTabLimit.description", {
+                  auto: autoMountedTabLimit,
+                })}
+              </Text>
+            </View>
+            <TextInput
+              value={mountedTabLimitValue}
+              onChangeText={handleMountedTabLimitChangeText}
+              onBlur={commitMountedTabLimit}
+              onSubmitEditing={commitMountedTabLimit}
+              // Empty is a real value here: it means "match this device", so the
+              // placeholder shows what that resolves to on this one.
+              placeholder={String(autoMountedTabLimit)}
+              keyboardType="number-pad"
+              inputMode="numeric"
+              selectTextOnFocus
+              style={styles.terminalScrollbackInput}
+              accessibilityLabel={t("settings.general.mountedTabLimit.accessibilityLabel")}
+              testID="settings-mounted-tab-limit-input"
             />
           </View>
           {interfaceModeValue === "developer" ? (
@@ -2079,6 +2144,13 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     [updateSettings],
   );
 
+  const handleMountedTabLimitChange = useCallback(
+    (mountedTabLimit: number | null) => {
+      void updateSettings({ mountedTabLimit });
+    },
+    [updateSettings],
+  );
+
   const handlePreviewServerCloseBehaviorChange = useCallback(
     (behavior: PreviewServerCloseBehavior) => {
       void updateSettings({ previewServerCloseBehavior: behavior });
@@ -2379,6 +2451,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               handleLanguageChange={handleLanguageChange}
               handleTerminalScrollbackLinesChange={handleTerminalScrollbackLinesChange}
               handleMountedWorkspaceLimitChange={handleMountedWorkspaceLimitChange}
+              handleMountedTabLimitChange={handleMountedTabLimitChange}
               handlePreviewServerCloseBehaviorChange={handlePreviewServerCloseBehaviorChange}
               handlePreviewAutoStartOnRestoreChange={handlePreviewAutoStartOnRestoreChange}
             />

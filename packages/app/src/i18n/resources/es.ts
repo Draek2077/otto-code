@@ -2544,6 +2544,10 @@ export const es: TranslationResources = {
       tableColumnDelete: "Eliminar columna",
       tableAlign: "Alineación de columna",
     },
+    taskList: {
+      markComplete: "Marcar como completada",
+      markIncomplete: "Marcar como pendiente",
+    },
     save: "Guardar",
     revert: "Revertir",
     cancel: "Cancelar",
@@ -3046,6 +3050,12 @@ export const es: TranslationResources = {
         description:
           "Cuántos Workspaces se mantienen cargados para que volver a ellos sea instantáneo. A partir de ese número, se descarga el que usaste hace más tiempo y se vuelve a cargar la próxima vez que lo abras. Ponlo al menos en la cantidad entre la que realmente alternas: por debajo de eso, cada cambio descarga el Workspace al que estás a punto de volver. Cuanto más alto, más memoria usa.",
         accessibilityLabel: "Workspaces que siguen cargados",
+      },
+      mountedTabLimit: {
+        label: "Pestañas que siguen cargadas",
+        description:
+          "Cuántas pestañas de un panel se mantienen cargadas para que volver a ellas sea instantáneo. A partir de ese número, se descarga la que usaste hace más tiempo y vuelve a reconstruir toda su conversación la próxima vez que la abras. Déjalo vacío para ajustarse a este dispositivo ({{auto}}). Cuanto más alto, más memoria usa.",
+        accessibilityLabel: "Pestañas que siguen cargadas",
       },
       terminalScrollback: {
         label: "Historial de terminal",

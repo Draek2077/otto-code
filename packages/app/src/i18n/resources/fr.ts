@@ -2555,6 +2555,10 @@ export const fr: TranslationResources = {
       tableColumnDelete: "Supprimer la colonne",
       tableAlign: "Alignement de colonne",
     },
+    taskList: {
+      markComplete: "Marquer comme terminé",
+      markIncomplete: "Marquer comme non terminé",
+    },
     save: "Enregistrer",
     revert: "Rétablir",
     cancel: "Annuler",
@@ -3060,6 +3064,12 @@ export const fr: TranslationResources = {
         description:
           "Combien de Workspaces restent chargés pour qu'y revenir soit instantané. Au-delà, celui utilisé le moins récemment est déchargé et se recharge à la prochaine ouverture. Réglez-le au moins sur le nombre entre lesquels vous basculez vraiment — en dessous, chaque bascule décharge le Workspace où vous êtes sur le point de revenir. Plus la valeur est élevée, plus la mémoire utilisée augmente.",
         accessibilityLabel: "Workspaces gardés chargés",
+      },
+      mountedTabLimit: {
+        label: "Onglets gardés chargés",
+        description:
+          "Combien d'onglets d'un volet restent chargés pour qu'y revenir soit instantané. Au-delà, celui utilisé le moins récemment est déchargé et reconstruit toute sa conversation à la prochaine ouverture. Laissez vide pour s'adapter à cet appareil ({{auto}}). Plus la valeur est élevée, plus la mémoire utilisée augmente.",
+        accessibilityLabel: "Onglets gardés chargés",
       },
       terminalScrollback: {
         label: "Défilement Terminal",

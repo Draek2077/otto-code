@@ -2529,6 +2529,10 @@ export const ptBR: TranslationResources = {
       tableColumnDelete: "Excluir coluna",
       tableAlign: "Alinhamento da coluna",
     },
+    taskList: {
+      markComplete: "Marcar como concluída",
+      markIncomplete: "Marcar como pendente",
+    },
     save: "Salvar",
     revert: "Reverter",
     cancel: "Cancelar",
@@ -3030,6 +3034,12 @@ export const ptBR: TranslationResources = {
         description:
           "Quantos Workspaces continuam carregados para que voltar a eles seja instantâneo. Passando disso, o usado há mais tempo é descarregado e recarrega na próxima vez que você o abrir. Defina pelo menos a quantidade entre a qual você realmente alterna — abaixo disso, cada troca descarrega justamente o Workspace ao qual você está prestes a voltar. Quanto maior, mais memória usa.",
         accessibilityLabel: "Workspaces mantidos carregados",
+      },
+      mountedTabLimit: {
+        label: "Abas mantidas carregadas",
+        description:
+          "Quantas abas de um painel continuam carregadas para que voltar a elas seja instantâneo. Passando disso, a usada há mais tempo é descarregada e reconstrói toda a conversa na próxima vez que você a abrir. Deixe vazio para acompanhar este dispositivo ({{auto}}). Quanto maior, mais memória usa.",
+        accessibilityLabel: "Abas mantidas carregadas",
       },
       terminalScrollback: {
         label: "Scrollback do terminal",

@@ -2449,6 +2449,10 @@ export const zhCN: TranslationResources = {
       tableColumnDelete: "删除列",
       tableAlign: "列对齐",
     },
+    taskList: {
+      markComplete: "标记为完成",
+      markIncomplete: "标记为未完成",
+    },
     save: "保存",
     revert: "还原",
     cancel: "取消",
@@ -2935,6 +2939,12 @@ export const zhCN: TranslationResources = {
         description:
           "有多少个 Workspace 保持加载状态，以便切回时立即可用。超过这个数量后，最久未使用的那个会被卸载，下次打开时重新加载。请至少设为你实际来回切换的数量——低于这个数，每次切换都会卸载你正要返回的那个 Workspace。设得越高，占用内存越多。",
         accessibilityLabel: "保持加载的 Workspace 数量",
+      },
+      mountedTabLimit: {
+        label: "保持加载的标签页数量",
+        description:
+          "窗格中有多少个标签页保持加载状态，以便切回时立即可用。超过这个数量后，最久未使用的那个会被卸载，下次打开时重新构建整个对话记录。留空则按本设备自动决定（{{auto}}）。设得越高，占用内存越多。",
+        accessibilityLabel: "保持加载的标签页数量",
       },
       terminalScrollback: {
         label: "终端回滚",
