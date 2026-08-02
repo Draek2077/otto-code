@@ -18,13 +18,18 @@ import path from "node:path";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 
-// Three entry points. The terminal worker is forked into its own Node
-// process and has its own require tree (node-pty, etc.) — nft does not
-// follow fork boundaries, so it must be traced separately.
+// Four entry points. nft does not follow fork boundaries, so every process the
+// daemon forks needs tracing in its own right: each has a require tree the
+// supervisor's graph never mentions. The terminal worker brings node-pty; the
+// speech worker brings the whole sherpa engine tree (recognizer, Parakeet STT,
+// TTS) and is forked by speech/providers/local/worker-client.ts. Miss one and
+// the Nix closure builds fine, then fails at runtime the first time that
+// feature is used.
 const entries = [
   "packages/cli/dist/index.js",
   "packages/server/dist/scripts/supervisor-entrypoint.js",
   "packages/server/dist/server/terminal/terminal-worker-process.js",
+  "packages/server/dist/server/server/speech/providers/local/worker-process.js",
 ];
 
 // Files read at runtime via fs APIs rather than `require`. nft only
