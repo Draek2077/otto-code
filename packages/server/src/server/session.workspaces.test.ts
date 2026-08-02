@@ -612,35 +612,49 @@ function createSessionForWorkspaceTests(
     clearAgentAttention: async () => {},
     notifyAgentState: () => {},
   });
-  const workspaceRegistry = options.workspaceRegistry ?? {
-    initialize: async () => {},
-    existsOnDisk: async () => true,
-    list: async () => [
-      createPersistedWorkspaceRecord({
-        workspaceId: "ws-repo-running",
-        projectId: "proj-repo-running",
-        cwd: REPO_CWD,
-        kind: "directory",
-        displayName: "repo",
-        createdAt: "2026-03-01T12:00:00.000Z",
-        updatedAt: "2026-03-01T12:00:00.000Z",
-      }),
-    ],
-    get: async (workspaceId: string) =>
-      workspaceId === "ws-repo-running"
-        ? createPersistedWorkspaceRecord({
-            workspaceId: "ws-repo-running",
-            projectId: "proj-repo-running",
-            cwd: REPO_CWD,
-            kind: "directory",
-            displayName: "repo",
-            createdAt: "2026-03-01T12:00:00.000Z",
-            updatedAt: "2026-03-01T12:00:00.000Z",
-          })
-        : null,
-    upsert: async () => {},
-    archive: async () => {},
-    remove: async () => {},
+  const workspaceRegistry =
+    options.workspaceRegistry ??
+    ({
+      initialize: async () => {},
+      existsOnDisk: async () => true,
+      list: async () => [
+        createPersistedWorkspaceRecord({
+          workspaceId: "ws-repo-running",
+          projectId: "proj-repo-running",
+          cwd: REPO_CWD,
+          kind: "directory",
+          displayName: "repo",
+          createdAt: "2026-03-01T12:00:00.000Z",
+          updatedAt: "2026-03-01T12:00:00.000Z",
+        }),
+      ],
+      get: async (workspaceId: string) =>
+        workspaceId === "ws-repo-running"
+          ? createPersistedWorkspaceRecord({
+              workspaceId: "ws-repo-running",
+              projectId: "proj-repo-running",
+              cwd: REPO_CWD,
+              kind: "directory",
+              displayName: "repo",
+              createdAt: "2026-03-01T12:00:00.000Z",
+              updatedAt: "2026-03-01T12:00:00.000Z",
+            })
+          : null,
+      upsert: async () => {},
+      archive: async () => {},
+      remove: async () => {},
+    } as NonNullable<SessionOptions["workspaceRegistry"]>);
+  // Read-modify-write seam behind per-workspace mutations such as setting a
+  // title. Defined in terms of this object's own get/upsert so the many tests
+  // that swap those two in place get a working update for free; left unstubbed
+  // the mutation fails with "update is not a function" and the response
+  // reports that string back as the user-facing error.
+  workspaceRegistry.update ??= async (workspaceId, updater) => {
+    const current = await workspaceRegistry.get(workspaceId);
+    if (!current) return null;
+    const updated = updater(current);
+    await workspaceRegistry.upsert(updated);
+    return updated;
   };
   const workspaceGitService = options.workspaceGitService ?? createNoopWorkspaceGitService();
   const providerSnapshotManager = createProviderSnapshotManagerStub().manager;
