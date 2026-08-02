@@ -359,19 +359,23 @@ export function createWorkspaceProvisioningService(deps: {
           left.workspaceId.localeCompare(right.workspaceId),
       )[0];
     if (archived) {
-      // Reopen whenever the project still exists, archived or not.
-      // ensureWorkspaceRecordUnarchived reopens the project alongside the
-      // workspace; requiring an already-active project meant archiving a
-      // project and then reopening its directory silently created a second
-      // workspace on the same cwd instead of restoring the original.
-      const project =
-        (await projectRegistry.get(archived.projectId)) ??
-        // The workspace outlived its project record. Rebuild the parent it points
-        // at rather than falling through: allocating a fresh project leaves the
-        // original workspace orphaned forever and stands a duplicate up on the
-        // same directory.
-        (await recreateMissingProjectForWorkspace(archived));
-      if (project) return ensureWorkspaceRecordUnarchived(archived);
+      const project = await projectRegistry.get(archived.projectId);
+      // An archived workspace under a still-active project is a workspace the
+      // user closed; reopening its directory restores it.
+      if (project && !project.archivedAt) return ensureWorkspaceRecordUnarchived(archived);
+      // An archived workspace under an ARCHIVED project means the whole project
+      // was put away. Explicit opening then allocates a fresh identity and
+      // leaves the archived pair alone — restoring ownership is the agent-restore
+      // path's job, not this one. See the S6/S11 invariants in
+      // session.workspace-resolution-invariants.test.ts.
+      if (!project) {
+        // The workspace outlived its project record entirely. Rebuild the parent
+        // it points at rather than falling through: allocating a fresh project
+        // leaves the original workspace orphaned forever and stands a duplicate
+        // up on the same directory.
+        await recreateMissingProjectForWorkspace(archived);
+        return ensureWorkspaceRecordUnarchived(archived);
+      }
     }
     return createWorkspaceForDirectory(normalizedCwd);
   }

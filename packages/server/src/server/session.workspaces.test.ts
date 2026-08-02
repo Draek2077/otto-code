@@ -4210,11 +4210,13 @@ test("open_project_request reclassifies an archived directory workspace when git
   const response = findByType(emitted, "open_project_response");
 
   expect(response?.payload.error).toBeNull();
-  // Reopening revives the archived pair rather than allocating a duplicate
-  // alongside it, so the workspace keeps its id and its project.
-  expect(response?.payload.workspace?.projectId).toBe(cwd);
-  expect(workspaces.get(workspaceId)?.archivedAt).toBeNull();
-  expect(projects.get(cwd)?.archivedAt).toBeNull();
+  // The archived workspace sits under an archived project, so explicit opening
+  // allocates a fresh identity and leaves the archived pair alone. Restoring
+  // ownership belongs to the agent-restore path (S6 in
+  // session.workspace-resolution-invariants.test.ts).
+  expect(response?.payload.workspace?.projectId).not.toBe(cwd);
+  expect(projects.get(cwd)?.archivedAt).toBe(archivedAt);
+  expect(workspaces.get(workspaceId)?.archivedAt).toBe(archivedAt);
 });
 
 test("open_project_request reclassifies an active directory workspace when git metadata becomes available", async () => {
@@ -4489,11 +4491,15 @@ test("open_project_request unarchives an existing archived workspace and project
     requestId: "req-open-unarchive",
   });
 
-  expect(workspaces.get(workspaceId)?.archivedAt).toBeNull();
-  expect(projects.get(cwd)?.archivedAt).toBeNull();
+  // The whole project was archived, so opening its directory stands up a fresh
+  // workspace and leaves the archived pair intact. Bringing the original back is
+  // the agent-restore path's job, which is why the two are separate RPCs. See
+  // S6/S11 in session.workspace-resolution-invariants.test.ts.
+  expect(workspaces.get(workspaceId)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
+  expect(projects.get(cwd)?.archivedAt).toBe("2026-03-10T00:00:00.000Z");
   const response = findByType(emitted, "open_project_response");
   expect(response?.payload.error).toBeNull();
-  expect(response?.payload.workspace?.id).toBe(workspaceId);
+  expect(response?.payload.workspace?.id).not.toBe(workspaceId);
 });
 
 test("open_project_request recreates a missing project record when unarchiving its workspace", async () => {
