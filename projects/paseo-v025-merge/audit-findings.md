@@ -332,10 +332,30 @@ lines. Worst by churn, with `Δtheirs` = permanent divergence now carried:
 | `cli/src/commands/agent/run.ts`                  | 305            | 409              |
 | `server/daemon-config-store.ts`                  | 115            | 952              |
 
-**Not yet measured:** the ~180 _conflict-resolved_ wholesale-ours files are a different set from these
-168 byte-identical ones. A file whose side won a conflict and was then edited is invisible to the
-byte-identical scan — `checkout-session.ts` (regression 5) is exactly that case. **That gap is the
-most likely home of further regressions and nobody has sized it.**
+~~**Not yet measured:** the ~180 _conflict-resolved_ wholesale-ours files are a different set from
+these 168 byte-identical ones.~~ **MEASURED 2026-08-02:**
+[findings/upstream/2026-08-02-wholesale-ours-sizing.md](../../findings/upstream/2026-08-02-wholesale-ours-sizing.md).
+
+Headline: **the tree carries 88.6% of upstream's additions**, and that is a floor, because a file
+Otto re-implemented in its own idiom scores low even when the capability was taken. The
+"~19,700 lines dropped" framing does not survive measurement against the merge that actually
+shipped.
+
+Note the audit measured the wrong commit throughout this section: `f395655b5` is **not an ancestor
+of main**. The merge on main is `5e3cc1def`.
+
+The risk is concentrated rather than spread: 73 files below 50% adoption carry 6,830 of the 9,729
+dropped lines, and in production that is 48 files. **25 of those 48 are documented decisions and 23
+are not.** A symbol-level pass over the 23 leaves 12 worth reading and 2 worth fixing:
+
+- **`workspace-scripts-button.tsx`** (7 of 7 new symbols absent): upstream's service-route
+  affordance, open / copy / preview a running script's URL. This one already produced a symptom
+  nobody traced: commit `32f4a2cd9` "parked the never-merged UI assertions" here, because upstream's
+  tests came across and the component did not. **Parked tests are the fingerprint of a dropped
+  component**, and that is the cheapest detector we have for the rest.
+- **`workspace-archive-service.ts`** (3 of 7 absent): upstream added backing-directory resolution to
+  archiving and we took four of the seven symbols. A partial take of one change is the shape that
+  produced regression 5 in `checkout-session.ts`.
 
 ## P2 status as of 2026-08-02
 
