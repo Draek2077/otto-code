@@ -126,13 +126,28 @@ export function validateBaseRefNameAllowingRemote(input: string): string {
 
 export function writeOttoWorktreeMetadata(
   worktreeRoot: string,
-  options: { baseRefName: string },
+  options: {
+    baseRefName: string;
+    // Persisted, not dropped: this is how a change-request worktree remembers
+    // which PR/MR it belongs to. The caller always passed it through a spread,
+    // which slips past the excess-property check, so leaving it off this
+    // signature discarded it silently for every checkout-change-request
+    // worktree — and a cross-repo MR with no push remote has nothing else to
+    // recover the lookup from.
+    changeRequestLookupTarget?: OttoWorktreeChangeRequestLookupTarget;
+  },
 ): void {
   const baseRefName = normalizeAndValidateBaseRefName(options.baseRefName);
 
   const metadataPath = getOttoWorktreeMetadataPath(worktreeRoot);
   mkdirSync(join(getGitDirForWorktreeRoot(worktreeRoot), "otto"), { recursive: true });
-  const metadata: OttoWorktreeMetadata = { version: 1, baseRefName };
+  const metadata: OttoWorktreeMetadata = {
+    version: 1,
+    baseRefName,
+    ...(options.changeRequestLookupTarget
+      ? { changeRequestLookupTarget: options.changeRequestLookupTarget }
+      : {}),
+  };
   writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
 }
 

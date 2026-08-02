@@ -1951,6 +1951,26 @@ async function inspectCheckoutContext(
   }
 }
 
+// The worktree's own record of which change request it was cut for. It wins over
+// branch config because that config cannot describe a cross-repo MR whose head
+// branch was never pushed to this remote, or a worktree whose local branch had to
+// be uniquified away from the head ref.
+function buildPullRequestLookupTargetFromMetadata(
+  worktreeRoot: string | null,
+): PullRequestStatusLookupTarget | null {
+  if (!worktreeRoot) {
+    return null;
+  }
+  const target = readOttoWorktreeMetadata(worktreeRoot)?.changeRequestLookupTarget;
+  if (!target) {
+    return null;
+  }
+  return {
+    headRef: target.headRef,
+    ...(target.headRepositoryOwner ? { headRepositoryOwner: target.headRepositoryOwner } : {}),
+  };
+}
+
 function buildPullRequestLookupTargetFromBranchConfig(
   input: PullRequestLookupTargetBranchConfig,
 ): PullRequestStatusLookupTarget {
@@ -2095,14 +2115,17 @@ export async function getCheckoutSnapshotFacts(
     }
   }
   let pullRequestLookupTarget = inspected.currentBranch
-    ? buildPullRequestLookupTargetFromBranchConfig({
+    ? (buildPullRequestLookupTargetFromMetadata(
+        inspected.ottoWorktree ? inspected.worktreeRoot : null,
+      ) ??
+      buildPullRequestLookupTargetFromBranchConfig({
         currentBranch: inspected.currentBranch,
         branchRemoteName,
         branchMergeRef,
         branchRemoteUrl,
         originRemoteUrl: inspected.remoteUrl,
         resolvedBaseRef,
-      })
+      }))
     : null;
   if (
     inspected.currentBranch &&
