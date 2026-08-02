@@ -20,6 +20,7 @@ env:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: read
@@ -120,6 +121,7 @@ jobs:
 
   format:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       # This job never executes Electron. Skipping the hosted binary avoids
       # unrelated npm ci failures when Electron's CDN returns 504.
@@ -146,6 +148,7 @@ jobs:
            needs.changes.result != 'success' ||
            needs.changes.outputs.quality != 'false') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
@@ -183,6 +186,7 @@ jobs:
            needs.changes.result != 'success' ||
            needs.changes.outputs.quality != 'false') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
@@ -216,6 +220,11 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     name: server-tests (${{ matrix.os }})
+    # A green run finishes in under 16 minutes on the slower of the two
+    # platforms. Without a cap, a suite that prints its results and then fails
+    # to exit on a leaked handle sits here until GitHub's 360-minute default,
+    # which is how one bad merge burned two runners for an afternoon.
+    timeout-minutes: 30
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       RUN_TESTS: >-
@@ -358,6 +367,7 @@ jobs:
            needs.changes.result != 'success' ||
            needs.changes.outputs.app != 'false') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
@@ -388,6 +398,7 @@ jobs:
            needs.changes.result != 'success' ||
            needs.changes.outputs.sdk != 'false') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
@@ -426,6 +437,7 @@ jobs:
           - { label: "desktop overlay", shard: "desktop", desktop: true }
     name: playwright (${{ matrix.label }})
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       RUN_TESTS: >-
@@ -494,6 +506,7 @@ jobs:
            needs.changes.result != 'success' ||
            needs.changes.outputs.relay != 'false') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
@@ -522,6 +535,7 @@ jobs:
         shard: [1, 2, 3]
     runs-on: ubuntu-latest
     name: cli-tests (shard ${{ matrix.shard }}/3)
+    timeout-minutes: 25
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       RUN_TESTS: >-
