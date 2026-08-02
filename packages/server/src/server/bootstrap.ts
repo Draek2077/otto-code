@@ -2232,6 +2232,13 @@ export async function createOttoDaemon(
                 await Promise.all([activityStatsStore.reset(), usageLogStore.reset()]);
               },
               graphStore,
+              // Last positional argument, and the one the v0.2.5 merge dropped:
+              // two branches each appended a final parameter to this
+              // constructor, and only graphStore made it to the call site. The
+              // session then saw no relationship manager and answered every
+              // `otto hub connect` with "Hub relationship management is
+              // unavailable".
+              hubRelationships,
             );
             await hubRelationships.start();
 
