@@ -269,15 +269,6 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          # Windows finished this suite with every test passing but reported
-          # "Worker exited unexpectedly" three or four times and exited non-zero,
-          # so the job failed with zero failing tests. It is heap per worker, not
-          # worker count: capping forks changed the wall clock not at all, meaning
-          # the runner was already at its fork ceiling, and each of those few
-          # workers carries ~200 files' worth of modules. A machine with more
-          # cores spreads the same files over more forks and never crashes, which
-          # is why this never reproduced locally. Workers inherit NODE_OPTIONS.
-          NODE_OPTIONS: ${{ matrix.os == 'windows-latest' && '--max-old-space-size=4096' || '' }}
 
   desktop-tests:
     needs: changes
