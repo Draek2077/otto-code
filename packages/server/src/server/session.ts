@@ -8638,7 +8638,15 @@ export class Session {
         { err: error, sourceKind: request.source.kind, requestId: request.requestId },
         "Failed to create workspace",
       );
-      const errorCode = error instanceof WorkspaceProvisioningError ? error.code : undefined;
+      // One code, resolved once: the occupied-directory branch used to be spread
+      // ahead of a bare `errorCode`, so the provisioning code (undefined here)
+      // overwrote it and clients never saw workspace_directory_occupied.
+      let errorCode: string | undefined;
+      if (error instanceof WorkspaceDirectoryOccupiedError) {
+        errorCode = "workspace_directory_occupied";
+      } else if (error instanceof WorkspaceProvisioningError) {
+        errorCode = error.code;
+      }
       this.emit({
         type: "workspace.create.response",
         payload: {
@@ -8646,9 +8654,6 @@ export class Session {
           workspace: null,
           setupTerminalId: null,
           error: message,
-          ...(error instanceof WorkspaceDirectoryOccupiedError
-            ? { errorCode: "workspace_directory_occupied" }
-            : {}),
           errorCode,
         },
       });
@@ -8684,7 +8689,7 @@ export class Session {
       cwd,
       explicitTitle ?? promptTitle,
       request.source.projectId,
-      { expectsInitialAgent: Boolean(request.firstAgentContext) },
+      { expectsInitialAgent: Boolean(request.firstAgentContext), rejectIfOccupied: true },
     );
     await this.syncWorkspaceGitObserverForWorkspace(workspace);
     const descriptor = await this.describeWorkspaceRecord(workspace);

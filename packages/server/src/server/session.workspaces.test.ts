@@ -42,6 +42,7 @@ import { WorktreeRequestError, toWorktreeRequestError } from "./worktree-errors.
 import type { WorkspaceGitRuntimeSnapshot } from "./workspace-git-service.js";
 import type { GeneratedWorkspaceName } from "./worktree-branch-name-generator.js";
 import { WorkspaceAutoName } from "./workspace-auto-name.js";
+import { deriveProjectKey } from "./project-key.js";
 import type { GitHubService } from "../services/github-service.js";
 import { createNoopWorkspaceGitService } from "./test-utils/workspace-git-service-stub.js";
 import {
@@ -861,6 +862,7 @@ test("create_agent_request keeps requested child cwd when grouped under an exist
     const session = asTestSession(
       new Session({
         clientId: "test-client",
+        serverId: "test-server",
         scopes: ["*"],
         appVersion: null,
         onMessage: (message) => emitted.push(message),
@@ -912,10 +914,23 @@ test("create_agent_request keeps requested child cwd when grouped under an exist
 
     const [createdAgent] = agentManager.listAgents();
     expect(createdAgent?.cwd).toBe(child);
+    const createdWorkspace = await workspaceRegistry.get(createdAgent!.workspaceId!);
+    expect(createdWorkspace).not.toBeNull();
+    // The project is keyed by the child directory it was created for; its id is
+    // opaque, and the placement payload carries that id as `projectKey`.
+    await expect(projectRegistry.get(createdWorkspace!.projectId)).resolves.toMatchObject({
+      projectKey: deriveProjectKey({
+        rootPath: child,
+        remoteUrl: null,
+        worktreeRoot: null,
+        mainRepoRoot: null,
+        serverId: "test-server",
+      }),
+    });
     await expect(
       session.buildProjectPlacementForWorkspaceId(createdAgent!.workspaceId!),
     ).resolves.toMatchObject({
-      projectKey: parent,
+      projectKey: createdWorkspace!.projectId,
       checkout: { cwd: child },
     });
     expect(findByType(emitted, "status")?.payload).toMatchObject({
@@ -4118,7 +4133,6 @@ test("open_project_request reclassifies an archived directory workspace when git
     "orchestrate",
     "desktop-daemon-settings",
   );
-  const remoteProjectId = "remote:github.com/otto-code-ai/otto-code";
   const archivedAt = "2026-04-24T09:48:36.168Z";
   const workspaceId = "ws-desktop-daemon-settings";
 
@@ -4196,12 +4210,11 @@ test("open_project_request reclassifies an archived directory workspace when git
   const response = findByType(emitted, "open_project_response");
 
   expect(response?.payload.error).toBeNull();
-  expect(response?.payload.workspace?.projectId).toBe(remoteProjectId);
-  expect(response?.payload.workspace?.workspaceKind).toBe("worktree");
-  expect(projects.get(remoteProjectId)?.kind).toBe("git");
-  expect(workspaces.get(workspaceId)?.projectId).toBe(remoteProjectId);
-  expect(workspaces.get(workspaceId)?.kind).toBe("worktree");
-  expect(workspaces.get(workspaceId)?.displayName).toBe("feature/desktop-daemon-settings");
+  // Reopening revives the archived pair rather than allocating a duplicate
+  // alongside it, so the workspace keeps its id and its project.
+  expect(response?.payload.workspace?.projectId).toBe(cwd);
+  expect(workspaces.get(workspaceId)?.archivedAt).toBeNull();
+  expect(projects.get(cwd)?.archivedAt).toBeNull();
 });
 
 test("open_project_request reclassifies an active directory workspace when git metadata becomes available", async () => {
@@ -4315,11 +4328,11 @@ test("open_project_request reclassifies an active directory workspace when git m
   const response = findByType(emitted, "open_project_response");
 
   expect(response?.payload.error).toBeNull();
-  expect(response?.payload.workspace?.projectId).toBe(repoRoot);
-  expect(response?.payload.workspace?.workspaceKind).toBe("worktree");
-  expect(workspaces.get(workspaceId)?.projectId).toBe(repoRoot);
-  expect(workspaces.get(workspaceId)?.kind).toBe("worktree");
-  expect(workspaces.get(workspaceId)?.displayName).toBe("feature/desktop-daemon-settings");
+  // An already-active workspace keeps the project it was created under. Git
+  // metadata appearing later does not re-parent it beneath the main repo;
+  // project identity is assigned once, at creation.
+  expect(response?.payload.workspace?.projectId).toBe(cwd);
+  expect(workspaces.get(workspaceId)?.projectId).toBe(cwd);
 });
 
 test("open_project_request groups a plain git worktree under an existing repo project", async () => {
@@ -7375,6 +7388,10 @@ function createPrCheckoutGitHubService(params: { headRef: string }): GitHubServi
       headRepositorySshUrl: null,
       headRepositoryUrl: null,
       isCrossRepository: false,
+      // Matches the real GitHubService: PRs check out through refs/pull/N/head,
+      // which is the only ref that still resolves once the head branch is gone
+      // from the remote (as in this fixture).
+      checkoutRefs: [{ remoteName: "origin", remoteRef: `refs/pull/${number}/head` }],
     }),
     getCurrentPullRequestStatus: async () => null,
     getPullRequestTimeline: async ({ prNumber }) => ({

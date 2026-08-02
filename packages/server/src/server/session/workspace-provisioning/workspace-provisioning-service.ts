@@ -6,6 +6,7 @@ import {
   reconcileWorkspacePlacement,
 } from "../../workspace-registry-model.js";
 import {
+  createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
   type PersistedProjectRecord,
   type PersistedWorkspaceRecord,
@@ -14,6 +15,10 @@ import {
 } from "../../workspace-registry.js";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
 import type { CreateOttoWorktreeWorkflowResult } from "../../worktree-session.js";
+import {
+  findOccupyingWorkspaceForCwd,
+  WorkspaceDirectoryOccupiedError,
+} from "../../otto-worktree-service.js";
 import { deriveProjectKey } from "../../project-key.js";
 import { areEquivalentPaths, createRealpathAwarePathMatcher } from "../../../utils/path.js";
 
@@ -57,7 +62,7 @@ export interface WorkspaceProvisioningService {
     cwd: string,
     title?: string | null,
     projectId?: string,
-    context?: { expectsInitialAgent?: boolean },
+    context?: { expectsInitialAgent?: boolean; rejectIfOccupied?: boolean },
   ): Promise<PersistedWorkspaceRecord>;
   createWorkspaceForWorktree(
     input: CreateWorktreeWorkspaceInput,
@@ -159,6 +164,16 @@ export function createWorkspaceProvisioningService(deps: {
   async function findOrCreateProjectForDirectory(cwd: string): Promise<PersistedProjectRecord> {
     const rootPath = resolve(cwd);
     const checkout = await workspaceGitService.getCheckout(rootPath);
+    // A git worktree belongs to its main repo's project, whether Otto cut it or
+    // the user did by hand. Otto-created worktrees already group this way via
+    // resolveSourceProjectForWorktree; without this, opening an external
+    // worktree directory stood it up as its own project next to the repo.
+    if (checkout.mainRepoRoot && !areEquivalentPaths(checkout.mainRepoRoot, rootPath)) {
+      return resolveSourceProjectForWorktree({
+        sourceCwd: checkout.mainRepoRoot,
+        repoRoot: checkout.mainRepoRoot,
+      });
+    }
     const timestamp = new Date().toISOString();
     return projectRegistry.getOrCreateActiveByRoot({
       rootPath,
@@ -175,6 +190,31 @@ export function createWorkspaceProvisioningService(deps: {
     });
   }
 
+  async function recreateMissingProjectForWorkspace(
+    workspace: PersistedWorkspaceRecord,
+  ): Promise<PersistedProjectRecord> {
+    const rootPath = resolve(workspace.mainRepoRoot ?? workspace.cwd);
+    const checkout = await workspaceGitService.getCheckout(rootPath);
+    const timestamp = new Date().toISOString();
+    const record = createPersistedProjectRecord({
+      projectId: workspace.projectId,
+      rootPath,
+      kind: checkout.isGit ? "git" : "non_git",
+      displayName: basename(rootPath) || rootPath,
+      projectKey: deriveProjectKey({
+        rootPath,
+        remoteUrl: checkout.remoteUrl,
+        worktreeRoot: checkout.worktreeRoot,
+        mainRepoRoot: checkout.mainRepoRoot,
+        serverId,
+      }),
+      createdAt: workspace.createdAt,
+      updatedAt: timestamp,
+    });
+    await projectRegistry.upsert(record);
+    return record;
+  }
+
   async function requireActiveProject(projectId: string): Promise<PersistedProjectRecord> {
     const project = await projectRegistry.get(projectId);
     if (!project) throw new WorkspaceProvisioningError("unknown_project", projectId);
@@ -186,9 +226,23 @@ export function createWorkspaceProvisioningService(deps: {
     cwd: string,
     title?: string | null,
     projectId?: string,
-    context?: { expectsInitialAgent?: boolean },
+    context?: { expectsInitialAgent?: boolean; rejectIfOccupied?: boolean },
   ): Promise<PersistedWorkspaceRecord> {
     const normalizedCwd = resolve(cwd);
+    // Explicit "create a workspace here" refuses to stack a second visible
+    // workspace on a directory that already has one. Agent spawns and the
+    // reopen path deliberately skip this: they either already know no active
+    // record exists, or they are allowed to share the directory.
+    if (context?.rejectIfOccupied) {
+      const occupant = findOccupyingWorkspaceForCwd(await workspaceRegistry.list(), normalizedCwd);
+      if (occupant) {
+        throw new WorkspaceDirectoryOccupiedError({
+          cwd: normalizedCwd,
+          existingWorkspaceId: occupant.workspaceId,
+          existingWorkspaceName: occupant.title?.trim() || occupant.displayName,
+        });
+      }
+    }
     const checkout = await workspaceGitService.getCheckout(normalizedCwd);
     const project = projectId
       ? await refreshProjectKind(await requireActiveProject(projectId), normalizedCwd, checkout)
@@ -310,7 +364,13 @@ export function createWorkspaceProvisioningService(deps: {
       // workspace; requiring an already-active project meant archiving a
       // project and then reopening its directory silently created a second
       // workspace on the same cwd instead of restoring the original.
-      const project = await projectRegistry.get(archived.projectId);
+      const project =
+        (await projectRegistry.get(archived.projectId)) ??
+        // The workspace outlived its project record. Rebuild the parent it points
+        // at rather than falling through: allocating a fresh project leaves the
+        // original workspace orphaned forever and stands a duplicate up on the
+        // same directory.
+        (await recreateMissingProjectForWorkspace(archived));
       if (project) return ensureWorkspaceRecordUnarchived(archived);
     }
     return createWorkspaceForDirectory(normalizedCwd);
