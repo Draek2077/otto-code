@@ -45,6 +45,45 @@ snippet and then had nothing to colour it with. Beyond restoring `sh`/`bash`/`zs
 now exports `DETECTABLE_EXTENSIONS` and `parsers.test.ts` asserts the whole invariant, so the next
 dropped row fails a test instead of silently degrading.
 
+## P1 status as of 2026-08-02
+
+Each one re-checked against the tree. **Four of the nine were already fixed and the audit had gone
+stale; one does not reproduce at all.** Verifying before implementing was worth more here than the
+fixes were.
+
+| Item                                                         | State              | Note                                                    |
+| ------------------------------------------------------------ | ------------------ | ------------------------------------------------------- |
+| Mojibake in tracked source                                   | Fixed              | 754 runs across 9 files; see below                      |
+| `judge-verdict.ts` rebrand corruption                        | Fixed              | "upstream Otto's" is upstream **Paseo's**               |
+| Mixed-case `projectId` on upgrade                            | **Does not repro** | pinned by comment + test; no migration needed           |
+| `html-ish.ts` renders raw HTML                               | Already fixed      | `b/strong/em/i/code/table` all translate; 51 tests pass |
+| `desktop-settings` migration dropped                         | Already fixed      | present at `desktop-settings.ts:285`                    |
+| `otto://` scheme unregistered                                | Already fixed      | `electron-builder.yml` registers it                     |
+| `DEFERRED(paseoDiffTab)` marker missing                      | Fixed              | now real in `workspace-tabs/identity.ts`, with a test   |
+| `toolCallDetailLevel` half-landed                            | **Confirmed dead** | needs a product call, see below                         |
+| Backpressure, auto-name, agent-state leak, Nix speech worker | Open               | not started                                             |
+
+**The projectId scare was the valuable one, because the answer was "do nothing".** The merge made
+`deriveProjectKey` lowercase GitHub owner/repo, so an upgrading install re-derives a different key
+than it persisted. That does not duplicate the project: lookup goes through `rootPath`, and a
+project found that way has its stale key rewritten in place. The one thing that turns a key into a
+`projectId`, the legacy registry bootstrap, returns early once registry files exist. Writing the
+migration the audit implied would have churned user data to fix nothing. The real hazard is the
+comparison nobody has written yet, so `project-key.ts` now says so and a test pins the upgrade path.
+
+**Mojibake was mechanical but not blind.** Each run was re-encoded to the bytes cp1252 would have
+produced and decoded as UTF-8, rewritten only when that decode was strictly valid and yielded no
+control characters. `messages.ts` held 539 of the 754, mostly section-divider comments where every
+dash of a rule had become three characters. Three sites reached a person: an OMP mode description in
+the UI and two agent-facing truncation suffixes in `session.ts`. This file is deliberately **not**
+repaired, because it quotes the corrupt sequences as evidence.
+
+**`toolCallDetailLevel` needs Philippe, not an implementer.** The field is a valid `AppSettings` key
+with a default and a validator, but it is absent from `APP_SETTINGS_UPDATE_KEYS`, so writes are
+silently dropped, and it has zero readers. Wiring it up means porting Paseo's tool-call detail
+feature; deleting it means declining that feature. Both are product calls, so it is left exactly as
+found rather than half-resolved in a cleanup commit.
+
 ## The pattern connecting almost everything
 
 **The implementation survived; the wiring did not.** A reducer with no caller. A schema branch with
