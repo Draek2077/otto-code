@@ -173,6 +173,13 @@ function createIsolatedDesktopEnv({ home, listen, userData, cdpPort }) {
     OTTO_HOME: home,
     OTTO_LISTEN: listen,
     OTTO_ELECTRON_USER_DATA_DIR: userData,
+    // Same reason the tab-bridge E2E sets this. First paint on a packaged cold
+    // start under xvfb runs past the 15s GPU startup-paint watchdog, especially
+    // with the daemon saturating the runner fetching local speech models. Left
+    // armed, the watchdog reads a slow paint as a hung GPU and relaunches into
+    // software rendering, and the relaunch takes down the window this smoke is
+    // waiting on — which is why no otto://app/ page ever appeared.
+    OTTO_FORCE_GPU: "1",
     OTTO_ELECTRON_FLAGS: `--remote-debugging-address=127.0.0.1 --remote-debugging-port=${cdpPort}`,
   };
 }
