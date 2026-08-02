@@ -2489,6 +2489,21 @@ export class AgentManager {
     await this.inFlightAgentCloses.get(agentId)?.catch(() => undefined);
   }
 
+  /** Marks every still-running provider child of an agent as canceled. */
+  private cancelRunningProviderSubagents(agent: LiveManagedAgent): void {
+    for (const subagent of this.providerSubagents.list(agent.id)) {
+      if (subagent.status !== "running") {
+        continue;
+      }
+      const update = this.providerSubagents.apply(agent.id, agent.provider, {
+        type: "upsert",
+        id: subagent.id,
+        status: "canceled",
+      });
+      this.dispatch({ type: "provider_subagent", event: update });
+    }
+  }
+
   private async closeAgentRuntime(agentId: string): Promise<void> {
     const agent = this.requireAgent(agentId);
     this.logger.trace(
@@ -2503,6 +2518,14 @@ export class AgentManager {
       },
       "agent.manager.close.start",
     );
+    // Drain queued provider events before deciding what is still running: a
+    // child whose terminal status was already in flight when close was called
+    // is recorded as the completion it was, rather than canceled on the way
+    // past. Whatever is still running after the drain cannot outlive the
+    // session that reported it, and left alone its status stays "running" so
+    // the rail shows a live subagent under a closed parent.
+    await this.flush();
+    this.cancelRunningProviderSubagents(agent);
     const closedAgent = this.prepareAgentForClosure(agent, "agent closed");
     await agent.session.close();
     this.timelineStore.delete(agentId);
@@ -6733,6 +6756,18 @@ export class AgentManager {
           // internal agents (branch-name/git-metadata generators) stay silent.
           // agent_state above is always filtered, so neither clutters the sidebar.
           if (agent?.internal && !agent.observable) {
+            continue;
+          }
+        }
+        // An internal parent is hidden from global subscribers, so its children
+        // must be too: leaking them puts subagents on the sidebar belonging to a
+        // parent that is not there.
+        if (event.type === "provider_subagent") {
+          const parentAgentId =
+            event.event.type === "upsert"
+              ? event.event.subagent.parentAgentId
+              : event.event.parentAgentId;
+          if (this.agents.get(parentAgentId)?.internal) {
             continue;
           }
         }
