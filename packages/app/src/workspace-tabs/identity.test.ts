@@ -180,3 +180,48 @@ describe("refine tab identity", () => {
     });
   });
 });
+
+describe("normalizeWorkspaceTabTarget provider subagents", () => {
+  // The panel, the tab menu entry and the persistence key builder all shipped
+  // with the Paseo v0.2.5 merge, but this normalizer never learned the kind, so
+  // every target it produced was dropped and the tab could not be opened or
+  // restored. See projects/paseo-v025-merge/audit-findings.md.
+  it("keeps a provider subagent target addressed by its parent and subagent pair", () => {
+    expect(
+      normalizeWorkspaceTabTarget({
+        kind: "provider_subagent",
+        parentAgentId: "agent_parent",
+        subagentId: "sub_1",
+      }),
+    ).toEqual({
+      kind: "provider_subagent",
+      parentAgentId: "agent_parent",
+      subagentId: "sub_1",
+    });
+  });
+
+  it("drops a provider subagent target missing either half of the pair", () => {
+    expect(
+      normalizeWorkspaceTabTarget({
+        kind: "provider_subagent",
+        parentAgentId: "   ",
+        subagentId: "sub_1",
+      }),
+    ).toBeNull();
+    expect(
+      normalizeWorkspaceTabTarget({
+        kind: "provider_subagent",
+        parentAgentId: "agent_parent",
+        subagentId: "",
+      }),
+    ).toBeNull();
+  });
+
+  // DEFERRED(paseoDiffTab): these two kinds are inherited from Paseo's tab model
+  // but have no panel registered here, so dropping them is deliberate. If a
+  // panel is ever adopted, this expectation is the thing that should fail first.
+  it("still drops the diff tab kinds Otto never adopted a panel for", () => {
+    expect(normalizeWorkspaceTabTarget({ kind: "working_diff" })).toBeNull();
+    expect(normalizeWorkspaceTabTarget({ kind: "commit_diff", sha: "abc1234" })).toBeNull();
+  });
+});

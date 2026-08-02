@@ -51,6 +51,12 @@ const foregroundMutedColorMapping = (theme: Theme) => ({
 export interface SubagentsTrackProps {
   rows: SubagentRow[];
   onOpenSubagent: (id: string) => void;
+  /**
+   * Opens a provider subagent, which is addressed by its `(parent, subagent)`
+   * pair rather than an agent id. Separate from `onOpenSubagent` because the
+   * two row kinds open onto genuinely different things.
+   */
+  onOpenProviderSubagent: (parentAgentId: string, subagentId: string) => void;
   onArchiveSubagent: (id: string) => void;
   onStopSubagent: (id: string) => void;
   onClearCompleted: (rows: readonly ClearableSubagentRow[]) => void;
@@ -77,6 +83,7 @@ function buildRowPresentation(row: SubagentRow): WorkspaceTabPresentation {
 export function SubagentsTrack({
   rows,
   onOpenSubagent,
+  onOpenProviderSubagent,
   onArchiveSubagent,
   onStopSubagent,
   onClearCompleted,
@@ -182,6 +189,7 @@ export function SubagentsTrack({
                     key={row.id}
                     row={row}
                     onOpenSubagent={onOpenSubagent}
+                    onOpenProviderSubagent={onOpenProviderSubagent}
                     onArchiveSubagent={onArchiveSubagent}
                     onStopSubagent={handleStopSubagent}
                     onDetachSubagent={onDetachSubagent}
@@ -195,6 +203,7 @@ export function SubagentsTrack({
                     onToggle={toggleCompletedExpanded}
                     onClear={handleClearCompleted}
                     onOpenSubagent={onOpenSubagent}
+                    onOpenProviderSubagent={onOpenProviderSubagent}
                     onArchiveSubagent={onArchiveSubagent}
                     onStopSubagent={handleStopSubagent}
                     onDetachSubagent={onDetachSubagent}
@@ -218,6 +227,7 @@ interface CompletedSubagentsGroupProps {
   onToggle: () => void;
   onClear: () => void;
   onOpenSubagent: (id: string) => void;
+  onOpenProviderSubagent: (parentAgentId: string, subagentId: string) => void;
   onArchiveSubagent: (id: string) => void;
   onStopSubagent: (id: string) => void;
   onDetachSubagent?: (id: string) => void;
@@ -233,6 +243,7 @@ function CompletedSubagentsGroup({
   onToggle,
   onClear,
   onOpenSubagent,
+  onOpenProviderSubagent,
   onArchiveSubagent,
   onStopSubagent,
   onDetachSubagent,
@@ -287,6 +298,7 @@ function CompletedSubagentsGroup({
               key={row.id}
               row={row}
               onOpenSubagent={onOpenSubagent}
+              onOpenProviderSubagent={onOpenProviderSubagent}
               onArchiveSubagent={onArchiveSubagent}
               onStopSubagent={onStopSubagent}
               onDetachSubagent={onDetachSubagent}
@@ -300,6 +312,7 @@ function CompletedSubagentsGroup({
 interface SubagentsTrackRowProps {
   row: SubagentRow;
   onOpenSubagent: (id: string) => void;
+  onOpenProviderSubagent: (parentAgentId: string, subagentId: string) => void;
   onArchiveSubagent: (id: string) => void;
   onStopSubagent: (id: string) => void;
   onDetachSubagent?: (id: string) => void;
@@ -308,6 +321,7 @@ interface SubagentsTrackRowProps {
 function SubagentsTrackRow({
   row,
   onOpenSubagent,
+  onOpenProviderSubagent,
   onArchiveSubagent,
   onStopSubagent,
   onDetachSubagent,
@@ -327,9 +341,18 @@ function SubagentsTrackRow({
   const currentToolLabel = row.kind === "otto" ? formatSubagentCurrentTool(row.currentTool) : null;
   const isRunning = isSubagentRowRunning(row.status);
   const frozenElapsed = formatSubagentElapsed(row);
+  // The two row kinds open onto different things. An Otto subagent is a real
+  // agent and routes by agent id; a provider subagent only exists inside its
+  // parent's timeline, so it opens a tab keyed by the (parent, subagent) pair.
+  // Sending both through `onOpenSubagent` navigated provider rows to an agent
+  // id the daemon had never registered.
   const handlePress = useCallback(() => {
+    if (row.kind === "provider") {
+      onOpenProviderSubagent(row.parentAgentId, row.id);
+      return;
+    }
     onOpenSubagent(row.id);
-  }, [onOpenSubagent, row.id]);
+  }, [onOpenProviderSubagent, onOpenSubagent, row]);
   const handleArchivePress = useCallback(() => {
     onArchiveSubagent(row.id);
   }, [onArchiveSubagent, row.id]);

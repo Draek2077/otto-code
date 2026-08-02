@@ -127,6 +127,7 @@ import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agen
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
+import { openProviderSubagentTab } from "@/subagents/open-provider-subagent-tab";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { buildDraftAgentSetup, type ClientSlashCommand } from "@/client-slash-commands";
 
@@ -1629,6 +1630,17 @@ function ActiveAgentComposer({
     },
     [serverId],
   );
+  // Provider subagents are rows in this agent's timeline, not agents, so they
+  // cannot go through `navigateToAgent` the way Otto's observed subagents do.
+  const handleOpenProviderSubagent = useCallback(
+    (parentAgentId: string, subagentId: string) => {
+      if (!workspaceId) {
+        return;
+      }
+      openProviderSubagentTab({ serverId, workspaceId, parentAgentId, subagentId });
+    },
+    [serverId, workspaceId],
+  );
   const handleArchiveSubagent = useArchiveSubagent({ serverId });
   const handleStopSubagent = useStopSubagent({ serverId });
   const handleClearCompletedSubagents = useClearCompletedSubagents({
@@ -1817,6 +1829,7 @@ function ActiveAgentComposer({
       <SubagentsTrack
         rows={subagentRows}
         onOpenSubagent={handleOpenSubagent}
+        onOpenProviderSubagent={handleOpenProviderSubagent}
         onArchiveSubagent={handleArchiveSubagent}
         onStopSubagent={handleStopSubagent}
         onClearCompleted={handleClearCompletedSubagents}

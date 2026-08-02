@@ -25,6 +25,15 @@ export function normalizeWorkspaceTabTarget(
     const agentId = trimNonEmpty(value.agentId);
     return agentId ? { kind: "agent", agentId } : null;
   }
+  // Both ids are required: the tab is identified by the pair, and a subagent id
+  // without its parent cannot be resolved back to a timeline.
+  if (value.kind === "provider_subagent") {
+    const parentAgentId = trimNonEmpty(value.parentAgentId);
+    const subagentId = trimNonEmpty(value.subagentId);
+    return parentAgentId && subagentId
+      ? { kind: "provider_subagent", parentAgentId, subagentId }
+      : null;
+  }
   if (value.kind === "terminal") {
     const terminalId = trimNonEmpty(value.terminalId);
     return terminalId ? { kind: "terminal", terminalId } : null;
@@ -77,6 +86,13 @@ export function normalizeWorkspaceTabTarget(
       ? { kind: "orchestrationGraph", graphId, runId }
       : { kind: "orchestrationGraph", graphId };
   }
+  // DEFERRED(paseoDiffTab): `working_diff` and `commit_diff` are in the target
+  // union because Otto inherits Paseo's tab model wholesale, but neither has a
+  // registered panel here — we kept our own Changes view instead of adopting
+  // their diff tabs. Normalizing them would hand the store a target that opens
+  // an empty pane, so they deliberately fall through to null. This is NOT the
+  // same bug as `provider_subagent` above, which does have a panel and was only
+  // missing this branch. Adopt the panels first, then add the branches.
   return null;
 }
 
