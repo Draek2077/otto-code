@@ -1,7 +1,3 @@
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GitHubAuthenticationError,
@@ -9,18 +5,26 @@ import {
   GitHubCommandError,
   computeGithubNextInterval,
   createGitHubService,
-  resolveGitHubRepo,
   type GitHubCommandRunner,
   type GitHubCommandRunnerOptions,
   type CurrentPullRequestStatus,
 } from "./github-service.js";
+import type {
+  GitHubForgeSpecificStatusFacts,
+  GitHubPullRequestStatusFacts,
+} from "./github-facts.js";
+import type { ForgeSpecificStatusFacts } from "./forge-service.js";
+import { resolveGitHubRemote } from "../utils/github-remote.js";
 import { CheckoutPrStatusResponseSchema } from "@otto-code/protocol/messages";
 
 const EXPECTED_GITHUB_FAST_POLL_MS = 20_000;
 const EXPECTED_GITHUB_SLOW_POLL_MS = 120_000;
 const EXPECTED_GITHUB_ERROR_BACKOFF_CAP_MS = 300_000;
+// Mirrors GITHUB_CURRENT_PR_STATUS_BASE_FIELDS in github-service.ts. Otto also
+// asks for headRefOid so a fork PR's head commit is known without a second
+// call, which is what the fork-resolution paths below rely on.
 const CURRENT_PR_STATUS_BASE_FIELDS =
-  "number,url,title,state,isDraft,baseRefName,headRefName,mergedAt,reviewDecision,mergeable,headRepositoryOwner";
+  "number,url,title,state,isDraft,baseRefName,headRefName,headRefOid,mergedAt,reviewDecision,mergeable,headRepositoryOwner";
 const CURRENT_PR_STATUS_FIELDS = `${CURRENT_PR_STATUS_BASE_FIELDS},statusCheckRollup`;
 
 interface RunnerCall {
@@ -98,6 +102,23 @@ function createDeferredRunner(): TestRunner {
   };
 }
 
+/**
+ * Waits until the deferred runner actually has a call in flight. A fixed number
+ * of microtask ticks is not enough: Otto awaits gh-path resolution before it
+ * ever reaches the runner, so how many ticks it takes is an implementation
+ * detail this file should not encode.
+ */
+async function waitForPendingRunnerCall(runner: TestRunner, expected = 1): Promise<void> {
+  // Advances the fake clock rather than only draining microtasks: the path from
+  // call to runner crosses real async work, so a microtask drain alone can spin
+  // 100 times without the runner ever being reached.
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (runner.calls.length >= expected) return;
+    await vi.advanceTimersByTimeAsync(1);
+  }
+  throw new Error(`Runner never reached ${expected} call(s); saw ${runner.calls.length}`);
+}
+
 function currentPullRequestJson(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
     number: 42,
@@ -139,9 +160,21 @@ function currentPullRequestGithubFactsJson(overrides: Record<string, unknown> = 
   });
 }
 
+/**
+ * `github` is accepted as an alias for `forgeSpecific`. Otto's forge layer keeps
+ * per-forge facts in one neutral envelope on the status rather than a
+ * GitHub-named field, so Bitbucket and friends have somewhere to put theirs;
+ * the merge guards read `forgeSpecific`. Every call site here is describing
+ * GitHub facts, so the alias keeps them readable without pretending the
+ * GitHub-named field still exists.
+ */
 function createCurrentPullRequestStatus(
-  overrides: Partial<CurrentPullRequestStatus> = {},
+  overrides: Partial<CurrentPullRequestStatus> & {
+    github?: ForgeSpecificStatusFacts;
+  } = {},
 ): CurrentPullRequestStatus {
+  const { github, ...rest } = overrides;
+  const forgeSpecific = rest.forgeSpecific ?? github;
   return {
     number: 42,
     repoOwner: "acme",
@@ -157,14 +190,19 @@ function createCurrentPullRequestStatus(
     checks: [],
     checksStatus: "none",
     reviewDecision: null,
-    ...overrides,
+    ...rest,
+    ...(forgeSpecific ? { forgeSpecific } : {}),
   };
 }
 
 function githubStatusFacts(
-  overrides: Partial<NonNullable<CurrentPullRequestStatus["github"]>> = {},
-): NonNullable<CurrentPullRequestStatus["github"]> {
+  overrides: Partial<GitHubPullRequestStatusFacts> = {},
+): GitHubForgeSpecificStatusFacts {
   return {
+    // The discriminant isGitHubPullRequestStatusFacts keys on. Without it the
+    // envelope is just unknown forge facts and every merge guard reports the
+    // facts as unavailable.
+    forge: "github",
     mergeStateStatus: "CLEAN",
     autoMergeRequest: null,
     viewerCanEnableAutoMerge: false,
@@ -618,6 +656,10 @@ describe("GitHubService", () => {
       headRepositorySshUrl: "git@github.com:therainisme/otto.git",
       headRepositoryUrl: "https://github.com/therainisme/otto",
       isCrossRepository: true,
+      // Otto resolves the fetchable refs up front so the checkout does not have
+      // to know GitHub's refs/pull/N/head convention. Neutral by design: each
+      // forge adapter reports its own ref layout here.
+      checkoutRefs: [{ remoteName: "origin", remoteRef: "refs/pull/526/head" }],
     });
 
     expect(runner.calls).toHaveLength(2);
@@ -1649,7 +1691,7 @@ describe("GitHubService", () => {
     };
 
     const staleRequest = service.getPullRequestTimeline(request);
-    await Promise.resolve();
+    await waitForPendingRunnerCall(runner);
     expect(runner.calls).toHaveLength(1);
 
     service.invalidate({ cwd: "/repo" });
@@ -1673,7 +1715,7 @@ describe("GitHubService", () => {
     expect(stale.items.at(-1)?.body).toBe("Stale pre-invalidation result");
 
     const freshRequest = service.getPullRequestTimeline(request);
-    await Promise.resolve();
+    await waitForPendingRunnerCall(runner, 2);
     expect(runner.calls).toHaveLength(2);
     runner.resolveNext(
       pullRequestTimelineJson({
@@ -2167,7 +2209,10 @@ describe("GitHubService", () => {
         },
       ],
       checksStatus: "pending",
-      github: {
+      // Per-forge facts ride in the neutral forgeSpecific envelope, tagged with
+      // the forge that produced them, rather than a GitHub-named field.
+      forgeSpecific: {
+        forge: "github",
         mergeStateStatus: "BLOCKED",
         autoMergeRequest: null,
         viewerCanEnableAutoMerge: true,
@@ -2412,9 +2457,25 @@ describe("GitHubService", () => {
         headRef: "main",
       }),
     ).resolves.toBeNull();
+    // The third call is Otto's scoped fallback: having rejected the fork
+    // owner's PR, it asks explicitly for PRs whose head is this branch before
+    // concluding there is none. The answer is still null, which is the
+    // behaviour this test is really pinning.
     expect(calls.map((call) => call.args)).toEqual([
       ["pr", "view", "--json", CURRENT_PR_STATUS_FIELDS],
       ["repo", "view", "--json", "owner,name,parent"],
+      [
+        "pr",
+        "list",
+        "--state",
+        "all",
+        "--head",
+        "main",
+        "--limit",
+        "10",
+        "--json",
+        CURRENT_PR_STATUS_FIELDS,
+      ],
     ]);
   });
 
@@ -2633,6 +2694,8 @@ describe("GitHubService", () => {
     });
 
     expect(newDaemonResponse.payload.status).toEqual({
+      // The neutral layer stamps which forge produced the status.
+      forge: "github",
       number: 42,
       url: "https://github.com/acme/repo/pull/42",
       title: "New daemon payload",
@@ -2706,7 +2769,7 @@ describe("GitHubService", () => {
 
     const first = service.listPullRequests({ cwd: "/repo", query: "bug", limit: 10 });
     const second = service.listPullRequests({ cwd: "/repo", query: "bug", limit: 10 });
-    await Promise.resolve();
+    await waitForPendingRunnerCall(runner);
     runner.resolveNext(pullRequestJson("Shared result"));
 
     await expect(Promise.all([first, second])).resolves.toEqual([
@@ -2829,10 +2892,16 @@ describe("GitHubService", () => {
     await expect(
       service.searchIssuesAndPrs({ cwd: "/repo", query: "cache", limit: 5 }),
     ).resolves.toEqual({
+      // The neutral trio: authState is the reason, featuresEnabled the neutral
+      // verdict, githubFeaturesEnabled the back-compat mirror kept in sync.
+      authState: "authenticated",
+      featuresEnabled: true,
       githubFeaturesEnabled: true,
       items: [
         {
-          kind: "pr",
+          // Neutral across forges: GitLab calls these merge requests, so the
+          // shared kind is change_request rather than the GitHub spelling.
+          kind: "change_request",
           number: 123,
           title: "PR title",
           url: "https://github.com/acme/repo/pull/123",
@@ -2942,10 +3011,16 @@ describe("GitHubService", () => {
         kinds: ["github-pr"],
       }),
     ).resolves.toEqual({
+      // The neutral trio: authState is the reason, featuresEnabled the neutral
+      // verdict, githubFeaturesEnabled the back-compat mirror kept in sync.
+      authState: "authenticated",
+      featuresEnabled: true,
       githubFeaturesEnabled: true,
       items: [
         {
-          kind: "pr",
+          // Neutral across forges: GitLab calls these merge requests, so the
+          // shared kind is change_request rather than the GitHub spelling.
+          kind: "change_request",
           number: 123,
           title: "PR title",
           url: "https://github.com/acme/repo/pull/123",
@@ -3035,7 +3110,7 @@ describe("GitHubService", () => {
 
     const first = service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
     const second = service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
-    await Promise.resolve();
+    await waitForPendingRunnerCall(runner);
 
     expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(1);
     runner.resolveNext(currentPullRequestJson());
@@ -3064,7 +3139,7 @@ describe("GitHubService", () => {
         headRef: "feature/fork",
         force: true,
       } as never),
-    ).rejects.toThrow("GitHubService forced read requires a reason");
+    ).rejects.toThrow("ForgeService forced read requires a reason");
   });
 
   it("type: force true requires a reason", () => {
@@ -3076,24 +3151,18 @@ describe("GitHubService", () => {
     expect(valid.reason).toBe("test");
   });
 
+  // Otto resolves the identity from the remote URL rather than from a cwd:
+  // reading origin belongs to the git layer, and the forge layer only needs the
+  // parse. Same resolution, one fewer subprocess.
   it("resolves GitHub repos from the origin remote URL", async () => {
     vi.useRealTimers();
-    const cwd = mkdtempSync(join(tmpdir(), "github-service-repo-"));
 
-    try {
-      execFileSync("git", ["init", "-b", "main"], { cwd, stdio: "ignore" });
-      execFileSync(
-        "git",
-        ["remote", "add", "origin", "git@github.com:otto-code-ai/otto-code.git"],
-        {
-          cwd,
-          stdio: "ignore",
-        },
-      );
-
-      await expect(resolveGitHubRepo(cwd)).resolves.toBe("otto-code-ai/otto-code");
-    } finally {
-      rmSync(cwd, { recursive: true, force: true });
-    }
+    await expect(
+      resolveGitHubRemote({ remoteUrl: "git@github.com:otto-code-ai/otto-code.git" }),
+    ).resolves.toEqual({
+      owner: "otto-code-ai",
+      name: "otto-code",
+      repo: "otto-code-ai/otto-code",
+    });
   });
 });
