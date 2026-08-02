@@ -13,12 +13,18 @@ npm run build:dotnet-probe
 ```
 
 Output lands in `dist/` (5 files, ~257 KB) and is copied into `packages/server/dist/dotnet-probe`
-when that directory already exists, which is the layout a published server tarball uses. In a
-release, run this **after** `build:server` — a clean server build wipes `dist`.
+when that directory already exists, which is the layout a published server tarball uses.
 
-`dotnet` is needed to _build_ the payload, not to consume it, so this is deliberately not part of
-`npm run build`. Without the SDK you get the rest of the repo working normally and no Solution
-view. CI passes `--required` so a missing SDK fails the job rather than silently shipping nothing.
+**You should not need to run it by hand.** A server build wipes `packages/server/dist` and takes
+the payload with it, so `build:server` and `build:server:clean` each end by running this script.
+That is the only thing enforcing the ordering — do not re-document it as a manual step somewhere
+else, and do not add a second caller. The warm cost is ~2 s against a build that runs `tsc` over
+five packages.
+
+`dotnet` is needed to _build_ the payload, not to consume it. Without the SDK the script exits 0,
+you get the rest of the repo working normally, and you have no Solution view. `--required` turns a
+missing SDK into a hard failure instead, for a release runner that must not ship without the
+sidecar; nothing passes it today.
 
 ## Why the payload is portable
 

@@ -7,10 +7,13 @@
  * offline or locked down never has to fetch anything to use the feature. That is the whole
  * shipping decision — build once, ship everywhere.
  *
- * `dotnet` is required to *build* the payload, not to consume it, so this script is not part of
- * `npm run build`. A contributor without the .NET SDK gets the rest of the repo working normally
- * and simply has no Solution view; the daemon reports the payload as absent and the switcher
- * never appears. Pass `--required` (CI does) to turn a missing SDK into a failure.
+ * `dotnet` is required to *build* the payload, not to consume it. `build:server` and
+ * `build:server:clean` both end by running this script, because they wipe the directory the
+ * payload is copied into and nothing else puts it back. A contributor without the .NET SDK still
+ * gets a working repo: the SDK probe below exits 0, they simply have no Solution view, and the
+ * daemon reports the payload as absent so the switcher never appears. Pass `--required` to turn a
+ * missing SDK into a failure instead — for a release runner that must not ship without the
+ * sidecar. Nothing passes it today.
  */
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
@@ -22,8 +25,9 @@ const projectPath = join(repoRoot, "packages", "dotnet-probe", "OttoDotnetProbe.
 const outputDir = join(repoRoot, "packages", "dotnet-probe", "dist");
 /**
  * The published-package location. `bootstrap.ts` looks here first when the daemon runs from an
- * installed tarball rather than from the repo, so a release only works if this build runs after
- * `build:server` — a clean server build wipes `dist`.
+ * installed tarball rather than from the repo. A server build wipes `dist`, which is why the
+ * `build:server*` scripts chain this one after themselves rather than leaving the ordering to
+ * whoever remembers it.
  */
 const serverCopyDir = join(repoRoot, "packages", "server", "dist", "dotnet-probe");
 
