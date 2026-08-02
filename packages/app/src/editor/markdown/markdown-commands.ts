@@ -1,5 +1,6 @@
 import { markdownLanguage } from "@codemirror/lang-markdown";
 import type { EditorState, StateCommand } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import type { MarkdownCommandName } from "../editor-contract";
 import {
   insertHorizontalRule,
@@ -16,6 +17,7 @@ import {
   type DocRange,
   type MarkdownEdit,
 } from "./markdown-format";
+import { htmlIsWorthConverting, htmlToMarkdown } from "./markdown-paste";
 
 // CodeMirror wrappers over the pure transforms in markdown-format.ts. Nothing
 // here decides anything: it reads the selection, calls a transform, and
@@ -97,3 +99,42 @@ export function isMarkdownCommandName(value: string): value is MarkdownCommandNa
 export function getMarkdownCommand(name: MarkdownCommandName): StateCommand {
   return MARKDOWN_COMMANDS[name];
 }
+
+/**
+ * Paste HTML as markdown, in markdown files only.
+ *
+ * Registered as a `paste` DOM handler rather than a keymap entry because paste
+ * is not only a keystroke: the context menu and a middle-click both reach the
+ * same event. Returning false leaves CodeMirror's own paste to run, which is
+ * what handles plain text, and what handles every non-markdown file.
+ *
+ * The conversion is deliberately skipped for HTML that carries no structure —
+ * copying out of a plain-text editor still puts a `<span>` on the clipboard, and
+ * round-tripping that through a converter can only lose whitespace.
+ */
+export const markdownPasteHandler = EditorView.domEventHandlers({
+  paste(event, view) {
+    if (!inMarkdownContext(view.state)) {
+      return false;
+    }
+    const html = event.clipboardData?.getData("text/html");
+    if (!html || !htmlIsWorthConverting(html)) {
+      return false;
+    }
+    const markdown = htmlToMarkdown(html);
+    if (markdown === null) {
+      return false;
+    }
+    const { from, to } = view.state.selection.main;
+    view.dispatch(
+      view.state.update({
+        changes: { from, to, insert: markdown },
+        selection: { anchor: from + markdown.length },
+        scrollIntoView: true,
+        userEvent: "input.paste",
+      }),
+    );
+    event.preventDefault();
+    return true;
+  },
+});

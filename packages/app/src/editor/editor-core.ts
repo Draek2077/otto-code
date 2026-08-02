@@ -36,7 +36,11 @@ import {
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { getLanguageForFile, getParserForFile, highlightCode } from "@otto-code/highlight";
-import { getMarkdownCommand, isMarkdownCommandName } from "./markdown/markdown-commands";
+import {
+  getMarkdownCommand,
+  isMarkdownCommandName,
+  markdownPasteHandler,
+} from "./markdown/markdown-commands";
 import {
   markdownLivePreviewExtension,
   setMarkdownLivePreview,
@@ -1165,6 +1169,9 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       // flips, and mounting it conditionally would mean a remount to turn live
       // preview on. The plugin costs nothing while the field is false.
       markdownLivePreviewExtension(options.markdownLivePreview ?? false),
+      // Declines in a non-markdown file and for structure-free clipboard HTML,
+      // so CodeMirror keeps its ordinary paste in both cases.
+      markdownPasteHandler,
       themeCompartment.of([
         buildThemeExtension(options.theme),
         buildSyntaxExtension(options.theme),
