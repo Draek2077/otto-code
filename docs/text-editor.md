@@ -247,6 +247,99 @@ Fixtures: `test-documents/image.png` (raster path, with a fully transparent quad
 
 **Find in the read-only preview** mirrors the editor's find strip minus replace (there is no buffer to write to). It does **not** go through CodeMirror — the preview renders a token stream per line, so find is a pure text scan (`file-preview-find.ts`: `findPreviewMatches` + `splitTokensForMatches`, both unit-tested) whose match semantics (case / whole-word / regexp) match `@codemirror/search` so the same query finds the same things in both views. Matched runs are re-cut out of the syntax tokens and tinted (base tint for every hit, stronger for the active one), the count feeds the strip, and next/previous scrolls the active hit into view. It is gated to the **syntax-highlighted text preview only** (`PreviewOnlyView` shows the button when `fileInfo.kind === "text" && !isMarkdown`): rendered markdown has no line-mapped text to highlight and images/binaries have no text, so those keep no find button — switch to the editor to search a markdown file. Matching caps at `MAX_PREVIEW_FIND_MATCHES` (shown as `999+`) so a one-letter query over a huge file can't build a million-entry array.
 
+## Markdown: the format the editor edits
+
+Every other format the editor opens, it colours. Markdown it edits. The architecture of that lives
+in `packages/app/src/editor/markdown/`, and five decisions hold it together.
+
+**One engine.** Live preview is CM6 **decorations**, never a second editor. The document is never
+rewritten, which is what keeps find/replace, the dirty-against-baseline comparison, the overview
+ruler, the LSP mirror and undo all operating on exactly the text that is on disk. A rendered
+document model (ProseMirror, muya) would have to reimplement every one of them, and would
+reimplement them worse. Do not trade this away.
+
+**The commands decline outside markdown, and that is the whole keymap design.** Every formatting
+command checks `markdownLanguage.isActiveAt` and returns false when the answer is no. Because CM6
+tries same-key bindings in array order, one keymap can therefore serve `Mod-b` as **bold** in a
+`.md` file and as **Go to definition** in a `.ts` one, with no binding aware of which file is open.
+The markdown entries must be offered the key **first** — `DEFAULT_EDITOR_KEY_BINDINGS` and the
+Markdown Editor registry section are both ordered ahead of the File Editor ones for that reason, and
+`editor-key-bindings.test.ts` asserts it. The same property means bold inside a fenced ```ts block
+correctly does nothing: the markdown language is not active there.
+
+**`markdown-editor` is a focus scope with a parent.** It is the only scope in
+`KeyboardFocusScope` that inherits: `FOCUS_SCOPE_PARENT` maps it to `code-editor`, so Save, Find
+and Go to line are declared once and keep matching in a markdown file. `bindingSpecificity` has
+three ranks (exact scope, inherited scope, unscoped) so an exact match still outranks an inherited
+one. The scope exists because a few markdown combos collide with global actions — `Mod+K` is a link
+here and the command center everywhere else — and claiming those at `code-editor` scope would take
+them away in **every** code file, where the markdown command declines and the key would simply die.
+
+**Heading levels get no keys, deliberately.** Every conventional combo (`Mod+1`, `Alt+1`,
+`Mod+Alt+1`) is already a workspace or tab jump, and taking navigation away inside one file type
+costs more than a heading shortcut is worth. They live on the toolbar.
+
+**The transforms are pure and the commands are thin.** `markdown-format.ts` and
+`markdown-table.ts` take `(doc, selection)` and return a single replacement, so the parts that are
+easy to get wrong and impossible to eyeball — which markers to strip, ordered-list renumbering,
+table column widths, what stays selected so a second keystroke round-trips — are unit-tested in
+plain Node. The CM6 wrappers only read the selection, call a transform and dispatch. The toolbar
+runs the _same_ commands through `EditorController.runMarkdownCommand`, so a button and a key can
+never diverge.
+
+### Live preview
+
+Markers hide on every line except the one the caret is on. Two rules:
+
+- **Reveal is per line, decided from the selection**, not per node. A node-level reveal makes text
+  jump sideways as the caret crosses a marker; per-line is what every editor that does this well
+  settled on.
+- **Only markers hide, never content.** A hidden marker is zero-width, so arrow keys still traverse
+  it and a selection over it still copies it.
+
+Two traps, both found by the browser test rather than by reading the code. A fenced block's own
+backtick lines are `CodeMark`s too, and hiding them collapses the fence into the prose around it,
+so only _inline_ code marks hide. And block markers own the whitespace that separates them from
+their content: hiding just the `#` of a heading leaves it indented by one space.
+
+It defaults **on**, unlike every other editor preference, because it is the point of editing
+markdown in a markdown editor rather than a text editor. The toolbar toggle is pinned outside the
+scrolling group, since it is the one control that changes what the whole document looks like.
+
+`markdown-live-preview.browser.test.ts` covers it against real CM6 in a real browser, asserting the
+**rendered text of the content DOM** rather than the decoration set: a decoration that exists but
+hides nothing would pass a structural assertion and fail the user.
+
+### The toolbar is the mobile story
+
+On a phone there are no chords, so the formatting toolbar is not a convenience, it is the only way
+to reach these commands at all. That is why it scrolls horizontally instead of collapsing into an
+overflow menu — a menu would bury the two or three buttons people actually reach for behind a tap.
+Every command with a desktop key has a button.
+
+### Headings are client-side, and must stay that way
+
+`extractMarkdownHeadings` (`packages/highlight/src/markdown-headings.ts`) is deliberately **not**
+part of `extractSymbols`. `CodeSymbolKindSchema` is a five-value `z.enum` on the wire, so a daemon
+answering `code.outline` with `kind: "heading"` would make a six-month-old client reject the entire
+response — which the protocol contract forbids, and which no feature flag fixes, because clients
+never advertise which enum values they tolerate. The client already holds the document it wants an
+outline of, so there was nothing to ask the daemon for. The shape is also better: a heading carries
+its level, which the flat `SymbolKind` cannot express and a table of contents needs. It parses
+rather than scanning for `#`, because only a parse knows a `#` inside a fenced block is a comment.
+
+The outline sheet consequently sources markdown from the **open buffer**, not `code.outline`: the
+outline of a document you are editing should follow the heading you just typed.
+
+### Paste
+
+Pasting HTML into a markdown file converts it (Turndown, configured to emit the same markers the
+formatting commands produce, plus a GFM table rule Turndown does not ship). It is a DOM `paste`
+handler rather than a keymap entry because paste is not only a keystroke — the context menu and a
+middle-click reach the same event. Conversion is **skipped** for HTML carrying no structure:
+copying out of a plain-text editor still puts a lone `<span>` on the clipboard, and round-tripping
+that can only lose the exact whitespace the user copied.
+
 ## AI Refactor — the safe core
 
 Refactoring is delegated to an agent, not a static analyzer — Otto's home-field advantage. The critical design decision, which must not be undone lightly: **AI Refactor deliberately does not spawn an agent directly.** A direct spawn would touch the central agent-creation path while potentially unattended, violating the "safe operations" constraint. Instead it routes through the proven composer/draft path where the user has final say.

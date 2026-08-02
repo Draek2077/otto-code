@@ -24,10 +24,15 @@ to "the model wants to show a chart" is a separate, contained renderer, not `htm
 
 The five rules that follow from it, and that are easy to break:
 
-1. **The default for an unrecognized tag is unwrap, not passthrough.** `<table>` has no markdown
-   translation yet, so it drops to its cell text — legible, not broken. Reverting this to raw
-   passthrough puts markup on screen. `script`/`style` are the only tags whose _contents_ are
-   dropped too.
+1. **The default for an unrecognized tag is unwrap, not passthrough.** A tag with no translation
+   drops to its text — legible, not broken. Reverting this to raw passthrough puts markup on
+   screen. `script`/`style` are the only tags whose _contents_ are dropped too.
+   - **`<table>` is translated, not unwrapped.** It becomes a GFM table: `thead`/`tbody` are
+     wrappers and the rows are found wherever they sit, the first row is the header, short rows
+     are padded, and a pipe inside a cell is escaped. A cell GFM cannot express — a nested list,
+     another table, anything with a newline — collapses onto one line, because the choice is
+     between losing the layout and losing the table and the table is worth more. A table with no
+     rows falls back to the plain unwrap.
 2. **Translation is a token-level transform, not a string one.** `<summary><h3>Files</h3></summary>`
    must yield the label `Files`, not `### Files` — heading translation is stripped from summaries
    before rendering, while the tag is still a token. String post-processing cannot tell the
@@ -225,8 +230,25 @@ The load-bearing decisions:
   reapplies as a container `maxWidth` (natural size, scaled down in narrow panes). The native
   payload posts its laid-out height back so the host can size the WebView, and re-posts on reflow.
 
+## GitHub alerts
+
+`> [!NOTE]` and its four siblings (`TIP`, `IMPORTANT`, `WARNING`, `CAUTION`) render as themed
+callouts. `components/markdown/github-alerts.ts` is the parse half and runs as a **token-level**
+core rule, the same shape `task-lists.ts` uses and for the same reason: a marker is only an alert
+when it opens a real blockquote, so `[!NOTE]` inside a code fence or mid-sentence stays literal
+text. A regex over the source could not tell those apart.
+
+The kind rides on the `blockquote_open` token as an attribute, which `tokensToAST` turns into
+`node.attributes`, so the renderer's `blockquote` rule reads it without knowing how detection
+worked. Only the accent varies per kind: the surface stays the ordinary blockquote's, so an alert
+reads as a blockquote that is telling you something rather than as a different kind of box, and
+every colour is a token that already exists in all themes.
+
+**The titles are deliberately untranslated.** They are GitHub's markdown vocabulary, written into
+the document's own source as `[!NOTE]`, and a reader comparing the rendering against the source
+should see the same word.
+
 ## What is still missing
 
 Tracked in the File rendering section of [`projects/README.md`](../projects/README.md#file-rendering):
-CSV/TSV table view, Jupyter notebooks, GitHub alerts (`> [!NOTE]` renders its literal marker),
-HTML `<table>` (it drops to its cell text), footnotes, math, and PDF.
+CSV/TSV table view, Jupyter notebooks, footnotes, math (KaTeX), interactive checkboxes, and PDF.
