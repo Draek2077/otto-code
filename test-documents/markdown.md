@@ -211,3 +211,22 @@ Read-only in chat, tickable in the preview beside the editor.
   - [ ] A nested open item
 
 1. [ ] An ordered task keeps its number and gains a box
+
+## Math
+
+Inline math sits in a sentence: the identity $e^{i\pi} + 1 = 0$ should render as
+a formula, while "it cost $5 and $10 total" must stay as prose.
+
+Underscores and asterisks inside a formula are TeX, not markdown: $a_1 * b_2$.
+
+A display formula gets its own centred line:
+
+$$
+\int_0^1 f(x)\,dx = F(1) - F(0)
+$$
+
+Math inside a fence stays literal:
+
+```
+$x^2$ and $$y^2$$
+```

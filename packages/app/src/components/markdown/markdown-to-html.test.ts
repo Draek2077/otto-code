@@ -92,3 +92,29 @@ describe("htmlExportFileName", () => {
     expect(htmlExportFileName("NOTES")).toBe("NOTES.html");
   });
 });
+
+describe("math in the export", () => {
+  function exported(markdown: string): string {
+    return markdownToHtmlDocument(markdown, "untitled").html;
+  }
+
+  // MathML needs no script and no stylesheet, so the saved file stays standalone.
+  it("renders inline math as MathML", () => {
+    const html = exported("Let $x^2$ be.\n");
+    expect(html).toContain("<math");
+    expect(html).toContain("<msup>");
+    expect(html).not.toMatch(/<script\b/);
+  });
+
+  it("renders block math centred and as display MathML", () => {
+    const html = exported("$$a = b$$\n");
+    expect(html).toContain('<p class="math">');
+    expect(html).toContain('display="block"');
+  });
+
+  it("falls back to the source when the TeX does not parse", () => {
+    const html = exported("broken $\frac{$ here\n");
+    expect(html).not.toContain("<math");
+    expect(html).toContain("\frac{");
+  });
+});

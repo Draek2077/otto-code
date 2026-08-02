@@ -1,5 +1,7 @@
 import MarkdownIt from "markdown-it";
+import { renderToString } from "katex";
 import { applyFootnotes } from "./footnotes";
+import { applyMath, MATH_BLOCK_TOKEN, MATH_INLINE_TOKEN } from "./math";
 import { ALERT_ATTRIBUTE, applyGithubAlerts } from "./github-alerts";
 import { applyTaskListMarkers, TASK_STATE_ATTRIBUTE } from "./task-lists";
 
@@ -30,9 +32,35 @@ export interface MarkdownHtmlDocument {
 }
 
 /** Embedded HTML is translated on the way in, never passed through. See docs/markdown-rendering.md. */
-const exportParser = applyFootnotes(
-  applyGithubAlerts(applyTaskListMarkers(MarkdownIt({ typographer: true, linkify: true }))),
+const exportParser = applyMath(
+  applyFootnotes(
+    applyGithubAlerts(applyTaskListMarkers(MarkdownIt({ typographer: true, linkify: true }))),
+  ),
 );
+
+/**
+ * Math is rendered to MathML at export time, so the saved file needs no script
+ * and no stylesheet to show a formula: every browser lays MathML out natively.
+ * Unparseable TeX falls back to its source, matching what the app does.
+ */
+function renderMath(tex: string, display: boolean): string {
+  try {
+    return renderToString(tex, {
+      output: "mathml",
+      displayMode: display,
+      throwOnError: true,
+      strict: false,
+    });
+  } catch {
+    return `<code>${escapeHtml(tex)}</code>`;
+  }
+}
+
+exportParser.renderer.rules[MATH_INLINE_TOKEN] = (tokens, index) =>
+  renderMath(tokens[index].content, false);
+exportParser.renderer.rules[MATH_BLOCK_TOKEN] = (tokens, index) =>
+  `<p class="math">${renderMath(tokens[index].content, true)}</p>
+`;
 
 const UNCHECKED_GLYPH = "☐";
 const CHECKED_GLYPH = "☑";
@@ -119,6 +147,7 @@ th { background: var(--code-bg); }
 hr { border: 0; border-top: 1px solid var(--line); margin: 2rem 0; }
 img { max-width: 100%; }
 .task { font-size: 1.1em; }
+p.math { text-align: center; }
 li:has(> .task) { list-style: none; margin-left: -1.2em; }
 @media print { body { max-width: none; padding: 0; } }
 `.trim();
