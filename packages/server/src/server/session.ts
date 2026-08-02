@@ -5628,6 +5628,10 @@ export class Session {
         // servers rooted at these directories have nothing left to serve.
         await stopLanguageServersForArchivedDirectories(
           {
+            // Same roots archiveByScope resolves ownership against, so the
+            // last-reference check sees the same backing directories.
+            ottoHome: this.ottoHome,
+            ottoWorktreesBaseRoot: this.worktreesRoot,
             listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
             stopLanguageServers: (rootPath) => this.stopWorkspaceProcesses(rootPath),
             sessionLogger: this.sessionLogger,

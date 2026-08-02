@@ -9,9 +9,10 @@ import type { ForgeService } from "../services/github-service.js";
 import {
   deleteOttoWorktree,
   isOttoOwnedWorktreeCwd,
-  resolveOttoWorktreeRootForCwd,
+  runWorktreeTeardownCommands,
   WorktreeTeardownError,
 } from "../utils/worktree.js";
+import { createRealpathAwarePathMatcher } from "../utils/path.js";
 import { deleteLocalBranch as deleteLocalBranchImpl } from "./workspace-archive-branch.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type { PersistedWorkspaceRecord, WorkspaceRegistry } from "./workspace-registry.js";
@@ -22,11 +23,40 @@ export interface ActiveWorkspaceRef {
   kind?: "local_checkout" | "worktree" | "directory";
   // Paseo widened this ref so archive callers can decide worktree teardown
   // without a second registry read. Optional here because Otto's older
-  // producers (and the test harnesses) only fill the first three.
+  // producers (and the test harnesses) only fill the first three; when they are
+  // absent the backing directory is rediscovered from the filesystem.
   worktreeRoot?: string | null;
   isOttoOwnedWorktree?: boolean;
   mainRepoRoot?: string | null;
 }
+
+// The directory a workspace record actually sits on top of. A record's cwd is NOT
+// that directory: Otto opens a workspace at the package it was launched on, so a
+// single worktree routinely backs records at <worktreeRoot> and at
+// <worktreeRoot>/packages/app. Ownership, last-reference and removal all have to
+// reason about the backing directory, never the raw cwd.
+interface BackingDirectory {
+  path: string;
+  isOttoOwnedWorktree: boolean;
+  mainRepoRoot: string | null;
+  ottoWorktreesRoot: string | null;
+}
+
+interface ArchiveTarget {
+  backing: BackingDirectory | null;
+  // The exact directories teardown must run from — one per archived record, since
+  // teardown commands are read from the otto.json at that directory.
+  teardownTargets: Array<{ workspaceId: string | null; cwd: string }>;
+  workspaceIds: string[];
+}
+
+// Ownership resolution reads the same two knobs everywhere. The request may
+// override the daemon-level base root, so it is folded in once and threaded
+// through every backing-directory lookup for a single archive.
+type BackingResolutionDependencies = Pick<
+  ArchiveDependencies,
+  "ottoHome" | "ottoWorktreesBaseRoot"
+>;
 
 export interface ArchiveDependencies {
   ottoHome?: string;
@@ -116,9 +146,9 @@ export async function resolveWorkspaceIdAtPath(
   dependencies: Pick<ArchiveDependencies, "findWorkspaceIdForCwd" | "listActiveWorkspaces">,
   targetPath: string,
 ): Promise<string | null> {
-  const targetDir = resolve(targetPath);
+  const matchesTarget = createRealpathAwarePathMatcher(targetPath);
   const activeWorkspaces = await dependencies.listActiveWorkspaces();
-  const exactMatches = activeWorkspaces.filter((workspace) => resolve(workspace.cwd) === targetDir);
+  const exactMatches = activeWorkspaces.filter((workspace) => matchesTarget(workspace.cwd));
   const worktreeMatch = exactMatches.find((workspace) => workspace.kind === "worktree");
   if (worktreeMatch) {
     return worktreeMatch.workspaceId;
@@ -133,17 +163,22 @@ export async function archiveByScope(
   dependencies: ArchiveDependencies,
   request: ArchiveByScopeRequest,
 ): Promise<ArchiveResult> {
-  const { targetDir, targetWorkspaceIds } = await resolveArchiveTargets(
-    dependencies,
-    request.scope,
-    request.ottoWorktreesBaseRoot,
-  );
+  const backingDependencies: BackingResolutionDependencies = {
+    ottoHome: dependencies.ottoHome,
+    ottoWorktreesBaseRoot: request.ottoWorktreesBaseRoot ?? dependencies.ottoWorktreesBaseRoot,
+  };
+  const target = await resolveArchiveTarget(dependencies, backingDependencies, request.scope);
+  const targetWorkspaceIds = target.workspaceIds;
   // Callers that know the repo root pass it; the rest get it derived here from
-  // the workspaces being archived. Without a repo root, deleteOttoWorktree skips
-  // `git worktree remove` and `git worktree prune` entirely, so the directory
-  // disappeared while the parent repo went on listing it as a live worktree.
+  // the workspaces being archived, then from the worktree's own ownership record.
+  // Without a repo root, deleteOttoWorktree skips `git worktree remove` and
+  // `git worktree prune` entirely, so the directory disappeared while the parent
+  // repo went on listing it as a live worktree.
   const repoRoot =
-    request.repoRoot ?? (await resolveArchiveRepoRoot(dependencies, targetWorkspaceIds));
+    request.repoRoot ??
+    (await resolveArchiveRepoRoot(dependencies, targetWorkspaceIds)) ??
+    target.backing?.mainRepoRoot ??
+    null;
   const resolvedRequest = repoRoot ? { ...request, repoRoot } : request;
 
   if (targetWorkspaceIds.length > 0) {
@@ -164,9 +199,18 @@ export async function archiveByScope(
       request.requestId,
     );
 
-    if (targetDir !== null && archivedWorkspaceIds.length > 0) {
+    if (target.backing !== null && archivedWorkspaceIds.length > 0) {
+      // A language server is rooted at the directory a session opened, so the
+      // archived records' own cwds are the roots to stop — plus the backing
+      // directory itself, which is about to go away.
+      const archivedIds = new Set(archivedWorkspaceIds);
       await stopLanguageServersForArchivedDirectories(dependencies, {
-        directories: [targetDir],
+        directories: uniqueFilesystemPaths([
+          ...target.teardownTargets
+            .filter((entry) => entry.workspaceId !== null && archivedIds.has(entry.workspaceId))
+            .map((entry) => entry.cwd),
+          target.backing.path,
+        ]),
         archivedWorkspaceIds,
       });
     }
@@ -185,11 +229,12 @@ export async function archiveByScope(
       }
     }
 
-    if (targetDir !== null) {
+    if (target.backing !== null) {
       const removal = await maybeRemoveDirectory(
         dependencies,
+        backingDependencies,
         resolvedRequest,
-        targetDir,
+        target,
         archivedWorkspaceIds,
       );
       removedDirectory = removal.removedDirectory;
@@ -229,11 +274,11 @@ async function resolveArchiveRepoRoot(
   return null;
 }
 
-async function resolveArchiveTargets(
+async function resolveArchiveTarget(
   dependencies: ArchiveDependencies,
+  backingDependencies: BackingResolutionDependencies,
   scope: ArchiveScope,
-  ottoWorktreesBaseRoot?: string,
-): Promise<{ targetDir: string | null; targetWorkspaceIds: string[] }> {
+): Promise<ArchiveTarget> {
   const activeWorkspaces = await dependencies.listActiveWorkspaces();
 
   if (scope.kind === "workspace") {
@@ -244,24 +289,99 @@ async function resolveArchiveTargets(
         { workspaceId },
         "Workspace not found for archive-by-scope; skipping",
       );
-      return { targetDir: null, targetWorkspaceIds: [] };
+      return { backing: null, teardownTargets: [], workspaceIds: [] };
     }
-    return { targetDir: resolve(record.cwd), targetWorkspaceIds: [workspaceId] };
+    return {
+      backing: await resolveWorkspaceBackingDirectory(record, backingDependencies),
+      teardownTargets: [{ workspaceId, cwd: record.cwd }],
+      workspaceIds: [workspaceId],
+    };
   }
 
-  let targetPath = scope.targetPath;
-  const resolvedWorktree = await resolveOttoWorktreeRootForCwd(targetPath, {
-    ottoHome: dependencies.ottoHome,
-    worktreesRoot: ottoWorktreesBaseRoot ?? dependencies.ottoWorktreesBaseRoot,
-  });
-  if (resolvedWorktree) {
-    targetPath = resolvedWorktree.worktreePath;
+  // Archiving by path takes every record the directory backs, not only the ones
+  // whose cwd is spelled exactly like it — a record nested inside the worktree is
+  // just as dead once the directory is gone.
+  const backing = await resolveBackingDirectory(scope.targetPath, backingDependencies);
+  const matchesBackingDirectory = createRealpathAwarePathMatcher(backing.path);
+  const targetWorkspaces = (
+    await Promise.all(
+      activeWorkspaces.map(async (workspace) => {
+        const backingDirectory = await resolveWorkspaceBackingDirectory(
+          workspace,
+          backingDependencies,
+        );
+        return matchesBackingDirectory(backingDirectory.path) ? workspace : null;
+      }),
+    )
+  ).filter((workspace): workspace is ActiveWorkspaceRef => workspace !== null);
+  const persistedMainRepoRoot = targetWorkspaces.find(
+    (workspace) => workspace.mainRepoRoot,
+  )?.mainRepoRoot;
+  return {
+    backing: {
+      ...backing,
+      mainRepoRoot: persistedMainRepoRoot ?? backing.mainRepoRoot,
+    },
+    teardownTargets:
+      targetWorkspaces.length > 0
+        ? targetWorkspaces.map((workspace) => ({
+            workspaceId: workspace.workspaceId,
+            cwd: workspace.cwd,
+          }))
+        : [{ workspaceId: null, cwd: scope.targetPath }],
+    workspaceIds: targetWorkspaces.map((workspace) => workspace.workspaceId),
+  };
+}
+
+async function resolveWorkspaceBackingDirectory(
+  workspace: ActiveWorkspaceRef,
+  dependencies: BackingResolutionDependencies,
+): Promise<BackingDirectory> {
+  if (workspace.isOttoOwnedWorktree && workspace.worktreeRoot && workspace.mainRepoRoot) {
+    return {
+      path: resolve(workspace.worktreeRoot),
+      isOttoOwnedWorktree: true,
+      mainRepoRoot: workspace.mainRepoRoot,
+      ottoWorktreesRoot: null,
+    };
   }
-  const targetDir = resolve(targetPath);
-  const targetWorkspaceIds = activeWorkspaces
-    .filter((workspace) => resolve(workspace.cwd) === targetDir)
-    .map((workspace) => workspace.workspaceId);
-  return { targetDir, targetWorkspaceIds };
+  // Otto's ref widens `kind` to optional, so an ABSENT kind is "unknown", not
+  // "not a worktree". Falling through to filesystem discovery there is the safe
+  // direction: under-resolving a backing directory is what deletes a worktree out
+  // from under a live sibling.
+  if (workspace.kind !== undefined && workspace.kind !== "worktree") {
+    return {
+      path: resolve(workspace.cwd),
+      isOttoOwnedWorktree: false,
+      mainRepoRoot: workspace.mainRepoRoot ?? null,
+      ottoWorktreesRoot: null,
+    };
+  }
+
+  // COMPAT(archiveMissingWorkspacePlacement): worktree records created before the
+  // placement fields were stamped (Otto b2599f46a) lack durable backing ownership;
+  // remove filesystem discovery after 2027-01-17.
+  const backing = await resolveBackingDirectory(
+    workspace.worktreeRoot ?? workspace.cwd,
+    dependencies,
+  );
+  return { ...backing, mainRepoRoot: workspace.mainRepoRoot ?? backing.mainRepoRoot };
+}
+
+async function resolveBackingDirectory(
+  cwd: string,
+  dependencies: BackingResolutionDependencies,
+): Promise<BackingDirectory> {
+  const ownership = await isOttoOwnedWorktreeCwd(cwd, {
+    ottoHome: dependencies.ottoHome,
+    worktreesRoot: dependencies.ottoWorktreesBaseRoot,
+  });
+  return {
+    path: resolve(ownership.allowed && ownership.worktreePath ? ownership.worktreePath : cwd),
+    isOttoOwnedWorktree: ownership.allowed,
+    mainRepoRoot: ownership.repoRoot ?? null,
+    ottoWorktreesRoot: ownership.worktreeRoot ?? null,
+  };
 }
 
 async function archiveTargetRecords(
@@ -304,32 +424,74 @@ interface RemoveDirectoryResult {
 
 async function maybeRemoveDirectory(
   dependencies: ArchiveDependencies,
+  backingDependencies: BackingResolutionDependencies,
   request: Omit<ArchiveByScopeRequest, "scope">,
-  targetDir: string,
+  target: ArchiveTarget,
   archivedWorkspaceIds: string[],
 ): Promise<RemoveDirectoryResult> {
-  const ownership = await isOttoOwnedWorktreeCwd(targetDir, {
-    ottoHome: dependencies.ottoHome,
-    worktreesRoot: request.ottoWorktreesBaseRoot ?? dependencies.ottoWorktreesBaseRoot,
-  });
-  if (!ownership.allowed) {
+  const backing = target.backing;
+  if (!backing?.isOttoOwnedWorktree) {
     return { removedDirectory: false, deletedBranch: null };
   }
 
+  // Teardown belongs to the RECORD, not to the directory: a workspace that is
+  // going away owes its teardown commands even when the directory survives for a
+  // sibling. Deduped by path so two records on one directory run it once, and run
+  // from each record's own cwd so a nested otto.json is actually seen.
+  const archivedWorkspaceIdSet = new Set(archivedWorkspaceIds);
+  const teardownCwds = uniqueFilesystemPaths(
+    target.teardownTargets
+      .filter(
+        (teardownTarget) =>
+          teardownTarget.workspaceId === null ||
+          archivedWorkspaceIdSet.has(teardownTarget.workspaceId),
+      )
+      .map((teardownTarget) => teardownTarget.cwd),
+  );
+
+  try {
+    for (const teardownCwd of teardownCwds) {
+      await runWorktreeTeardownCommands({
+        worktreePath: backing.path,
+        teardownCwd,
+        repoRootPath: request.repoRoot ?? backing.mainRepoRoot ?? undefined,
+      });
+    }
+  } catch (error) {
+    if (error instanceof WorktreeTeardownError) {
+      dependencies.sessionLogger?.warn(
+        { err: error, targetPath: backing.path, requestId: request.requestId },
+        "Worktree teardown failed during archive; workspace already archived",
+      );
+      return { removedDirectory: false, deletedBranch: null };
+    }
+    throw error;
+  }
+
   const remainingActive = await dependencies.listActiveWorkspaces();
-  if (!isDirectoryUnreferenced(remainingActive, targetDir, new Set(archivedWorkspaceIds))) {
+  if (
+    !(await isDirectoryUnreferenced(
+      remainingActive,
+      backing.path,
+      new Set(archivedWorkspaceIds),
+      backingDependencies,
+    ))
+  ) {
     return { removedDirectory: false, deletedBranch: null };
   }
 
   try {
     await deleteOttoWorktree({
       cwd: request.repoRoot ?? null,
-      worktreePath: targetDir,
-      worktreesRoot: request.repoWorktreesRoot ?? ownership.worktreeRoot,
+      worktreePath: backing.path,
+      // Already run above, per archived record, so deleteOttoWorktree must not
+      // repeat it from the worktree root.
+      teardownCwds: [],
+      worktreesRoot: request.repoWorktreesRoot ?? backing.ottoWorktreesRoot ?? undefined,
       ottoHome: dependencies.ottoHome,
       worktreesBaseRoot: request.ottoWorktreesBaseRoot ?? dependencies.ottoWorktreesBaseRoot,
     });
-    dependencies.github.invalidate({ cwd: targetDir });
+    dependencies.github.invalidate({ cwd: backing.path });
     // The worktree working tree is gone, so the branch is no longer checked out
     // and git will accept its deletion. Only attempted here (last-reference path)
     // so a directory still backing another workspace never loses its branch.
@@ -338,7 +500,7 @@ async function maybeRemoveDirectory(
   } catch (error) {
     if (error instanceof WorktreeTeardownError) {
       dependencies.sessionLogger?.warn(
-        { err: error, targetPath: targetDir, requestId: request.requestId },
+        { err: error, targetPath: backing.path, requestId: request.requestId },
         "Worktree disk removal failed during archive; workspace already archived",
       );
       return { removedDirectory: false, deletedBranch: null };
@@ -437,7 +599,11 @@ export async function archiveWorkspaceContents(
 
 export type StopLanguageServersDependencies = Pick<
   ArchiveDependencies,
-  "listActiveWorkspaces" | "stopLanguageServers" | "sessionLogger"
+  | "listActiveWorkspaces"
+  | "stopLanguageServers"
+  | "sessionLogger"
+  | "ottoHome"
+  | "ottoWorktreesBaseRoot"
 >;
 
 // A language server is keyed by DIRECTORY, not by workspace record, so it may only be
@@ -463,9 +629,13 @@ export async function stopLanguageServersForArchivedDirectories(
     return;
   }
 
-  const unreferenced = [...new Set([...input.directories].map((dir) => resolve(dir)))].filter(
-    (dir) => isDirectoryUnreferenced(remainingActive, dir, archivedWorkspaceIds),
+  const candidates = [...new Set([...input.directories].map((dir) => resolve(dir)))];
+  const unreferencedFlags = await Promise.all(
+    candidates.map((dir) =>
+      isDirectoryUnreferenced(remainingActive, dir, archivedWorkspaceIds, dependencies),
+    ),
   );
+  const unreferenced = candidates.filter((_dir, index) => unreferencedFlags[index]);
 
   await Promise.all(
     unreferenced.map(async (dir) => {
@@ -484,16 +654,39 @@ export async function stopLanguageServersForArchivedDirectories(
 // EXACTLY one last-reference predicate in the module. True when, after archiving
 // the in-scope records, no active workspace still points at targetDir. Derived
 // from records each call — no stored counter.
-function isDirectoryUnreferenced(
+//
+// A workspace points at BOTH its own cwd and the directory backing it, and those
+// differ whenever a record sits in a subdirectory of a worktree. Checking only the
+// cwd let an archive delete a worktree that a nested sibling was still live on;
+// checking only the backing directory would leave that sibling's language servers
+// resident. Matching is realpath-aware because two records can spell the same
+// directory differently (a symlinked temp dir, /var vs /private/var).
+async function isDirectoryUnreferenced(
   activeWorkspaces: ActiveWorkspaceRef[],
   targetDir: string,
   archivedWorkspaceIds: ReadonlySet<string>,
-): boolean {
-  const target = resolve(targetDir);
-  return !activeWorkspaces.some(
-    (workspace) =>
-      !archivedWorkspaceIds.has(workspace.workspaceId) && resolve(workspace.cwd) === target,
-  );
+  dependencies: BackingResolutionDependencies,
+): Promise<boolean> {
+  const matchesTarget = createRealpathAwarePathMatcher(resolve(targetDir));
+  for (const workspace of activeWorkspaces) {
+    if (archivedWorkspaceIds.has(workspace.workspaceId)) continue;
+    if (matchesTarget(workspace.cwd)) return false;
+    const backingDirectory = await resolveWorkspaceBackingDirectory(workspace, dependencies);
+    if (matchesTarget(backingDirectory.path)) return false;
+  }
+  return true;
+}
+
+// Realpath-aware dedupe: two records can spell one directory differently, and
+// teardown must run once per DIRECTORY, not once per spelling.
+function uniqueFilesystemPaths(paths: string[]): string[] {
+  const unique: string[] = [];
+  for (const candidate of paths) {
+    if (!unique.some((existing) => createRealpathAwarePathMatcher(existing)(candidate))) {
+      unique.push(candidate);
+    }
+  }
+  return unique;
 }
 
 export async function killTerminalsForWorkspace(

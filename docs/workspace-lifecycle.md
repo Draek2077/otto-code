@@ -26,6 +26,26 @@ This also fixed a quiet leave bug: archiving a worktree resolved `repoRoot = nul
 
 **`cwd` is immutable.** A workspace's root is set at creation and never mutated; this is a re-attach primitive, not a mutable-root refactor. Ownership (chats, terminals) is keyed by `workspaceId`, never `cwd`, so the root is _technically_ movable — we deliberately keep it fixed to preserve the one-directory-one-live-workspace guard (`WorkspaceDirectoryOccupiedError`) and the reconciler contract. Swapping between a worktree and its base is therefore **navigation, not mutation**: "Open base checkout" ensures/reveals the project's base `local_checkout` workspace.
 
+**A workspace's backing directory is not its `cwd`.** Otto opens a workspace at the package it was
+launched on, so one worktree routinely backs a record at `<worktreeRoot>` and another at
+`<worktreeRoot>/packages/app`. Archiving resolves each record to its **backing directory** first
+(`resolveWorkspaceBackingDirectory`), preferring the durable placement fields on the record
+(`isOttoOwnedWorktree` + `worktreeRoot` + `mainRepoRoot`) and falling back to filesystem ownership
+discovery for records written before those were stamped. Everything downstream keys off that
+directory, never the raw `cwd`:
+
+- **Last-reference** (`isDirectoryUnreferenced`) asks whether any active workspace still points at
+  the directory, matching against both a record's `cwd` and its backing directory, realpath-aware so
+  two spellings of one path (a symlinked temp dir, `/var` vs `/private/var`) cannot slip past. This
+  is what stops an archive from deleting a worktree that a nested sibling is still live on, and the
+  mirror case where archiving the nested record would take the whole worktree with it.
+- **Archive-by-path** takes every record the directory backs, not only the ones whose `cwd` is
+  spelled exactly like it. A record nested inside the worktree is just as dead once it is gone.
+- **Teardown belongs to the record, not the directory.** A workspace that is going away runs its
+  teardown commands even when the directory survives for a sibling, and runs them from its own `cwd`
+  so a nested `otto.json` teardown block is actually read. Commands are deduplicated per directory,
+  so two records sharing the worktree root run the root teardown once.
+
 ## One directory = one live workspace
 
 **Settled policy: prevent duplicates and steer to a worktree.** One directory is one physical git checkout, so two "independent" workspaces on it can never actually be independent — branch, diff, and status fan out to every same-`cwd` workspace. `createLocalCheckoutWorkspace` rejects a second _visible_ workspace on an occupied directory with `WorkspaceDirectoryOccupiedError`, surfaced as wire errorCode `workspace_directory_occupied` on `workspace.create.response`. Callers that just need somewhere to run (MCP `create_agent`, loops, agent-spawned terminals, the README button) **reuse the occupying workspace** rather than minting a duplicate.

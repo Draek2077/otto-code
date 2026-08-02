@@ -1,11 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import pino, { type Logger } from "pino";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import type { GitHubService } from "../services/github-service.js";
+import { createRealpathAwarePathMatcher } from "../utils/path.js";
 import { createWorktree, type WorktreeConfig } from "../utils/worktree.js";
 import type { ManagedAgent } from "./agent/agent-manager.js";
 import type { AgentStorage, StoredAgentRecord } from "./agent/agent-storage.js";
@@ -80,6 +81,26 @@ function createGitRepo(): { tempDir: string; repoDir: string } {
     stdio: "pipe",
   });
   return { tempDir, repoDir };
+}
+
+// Teardown commands are read from the otto.json sitting AT the teardown cwd, so a
+// nested workspace only ever runs its own teardown when the archive tears down from
+// that exact directory rather than from the worktree root.
+function writeTeardownConfig(repoDir: string, relativeDir: string, command: string): void {
+  const targetDir = path.join(repoDir, relativeDir);
+  mkdirSync(targetDir, { recursive: true });
+  writeFileSync(
+    path.join(targetDir, "otto.json"),
+    JSON.stringify({ worktree: { teardown: [command] } }),
+  );
+}
+
+function commitAll(repoDir: string, message: string): void {
+  execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "pipe" });
+  execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", message], {
+    cwd: repoDir,
+    stdio: "pipe",
+  });
 }
 
 function listBranch(repoDir: string, branchName: string): string {
@@ -219,8 +240,17 @@ describe("archiveByScope", () => {
     expect(existsSync(worktree.worktreePath)).toBe(false);
   });
 
-  test("workspace scope keeps the directory when a sibling workspace still references it", async () => {
+  // The workspace is going away whether or not its directory survives, so its
+  // teardown commands owe the same run either way. Only the directory removal is
+  // gated on being the last reference.
+  test("workspace scope runs teardown while keeping a directory referenced by a sibling", async () => {
     const { tempDir, repoDir } = createGitRepo();
+    writeTeardownConfig(
+      repoDir,
+      ".",
+      "node -e \"require('fs').writeFileSync(process.env.OTTO_SOURCE_CHECKOUT_PATH + '/shared-teardown.log', 'ok')\"",
+    );
+    commitAll(repoDir, "shared teardown");
     const ottoHome = path.join(tempDir, ".otto");
     const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "sibling-workspace");
     const workspaceA = "ws-sibling-a";
@@ -246,6 +276,144 @@ describe("archiveByScope", () => {
       removedDirectory: false,
     });
     expect(existsSync(worktree.worktreePath)).toBe(true);
+    expect(readFileSync(path.join(repoDir, "shared-teardown.log"), "utf8")).toBe("ok");
+  });
+
+  // Otto puts a workspace at the package it was opened on, so a worktree commonly
+  // backs a record whose cwd is <worktreeRoot>/packages/app. Comparing cwds alone
+  // misses that sibling and deletes the directory out from under it.
+  test("workspace scope keeps a worktree for an active workspace in a subdirectory", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const ottoHome = path.join(tempDir, ".otto");
+    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "subdirectory-sibling");
+    const sourceWorkspaceId = "ws-subdirectory-source";
+    const siblingWorkspaceId = "ws-subdirectory-sibling";
+    const siblingDirectory = path.join(worktree.worktreePath, "packages", "app");
+    mkdirSync(siblingDirectory, { recursive: true });
+
+    const result = await archiveByScope(
+      createArchiveDeps({
+        ottoHome,
+        activeWorkspaces: [
+          {
+            workspaceId: sourceWorkspaceId,
+            cwd: worktree.worktreePath,
+            kind: "worktree",
+            worktreeRoot: worktree.worktreePath,
+            isOttoOwnedWorktree: true,
+          },
+          {
+            workspaceId: siblingWorkspaceId,
+            cwd: siblingDirectory,
+            kind: "worktree",
+            worktreeRoot: worktree.worktreePath,
+            isOttoOwnedWorktree: true,
+          },
+        ],
+      }),
+      {
+        scope: { kind: "workspace", workspaceId: sourceWorkspaceId },
+        repoRoot: repoDir,
+        requestId: "req-subdirectory-sibling",
+      },
+    );
+
+    assertArchiveResult(result, {
+      archivedWorkspaceIds: [sourceWorkspaceId],
+      removedDirectory: false,
+    });
+    expect(existsSync(worktree.worktreePath)).toBe(true);
+  });
+
+  // The mirror image: archiving the nested record must not take the whole worktree
+  // with it, even though ownership resolution widens that cwd to the worktree root.
+  test("archiving a subdirectory workspace keeps its active worktree root", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const ottoHome = path.join(tempDir, ".otto");
+    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "subdirectory-target");
+    const rootWorkspaceId = "ws-subdirectory-root";
+    const subdirectoryWorkspaceId = "ws-subdirectory-target";
+    const subdirectory = path.join(worktree.worktreePath, "packages", "app");
+    mkdirSync(subdirectory, { recursive: true });
+
+    const result = await archiveByScope(
+      createArchiveDeps({
+        ottoHome,
+        activeWorkspaces: [
+          {
+            workspaceId: rootWorkspaceId,
+            cwd: worktree.worktreePath,
+            kind: "worktree",
+            worktreeRoot: worktree.worktreePath,
+            isOttoOwnedWorktree: true,
+          },
+          {
+            workspaceId: subdirectoryWorkspaceId,
+            cwd: subdirectory,
+            kind: "worktree",
+            worktreeRoot: worktree.worktreePath,
+            isOttoOwnedWorktree: true,
+          },
+        ],
+      }),
+      {
+        scope: { kind: "workspace", workspaceId: subdirectoryWorkspaceId },
+        repoRoot: repoDir,
+        requestId: "req-subdirectory-target",
+      },
+    );
+
+    assertArchiveResult(result, {
+      archivedWorkspaceIds: [subdirectoryWorkspaceId],
+      removedDirectory: false,
+    });
+    expect(existsSync(worktree.worktreePath)).toBe(true);
+  });
+
+  test("workspace scope runs teardown from the exact nested workspace before deleting its worktree", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const nestedRelative = path.join("packages", "app");
+    writeTeardownConfig(
+      repoDir,
+      nestedRelative,
+      "node -e \"require('fs').writeFileSync(process.env.OTTO_SOURCE_CHECKOUT_PATH + '/nested-teardown.log', process.cwd())\"",
+    );
+    commitAll(repoDir, "nested teardown");
+
+    const ottoHome = path.join(tempDir, ".otto");
+    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "nested-teardown");
+    const workspaceCwd = path.join(worktree.worktreePath, nestedRelative);
+    const matchesWorkspaceCwd = createRealpathAwarePathMatcher(workspaceCwd);
+    const workspaceId = "ws-nested-teardown";
+
+    const result = await archiveByScope(
+      createArchiveDeps({
+        ottoHome,
+        activeWorkspaces: [
+          {
+            workspaceId,
+            cwd: workspaceCwd,
+            kind: "worktree",
+            worktreeRoot: worktree.worktreePath,
+            isOttoOwnedWorktree: true,
+            mainRepoRoot: repoDir,
+          },
+        ],
+      }),
+      {
+        scope: { kind: "workspace", workspaceId },
+        requestId: "req-nested-teardown",
+      },
+    );
+
+    assertArchiveResult(result, {
+      archivedWorkspaceIds: [workspaceId],
+      removedDirectory: true,
+    });
+    expect(existsSync(worktree.worktreePath)).toBe(false);
+    expect(
+      matchesWorkspaceCwd(readFileSync(path.join(repoDir, "nested-teardown.log"), "utf8").trim()),
+    ).toBe(true);
   });
 
   // A language server is a child process keyed by directory, so nothing else in the
@@ -291,19 +459,55 @@ describe("archiveByScope", () => {
     expect(deps.stoppedLanguageServerRoots).toEqual([]);
   });
 
-  test("worktree scope archives every workspace on the directory and removes it", async () => {
+  // Teardown is per distinct directory, not per record: two workspaces sharing the
+  // worktree root owe ONE root teardown (the command exits 2 on a second run), while
+  // the nested record owes its own.
+  test("worktree scope archives root and subdirectory workspaces before removing the backing worktree", async () => {
     const { tempDir, repoDir } = createGitRepo();
+    const nestedRelative = path.join("packages", "app");
+    writeTeardownConfig(
+      repoDir,
+      ".",
+      "node -e \"const fs=require('fs');const out=process.env.OTTO_SOURCE_CHECKOUT_PATH+'/root-scope-teardown.log';if(fs.existsSync(out))process.exit(2);fs.writeFileSync(out,'ok')\"",
+    );
+    writeTeardownConfig(
+      repoDir,
+      nestedRelative,
+      "node -e \"require('fs').writeFileSync(process.env.OTTO_SOURCE_CHECKOUT_PATH+'/nested-scope-teardown.log','ok')\"",
+    );
+    commitAll(repoDir, "scope teardown");
     const ottoHome = path.join(tempDir, ".otto");
     const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "worktree-scope");
     const workspaceA = "ws-worktree-a";
     const workspaceB = "ws-worktree-b";
+    const workspaceC = "ws-worktree-subdirectory";
+    const subdirectory = path.join(worktree.worktreePath, nestedRelative);
 
     const result = await archiveByScope(
       createArchiveDeps({
         ottoHome,
         activeWorkspaces: [
-          { workspaceId: workspaceA, cwd: worktree.worktreePath, kind: "worktree" },
-          { workspaceId: workspaceB, cwd: worktree.worktreePath, kind: "local_checkout" },
+          {
+            workspaceId: workspaceA,
+            cwd: worktree.worktreePath,
+            kind: "worktree",
+            worktreeRoot: worktree.worktreePath,
+            isOttoOwnedWorktree: true,
+          },
+          {
+            workspaceId: workspaceB,
+            cwd: worktree.worktreePath,
+            kind: "worktree",
+            worktreeRoot: worktree.worktreePath,
+            isOttoOwnedWorktree: true,
+          },
+          {
+            workspaceId: workspaceC,
+            cwd: subdirectory,
+            kind: "worktree",
+            worktreeRoot: worktree.worktreePath,
+            isOttoOwnedWorktree: true,
+          },
         ],
       }),
       {
@@ -313,10 +517,14 @@ describe("archiveByScope", () => {
       },
     );
 
-    expect(result.archivedWorkspaceIds).toEqual(expect.arrayContaining([workspaceA, workspaceB]));
-    expect(result.archivedWorkspaceIds).toHaveLength(2);
+    expect(result.archivedWorkspaceIds).toEqual(
+      expect.arrayContaining([workspaceA, workspaceB, workspaceC]),
+    );
+    expect(result.archivedWorkspaceIds).toHaveLength(3);
     expect(result.removedDirectory).toBe(true);
     expect(existsSync(worktree.worktreePath)).toBe(false);
+    expect(readFileSync(path.join(repoDir, "root-scope-teardown.log"), "utf8")).toBe("ok");
+    expect(readFileSync(path.join(repoDir, "nested-scope-teardown.log"), "utf8")).toBe("ok");
   });
 
   test("workspace scope never removes a non-Otto-owned directory", async () => {
