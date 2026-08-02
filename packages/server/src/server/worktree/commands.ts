@@ -142,6 +142,10 @@ export async function archiveCommand(
     const result = await archiveByScope(dependencies, {
       scope: { kind: "worktree", targetPath },
       requestId: input.requestId,
+      // Forwarded, not dropped: archiveByScope force-refreshes this repo's git
+      // snapshot so the removed worktree stops showing in every client that
+      // still holds the pre-archive worktree list.
+      ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
     });
 
     return {
@@ -167,6 +171,7 @@ export async function archiveCommand(
   const result = await archiveByScope(dependencies, {
     scope: { kind: "workspace", workspaceId },
     requestId: input.requestId,
+    ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
   });
 
   return {

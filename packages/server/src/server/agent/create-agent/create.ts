@@ -10,6 +10,7 @@ import type {
   CreateOttoWorktreeWorkflowFn,
   CreateOttoWorktreeWorkflowResult,
 } from "../../worktree-session.js";
+import type { ChangeRequestCheckoutSource } from "@otto-code/protocol/messages";
 import type { AgentAttachment, FirstAgentContext, GitSetupOptions } from "../../messages.js";
 import type { AgentManager, CreateAgentOptions, ManagedAgent } from "../agent-manager.js";
 import type { AgentPromptInput, AgentRunOptions, AgentSessionConfig } from "../agent-sdk-types.js";
@@ -128,6 +129,9 @@ export interface CreateAgentFromMcpInput {
     refName?: string;
     action?: "branch-off" | "checkout";
     githubPrNumber?: number;
+    // Forge-neutral change-request checkout. Carried alongside githubPrNumber so
+    // a spawn onto a Bitbucket or GitLab PR is not resolved against GitHub.
+    checkoutSource?: ChangeRequestCheckoutSource;
   };
 }
 
@@ -629,7 +633,11 @@ async function resolveMcpCwd(params: {
     return { resolvedCwd: params.cwd };
   }
   const shouldCreateWorktree = Boolean(
-    worktree.worktreeName || worktree.refName || worktree.action || worktree.githubPrNumber,
+    worktree.worktreeName ||
+    worktree.refName ||
+    worktree.action ||
+    worktree.githubPrNumber ||
+    worktree.checkoutSource,
   );
   if (!shouldCreateWorktree) {
     return { resolvedCwd: params.cwd };
@@ -639,6 +647,7 @@ async function resolveMcpCwd(params: {
     !worktree.baseBranch &&
     !worktree.refName &&
     !worktree.action &&
+    !worktree.checkoutSource &&
     worktree.githubPrNumber === undefined
   ) {
     throw new Error("baseBranch is required when creating a worktree");
@@ -652,6 +661,7 @@ async function resolveMcpCwd(params: {
       refName: worktree.refName,
       action: worktree.action,
       githubPrNumber: worktree.githubPrNumber,
+      ...(worktree.checkoutSource ? { checkoutSource: worktree.checkoutSource } : {}),
       firstAgentContext: { prompt: params.initialPrompt },
       runSetup: false,
       ottoHome: dependencies.ottoHome,

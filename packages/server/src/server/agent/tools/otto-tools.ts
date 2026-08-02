@@ -570,6 +570,7 @@ function resolveWorkspaceWorktreeTarget(input: {
   baseBranch?: string;
   branch?: string;
   prNumber?: number;
+  forge?: string;
 }): McpCreateWorktreeTarget {
   switch (input.mode ?? "branch-off") {
     case "checkout-branch":
@@ -581,10 +582,15 @@ function resolveWorkspaceWorktreeTarget(input: {
           ["branchName", input.branchName],
           ["baseBranch", input.baseBranch],
           ["prNumber", input.prNumber],
+          ["forge", input.forge],
         ],
-        "branchName, baseBranch, and prNumber are not valid for checkout-branch mode",
+        "branchName, baseBranch, prNumber, and forge are not valid for checkout-branch mode",
       );
-      return { kind: "checkout-branch", branch: input.branch };
+      return {
+        kind: "checkout-branch",
+        branch: input.branch,
+        ...(input.worktreeSlug ? { worktreeSlug: input.worktreeSlug } : {}),
+      };
     case "checkout-pr":
       if (input.prNumber === undefined) {
         throw new Error("prNumber is required for checkout-pr mode");
@@ -597,14 +603,19 @@ function resolveWorkspaceWorktreeTarget(input: {
         ],
         "branchName, baseBranch, and branch are not valid for checkout-pr mode",
       );
-      return { kind: "checkout-pr", githubPrNumber: input.prNumber };
+      return {
+        kind: "checkout-pr",
+        githubPrNumber: input.prNumber,
+        ...(input.forge ? { forge: input.forge } : {}),
+      };
     default:
       assertWorkspaceOptionsAbsent(
         [
           ["branch", input.branch],
           ["prNumber", input.prNumber],
+          ["forge", input.forge],
         ],
-        "branch and prNumber require a checkout mode",
+        "branch, prNumber, and forge require a checkout mode",
       );
       return {
         kind: "branch-off",
@@ -1291,7 +1302,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       ...(typeof callerAgent.config.webSearch === "boolean"
         ? { webSearch: callerAgent.config.webSearch }
         : {}),
-      ...(callerAgent.config.title ? { title: callerAgent.config.title } : {}),
+      // Deliberately not `title`. Everything else here is runtime config worth
+      // inheriting; the title is a label, and stamping the caller's chat title
+      // onto the schedule made every run of every agent-created schedule show up
+      // as "Parent agent" instead of a title derived from the schedule's prompt
+      // (resolveScheduleAgentTitle prefers config.title over the prompt).
       ...(callerAgent.config.extra ? { extra: callerAgent.config.extra } : {}),
       ...(callerAgent.config.featureValues
         ? { featureValues: callerAgent.config.featureValues }
@@ -1450,16 +1465,19 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   };
 
   const resolveNewAgentScheduleTarget = (params?: { provider?: string; cwd?: string }) => {
-    if (!params?.provider?.trim()) {
-      throw new Error("provider is required when target is new-agent");
-    }
-
+    // Check the caller first: an agent scheduling work inherits its own
+    // provider/model, so demanding an explicit provider before looking would
+    // reject the common "schedule this same thing nightly" call.
     const callerAgent = resolveCallerAgent();
     if (callerAgent) {
       return {
         type: "new-agent" as const,
         config: buildCallerAgentScheduleConfig(callerAgent, params),
       };
+    }
+
+    if (!params?.provider?.trim()) {
+      throw new Error("provider is required when target is new-agent");
     }
 
     const resolvedProviderModel = resolveScheduleProviderAndModel({
@@ -1578,16 +1596,28 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       .object({
         kind: z.literal("checkout-branch"),
         branch: z.string().min(1).describe("Existing branch to check out."),
+        worktreeSlug: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Optional worktree slug/path label. Omit to derive one from the branch."),
       })
       .strict()
       .describe("Check out an existing branch."),
     z
       .object({
         kind: z.literal("checkout-pr"),
-        githubPrNumber: z.number().int().positive().describe("GitHub pull request number."),
+        githubPrNumber: z.number().int().positive().describe("Change request number."),
+        forge: z
+          .string()
+          .min(1)
+          .optional()
+          .describe(
+            "Git host the change request lives on, for example github or bitbucket. Defaults to the repository's resolved forge.",
+          ),
       })
       .strict()
-      .describe("Check out a GitHub PR."),
+      .describe("Check out a change request (pull request / merge request)."),
   ]);
   const AgentWorkspaceInputSchema = z.discriminatedUnion("kind", [
     z
@@ -2269,10 +2299,6 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       throw new Error("relationship and workspace must be provided together");
     }
 
-    if (!cwd?.trim()) {
-      throw new Error("cwd is required for legacy top-level create_agent calls");
-    }
-
     const legacyWorktreeTarget = resolveLegacyCreateAgentWorktreeTarget({
       worktreeName,
       branchName,
@@ -2280,6 +2306,24 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       refName,
       githubPrNumber,
     });
+
+    if (!cwd?.trim()) {
+      if (legacyWorktreeTarget) {
+        throw new Error("cwd is required for legacy top-level create_agent calls");
+      }
+      // No placement at all: a top-level caller that just says "make me an
+      // agent" gets a fresh local workspace at the daemon's own directory,
+      // rather than an error demanding a cwd it has no way to know.
+      return canonicalTopLevelCreateAgentArgsSchema.parse({
+        ...canonicalCandidate,
+        relationship: { kind: "detached" },
+        workspace: {
+          kind: "create",
+          source: { kind: "directory", path: process.cwd() },
+        },
+        ...(Object.keys(settings).length > 0 ? { settings } : {}),
+      });
+    }
     const workspace = legacyWorktreeTarget
       ? {
           kind: "create" as const,
@@ -2420,11 +2464,16 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         return {
           action: "checkout",
           refName: target.branch,
+          ...(target.worktreeSlug ? { worktreeName: target.worktreeSlug } : {}),
         };
       case "checkout-pr":
         return {
           action: "checkout",
-          githubPrNumber: target.githubPrNumber,
+          checkoutSource: {
+            kind: "change_request",
+            number: target.githubPrNumber,
+            ...(target.forge ? { forge: target.forge } : {}),
+          },
         };
       default:
         throw new Error("unreachable");
@@ -3791,7 +3840,12 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     personality?: string;
     cwd?: string;
     thinkingOptionId?: string;
+    isolation?: "local" | "worktree";
   }) => {
+    // Left off the config entirely when omitted: the run resolves `isolation ??
+    // "local"`, and materializing the default here would make every stored
+    // schedule claim an explicit choice its author never made.
+    const isolation = input.isolation ? { isolation: input.isolation } : {};
     const personalityName = input.personality?.trim();
     if (personalityName) {
       const brain = await resolveCreateAgentBrain({
@@ -3812,12 +3866,17 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         ...(brain.thinkingOptionId !== undefined
           ? { thinkingOptionId: brain.thinkingOptionId }
           : {}),
+        ...isolation,
       };
     }
 
     const baseTarget = resolveNewAgentScheduleTarget({ provider: input.provider, cwd: input.cwd });
-    const config: typeof baseTarget.config & { thinkingOptionId?: string } = {
+    const config: typeof baseTarget.config & {
+      thinkingOptionId?: string;
+      isolation?: "local" | "worktree";
+    } = {
       ...baseTarget.config,
+      ...isolation,
     };
     const inheritedEffort =
       typeof config.thinkingOptionId === "string" ? config.thinkingOptionId : undefined;
@@ -3873,6 +3932,12 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .describe(
             `${EFFORT_INPUT_DESCRIPTION} Defaults to your own effort option when scheduling your provider.`,
           ),
+        isolation: z
+          .enum(["local", "worktree"])
+          .optional()
+          .describe(
+            "Where each run works. 'local' (default) runs in the schedule's cwd; 'worktree' cuts a fresh Otto-managed worktree per run.",
+          ),
         maxRuns: z.number().int().positive().optional(),
         expiresIn: z.string().optional(),
       },
@@ -3887,6 +3952,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       personality,
       cwd,
       thinkingOptionId,
+      isolation,
       maxRuns,
       expiresIn,
     }) => {
@@ -3899,6 +3965,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         personality,
         cwd,
         thinkingOptionId,
+        ...(isolation ? { isolation } : {}),
       });
 
       const expiresAt = buildScheduleExpiry(expiresIn);
@@ -4423,7 +4490,15 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           .int()
           .positive()
           .optional()
-          .describe("Pull request number for checkout-pr mode."),
+          .describe("Change request number for checkout-pr mode."),
+        forge: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe(
+            "Git host the change request lives on for checkout-pr mode, for example github or bitbucket. Defaults to the workspace's resolved forge.",
+          ),
       },
       outputSchema: WorkspaceAutomationSummarySchema.shape,
     },
@@ -4438,6 +4513,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       baseBranch,
       branch,
       prNumber,
+      forge,
     }) => {
       let workspace: PersistedWorkspaceRecord;
       if (isolation === "local") {
@@ -4450,6 +4526,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
             ["baseBranch", baseBranch],
             ["branch", branch],
             ["prNumber", prNumber],
+            ["forge", forge],
           ],
           "Worktree options require isolation worktree",
         );
@@ -4485,6 +4562,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
                 ...(baseBranch ? { baseBranch } : {}),
                 ...(branch ? { branch } : {}),
                 ...(prNumber === undefined ? {} : { prNumber }),
+                ...(forge ? { forge } : {}),
               }),
             ),
             ...(projectId ? { projectId } : {}),
@@ -4546,6 +4624,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         { listActiveWorkspaces: options.listActiveWorkspaces },
         workspaceId,
       );
+      // A worktree-backed workspace lives under a parent repo whose worktree
+      // list goes stale the moment this one is removed. Hand the repo root to
+      // archiveByScope so it force-refreshes that snapshot, exactly as
+      // archive_worktree does — otherwise the removed worktree lingers in the UI.
+      const repoRoot =
+        workspace.kind === "worktree" && options.workspaceGitService
+          ? await options.workspaceGitService.resolveRepoRoot(workspace.cwd).catch(() => undefined)
+          : undefined;
       const result = await archiveByScope(
         archiveWorktreeDependencies(options, {
           agentManager,
@@ -4556,6 +4642,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         {
           requestId: "mcp:archive_workspace",
           scope: { kind: "workspace", workspaceId: workspace.workspaceId },
+          ...(repoRoot ? { repoRoot } : {}),
         },
       );
       return {
@@ -5258,8 +5345,8 @@ function registerNodeOutputTool(input: {
 
 type McpCreateWorktreeTarget =
   | { kind: "branch-off"; worktreeSlug?: string; branchName?: string; baseBranch?: string }
-  | { kind: "checkout-branch"; branch: string }
-  | { kind: "checkout-pr"; githubPrNumber: number };
+  | { kind: "checkout-branch"; branch: string; worktreeSlug?: string }
+  | { kind: "checkout-pr"; githubPrNumber: number; forge?: string };
 
 interface ArchiveWorktreeCommandContext {
   agentManager: AgentManager;
@@ -5336,9 +5423,25 @@ function createMcpWorktreeCommandInput(
         ...(target.baseBranch ? { refName: target.baseBranch } : {}),
       };
     case "checkout-branch":
-      return { ...base, action: "checkout", refName: target.branch };
+      return {
+        ...base,
+        action: "checkout",
+        refName: target.branch,
+        ...(target.worktreeSlug ? { worktreeSlug: target.worktreeSlug } : {}),
+      };
     case "checkout-pr":
-      return { ...base, action: "checkout", githubPrNumber: target.githubPrNumber };
+      // Forge-neutral: a change request number means nothing without the forge
+      // it belongs to, so it rides in checkoutSource rather than the legacy
+      // GitHub-only githubPrNumber field.
+      return {
+        ...base,
+        action: "checkout",
+        checkoutSource: {
+          kind: "change_request",
+          number: target.githubPrNumber,
+          ...(target.forge ? { forge: target.forge } : {}),
+        },
+      };
     default:
       throw new Error("unreachable");
   }

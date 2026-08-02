@@ -1154,7 +1154,7 @@ describe("create_agent MCP tool", () => {
   });
   const ensureWorkspaceForCreate = async () => "workspace-created";
 
-  it("requires a concise title no longer than 60 characters", async () => {
+  it("caps the title at 60 characters, and lets it be omitted", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const server = await createAgentMcpServer({
       agentManager,
@@ -1166,14 +1166,14 @@ describe("create_agent MCP tool", () => {
     const tool = registeredTool(server, "create_agent");
     expect(tool).toBeDefined();
 
+    // Title is optional by design: omitting it lets Otto derive one from the prompt.
     const missingTitle = await tool.inputSchema.safeParseAsync({
       ...detachedDirectoryWorkspace(existingCwd),
       settings: { modeId: "default" },
       provider: "codex/gpt-5.4",
       initialPrompt: "test",
     });
-    expect(missingTitle.success).toBe(false);
-    expect(missingTitle.error.issues[0].path).toEqual(["title"]);
+    expect(missingTitle.success).toBe(true);
 
     const tooLong = await tool.inputSchema.safeParseAsync({
       ...detachedDirectoryWorkspace(existingCwd),
@@ -1195,7 +1195,7 @@ describe("create_agent MCP tool", () => {
     expect(ok.success).toBe(true);
   });
 
-  it("requires initialPrompt", async () => {
+  it("accepts a bare create_agent with no initialPrompt", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const server = await createAgentMcpServer({
       agentManager,
@@ -1211,9 +1211,20 @@ describe("create_agent MCP tool", () => {
       provider: "codex/gpt-5.4",
       title: "Short title",
     });
-    expect(parsed.success).toBe(false);
+    // Omitting both title and initialPrompt is the "open a bare new chat" path — the agent gets
+    // DEFAULT_BARE_AGENT_INITIAL_PROMPT and greets the user. An empty string is still rejected.
+    expect(parsed.success).toBe(true);
+
+    const emptyPrompt = await tool.inputSchema.safeParseAsync({
+      ...detachedDirectoryWorkspace(existingCwd),
+      settings: { modeId: "default" },
+      provider: "codex/gpt-5.4",
+      title: "Short title",
+      initialPrompt: "",
+    });
+    expect(emptyPrompt.success).toBe(false);
     expect(
-      parsed.error.issues.some(
+      emptyPrompt.error.issues.some(
         (issue: { path: Array<string | number> }) => issue.path[0] === "initialPrompt",
       ),
     ).toBe(true);
@@ -1475,7 +1486,7 @@ describe("create_agent MCP tool", () => {
     );
   });
 
-  it("requires provider as provider/model and rejects the old model field", async () => {
+  it("enforces provider/model formatting and the provider-or-personality contract", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const server = await createAgentMcpServer({
       agentManager,
@@ -1486,18 +1497,37 @@ describe("create_agent MCP tool", () => {
     });
     const tool = registeredTool(server, "create_agent");
 
-    const missingProvider = await tool.inputSchema.safeParseAsync({
+    // `provider` is optional at the schema level because a personality can
+    // supply the brain instead. "One of provider/personality" is enforced at
+    // resolution (resolveCreateAgentBrain), not by the schema — so a create with
+    // neither still parses...
+    const missingBrain = await tool.inputSchema.safeParseAsync({
       ...detachedDirectoryWorkspace(existingCwd),
       settings: { modeId: "default" },
       title: "Short title",
       initialPrompt: "test",
     });
-    expect(missingProvider.success).toBe(false);
-    expect(
-      missingProvider.error.issues.some(
-        (issue: { path: Array<string | number> }) => issue.path[0] === "provider",
-      ),
-    ).toBe(true);
+    expect(missingBrain.success).toBe(true);
+
+    // ...but the resolution-time contract still rejects it loudly.
+    await expect(
+      tool.handler({
+        ...detachedDirectoryWorkspace(existingCwd),
+        settings: { modeId: "default" },
+        title: "Short title",
+        initialPrompt: "test",
+      }),
+    ).rejects.toThrow("Either provider or personality is required.");
+
+    // Supplying only a personality (no provider) parses at the schema level.
+    const personalityOnly = await tool.inputSchema.safeParseAsync({
+      ...detachedDirectoryWorkspace(existingCwd),
+      settings: { modeId: "default" },
+      title: "Short title",
+      personality: "Backend Specialist",
+      initialPrompt: "test",
+    });
+    expect(personalityOnly.success).toBe(true);
 
     const providerWithoutModel = await tool.inputSchema.safeParseAsync({
       ...detachedDirectoryWorkspace(existingCwd),
@@ -1561,7 +1591,7 @@ describe("create_agent MCP tool", () => {
     expect(parsed.success).toBe(true);
   });
 
-  it("exposes workspace tools instead of worktree tools", async () => {
+  it("exposes workspace tools alongside the worktree tools", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const server = await createAgentMcpServer({
       agentManager,
@@ -1572,9 +1602,11 @@ describe("create_agent MCP tool", () => {
     expect(lookupTool(server, "create_workspace")).toBeDefined();
     expect(lookupTool(server, "list_workspaces")).toBeDefined();
     expect(lookupTool(server, "archive_workspace")).toBeDefined();
-    expect(lookupTool(server, "create_worktree")).toBeUndefined();
-    expect(lookupTool(server, "list_worktrees")).toBeUndefined();
-    expect(lookupTool(server, "archive_worktree")).toBeUndefined();
+    // Otto keeps the worktree tools: they are the only way to spawn an agent
+    // into a branch-off or PR checkout, which the workspace tools do not cover.
+    expect(lookupTool(server, "create_worktree")).toBeDefined();
+    expect(lookupTool(server, "list_worktrees")).toBeDefined();
+    expect(lookupTool(server, "archive_worktree")).toBeDefined();
     expect(lookupTool(server, "detach_agent")).toBeUndefined();
     expect(lookupTool(server, "update_heartbeat")).toBeUndefined();
   });
@@ -2462,7 +2494,7 @@ describe("create_agent MCP tool", () => {
 
     expect(createOttoWorktree).toHaveBeenCalledWith(
       expect.objectContaining({
-        githubPrNumber: 123,
+        checkoutSource: { kind: "change_request", number: 123 },
         firstAgentContext: { prompt: "Rename this PR branch from prompt" },
       }),
       expect.objectContaining({
@@ -2883,7 +2915,7 @@ describe("create_agent MCP tool", () => {
     }
   });
 
-  it("does not expose worktree path or slug operations", async () => {
+  it("archives a worktree by slug", async () => {
     const { agentManager, agentStorage } = createTestDeps();
     const tempDir = realpathSync.native(
       await mkdtemp(join(tmpdir(), "otto-mcp-archive-worktree-slug-")),
@@ -2931,8 +2963,31 @@ describe("create_agent MCP tool", () => {
         github: createGitHubServiceStub(),
         logger,
       });
-      expect(lookupTool(server, "create_worktree")).toBeUndefined();
-      expect(lookupTool(server, "archive_worktree")).toBeUndefined();
+      const createTool = registeredTool(server, "create_worktree");
+      const archiveTool = registeredTool(server, "archive_worktree");
+      const created = await createTool.handler({
+        cwd: repoDir,
+        target: { kind: "branch-off", worktreeSlug: "archive-slug-worktree", baseBranch: "main" },
+      });
+
+      const response = await archiveTool.handler({
+        cwd: repoDir,
+        worktreeSlug: "archive-slug-worktree",
+      });
+
+      expect(response.structuredContent).toEqual({ success: true });
+      expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith(repoDir, {
+        force: true,
+        reason: "archive-worktree",
+      });
+      expect(workspaceGitService.resolveRepoRoot).toHaveBeenCalledWith(repoDir);
+      expect(workspaceGitService.listWorktrees).toHaveBeenCalledWith(repoDir, {
+        force: true,
+        reason: "mcp:archive-worktree",
+      });
+      await expect(
+        access(z.string().parse(created.structuredContent.worktreePath)),
+      ).rejects.toThrow();
     } finally {
       await removeTempDir(tempDir);
     }
@@ -3086,11 +3141,15 @@ describe("create_agent MCP tool", () => {
     if (!parsed.success) {
       throw new Error("Expected caller create_agent input to parse");
     }
+    // notifyOnFinish is no longer schema-defaulted (WP-E moved the default to
+    // the handler so it can honor the daemon agentBehaviors.notifyOnFinishDefault
+    // toggle); an omitted arg parses as absent here and resolves on at the
+    // handler. The default-on behavior is covered by the guidance test below.
     expect(parsed.data).toMatchObject({
       relationship: { kind: "subagent" },
       workspace: { kind: "current" },
-      notifyOnFinish: true,
     });
+    expect(parsed.data).not.toHaveProperty("notifyOnFinish");
   });
 
   it("returns notify-on-finish guidance for caller-created agents", async () => {
@@ -3584,10 +3643,14 @@ describe("send_agent_prompt MCP tool", () => {
     if (!parsed.success) {
       throw new Error("Expected caller send_agent_prompt input to parse");
     }
+    // background still schema-defaults to true for agent-scoped sends;
+    // notifyOnFinish is no longer schema-defaulted (WP-E moved that default to
+    // the handler so it can honor agentBehaviors.notifyOnFinishDefault). The
+    // handler still resolves it on by default — asserted via the guidance below.
     expect(parsed.data).toMatchObject({
       background: true,
-      notifyOnFinish: true,
     });
+    expect(parsed.data).not.toHaveProperty("notifyOnFinish");
 
     const response = await tool.handler(parsed.data as Record<string, unknown>);
 
