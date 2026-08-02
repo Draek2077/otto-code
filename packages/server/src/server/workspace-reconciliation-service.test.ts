@@ -627,6 +627,9 @@ describe("WorkspaceReconciliationService", () => {
       baseBranch: null,
       isOttoOwnedWorktree: false,
       mainRepoRoot: null,
+      // Otto records whether a workspace is hidden from the sidebar (the
+      // schedule-run workspaces that bypass the occupied-directory guard).
+      hidden: false,
       createdAt: timestamp,
       updatedAt: expect.any(String),
       archivedAt: expect.any(String),

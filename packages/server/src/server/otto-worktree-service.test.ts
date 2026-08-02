@@ -815,6 +815,19 @@ function createGitHubServiceStub(): GitHubService {
       labels: [],
     }),
     getPullRequestHeadRef: async ({ number }) => `pr-${number}`,
+    // Checking out a PR resolves its target through the forge before creating
+    // the worktree; left unstubbed every checkout-pr path dies on "not a
+    // function" well before the behaviour under test.
+    getPullRequestCheckoutTarget: async ({ number }) => ({
+      number,
+      baseRefName: "main",
+      headRefName: `pr-${number}`,
+      headOwnerLogin: null,
+      headRepositorySshUrl: null,
+      headRepositoryUrl: null,
+      isCrossRepository: false,
+      checkoutRefs: [{ remoteName: "origin", remoteRef: `refs/pull/${number}/head` }],
+    }),
     getCurrentPullRequestStatus: async () => null,
     createPullRequest: async () => ({
       number: 1,

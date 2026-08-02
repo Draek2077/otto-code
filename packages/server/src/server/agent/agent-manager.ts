@@ -4120,6 +4120,12 @@ export class AgentManager {
       return { status: "not_running" };
     }
 
+    // Stop means stop. Without the hold, finalizing the cancelled turn drains
+    // the steer queue, so pressing Stop immediately started the agent again on
+    // whatever was queued behind it. The hold covers this turn only; the next
+    // run clears it and the queue rides behind that one instead.
+    this.holdSteerQueue(agentId);
+
     const interruptOutcome = await this.interruptSession(agent.session, agentId);
     if (interruptOutcome !== "acknowledged" && this.isRunStillActive(agent, foregroundTurnId)) {
       // The provider never accepted the interrupt and its work is still going.
