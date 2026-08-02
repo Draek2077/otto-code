@@ -9,6 +9,42 @@ findings I re-verified myself marked as such. It **supersedes the optimistic par
 necessary and told us almost nothing. Six regressions, one of them a hard crash on a primary surface,
 all pass those gates.
 
+## Status as of 2026-08-02
+
+All eight P0 items are closed. Verified against the tree, not taken from the commit log.
+
+| #   | Item                                                | State            | Evidence                                                                                         |
+| --- | --------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------ |
+| 1   | `status-projection.ts` COMPAT(forgeSpecific) mirror | Fixed            | `COMPAT(forgeSpecific)` present in `checkout/status-projection.ts`                               |
+| 2   | Stop does not hold the steer queue                  | Fixed            | `holdSteerQueue` called at `agent-manager.ts:4144`                                               |
+| 3   | Tool-output bounding unwired                        | Fixed            | `limitAgentTimelineItemContent` imported by `agent-manager.ts` and `provider-subagents/store.ts` |
+| 4   | Provider-subagent rows misroute                     | Fixed 2026-08-02 | see below                                                                                        |
+| 5   | Server stale tests                                  | Fixed            | `server-tests (ubuntu-latest)` green                                                             |
+| 6   | CI hang from leaked intervals                       | Fixed            | suites no longer hang                                                                            |
+| 7   | App residue                                         | Fixed            | `app-tests` green; note some UI assertions were **parked**, not repaired                         |
+| 8   | Highlight shell + SQL registrations                 | Fixed 2026-08-02 | see below                                                                                        |
+
+**Item 4 was mis-scoped in the original writeup.** It was recorded as a missing
+`onOpenProviderSubagent` handler. The handler was indeed missing, but the deeper cause was that
+`normalizeWorkspaceTabTarget` had no branch for `provider_subagent` at all, so every such target
+normalized to `null` and the tab could not be opened or restored even with a handler in place. The
+panel, the tab menu entry and the persistence key builder had all shipped; only the normalizer and
+the click path were absent. Both are now fixed, with `openProviderSubagentTab` following the house
+`open<Thing>Tab` pattern. The audit's suggested source commit (`6fc491e62`) is **not** a fix commit;
+it is upstream's "cut 0.2.5" release commit, so the fix was derived rather than copied.
+
+Two neighbouring kinds, `working_diff` and `commit_diff`, are also unnormalizable, and that is
+**deliberate**: neither has a registered panel here, because we kept our own Changes view. They are
+tagged `DEFERRED(paseoDiffTab)` in `workspace-tabs/identity.ts` with a test pinning the behaviour, so
+they are not mistaken for the same bug later.
+
+**Item 8 had a testable invariant hiding in it.** `detect.ts` says in its own header that every
+extension it can return is a key in `parsers.ts`. The merge broke exactly that: detection still
+scored shell and SQL while the parser table had lost both rows, so Otto confidently classified a
+snippet and then had nothing to colour it with. Beyond restoring `sh`/`bash`/`zsh`/`sql`, `detect.ts`
+now exports `DETECTABLE_EXTENSIONS` and `parsers.test.ts` asserts the whole invariant, so the next
+dropped row fails a test instead of silently degrading.
+
 ## The pattern connecting almost everything
 
 **The implementation survived; the wiring did not.** A reducer with no caller. A schema branch with
@@ -18,7 +54,34 @@ typechecks, lints and builds clean, which is precisely why the green build prove
 When triaging anything below, the question is never "does the code exist" but "is it reachable from a
 real user action."
 
-## Blocked on a decision that is not the implementer's to make
+## RESOLVED 2026-08-02: Hub is gated off, not stripped
+
+Philippe's call: **do not risk more merge damage by tearing the wiring out; stop it loading.**
+
+Hub is now switched off at the **import specifier**. `packages/server/src/server/hub-disabled.ts`
+and `packages/cli/src/commands/hub-disabled.ts` export inert stand-ins under the same names, and the
+three value imports in `bootstrap.ts`, `session.ts` and `cli.ts` resolve there instead. Every other
+line at those call sites is byte-identical to upstream, so upstream's future edits to the hub wiring
+auto-merge rather than conflicting with our deletions. That was the whole point: deleting the wiring
+would have put a permanent conflict in the three files upstream edits most.
+
+Verified, not assumed: after `npm run build:server`, no emitted `.js` in `packages/server/dist`
+imports anything under `hub/`. The subsystem is unreachable from the daemon's module graph, so it is
+never parsed or evaluated. Only `.d.ts` files reference it, and those are compile-time only.
+
+The stubs re-export the real modules' types and derive their constructor signatures via
+`ConstructorParameters<typeof Real...>`. Both are erased at runtime, so fidelity is free and any
+upstream reshape of a Hub interface breaks the stubs loudly instead of drifting.
+
+Three of the six hub suites boot a real daemon through `createOttoDaemon` and cannot pass with the
+wiring inert; they are excluded in `packages/server/vitest.config.ts` rather than edited, so all six
+files stay byte-identical to upstream. The other three construct the controllers directly and still
+pass (23 tests), which is what keeps the stubs honest.
+
+The standing decision is unchanged: Hub stays excluded and unsupported. `rg "DISABLED\(hub\)"` finds
+every part of the switch, and re-enabling is three specifiers plus the test exclusion.
+
+The original finding follows, kept for the record.
 
 **Hub landed, against a documented permanent exclusion. Do not touch it.**
 
@@ -33,8 +96,10 @@ through `agent-storage.ts`, `bootstrap.ts`, `session.ts`, `session/daemon/daemon
 (`requireHubRelationshipSupport`).
 
 Stripping it touches seven shared files, so it must be settled before other work reshapes them.
-**Awaiting Philippe's call: strip, or amend the standing decision.** Until then, leave every Hub file
-exactly as it is.
+~~**Awaiting Philippe's call: strip, or amend the standing decision.**~~ **Settled 2026-08-02: a
+third option was taken.** Neither strip nor amend. The wiring stays exactly where upstream put it and
+is made inert at the import specifier, so the seven shared files keep auto-merging. See the
+resolution above. Every Hub file is still byte-identical to upstream.
 
 ## Verified regressions
 
