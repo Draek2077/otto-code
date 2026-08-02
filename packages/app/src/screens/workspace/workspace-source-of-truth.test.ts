@@ -104,7 +104,7 @@ describe("workspace source of truth consumption", () => {
     ).toEqual({
       kind: "ready",
       title: "feat/workspace-sot",
-      subtitle: "Draek2077/otto-code",
+      subtitle: "otto-code-ai/otto-code",
       shouldShowSubtitle: true,
       isGitCheckout: false,
       currentBranchName: null,

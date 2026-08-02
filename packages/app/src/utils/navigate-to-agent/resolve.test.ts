@@ -16,16 +16,25 @@ interface RecordedHostNav {
 
 interface RecordedTabNav extends NavigateToWorkspaceInput {}
 
+interface RecordedRestore {
+  serverId: string;
+  agentId: string;
+  workspaceId: string;
+}
+
 function createFakeNavigators(target: AgentNavTarget): {
   deps: NavigateToAgentDeps;
   hostNavigations: RecordedHostNav[];
   tabNavigations: RecordedTabNav[];
+  restores: RecordedRestore[];
 } {
   const hostNavigations: RecordedHostNav[] = [];
   const tabNavigations: RecordedTabNav[] = [];
+  const restores: RecordedRestore[] = [];
   return {
     hostNavigations,
     tabNavigations,
+    restores,
     deps: {
       readAgentNavTarget: () => target,
       navigateToHostAgent: (route) => {
@@ -34,6 +43,9 @@ function createFakeNavigators(target: AgentNavTarget): {
       navigateToWorkspace: (input) => {
         tabNavigations.push(input);
         return `/h/${input.serverId}/workspace/${input.workspaceId}`;
+      },
+      restoreArchivedWorkspace: (input) => {
+        restores.push(input);
       },
     },
   };
@@ -60,6 +72,19 @@ describe("resolveNavigateToAgent", () => {
         pin: true,
       },
     ]);
+  });
+
+  it("delegates a restore attempt whenever a workspaceId resolves", () => {
+    const { deps, restores, tabNavigations } = createFakeNavigators({
+      agentWorkspaceId: WORKSPACE_ID,
+    });
+
+    resolveNavigateToAgent({ serverId: SERVER_ID, agentId: AGENT_ID, pin: true }, deps);
+
+    expect(restores).toEqual([
+      { serverId: SERVER_ID, agentId: AGENT_ID, workspaceId: WORKSPACE_ID },
+    ]);
+    expect(tabNavigations).toHaveLength(1);
   });
 
   it("uses the input workspaceId without reading the nav target", () => {

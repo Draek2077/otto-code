@@ -6,11 +6,16 @@ const refreshAgent = vi.fn<(agentId: string) => Promise<unknown>>();
 let connected = true;
 
 vi.mock("expo-router", () => ({
-  router: { navigate: vi.fn() },
+  // `dismissTo` is part of the router surface workspace-route-navigation.ts
+  // depends on; omitting it makes every case here fail at runtime, not compile.
+  router: { navigate: vi.fn(), dismissTo: vi.fn() },
 }));
 
-vi.mock("@/utils/workspace-navigation", () => ({
-  navigateToPreparedWorkspaceTab: vi.fn(() => ""),
+// Mock the store the resolver actually navigates through. Leaving the real one
+// in place runs zustand's persist middleware into AsyncStorage, which needs
+// `window` and fails as an unhandled rejection under the node environment.
+vi.mock("@/stores/navigation-active-workspace-store", () => ({
+  navigateToWorkspace: vi.fn(() => ""),
 }));
 
 vi.mock("@/runtime/host-runtime", () => ({
