@@ -184,6 +184,10 @@ function shouldEmitToolPermissionPrompt(prompt: AgentPromptInput): boolean {
   return /emit\s+(?:a\s+)?synthetic\s+tool\s+permission/i.test(promptToText(prompt));
 }
 
+function shouldEmitTurnFailure(prompt: AgentPromptInput): boolean {
+  return /emit\s+(?:a\s+)?synthetic\s+turn\s+failure/i.test(promptToText(prompt));
+}
+
 // Deterministic shell detail for the synthetic tool-permission scenario. E2E
 // specs assert on the command text, so keep it stable.
 const MOCK_TOOL_PERMISSION_COMMAND = "npm run build";
@@ -924,7 +928,9 @@ export class MockLoadTestAgentSession implements AgentSession {
     const rateLimit = parseMockRateLimitPrompt(prompt);
     const assistantMarkdown = parseMockAssistantMarkdownPrompt(prompt);
     const namedToolCall = parseMockNamedToolCallPrompt(prompt);
-    if (structuredBranchName) {
+    if (shouldEmitTurnFailure(prompt)) {
+      this.scheduleFailedTurn(turn);
+    } else if (structuredBranchName) {
       this.scheduleStructuredJsonTurn(turn, structuredBranchName);
     } else if (structuredTitle) {
       this.scheduleStructuredJsonTurn(turn, structuredTitle);
@@ -1147,6 +1153,36 @@ export class MockLoadTestAgentSession implements AgentSession {
   private scheduleStressTurn(turn: ActiveTurn, stress: AgentStreamStressRequest): void {
     turn.timer = setTimeout(() => {
       this.emitStressTurn(turn, stress);
+    }, 0);
+    turn.timer.unref?.();
+  }
+
+  // A turn that fails outright, with no assistant message in front of it: the
+  // shape a provider error takes when it lands before any content streams.
+  private scheduleFailedTurn(turn: ActiveTurn): void {
+    turn.timer = setTimeout(() => {
+      if (this.activeTurn !== turn) {
+        return;
+      }
+      this.clearTurnTimer(turn);
+      this.emit({
+        type: "turn_started",
+        provider: this.provider,
+        turnId: turn.turnId,
+      });
+      this.activeTurn = null;
+      this.emit({
+        type: "turn_failed",
+        provider: this.provider,
+        turnId: turn.turnId,
+        error: "Requested mock provider failure",
+      });
+      turn.resolve({
+        sessionId: this.id,
+        finalText: "",
+        timeline: [],
+        canceled: false,
+      });
     }, 0);
     turn.timer.unref?.();
   }

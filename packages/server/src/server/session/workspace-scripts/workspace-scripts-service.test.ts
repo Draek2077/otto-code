@@ -313,7 +313,8 @@ describe("start", () => {
     expect(spawnCalls[0]).toMatchObject({
       repoRoot: "/tmp/repo",
       workspaceId: "ws-1",
-      projectSlug: "otto",
+      // Derived from the fixture's remote (Draek2077/otto-code), not the cwd.
+      projectSlug: "otto-code",
       branchName: "feature/scripts",
       scriptName: "app",
       daemonPort: 6868,

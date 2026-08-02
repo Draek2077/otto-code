@@ -136,6 +136,11 @@ import {
 
 const RELOAD_SESSION_CLOSE_TIMEOUT_MS = 3_000;
 const INTERRUPT_SESSION_TIMEOUT_MS = 2_000;
+// Bound at module load so it survives a later vi.useFakeTimers(): close yields one
+// event-loop turn, and a faked setImmediate never fires unless the test advances
+// timers — which it cannot, because it is awaiting the close that is doing the
+// yielding. Capturing the real one keeps the yield honest under both clocks.
+const yieldEventLoopTurn = setImmediate;
 const STORED_AGENT_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: false,
   supportsSessionPersistence: true,
@@ -2581,7 +2586,7 @@ export class AgentManager {
     //
     // One event-loop turn, not flush(): flush also drains persistence, and a
     // close triggered from inside a persistence task then waits on itself.
-    await new Promise<void>((resolveTurn) => setImmediate(resolveTurn));
+    await new Promise<void>((resolveTurn) => yieldEventLoopTurn(resolveTurn));
     this.cancelRunningProviderSubagents(agent);
     const closedAgent = this.prepareAgentForClosure(agent, "agent closed");
     // A provider that fails to clean up must not take the closure with it. The
