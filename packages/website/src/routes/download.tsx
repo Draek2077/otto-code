@@ -21,8 +21,8 @@ import "~/styles.css";
 export const Route = createFileRoute("/download")({
   head: () =>
     pageMeta(
-      "Download Otto for macOS, Windows, Linux, and Android",
-      "Install Otto on your machines. Native desktop apps for macOS, Windows, and Linux, an Android APK, and a web app for everything else. Self-hosted, open source, free to download.",
+      "Download Otto for Windows, Linux, macOS, and Android",
+      "Install Otto on your machines. Native desktop apps for Windows, Linux, and macOS, an Android APK, and a web app for everything else. Self-hosted, open source, free to download.",
       "/download",
     ),
   component: Download,
@@ -51,32 +51,6 @@ function Download() {
         </div>
 
         <div className="divide-y divide-border">
-          {/* macOS: unsigned builds; the notes are load-bearing, see MAC_UNSIGNED_NOTE */}
-          <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3">
-                <AppleIcon className="h-5 w-5 text-foreground" />
-                <span className="font-medium">macOS</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {urls.macDmgArm64 && <DownloadPill href={urls.macDmgArm64} label="Apple Silicon" />}
-                {urls.macDmgX64 && <DownloadPill href={urls.macDmgX64} label="Intel" />}
-                {!urls.macDmgArm64 && !urls.macDmgX64 && (
-                  <p className="text-sm text-muted-foreground">
-                    Not attached to this release. Check GitHub releases.
-                  </p>
-                )}
-              </div>
-            </div>
-            {(urls.macDmgArm64 || urls.macDmgX64) && (
-              <div className="flex flex-col gap-2">
-                <p className="text-sm text-muted-foreground">{MAC_UNSIGNED_NOTE}</p>
-                <CodeBlock size="sm">{MAC_QUARANTINE_COMMAND}</CodeBlock>
-                <p className="text-sm text-muted-foreground">{MAC_NO_AUTOUPDATE_NOTE}</p>
-              </div>
-            )}
-          </div>
-
           {/* Windows */}
           <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -103,6 +77,32 @@ function Download() {
               <DownloadPill href={urls.linuxDeb} label="DEB" />
               <DownloadPill href={urls.linuxRpm} label="RPM" />
             </div>
+          </div>
+
+          {/* macOS: unsigned builds; the notes are load-bearing, see MAC_UNSIGNED_NOTE */}
+          <div className="flex flex-col gap-3 py-5 first:pt-0 last:pb-0">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <AppleIcon className="h-5 w-5 text-foreground" />
+                <span className="font-medium">macOS</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {urls.macDmgArm64 && <DownloadPill href={urls.macDmgArm64} label="Apple Silicon" />}
+                {urls.macDmgX64 && <DownloadPill href={urls.macDmgX64} label="Intel" />}
+                {!urls.macDmgArm64 && !urls.macDmgX64 && (
+                  <p className="text-sm text-muted-foreground">
+                    Not attached to this release. Check GitHub releases.
+                  </p>
+                )}
+              </div>
+            </div>
+            {(urls.macDmgArm64 || urls.macDmgX64) && (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-muted-foreground">{MAC_UNSIGNED_NOTE}</p>
+                <CodeBlock size="sm">{MAC_QUARANTINE_COMMAND}</CodeBlock>
+                <p className="text-sm text-muted-foreground">{MAC_NO_AUTOUPDATE_NOTE}</p>
+              </div>
+            )}
           </div>
         </div>
       </section>

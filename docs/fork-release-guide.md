@@ -155,6 +155,26 @@ The release loop, once you're ready to ship:
   Windows and Linux ship unsigned too (Windows shows a SmartScreen warning on first run; that's
   normal for unsigned installers), but they auto-update normally.
 
+- **Windows updates install silently, and must stay that way.** Otto ships an assisted NSIS
+  installer (`nsis.oneClick: false`), and electron-builder's assisted template only relaunches the
+  app after a _silent_ install. Run it with its wizard UI and the `--force-run` flag
+  electron-updater passes is ignored outright, leaving the "Run Otto" checkbox on the finish page
+  as the only way back into the app. Since Otto has already told the user it will restart itself
+  and exited, nobody is there to click Finish, and the update lands with the app dead. The
+  `shouldInstallSilently` guard in `packages/desktop/src/features/auto-updater.ts` is what keeps
+  this correct; don't hand `quitAndInstall` a non-silent value on `win32`.
+
+- **Install-on-quit is Otto's own, not electron-updater's.** electron-updater implements
+  `autoInstallOnAppQuit` with `app.once("quit")`, and Otto's before-quit handler ends in
+  `app.exit(0)`, which emits neither `will-quit` nor `quit` (verified against Electron 41). The
+  flag is therefore set to `false`, and `installPendingUpdateOnQuit` is called explicitly from the
+  quit path instead. It only fires when the managed daemon is going down with the app: the Windows
+  daemon runs as `Otto.exe` out of the install directory, and the NSIS installer taskkills
+  everything under `$INSTDIR`, so installing while the daemon is meant to keep running would kill
+  active agents and terminal sessions on what the user thought was an ordinary window close. Users
+  who turn on `daemon.keepRunningAfterQuit` get their update on the next explicit "Update now",
+  which stops the daemon deliberately and warns first.
+
 - **npm publish works (as of 2026-07-11).** The `otto-code` npm org is claimed (owner
   `draek2077`) and all six packages first published at 0.5.0, so the full `release:patch`
   chain — including `release:publish` — runs end to end. The only prerequisite is being
