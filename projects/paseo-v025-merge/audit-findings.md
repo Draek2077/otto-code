@@ -387,6 +387,33 @@ does have sidebar resize (`resizeGesture` in `left-sidebar.tsx` and `explorer-si
 simply carries no testIDs, so a shipped feature is uncovered. `npm run e2e:coverage` passes with all
 140 specs claimed.
 
+**Feature ports: all seven resolved, and five were already shipped.** The list read as seven builds
+and was almost entirely stale.
+
+| Port                   | Outcome                                                                                 |
+| ---------------------- | --------------------------------------------------------------------------------------- |
+| add-to-chat            | Shipped: live menu item in `file-actions-menu.tsx`                                      |
+| pinned chats           | Shipped: `use-sidebar-pins.ts`, wired through `sidebar-projection.ts`                   |
+| tool-call detail level | Shipped 2026-08-02                                                                      |
+| fork-failed-turns      | Shipped: both error paths live in `agent-stream/view.tsx`, translated everywhere        |
+| Claude `[1m]`          | Shipped: `[1m]` entries in `model-manifest.ts`; thinking-off is live too                |
+| Claude version-gating  | Not a port: needs a version-tagged manifest first, tagged `COMPAT(claudeVersionGating)` |
+| shortcut search        | **Built 2026-08-02**                                                                    |
+| window chrome          | Code on disk, unwired, renamed and tagged `UNWIRED(windowChrome)`                       |
+
+**"fork-failed-turns" was never a feature.** `forkFailed` is an i18n key for the toast shown when a
+fork fails, and Otto has had both call sites and all eight translations the whole time. Reading the
+list literally would have meant building something that already existed.
+
+**Shortcut search matches the resolved chord, not the default keys.** Upstream searches `row.keys`;
+Otto already resolves user remaps for display, and a search disagreeing with the row beside it would
+be worse than none. Modifier aliases are why this needs more than a substring match: on a Mac the
+stored key is `mod` and the chord renders as a glyph, so neither contains the letters a person types.
+`settings.shortcuts.searchPlaceholder` already existed and was already translated in all seven
+non-English locales, upstream's i18n having landed without the feature that used it, so only
+`searchEmpty` was added. A second placeholder key would have won by declaration order and orphaned
+those seven translations, the same trap the tool-call detail port hit.
+
 **The fifth documentation tree stays, and CLAUDE.md now says so.** The audit said to fold `findings/`
 into `projects/README.md`. That would have destroyed roughly 1,300 lines of measured evidence
 (method, numbers, retired hypotheses) by flattening it into a one-line-per-project ledger. What
