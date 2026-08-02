@@ -472,6 +472,6 @@ export class LspServerPool {
   }
 
   private keyFor(rootPath: string, serverId: string): string {
-    return `${documentKey(rootPath)} ${serverId}`;
+    return `${documentKey(rootPath)}\0${serverId}`;
   }
 }

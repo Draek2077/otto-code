@@ -746,7 +746,7 @@ async function grepFile(context: GrepWalkContext, filePath: string): Promise<voi
   } catch {
     return;
   }
-  if (content.includes(" ")) {
+  if (content.includes("\0")) {
     return; // binary
   }
   const relPath = path.relative(context.rootPath, filePath) || filePath;

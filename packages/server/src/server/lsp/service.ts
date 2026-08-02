@@ -426,7 +426,7 @@ export class LspService {
 
   private publishActivity(): void {
     const busyRoots = this.pool.busyRoots();
-    const key = [...busyRoots].sort().join(" ");
+    const key = [...busyRoots].sort().join("\0");
     if (key === this.lastBusyKey) {
       return;
     }
