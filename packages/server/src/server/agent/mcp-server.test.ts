@@ -226,6 +226,17 @@ function buildAgentManagerSpies() {
     getPendingPermissions: vi.fn(),
     getRegisteredProviderIds: vi.fn().mockReturnValue(["claude"]),
     listDraftFeatures: vi.fn(),
+    // The Otto tool catalog reads these to decide whether a caller-created
+    // agent arms a finish notification. Absent means "on" everywhere in the
+    // daemon, so the stub resolves the same way rather than inventing a
+    // quieter default the product never uses.
+    getAgentBehaviors: vi.fn().mockReturnValue({
+      promptSuggestions: true,
+      agentProgressSummaries: true,
+      notifyOnFinishDefault: true,
+      todoNudge: true,
+      todoReconcileOnIdle: true,
+    }),
   };
 }
 
