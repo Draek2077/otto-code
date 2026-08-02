@@ -258,6 +258,11 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
 
   return new Session({
     clientId: "test-client",
+    // Otto gates every RPC on the session's scopes, and a session constructed
+    // without them throws before the first message. "*" is what the trusted
+    // local transport grants, so it is the right stand-in for a harness that
+    // is not exercising the scope check itself.
+    scopes: ["*"],
     onMessage: (message) => messages.push(message),
     onBinaryMessage: createBinaryMessageHandler(options.binaryMessages),
     logger,

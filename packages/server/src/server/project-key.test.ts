@@ -14,11 +14,16 @@ describe("deriveProjectKey", () => {
     "ssh://git@github.com/Draek2077/otto-code.git",
     "git@github.com:Draek2077/otto-code.git",
   ])("normalizes common remote form %s", (remoteUrl) => {
-    expect(derive(remoteUrl)).toBe("remote:github.com/Draek2077/otto-code");
+    expect(derive(remoteUrl)).toBe("remote:github.com/draek2077/otto-code");
   });
 
+  // GitHub owner/repo is case-insensitive, so the key lowercases it and two
+  // clones spelled differently group together. Self-hosted hosts keep their
+  // case, which the next test pins.
   test("normalizes GitHub casing", () => {
-    expect(derive("git@github.com:GetOtto/Otto.git")).toBe("remote:github.com/Draek2077/otto-code");
+    expect(derive("git@github.com:Draek2077/Otto-Code.git")).toBe(
+      "remote:github.com/draek2077/otto-code",
+    );
   });
 
   test("preserves self-hosted paths and explicit ports", () => {
@@ -79,7 +84,7 @@ describe("deriveProjectKey", () => {
 
     expect(
       deriveProjectKey({ rootPath: worktreeRoot, remoteUrl, worktreeRoot, mainRepoRoot: null }),
-    ).toBe("remote:github.com/Draek2077/otto-code");
+    ).toBe("remote:github.com/draek2077/otto-code");
     expect(
       deriveProjectKey({
         rootPath: path.join(worktreeRoot, "packages", "app"),
@@ -87,7 +92,7 @@ describe("deriveProjectKey", () => {
         worktreeRoot,
         mainRepoRoot: null,
       }),
-    ).toBe("remote:github.com/Draek2077/otto-code#subdir:packages/app");
+    ).toBe("remote:github.com/draek2077/otto-code#subdir:packages/app");
   });
 
   test("groups the same subproject across different absolute checkout roots", () => {

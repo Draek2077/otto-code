@@ -48,6 +48,7 @@ import {
 import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 import { isPlatform } from "../test-utils/platform.js";
+import { createNoopWorkspaceGitService } from "./test-utils/workspace-git-service-stub.js";
 import { createWorkspaceProvisioningService } from "./session/workspace-provisioning/workspace-provisioning-service.js";
 
 interface LegacyCreateWorktreeTestOptions {
@@ -373,6 +374,11 @@ function createOttoWorktreeForTest(options: {
       ...(serviceOptions?.resolveDefaultBranch
         ? { resolveDefaultBranch: serviceOptions.resolveDefaultBranch }
         : {}),
+      // Both registries are required deps: worktree creation reads the
+      // workspace list to reject a directory that already backs a live
+      // workspace. Passing workspaceProvisioning alone leaves them undefined.
+      projectRegistry,
+      workspaceRegistry,
       workspaceGitService,
       workspaceProvisioning,
     });
@@ -1350,10 +1356,10 @@ describe("handleCreateOttoWorktreeRequest", () => {
       {
         ottoHome: path.join(tempDir, ".otto"),
         sessionLogger: createLogger(),
-        workspaceGitService: {
+        workspaceGitService: createNoopWorkspaceGitService({
           resolveRepoRoot: vi.fn(async () => repoDir),
           resolveDefaultBranch: vi.fn(async () => "main"),
-        } as unknown as WorkspaceGitService,
+        }),
         createOttoWorktree: createOttoWorktreeForTest({
           ottoHome: path.join(tempDir, ".otto"),
           events,
@@ -1399,10 +1405,10 @@ describe("handleCreateOttoWorktreeRequest", () => {
       {
         ottoHome,
         sessionLogger: createLogger(),
-        workspaceGitService: {
+        workspaceGitService: createNoopWorkspaceGitService({
           resolveRepoRoot: vi.fn(async () => repoDir),
           resolveDefaultBranch: vi.fn(async () => "main"),
-        } as unknown as WorkspaceGitService,
+        }),
         createOttoWorktree: createOttoWorktreeForTest({ ottoHome }),
         checkoutExistingBranch: async () => {
           throw new Error("should not checkout existing branch");
@@ -1467,9 +1473,9 @@ describe("handleCreateOttoWorktreeRequest", () => {
     const result = await buildAgentSessionConfig(
       {
         sessionLogger: createLogger(),
-        workspaceGitService: {
+        workspaceGitService: createNoopWorkspaceGitService({
           resolveDefaultBranch: vi.fn(async () => "main"),
-        } as unknown as WorkspaceGitService,
+        }),
         createOttoWorktree,
         checkoutExistingBranch: async () => {
           throw new Error("should not checkout existing branch");

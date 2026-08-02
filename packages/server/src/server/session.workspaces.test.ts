@@ -599,6 +599,8 @@ function createSessionForWorkspaceTests(
   const session = asTestSession(
     new Session({
       clientId: "test-client",
+      // See session.test.ts: a session without scopes throws on construction.
+      scopes: ["*"],
       appVersion: options.appVersion ?? null,
       onMessage: options.onMessage ?? vi.fn(),
       logger: asSessionLogger(logger),
@@ -788,6 +790,7 @@ test("create_agent_request keeps requested child cwd when grouped under an exist
     const session = asTestSession(
       new Session({
         clientId: "test-client",
+        scopes: ["*"],
         appVersion: null,
         onMessage: (message) => emitted.push(message),
         logger: asSessionLogger(logger),
@@ -911,6 +914,7 @@ test("create_agent_request does not title an existing workspace from the agent p
     const session = asTestSession(
       new Session({
         clientId: "test-client",
+        scopes: ["*"],
         appVersion: null,
         onMessage: vi.fn(),
         logger: asSessionLogger(logger),
@@ -1233,6 +1237,7 @@ test("archive emits an authoritative agent_update upsert for subscribed clients"
   const session = asTestSession(
     new Session({
       clientId: "test-client",
+      scopes: ["*"],
       onMessage: (message) => emitted.push(message),
       logger: asSessionLogger(logger),
       downloadTokenStore: asDownloadTokenStore(),
@@ -1602,6 +1607,7 @@ test("close_items_request archives agents and kills terminals in one batch", asy
   const session = asTestSession(
     new Session({
       clientId: "test-client",
+      scopes: ["*"],
       onMessage: (message) => emitted.push(message),
       logger: asSessionLogger(sessionLogger),
       downloadTokenStore: asDownloadTokenStore(),
@@ -1772,6 +1778,7 @@ test("close_items_request archives stored agents that are not currently loaded",
   const session = asTestSession(
     new Session({
       clientId: "test-client",
+      scopes: ["*"],
       onMessage: (message) => emitted.push(message),
       logger: asSessionLogger(sessionLogger),
       downloadTokenStore: asDownloadTokenStore(),
@@ -1933,6 +1940,7 @@ test("close_items_request continues after an archive failure", async () => {
   const session = asTestSession(
     new Session({
       clientId: "test-client",
+      scopes: ["*"],
       onMessage: (message) => emitted.push(message),
       logger: asSessionLogger(sessionLogger),
       downloadTokenStore: asDownloadTokenStore(),
@@ -2946,6 +2954,7 @@ test("workspace update stream keeps persisted workspace visible after agents sto
   const session = asTestSession(
     new Session({
       clientId: "test-client",
+      scopes: ["*"],
       onMessage: (message) => emitted.push(message),
       logger: asSessionLogger(logger),
       downloadTokenStore: asDownloadTokenStore(),

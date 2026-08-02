@@ -20,6 +20,7 @@ import {
 import { readOttoWorktreeMetadata } from "../utils/worktree-metadata.js";
 import { createWorktree } from "../utils/worktree.js";
 import { isPlatform } from "../test-utils/platform.js";
+import { createNoopWorkspaceGitService } from "./test-utils/workspace-git-service-stub.js";
 import { existsSync } from "node:fs";
 
 const cleanupPaths: string[] = [];
@@ -825,21 +826,13 @@ function createGitHubServiceStub(): GitHubService {
   };
 }
 
+// Built on the shared no-op service rather than hand-rolled, so a member added
+// to WorkspaceGitService reaches this stub automatically. The hand-rolled
+// version silently lacked resolveForge, and worktree creation calls it on every
+// path, so every test here died on "resolveForge is not a function".
 function createWorkspaceGitServiceStub(): WorkspaceGitService {
-  return {
-    registerWorkspace: () => ({
-      unsubscribe: () => {},
-    }),
+  return createNoopWorkspaceGitService({
     peekSnapshot: (cwd) => createWorkspaceGitSnapshot(cwd),
-    getCheckout: async (cwd) => ({
-      cwd,
-      isGit: false,
-      currentBranch: null,
-      remoteUrl: null,
-      worktreeRoot: null,
-      isOttoOwnedWorktree: false,
-      mainRepoRoot: null,
-    }),
     getSnapshot: async (cwd) => createWorkspaceGitSnapshot(cwd),
     resolveRepoRoot: async (cwd) => {
       try {
@@ -849,15 +842,11 @@ function createWorkspaceGitServiceStub(): WorkspaceGitService {
       }
     },
     resolveDefaultBranch: async () => "main",
-    refresh: async () => {},
     requestWorkingTreeWatch: async (cwd) => ({
       repoRoot: cwd,
       unsubscribe: () => {},
     }),
-    scheduleRefreshForCwd: () => {},
-    onWorkspaceStateMayHaveChanged: () => {},
-    dispose: () => {},
-  };
+  });
 }
 
 function createWorkspaceGitSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot {
