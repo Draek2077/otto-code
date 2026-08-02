@@ -969,7 +969,11 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       }
       void this.refreshWorkspaceTarget(target, {
         force: false,
-        includeForge: true,
+        // Git only. Forge facts arrive on their own poll cadence
+        // (retainCurrentPullRequestStatusPoll), so registering a workspace —
+        // which the sidebar does for every row it lists — never blocks on a
+        // forge CLI round-trip.
+        includeForge: false,
         reason: "initial",
         notify: true,
       });
@@ -1168,10 +1172,29 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     gitDir: string,
     repoGitRoot: string,
   ): void {
-    for (const watchPath of new Set([join(gitDir, "HEAD"), join(repoGitRoot, "refs", "heads")])) {
+    // Watch the *directories*, never `HEAD` itself.
+    //
+    // Git does not edit HEAD in place: `git checkout` writes `HEAD.lock` and renames it
+    // over HEAD. A watch on the file path binds to the inode, so after the first
+    // checkout the watcher was holding an unlinked file and went permanently deaf —
+    // which is why switching branches in a terminal never reached the Changes sidebar.
+    // A directory watch sees the rename, because the rename is an event *in* the
+    // directory. `filename` is filtered so the rest of `.git`'s churn (index.lock,
+    // COMMIT_EDITMSG, ORIG_HEAD) does not schedule a refresh; a null filename is rare
+    // and refreshes anyway, since a missed branch switch costs more than a debounced
+    // extra snapshot.
+    const watchTargets: { path: string; matches: (filename: string | null) => boolean }[] = [
+      { path: gitDir, matches: (filename) => filename === null || filename === "HEAD" },
+      { path: join(repoGitRoot, "refs", "heads"), matches: () => true },
+    ];
+
+    for (const { path: watchPath, matches } of watchTargets) {
       let watcher: FSWatcher | null = null;
       try {
-        watcher = this.deps.watch(watchPath, { recursive: false }, () => {
+        watcher = this.deps.watch(watchPath, { recursive: false }, (_event, filename) => {
+          if (!matches(typeof filename === "string" ? filename : null)) {
+            return;
+          }
           this.scheduleWorkspaceRefresh(target);
         });
       } catch (error) {

@@ -174,6 +174,9 @@ function createSnapshot(
     // GitHub-specific `github` block with `forge`, which additionally carries
     // the auth state that `featuresEnabled` is derived from.
     forge: {
+      // The resolved host, carried so the wire projection labels a self-managed
+      // GitLab or Gitea remote correctly instead of defaulting to GitHub.
+      forge: "github",
       featuresEnabled: true,
       authState: "authenticated",
       pullRequest: {
@@ -213,6 +216,16 @@ function createSnapshot(
     },
   };
 }
+
+// What the forge block looks like before its own poll has filled it in: a
+// git-only refresh leaves the host unresolved, so there is no forge id and no
+// auth state to report yet.
+const UNPOLLED_FORGE = {
+  forge: undefined,
+  featuresEnabled: false,
+  authState: "no_remote" as const,
+  pullRequest: null,
+};
 
 function createGitHubServiceStub(): GitHubService {
   return {
@@ -301,10 +314,18 @@ function buildServiceDeps(options?: CreateServiceOptions) {
 }
 
 function createService(options?: CreateServiceOptions) {
+  const { github, ...rest } = buildServiceDeps(options);
   return new WorkspaceGitServiceImpl({
     logger: createLogger() as never,
     ottoHome: "/tmp/otto-test",
-    deps: buildServiceDeps(options),
+    deps: {
+      ...rest,
+      // A `github` option has to land on forgeOverrides, which is where the
+      // forge resolver looks. Left at the top level it becomes an ignored
+      // `deps.github` and the resolver builds a real GitHub service, so every
+      // snapshot came back cli_missing from a `gh` binary that isn't there.
+      ...(github ? { forgeOverrides: { github } } : {}),
+    },
   });
 }
 
@@ -376,9 +397,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     // The initial (register-triggered) refresh is git-only — GitHub PR status is
     // delivered by the poll, which this stub does not implement — so the warmed
     // snapshot reports GitHub as unavailable until a poll fills it in.
-    const gitOnlySnapshot = createSnapshot(REPO_CWD, {
-      forge: { featuresEnabled: false, pullRequest: null },
-    });
+    const gitOnlySnapshot = createSnapshot(REPO_CWD, { forge: UNPOLLED_FORGE });
     await expect(service.getSnapshot(REPO_CWD)).resolves.toEqual(gitOnlySnapshot);
     expect(service.peekSnapshot(REPO_CWD)).toEqual(gitOnlySnapshot);
 
@@ -511,11 +530,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
           currentBranch: "feature",
           diffStat: { additions: 4, deletions: 2 },
         },
-        forge: {
-          featuresEnabled: false,
-          pullRequest: null,
-          error: null,
-        },
+        forge: { ...UNPOLLED_FORGE, error: null },
       }),
     );
     expect(getCheckoutStatus).toHaveBeenCalledTimes(2);
@@ -616,14 +631,14 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
 
     const gitRefresh = service.getSnapshot(REPO_CWD, {
       force: true,
-      includeGitHub: false,
+      includeForge: false,
       reason: "watch",
     });
     await flushPromises();
 
     const validationRefresh = service.getSnapshot(REPO_CWD, {
       force: true,
-      includeGitHub: true,
+      includeForge: true,
       reason: "merge-pr-validation",
     });
     await flushPromises();
@@ -1151,9 +1166,7 @@ describe("WorkspaceGitServiceImpl primitive refresh entrypoint", () => {
     expect(getCheckoutStatus).toHaveBeenCalledTimes(2);
     // Initial refresh is git-only (GitHub arrives via the poll, unimplemented in
     // this stub), so the current snapshot reports GitHub as unavailable.
-    await expect(directRead).resolves.toEqual(
-      createSnapshot(REPO_CWD, { forge: { featuresEnabled: false, pullRequest: null } }),
-    );
+    await expect(directRead).resolves.toEqual(createSnapshot(REPO_CWD, { forge: UNPOLLED_FORGE }));
 
     selfHealRefresh.resolve(createCheckoutStatus(REPO_CWD));
     await flushPromises();
@@ -1539,40 +1552,9 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
     service.dispose();
   });
 
-  test("getWorkspaceGitMetadata derives reconciliation metadata from the snapshot cache", async () => {
-    let nowMs = 0;
-    const getCheckoutStatus = vi.fn(async (cwd: string) =>
-      createCheckoutStatus(cwd, {
-        currentBranch: "feature/service-metadata",
-        remoteUrl: "https://github.com/otto-code-ai/otto-code.git",
-        repoRoot: REPO_CWD,
-      }),
-    );
-    const service = createService({
-      getCheckoutStatus,
-      now: () => new Date(nowMs),
-    });
-
-    await expect(
-      service.getWorkspaceGitMetadata(REPO_CWD, { directoryName: "Local Repo" }),
-    ).resolves.toEqual({
-      projectKind: "git",
-      projectDisplayName: "otto-code-ai/otto-code",
-      workspaceDisplayName: "feature/service-metadata",
-      gitRemote: "https://github.com/otto-code-ai/otto-code.git",
-      isWorktree: false,
-      projectSlug: "otto-code",
-      repoRoot: REPO_CWD,
-      currentBranch: "feature/service-metadata",
-      remoteUrl: "https://github.com/otto-code-ai/otto-code.git",
-    });
-
-    nowMs = 1_000;
-    await service.getWorkspaceGitMetadata(join(REPO_CWD, "."), { directoryName: "Local Repo" });
-    expect(getCheckoutStatus).toHaveBeenCalledTimes(1);
-
-    service.dispose();
-  });
+  // getWorkspaceGitMetadata is gone along with its builder: reconciliation now
+  // derives project/workspace facts through checkoutLiteFromGitSnapshot, and
+  // workspace-git-metadata.ts keeps only the slug helpers that still have callers.
 
   test("getCheckoutDiff returns real staged and unstaged changes from a temp git repo", async () => {
     const tempDir = realpathSync(mkdtempSync(join(tmpdir(), "workspace-git-service-diff-")));
