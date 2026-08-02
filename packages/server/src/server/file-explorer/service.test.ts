@@ -35,7 +35,7 @@ describe("file explorer service", () => {
         expectedRevision: current.revision,
       });
 
-      expect(result.status).toBe("written");
+      expect(result.status).toBe("ok");
       expect((await readExplorerFile({ root, relativePath: "notes.txt" })).content).toBe("after");
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -62,7 +62,7 @@ describe("file explorer service", () => {
           expectedRevision: current.revision,
         });
 
-        expect(result.status).toBe("written");
+        expect(result.status).toBe("ok");
         expect((await stat(filePath)).mode & 0o7777).toBe(0o764);
       } finally {
         await rm(root, { recursive: true, force: true });
@@ -83,7 +83,9 @@ describe("file explorer service", () => {
         expectedModifiedAt: "2020-01-01T00:00:00.000Z",
       });
 
-      expect(result).toMatchObject({ status: "conflict", version: { status: "ready" } });
+      // A conflict carries the on-disk content back with it, so the editor can
+      // show the divergence without a second read.
+      expect(result).toMatchObject({ status: "conflict", content: "newer on disk" });
       expect((await readExplorerFile({ root, relativePath: "notes.txt" })).content).toBe(
         "newer on disk",
       );
@@ -92,8 +94,12 @@ describe("file explorer service", () => {
     }
   });
 
-  it("prefers the high-precision revision token over the display timestamp", async () => {
-    const root = await createTempDir("paseo-file-revision-");
+  // Otto decides staleness on the content hash, not on a revision token built
+  // from mtime. That is the stronger test: mtime is only millisecond-precise on
+  // some filesystems, so a rewrite inside the same tick keeps the timestamp the
+  // editor last saw. The hash still differs, and the write is refused.
+  it("prefers the content hash over a matching display timestamp", async () => {
+    const root = await createTempDir("otto-file-revision-");
     try {
       const filePath = path.join(root, "notes.txt");
       await writeFile(filePath, "on disk", "utf8");
@@ -106,7 +112,7 @@ describe("file explorer service", () => {
         relativePath: "notes.txt",
         content: "stale local edit",
         expectedModifiedAt: current.modifiedAt,
-        expectedRevision: `${current.revision}-stale`,
+        expectedHash: "0000000000000000000000000000000000000000000000000000000000000000",
       });
 
       expect(result.status).toBe("conflict");
@@ -119,14 +125,30 @@ describe("file explorer service", () => {
   it("never creates a missing file through the write API", async () => {
     const root = await createTempDir("paseo-file-missing-");
     try {
-      const result = await writeExplorerFile({
+      // The editor only saves files it opened, so a missing target is refused
+      // rather than quietly created. Re-creating a file the user deleted is a
+      // separate, explicit intent: `allowCreate`, exercised below.
+      await expect(
+        writeExplorerFile({
+          root,
+          relativePath: "missing.txt",
+          content: "new file",
+          expectedModifiedAt: "2020-01-01T00:00:00.000Z",
+        }),
+      ).rejects.toThrow("File no longer exists on disk");
+
+      const created = await writeExplorerFile({
         root,
         relativePath: "missing.txt",
         content: "new file",
         expectedModifiedAt: "2020-01-01T00:00:00.000Z",
+        allowCreate: true,
       });
 
-      expect(result).toMatchObject({ status: "conflict", version: { status: "missing" } });
+      expect(created.status).toBe("ok");
+      expect((await readExplorerFile({ root, relativePath: "missing.txt" })).content).toBe(
+        "new file",
+      );
     } finally {
       await rm(root, { recursive: true, force: true });
     }

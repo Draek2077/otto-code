@@ -52,8 +52,8 @@ import {
   getDownloadableFileInfo,
   listDirectoryEntries,
   readExplorerFile,
-  readExplorerFileBytes,
   renameExplorerEntry,
+  streamExplorerFile,
   writeExplorerFile,
 } from "../../file-explorer/service.js";
 import { SessionFileWatcher } from "../../file-explorer/file-watcher.js";
@@ -283,36 +283,41 @@ export class WorkspaceFilesSession {
         });
       } else {
         if (request.acceptBinary && this.host.hasBinaryChannel()) {
-          const file = await readExplorerFileBytes({
-            root: cwd,
-            relativePath: requestedPath,
+          // Streamed rather than buffered: a large file used to be read whole
+          // into memory before its first byte reached the client, which is what
+          // made large file views drop their connection. The chunk loop also
+          // re-checks the file's revision at the end, so a file rewritten
+          // mid-transfer raises instead of arriving as two spliced revisions.
+          await streamExplorerFile({ root: cwd, relativePath: requestedPath }, async (file) => {
+            this.host.emitBinary(
+              encodeFileTransferFrame({
+                opcode: FileTransferOpcode.FileBegin,
+                requestId,
+                metadata: {
+                  mime: file.mimeType,
+                  size: file.size,
+                  encoding: file.encoding,
+                  modifiedAt: file.modifiedAt,
+                  revision: file.revision,
+                },
+              }),
+            );
+            for await (const chunk of file.chunks) {
+              this.host.emitBinary(
+                encodeFileTransferFrame({
+                  opcode: FileTransferOpcode.FileChunk,
+                  requestId,
+                  payload: chunk,
+                }),
+              );
+            }
+            this.host.emitBinary(
+              encodeFileTransferFrame({
+                opcode: FileTransferOpcode.FileEnd,
+                requestId,
+              }),
+            );
           });
-
-          this.host.emitBinary(
-            encodeFileTransferFrame({
-              opcode: FileTransferOpcode.FileBegin,
-              requestId,
-              metadata: {
-                mime: file.mimeType,
-                size: file.size,
-                encoding: file.encoding,
-                modifiedAt: file.modifiedAt,
-              },
-            }),
-          );
-          this.host.emitBinary(
-            encodeFileTransferFrame({
-              opcode: FileTransferOpcode.FileChunk,
-              requestId,
-              payload: file.bytes,
-            }),
-          );
-          this.host.emitBinary(
-            encodeFileTransferFrame({
-              opcode: FileTransferOpcode.FileEnd,
-              requestId,
-            }),
-          );
         } else {
           const file = await readExplorerFile({
             root: cwd,
