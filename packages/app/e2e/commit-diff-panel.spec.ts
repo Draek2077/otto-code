@@ -5,7 +5,15 @@ import { test, expect } from "./fixtures";
 
 const COMMIT_SUBJECT = "Show commit timestamps";
 
-test("commit history explains when the workspace has no commits ahead of its base", async ({
+// DEFERRED(paseoDiffTab): both specs arrived with the Paseo v0.2.5 merge and
+// exercise a commits explorer Otto does not mount. `src/git/commits-section/`
+// has zero importers, `commits-section-no-workspace-commits` exists only there,
+// and there is no registered commit-diff panel — see the DEFERRED note in
+// panels/register-panels.ts for the @/git/diff-pane restructure that gates it.
+// Left active these fail deterministically and burn three attempts each under
+// the CI retry policy. Un-skip in the same change that registers the panel.
+// Tracked in projects/README.md.
+test.skip("commit history explains when the workspace has no commits ahead of its base", async ({
   page,
   withWorkspace,
 }) => {
@@ -24,7 +32,8 @@ test("commit history explains when the workspace has no commits ahead of its bas
   );
 });
 
-test("commit history shows dates and shares diff layout preferences", async ({
+// DEFERRED(paseoDiffTab): see the note above.
+test.skip("commit history shows dates and shares diff layout preferences", async ({
   page,
   withWorkspace,
 }) => {

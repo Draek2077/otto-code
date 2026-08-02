@@ -59,7 +59,19 @@ async function expectProjectHasNoWorkspaces(projectId: string): Promise<void> {
   }
 }
 
-test.describe("Add Project command-center flow", () => {
+// DEFERRED(paseoAddProjectFlow): the whole file arrived with the Paseo v0.2.5
+// merge and drives a surface Otto retired. `useOpenProjectPicker` routes every
+// "New project" entry point to the New project page instead (it can create the
+// folder, init or clone a repo, and create the remote), so `sidebar-add-project`
+// — what `openAddProjectFlow` clicks — no longer opens this overlay. The overlay
+// cannot render at all: `AddProjectFlowHost` is the only component reading
+// `add-project-flow-store`, and it has zero importers.
+//
+// So this is superseded, not merely unbuilt: the cleanup that is deferred is
+// deleting this file together with the dead `add-project-flow*` component tree.
+// Left active all nine fail deterministically at three attempts each, which is
+// most of what kept CI shard 1 from ever finishing.
+test.describe.skip("Add Project command-center flow", () => {
   test.describe.configure({ timeout: 180_000 });
 
   test("a single connected host opens directly on method selection", async ({ page }) => {
