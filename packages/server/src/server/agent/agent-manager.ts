@@ -1450,6 +1450,17 @@ export class AgentManager {
         this.clients.set(provider, client);
       }
     }
+    // A registry update is the whole picture, not a patch. Providers the new
+    // one omits are dropped: without this, removing a provider from daemon
+    // config left it registered and still creatable until the next restart.
+    // Registration only ever arrives through here, so the incoming map is
+    // authoritative.
+    for (const provider of this.clients.keys()) {
+      if (!input.clients[provider]) {
+        this.clients.delete(provider);
+        this.providerEnabled.delete(provider);
+      }
+    }
     // Live sessions absorb provider-level compaction edits (default level,
     // hidden selector) and the max-tool-rounds override so open chats reflect
     // settings changes immediately.
@@ -2676,6 +2687,81 @@ export class AgentManager {
    * set_agent_model/mode/thinking and persist a mixed half-and-half state.
    */
   private readonly agentConfigMutations = new Map<string, Promise<void>>();
+
+  /**
+   * True while an explicit config mutation is in flight for this agent.
+   *
+   * Providers echo their own setters back as drift events, and those echoes can
+   * land after a later explicit mutation has already been applied — setModel
+   * emitting a thinking_option_changed carrying the pre-mutation value, for
+   * instance. Config only records drift the provider raised on its own; an echo
+   * would roll the newer explicit value back.
+   */
+  private hasConfigMutationInFlight(agentId: string): boolean {
+    return this.agentConfigMutations.has(agentId);
+  }
+
+  /**
+   * The three events by which a provider reports that its own model, mode, or
+   * thinking option moved. All three land the same way: runtime state updates
+   * unconditionally, stored config only when the change is genuine drift.
+   */
+  private onStreamConfigDrift(
+    agent: ActiveManagedAgent,
+    event: Extract<
+      AgentStreamEvent,
+      { type: "mode_changed" | "model_changed" | "thinking_option_changed" }
+    >,
+  ): void {
+    if (event.type === "mode_changed") {
+      agent.currentModeId = event.currentModeId;
+      agent.availableModes = event.availableModes;
+      this.applyConfigDrift(agent, { modeId: event.currentModeId ?? undefined });
+      if (agent.runtimeInfo) {
+        agent.runtimeInfo = { ...agent.runtimeInfo, modeId: event.currentModeId };
+      }
+      return;
+    }
+    if (event.type === "thinking_option_changed") {
+      this.applyConfigDrift(agent, { thinkingOptionId: event.thinkingOptionId ?? undefined });
+      if (agent.runtimeInfo) {
+        agent.runtimeInfo = { ...agent.runtimeInfo, thinkingOptionId: event.thinkingOptionId };
+      }
+      return;
+    }
+    agent.runtimeInfo = event.runtimeInfo;
+    this.applyConfigDrift(agent, {
+      model: event.runtimeInfo.model ?? agent.config.model,
+      modeId: event.runtimeInfo.modeId ?? agent.config.modeId,
+      thinkingOptionId: event.runtimeInfo.thinkingOptionId ?? agent.config.thinkingOptionId,
+    });
+    if (!agent.persistence && event.runtimeInfo.sessionId) {
+      agent.persistence = attachPersistenceCwd(
+        { provider: agent.provider, sessionId: event.runtimeInfo.sessionId },
+        agent.cwd,
+      );
+    }
+    agent.currentModeId = event.runtimeInfo.modeId ?? agent.currentModeId;
+  }
+
+  /**
+   * Records provider-side config drift on the agent's stored config, which is
+   * what gets persisted and replayed on resume — drift that only reached
+   * runtimeInfo was silently reverted by the next restart. Skipped entirely
+   * while an explicit mutation is in flight, so a provider's echo of its own
+   * setter cannot roll back the newer value.
+   */
+  private applyConfigDrift(
+    agent: ActiveManagedAgent,
+    patch: { model?: string; modeId?: string; thinkingOptionId?: string },
+  ): void {
+    if (this.hasConfigMutationInFlight(agent.id)) {
+      return;
+    }
+    if ("model" in patch) agent.config.model = patch.model;
+    if ("modeId" in patch) agent.config.modeId = patch.modeId;
+    if ("thinkingOptionId" in patch) agent.config.thinkingOptionId = patch.thinkingOptionId;
+  }
 
   private async withAgentConfigLock<T>(agentId: string, operation: () => Promise<T>): Promise<T> {
     const previous = this.agentConfigMutations.get(agentId) ?? Promise.resolve();
@@ -5290,33 +5376,9 @@ export class AgentManager {
         this.emitState(agent);
         return undefined;
       case "mode_changed":
-        agent.currentModeId = event.currentModeId;
-        agent.availableModes = event.availableModes;
-        if (agent.runtimeInfo) {
-          agent.runtimeInfo = { ...agent.runtimeInfo, modeId: event.currentModeId };
-        }
-        flags.shouldDispatchEvent = false;
-        this.emitState(agent);
-        return undefined;
       case "model_changed":
-        agent.runtimeInfo = event.runtimeInfo;
-        if (!agent.persistence && event.runtimeInfo.sessionId) {
-          agent.persistence = attachPersistenceCwd(
-            { provider: agent.provider, sessionId: event.runtimeInfo.sessionId },
-            agent.cwd,
-          );
-        }
-        agent.currentModeId = event.runtimeInfo.modeId ?? agent.currentModeId;
-        flags.shouldDispatchEvent = false;
-        this.emitState(agent);
-        return undefined;
       case "thinking_option_changed":
-        if (agent.runtimeInfo) {
-          agent.runtimeInfo = {
-            ...agent.runtimeInfo,
-            thinkingOptionId: event.thinkingOptionId,
-          };
-        }
+        this.onStreamConfigDrift(agent, event);
         flags.shouldDispatchEvent = false;
         this.emitState(agent);
         return undefined;
