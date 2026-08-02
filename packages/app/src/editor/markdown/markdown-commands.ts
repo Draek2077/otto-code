@@ -18,6 +18,14 @@ import {
   type MarkdownEdit,
 } from "./markdown-format";
 import { htmlIsWorthConverting, htmlToMarkdown } from "./markdown-paste";
+import {
+  cycleColumnAlignment,
+  deleteColumn,
+  deleteRow,
+  formatTableAtCursor,
+  insertColumnRight,
+  insertRowBelow,
+} from "./markdown-table";
 
 // CodeMirror wrappers over the pure transforms in markdown-format.ts. Nothing
 // here decides anything: it reads the selection, calls a transform, and
@@ -78,6 +86,12 @@ const MARKDOWN_TRANSFORMS: Record<MarkdownCommandName, Transform> = {
   markdownCodeFence: (doc, range) => toggleCodeFence(doc, range),
   markdownHorizontalRule: insertHorizontalRule,
   markdownTable: (doc, range) => insertTable(doc, range),
+  markdownTableFormat: formatTableAtCursor,
+  markdownTableRowBelow: insertRowBelow,
+  markdownTableRowDelete: deleteRow,
+  markdownTableColumnRight: insertColumnRight,
+  markdownTableColumnDelete: deleteColumn,
+  markdownTableAlign: cycleColumnAlignment,
   markdownHeading1: (doc, range) => toggleHeading(doc, range, 1),
   markdownHeading2: (doc, range) => toggleHeading(doc, range, 2),
   markdownHeading3: (doc, range) => toggleHeading(doc, range, 3),

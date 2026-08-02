@@ -18,7 +18,12 @@ import {
   HorizontalRule,
   Image as ImageIcon,
   TableChart,
+  TableRows,
+  ViewColumn,
   Visibility,
+  AddRowBelow,
+  AddColumnRight,
+  FormatAlignCenter,
 } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { compactUp, useIconSize, type Theme } from "@/styles/theme";
@@ -43,6 +48,11 @@ const ThemedImage = withUnistyles(ImageIcon);
 const ThemedTableChart = withUnistyles(TableChart);
 const ThemedHorizontalRule = withUnistyles(HorizontalRule);
 const ThemedVisibility = withUnistyles(Visibility);
+const ThemedAddRowBelow = withUnistyles(AddRowBelow);
+const ThemedAddColumnRight = withUnistyles(AddColumnRight);
+const ThemedTableRows = withUnistyles(TableRows);
+const ThemedViewColumn = withUnistyles(ViewColumn);
+const ThemedFormatAlignCenter = withUnistyles(FormatAlignCenter);
 
 // The markdown formatting strip, shown above the editor for markdown files.
 //
@@ -144,6 +154,41 @@ const TOOLBAR_GROUPS: ToolbarGroup[] = [
         command: "markdownHorizontalRule",
         Icon: ThemedHorizontalRule,
         labelKey: "editor.markdownToolbar.horizontalRule",
+      },
+    ],
+  },
+  {
+    key: "table",
+    items: [
+      {
+        command: "markdownTableFormat",
+        Icon: ThemedTableChart,
+        labelKey: "editor.markdownToolbar.tableFormat",
+      },
+      {
+        command: "markdownTableRowBelow",
+        Icon: ThemedAddRowBelow,
+        labelKey: "editor.markdownToolbar.tableRowBelow",
+      },
+      {
+        command: "markdownTableRowDelete",
+        Icon: ThemedTableRows,
+        labelKey: "editor.markdownToolbar.tableRowDelete",
+      },
+      {
+        command: "markdownTableColumnRight",
+        Icon: ThemedAddColumnRight,
+        labelKey: "editor.markdownToolbar.tableColumnRight",
+      },
+      {
+        command: "markdownTableColumnDelete",
+        Icon: ThemedViewColumn,
+        labelKey: "editor.markdownToolbar.tableColumnDelete",
+      },
+      {
+        command: "markdownTableAlign",
+        Icon: ThemedFormatAlignCenter,
+        labelKey: "editor.markdownToolbar.tableAlign",
       },
     ],
   },
