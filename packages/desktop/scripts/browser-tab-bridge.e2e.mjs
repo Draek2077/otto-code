@@ -17,11 +17,19 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.resolve(scriptDir, "..");
 const rootDir = path.resolve(desktopDir, "../..");
 const devRunner = path.join(desktopDir, "scripts", "dev-runner.mjs");
+// One more workspace than the deck keeps mounted, so visiting the rest is
+// guaranteed to evict the first and park its browser guest — which is the whole
+// point of this regression. DEFAULT_MOUNTED_WORKSPACE_LIMIT is 5
+// (packages/app/src/hooks/use-settings/storage.ts); when it was raised from 3 to
+// 5 this list stayed at four, nothing was ever evicted, and the test waited 90s
+// for a parking that could not happen. Keep this list longer than that limit.
 const workspaceIds = [
   "tab-bridge-original",
   "tab-bridge-evict-one",
   "tab-bridge-evict-two",
   "tab-bridge-evict-three",
+  "tab-bridge-evict-four",
+  "tab-bridge-evict-five",
 ];
 const timeoutMs = 90_000;
 
