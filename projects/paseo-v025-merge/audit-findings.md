@@ -51,17 +51,20 @@ Each one re-checked against the tree. **Four of the nine were already fixed and 
 stale; one does not reproduce at all.** Verifying before implementing was worth more here than the
 fixes were.
 
-| Item                                                         | State              | Note                                                    |
-| ------------------------------------------------------------ | ------------------ | ------------------------------------------------------- |
-| Mojibake in tracked source                                   | Fixed              | 754 runs across 9 files; see below                      |
-| `judge-verdict.ts` rebrand corruption                        | Fixed              | "upstream Otto's" is upstream **Paseo's**               |
-| Mixed-case `projectId` on upgrade                            | **Does not repro** | pinned by comment + test; no migration needed           |
-| `html-ish.ts` renders raw HTML                               | Already fixed      | `b/strong/em/i/code/table` all translate; 51 tests pass |
-| `desktop-settings` migration dropped                         | Already fixed      | present at `desktop-settings.ts:285`                    |
-| `otto://` scheme unregistered                                | Already fixed      | `electron-builder.yml` registers it                     |
-| `DEFERRED(paseoDiffTab)` marker missing                      | Fixed              | now real in `workspace-tabs/identity.ts`, with a test   |
-| `toolCallDetailLevel` half-landed                            | **Confirmed dead** | needs a product call, see below                         |
-| Backpressure, auto-name, agent-state leak, Nix speech worker | Open               | not started                                             |
+| Item                                            | State              | Note                                                    |
+| ----------------------------------------------- | ------------------ | ------------------------------------------------------- |
+| Mojibake in tracked source                      | Fixed              | 754 runs across 9 files; see below                      |
+| `judge-verdict.ts` rebrand corruption           | Fixed              | "upstream Otto's" is upstream **Paseo's**               |
+| Mixed-case `projectId` on upgrade               | **Does not repro** | pinned by comment + test; no migration needed           |
+| `html-ish.ts` renders raw HTML                  | Already fixed      | `b/strong/em/i/code/table` all translate; 51 tests pass |
+| `desktop-settings` migration dropped            | Already fixed      | present at `desktop-settings.ts:285`                    |
+| `otto://` scheme unregistered                   | Already fixed      | `electron-builder.yml` registers it                     |
+| `DEFERRED(paseoDiffTab)` marker missing         | Fixed              | now real in `workspace-tabs/identity.ts`, with a test   |
+| `toolCallDetailLevel` half-landed               | **Fixed**          | adopted and wired 2026-08-02, see below                 |
+| Nix trace misses the speech worker              | **Fixed**          | 8 modules were absent from the closure; see below       |
+| `workspace-auto-name` uses cwd not worktreeRoot | **Fixed**          | real bug, regression test added; see below              |
+| Agent-state leak in `agent-response-loop`       | Does not apply     | Otto never creates the agent that would leak            |
+| Large-file streaming backpressure               | Non-issue          | `pipeline()` handles it; ours is richer than upstream's |
 
 **The projectId scare was the valuable one, because the answer was "do nothing".** The merge made
 `deriveProjectKey` lowercase GitHub owner/repo, so an upgrading install re-derives a different key
@@ -78,11 +81,63 @@ dash of a rule had become three characters. Three sites reached a person: an OMP
 the UI and two agent-facing truncation suffixes in `session.ts`. This file is deliberately **not**
 repaired, because it quotes the corrupt sequences as evidence.
 
-**`toolCallDetailLevel` needs Philippe, not an implementer.** The field is a valid `AppSettings` key
-with a default and a validator, but it is absent from `APP_SETTINGS_UPDATE_KEYS`, so writes are
-silently dropped, and it has zero readers. Wiring it up means porting Paseo's tool-call detail
-feature; deleting it means declining that feature. Both are product calls, so it is left exactly as
-found rather than half-resolved in a cleanup commit.
+**The Nix speech worker was the one with teeth.** `scripts/trace-daemon.mjs` computes the daemon's
+runtime closure with `@vercel/nft`, which does not follow `fork()` boundaries, so every forked
+process needs its own trace entry. The terminal worker had one; the speech worker did not, even
+though `nix/package.nix` claims in a comment that both are traced. Measured by diffing the trace
+output before and after: **8 modules were missing**, the worker itself plus the entire sherpa engine
+(offline recognizer, node loader, Parakeet STT, Parakeet realtime session, TTS, Silero VAD provider
+and session). The Nix package would build clean and then fail the first time anyone used speech.
+
+**`workspace-auto-name` was a real bug, and narrower than it sounds.** `readOttoWorktreeMetadata`
+builds its path from whatever it is handed rather than walking up, so a workspace opened on a
+_subdirectory_ of an Otto worktree read the metadata from the wrong place, got null, and silently
+skipped auto-naming: a miss is indistinguishable from "nothing to do". Git resolves a worktree from
+any depth, so only the metadata reads and writes moved to the root, via the same
+`isOttoOwnedWorktreeCwd` helper the change-request fix used. The regression test was verified to fail
+without the fix, not merely to pass with it.
+
+**Two of the four were not bugs at all.** The agent-state leak does not apply: upstream's
+`closeAgent`/`deleteAgentState` teardown exists because _their_ `generateStructuredAgentResponse`
+creates an agent, and Otto's rewrote that path as a bare tool-less completion that never creates one.
+Backpressure is already correct: the sherpa model download streams through `pipeline()` from
+`node:stream/promises`, which propagates backpressure natively, and Otto's downloader is strictly
+richer than upstream's (sha256 integrity verification, corrupt-archive cleanup, a Windows `tar`
+resolution fix).
+
+**`toolCallDetailLevel`: Philippe's call was adopt, and it is wired (2026-08-02).** The field was a
+valid `AppSettings` key with a default and a validator, absent from `APP_SETTINGS_UPDATE_KEYS` (so
+writes were silently dropped) and with zero readers.
+
+Every computational module had in fact survived the merge intact and rebranded (`detail-level/`
+grouping, overview model and view, projection, 20 green tests). Only the wiring was missing, so
+adoption was five seams, not a port:
+
+1. `toolCallDetailLevel` added to `APP_SETTINGS_UPDATE_KEYS`, which is what made the setting
+   writable at all. `collectAppSettingsUpdates` is now exported and tested, because a dropped write
+   is invisible: it neither fails to compile nor throws.
+2. A dropdown row in `appearance-section.tsx`, under Chats next to action grouping.
+3. `agent-stream/view.tsx` runs the projection and renders `OverviewToolCallGroupView` for grouped
+   runs. Both memos read the **deferred** stream pair, not the effective one: deferral has to stay
+   intact, and the reveal spans are computed from the same pair. The prepare memo depends on the
+   tail alone so retained history is never regrouped on the ~48ms live-head flush.
+4. `strategy-native.tsx` consumes `historyRowRevision`, whose type had already landed in
+   `strategy.ts` with no producer and no consumer. FlatList re-renders from item identity, so
+   without it a collapsed run in retained history keeps stale counts and a stuck spinner. Web needs
+   nothing: it re-renders through the renderer closure.
+5. The `toolCallGroup.*` i18n keys, which the audit missed. They had landed in **no** locale file,
+   English included, so the collapsed row would have rendered raw i18n keys. Added as literal
+   English across all eight locales pending the i18n sweep.
+
+Two things the audit's inventory got wrong, worth recording because both were only visible from the
+wiring side: those missing `toolCallGroup.*` keys, and a **duplicate** `settings.general.toolCallDetail`
+block in `en.ts`. The duplicate is why this looked more finished than it was: later keys win in an
+object literal, so the merge's translated copy was live and the second copy dead. The duplicate is
+removed and the merge's wording kept, since all seven non-English locales already translate it.
+
+`e2e/tool-call-shimmer.spec.ts` already seeded `toolCallDetailLevel: "overview"` and asserted on the
+`tool-call-group` testID, so it was exercising a feature that could not render. It is live now with
+no change, and was already claimed by the coverage matrix.
 
 ## The pattern connecting almost everything
 
@@ -297,8 +352,8 @@ most likely home of further regressions and nobody has sized it.**
   `workspace-tabs-store/state.ts:11-14`; `git/forge.ts:133 forgeToHostingProvider`;
   `agent-panel.tsx:1004` (`visibilityCatchUpStatus` stub); `file-pane/bar.tsx:158-160`.
 - **Fourteen genuinely undated COMPAT tags** (list in the second audit; mostly pre-existing).
-- **Landed-but-unimported upstream modules:** `toolCallDetailLevel` (storage field only, not in
-  `APP_SETTINGS_UPDATE_KEYS` so writes are dropped, zero readers), `SidebarResizeHandle` /
+- **Landed-but-unimported upstream modules:** ~~`toolCallDetailLevel`~~ (adopted and wired
+  2026-08-02), `SidebarResizeHandle` /
   `SidebarHelpMenu` / `resolveDesktopSidebarWidth` in `left-sidebar.tsx`,
   `agent-stream/history-start-pagination.ts`, `settings/daemon-reconnect.ts`.
 - **`markdown/html-ish.ts` kept ours** — `<b>/<strong>/<em>/<code>/<table>` now render raw in model

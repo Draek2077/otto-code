@@ -726,6 +726,78 @@ function TextEffectsRow({ value, onChange }: TextEffectsRowProps) {
   );
 }
 
+const TOOL_CALL_DETAIL_LEVELS: readonly AppSettings["toolCallDetailLevel"][] = [
+  "detailed",
+  "overview",
+];
+
+function getToolCallDetailLevelLabel(
+  t: TFunction,
+  value: AppSettings["toolCallDetailLevel"],
+): string {
+  return t(`settings.general.toolCallDetail.options.${value}`);
+}
+
+interface ToolCallDetailMenuItemProps {
+  value: AppSettings["toolCallDetailLevel"];
+  selected: boolean;
+  onChange: (value: AppSettings["toolCallDetailLevel"]) => void;
+}
+
+function ToolCallDetailMenuItem({ value, selected, onChange }: ToolCallDetailMenuItemProps) {
+  const { t } = useTranslation();
+  const handleSelect = useCallback(() => {
+    onChange(value);
+  }, [onChange, value]);
+  return (
+    <DropdownMenuItem selected={selected} onSelect={handleSelect}>
+      {getToolCallDetailLevelLabel(t, value)}
+    </DropdownMenuItem>
+  );
+}
+
+interface ToolCallDetailRowProps {
+  value: AppSettings["toolCallDetailLevel"];
+  onChange: (value: AppSettings["toolCallDetailLevel"]) => void;
+}
+
+function ToolCallDetailRow({ value, onChange }: ToolCallDetailRowProps) {
+  const { t } = useTranslation();
+  const selectedLabel = getToolCallDetailLevelLabel(t, value);
+  return (
+    <View style={styles.rowWithBorder}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{t("settings.general.toolCallDetail.label")}</Text>
+        <Text style={settingsStyles.rowHint}>
+          {t("settings.general.toolCallDetail.description")}
+        </Text>
+      </View>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          style={dropdownTriggerStyle}
+          accessibilityLabel={t("settings.general.toolCallDetail.accessibilityLabel", {
+            value: selectedLabel,
+          })}
+          testID="settings-tool-call-detail-trigger"
+        >
+          <Text style={styles.triggerText}>{selectedLabel}</Text>
+          <ThemedChevronDown uniProps={mutedColorMapping} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="bottom" align="end" width={200}>
+          {TOOL_CALL_DETAIL_LEVELS.map((option) => (
+            <ToolCallDetailMenuItem
+              key={option}
+              value={option}
+              selected={value === option}
+              onChange={onChange}
+            />
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </View>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Layout: compact sidebar top spacing + workspace tools placement (booleans)
 // ---------------------------------------------------------------------------
@@ -854,6 +926,13 @@ export function AppearanceSection() {
   const handleGroupConsecutiveActionsChange = useCallback(
     (groupConsecutiveActions: boolean) => {
       void updateSettings({ groupConsecutiveActions });
+    },
+    [updateSettings],
+  );
+
+  const handleToolCallDetailLevelChange = useCallback(
+    (toolCallDetailLevel: AppSettings["toolCallDetailLevel"]) => {
+      void updateSettings({ toolCallDetailLevel });
     },
     [updateSettings],
   );
@@ -1150,6 +1229,13 @@ export function AppearanceSection() {
             withBorder
             onValueChange={handleGroupConsecutiveActionsChange}
             testID="settings-group-consecutive-actions-switch"
+          />
+          {/* Sits next to action grouping because the two overlap: in "overview"
+              the projection collapses each run before the render model runs, so
+              action grouping has almost nothing consecutive left to group. */}
+          <ToolCallDetailRow
+            value={settings.toolCallDetailLevel}
+            onChange={handleToolCallDetailLevelChange}
           />
           <LayoutToggleRow
             title={t("settings.appearance.agents.chatMetricsBar.title")}

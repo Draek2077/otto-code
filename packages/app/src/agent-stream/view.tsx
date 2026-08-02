@@ -64,6 +64,11 @@ import { ToolCallDetailsContent } from "@/components/tool-call-details";
 import { QuestionFormCard } from "@/components/question-form-card";
 import { ToolCallSheetProvider } from "@/components/tool-call-sheet";
 import { WidgetChatProvider } from "@/widgets/widget-chat-context";
+import {
+  prepareToolCallHistory,
+  projectToolCallDetailLevel,
+} from "@/tool-calls/detail-level/projection";
+import { OverviewToolCallGroupView } from "@/tool-calls/detail-level/overview/view";
 import { type AgentStreamRenderModel, buildAgentStreamRenderModel } from "./model";
 import { resolveStreamRenderStrategy } from "./strategy-resolver";
 import { type StreamSegmentRenderers, type StreamViewportHandle } from "./strategy";
@@ -434,6 +439,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const { t } = useTranslation();
     const router = useRouter();
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
+    const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const viewportRef = useRef<StreamViewportHandle | null>(null);
     const isMobile = useIsCompactFormFactor();
     const streamRenderStrategy = useMemo(
@@ -446,6 +452,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
     const [isNearBottom, setIsNearBottom] = useState(true);
     const [expandedInlineToolCallIds, setExpandedInlineToolCallIds] = useState<Set<string>>(
+      new Set(),
+    );
+    // Which collapsed tool-call runs the reader has opened, in "overview" only.
+    const [expandedToolCallGroupIds, setExpandedToolCallGroupIds] = useState<Set<string>>(
       new Set(),
     );
     // While the app is not following the output, because the reader took the
@@ -505,6 +515,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     useEffect(() => {
       setIsNearBottom(true);
       setExpandedInlineToolCallIds(new Set());
+      setExpandedToolCallGroupIds(new Set());
       setPinnedMountedWindowStartId(null);
     }, [agentId]);
 
@@ -665,12 +676,45 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const deferredStreamItems = useDeferredValue(effectiveStreamItems);
     const deferredStreamHead = useDeferredValue(effectiveStreamHead);
 
+    // The tool-call detail projection reads the SAME deferred pair the render
+    // model does, for two reasons. Deferral has to stay intact — feeding the
+    // model undeferred items would put the whole rebuild back on the urgent
+    // path — and the reveal spans below are computed from the same pair, so a
+    // split would drift the two apart. In "detailed" both calls are pass-through.
+    //
+    // The prepare memo depends on the tail alone, which is the point: retained
+    // history is regrouped only when history itself changes, never on the ~48ms
+    // live-head flush. Keep it that way.
+    const preparedToolCallHistory = useMemo(
+      () => prepareToolCallHistory(toolCallDetailLevel, deferredStreamItems),
+      [deferredStreamItems, toolCallDetailLevel],
+    );
+    // projectToolCallDetailLevel throws when the prepared history does not match
+    // the level, so these two memos must always be derived from the same level.
+    const projectedToolCalls = useMemo(
+      () =>
+        projectToolCallDetailLevel({
+          level: toolCallDetailLevel,
+          tail: deferredStreamItems,
+          head: deferredStreamHead ?? EMPTY_STREAM_HEAD,
+          preparedHistory: preparedToolCallHistory,
+          isTurnActive: agent.status === "running",
+        }),
+      [
+        agent.status,
+        deferredStreamHead,
+        deferredStreamItems,
+        preparedToolCallHistory,
+        toolCallDetailLevel,
+      ],
+    );
+
     const groupConsecutiveActions = useAppSettings().settings.groupConsecutiveActions;
     const baseRenderModel = useMemo(() => {
       return buildAgentStreamRenderModel({
         agentStatus: agent.status,
-        tail: deferredStreamItems,
-        head: deferredStreamHead ?? EMPTY_STREAM_HEAD,
+        tail: projectedToolCalls.tail,
+        head: projectedToolCalls.head,
         platform: isWeb ? "web" : "native",
         isMobileBreakpoint: isMobile,
         groupConsecutiveActions,
@@ -679,8 +723,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     }, [
       agent.status,
       isMobile,
-      deferredStreamHead,
-      deferredStreamItems,
+      projectedToolCalls.head,
+      projectedToolCalls.tail,
       groupConsecutiveActions,
       pinnedMountedWindowStartId,
     ]);
@@ -876,8 +920,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [autoExpandReasoning, setInlineDetailsExpanded],
     );
 
-    const renderToolCallItem = useCallback(
-      (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "tool_call" }>) => {
+    const setToolCallGroupExpanded = useCallback((groupId: string, expanded: boolean) => {
+      setExpandedToolCallGroupIds((previous) => {
+        const next = new Set(previous);
+        if (expanded) {
+          next.add(groupId);
+        } else {
+          next.delete(groupId);
+        }
+        return next;
+      });
+    }, []);
+
+    const renderSingleToolCallItem = useCallback(
+      (item: Extract<StreamItem, { kind: "tool_call" }>, isLastInSequence: boolean) => {
         const { payload } = item;
 
         if (payload.source === "agent") {
@@ -904,7 +960,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               detail={data.detail}
               cwd={agent.cwd}
               metadata={data.metadata}
-              isLastInSequence={layoutItem.isLastInToolSequence}
+              isLastInSequence={isLastInSequence}
               onOpenFilePath={handleToolCallOpenFile}
             />
           );
@@ -919,12 +975,46 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             args={data.arguments}
             result={data.result}
             status={data.status}
-            isLastInSequence={layoutItem.isLastInToolSequence}
+            isLastInSequence={isLastInSequence}
             onOpenFilePath={handleToolCallOpenFile}
           />
         );
       },
       [agent.cwd, setInlineDetailsExpanded, handleToolCallOpenFile],
+    );
+
+    // In "detailed" the lookup is a permanently empty map, so every tool call
+    // takes the single-card path and this costs one Map.get per row.
+    const renderToolCallItem = useCallback(
+      (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "tool_call" }>) => {
+        const group = projectedToolCalls.groupsByHostId.get(item.id);
+        if (!group) {
+          return renderSingleToolCallItem(item, layoutItem.isLastInToolSequence);
+        }
+        const expanded = expandedToolCallGroupIds.has(group.run.id);
+        return (
+          <OverviewToolCallGroupView
+            group={group}
+            expanded={expanded}
+            isLastInSequence={layoutItem.isLastInToolSequence}
+            onExpandedChange={setToolCallGroupExpanded}
+          >
+            {expanded
+              ? group.run.calls.map((call, index) => (
+                  <React.Fragment key={call.id}>
+                    {renderSingleToolCallItem(call, index === group.run.calls.length - 1)}
+                  </React.Fragment>
+                ))
+              : null}
+          </OverviewToolCallGroupView>
+        );
+      },
+      [
+        projectedToolCalls.groupsByHostId,
+        expandedToolCallGroupIds,
+        renderSingleToolCallItem,
+        setToolCallGroupExpanded,
+      ],
     );
 
     const renderActionGroupItem = useCallback(
@@ -1151,6 +1241,19 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       !streamRenderStrategy.shouldDisableParentScrollOnInlineDetailsExpansion() ||
       expandedInlineToolCallIds.size === 0;
 
+    // Native only. The FlatList decides what to re-render from item identity, so
+    // a retained-history group whose counts or expanded state changed needs a
+    // fresh object to repaint. Web re-renders through the renderer closure and
+    // ignores this. Both maps are empty in "detailed".
+    const historyRowRevision = useMemo(
+      () => ({
+        contentById: projectedToolCalls.historyGroupUpdatesByHostId,
+        displayStateById: expandedToolCallGroupIds,
+        globalDisplayState: isMobile,
+      }),
+      [expandedToolCallGroupIds, isMobile, projectedToolCalls.historyGroupUpdatesByHostId],
+    );
+
     return (
       <ToolCallSheetProvider>
         {/* Wraps the whole stream, not just assistant bubbles: file links are
@@ -1169,6 +1272,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 {streamRenderStrategy.render({
                   agentId,
                   segments: renderModel.segments,
+                  historyRowRevision,
                   boundary,
                   renderers,
                   listEmptyComponent,

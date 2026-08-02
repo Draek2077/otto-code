@@ -486,7 +486,10 @@ export interface AppSettings {
   // resolveFeatureEnabled), so new features default on and existing devices are
   // unaffected. Device-local presentation only. Keyed by FeatureId.
   featureEnabled: Partial<Record<FeatureId, boolean>>;
-  /** How much of a tool call the transcript expands by default. */
+  /**
+   * How the transcript renders tool calls. "overview" collapses a run of
+   * consecutive calls into one summary row; "detailed" gives every call a card.
+   */
   toolCallDetailLevel: ToolCallDetailLevel;
   /** Vim keybindings in the file editor. */
   vimKeybindings: boolean;

@@ -66,6 +66,24 @@ const EMPTY_LIVE_HEADER_STORE: LiveHeaderStore = {
 
 const LiveHeaderContext = createContext<LiveHeaderStore>(EMPTY_LIVE_HEADER_STORE);
 
+// One cached copy per (item, breakpoint), so flipping the breakpoint hands the
+// FlatList fresh identities exactly once instead of on every later render.
+const historyRowDisplayVariants = new WeakMap<
+  StreamItem,
+  { compact?: StreamItem; regular?: StreamItem }
+>();
+
+function getHistoryRowDisplayVariant(item: StreamItem, compact: boolean): StreamItem {
+  let variants = historyRowDisplayVariants.get(item);
+  if (!variants) {
+    variants = {};
+    historyRowDisplayVariants.set(item, variants);
+  }
+  const key = compact ? "compact" : "regular";
+  variants[key] ??= { ...item };
+  return variants[key];
+}
+
 function useLiveHeaderStore(content: ReactElement | null): LiveHeaderStore {
   const contentRef = useRef<ReactElement | null>(content);
   const listenersRef = useRef(new Set<() => void>());
@@ -105,6 +123,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   const {
     agentId,
     segments,
+    historyRowRevision,
     boundary,
     renderers,
     listEmptyComponent,
@@ -137,12 +156,35 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   const nativeViewportSettlingFrameIdRef = useRef<number | null>(null);
   const historyStartReadyRef = useRef(false);
 
-  const historyRows = useMemo(() => {
+  const historyItems = useMemo(() => {
     if (segments.historyVirtualized.length === 0) {
       return segments.historyMounted;
     }
     return [...segments.historyVirtualized, ...segments.historyMounted];
   }, [segments.historyMounted, segments.historyVirtualized]);
+  // Keep unchanged item identities intact so live updates only rerender the rows
+  // whose projected content or local display state actually changed. Without
+  // this a collapsed tool-call run sitting in retained history would keep its
+  // stale counts (and its spinner) after the run finished. A breakpoint change
+  // is rare and intentionally refreshes the whole history window.
+  const globallyRevisedHistoryRows = useMemo(() => {
+    const globalDisplayState = historyRowRevision?.globalDisplayState ?? false;
+    return historyItems.map((item) => getHistoryRowDisplayVariant(item, globalDisplayState));
+  }, [historyItems, historyRowRevision?.globalDisplayState]);
+  const displayStateHistoryRows = useMemo(
+    () =>
+      globallyRevisedHistoryRows.map((item) =>
+        historyRowRevision?.displayStateById.has(item.id) ? { ...item } : item,
+      ),
+    [globallyRevisedHistoryRows, historyRowRevision?.displayStateById],
+  );
+  const historyRows = useMemo(
+    () =>
+      displayStateHistoryRows.map((item) =>
+        historyRowRevision?.contentById.has(item.id) ? { ...item } : item,
+      ),
+    [displayStateHistoryRows, historyRowRevision?.contentById],
+  );
 
   const clearNativeViewportSettling = useCallback(() => {
     if (nativeViewportSettlingFrameIdRef.current !== null) {
@@ -424,7 +466,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   // re-renders the cells when the live turn appears, is promoted, or ends, while
   // leaving per-chunk text growth invisible to the list.
   const liveHeadSignature = useMemo(
-    () => segments.liveHead.map((item) => item.id).join(" "),
+    () => segments.liveHead.map((item) => item.id).join("\0"),
     [segments.liveHead],
   );
 

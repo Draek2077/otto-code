@@ -171,9 +171,11 @@ const APP_SETTINGS_UPDATE_KEYS = [
   "verticalTabRailWidth",
   "resourceMonitorEnabled",
   "mountedWorkspaceLimit",
+  "toolCallDetailLevel",
 ] as const satisfies readonly (keyof AppSettings)[];
 
-function collectAppSettingsUpdates(updates: Partial<Settings>): Partial<AppSettings> {
+/** Exported for tests: the allowlist is only observable through what it lets through. */
+export function collectAppSettingsUpdates(updates: Partial<Settings>): Partial<AppSettings> {
   const appUpdates: Partial<AppSettings> = {};
   for (const key of APP_SETTINGS_UPDATE_KEYS) {
     const value = updates[key];
