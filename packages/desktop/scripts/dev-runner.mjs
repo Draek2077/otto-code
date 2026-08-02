@@ -162,9 +162,16 @@ process.on("SIGTERM", () => stopAll("SIGTERM"));
 const metroNodeOptions = [process.env.NODE_OPTIONS, "--max-old-space-size=8192"]
   .filter(Boolean)
   .join(" ");
+// npx is a .cmd shim on Windows. spawn() without a shell only resolves real
+// executables, so plain "npx" died with ENOENT and Metro never came up, taking
+// the tab-bridge E2E down before Electron could be driven. Naming npx.cmd
+// directly is not the fix either: Node refuses to spawn .cmd without a shell
+// (EINVAL, CVE-2024-27980). A shell is the supported route, and every argument
+// here is a literal this file controls, so there is nothing to escape.
 spawnChild("metro", "npx", ["expo", "start", "--port", String(expoPort)], {
   cwd: appDir,
   detached: true,
+  ...(process.platform === "win32" ? { shell: true } : {}),
   env: {
     ...process.env,
     ...colorEnv,
