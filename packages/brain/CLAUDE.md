@@ -38,7 +38,7 @@ seeded from [docs/candidate-models.md](docs/candidate-models.md).
 ## Commands
 
 ```bash
-otto brain                     # interactive TUI (needs a TTY)
+otto brain                     # interactive TUI (needs a TTY; see the Windows note)
 otto brain scan                # list detected models
 otto brain serve --model X     # host a model in the foreground
 otto brain start [--model X]   # start the service detached
@@ -50,6 +50,17 @@ otto brain pull <model>        # download a model from the catalog
 otto brain runtime install     # download a self-contained llama.cpp runtime
 otto brain config show | set <key> <value>
 ```
+
+**Windows: the TUI cannot run under the desktop app's bundled `otto`.** That shim
+executes the CLI inside `Otto.exe` with `ELECTRON_RUN_AS_NODE=1`, and `Otto.exe` is
+an `IMAGE_SUBSYSTEM_WINDOWS_GUI` binary. Measured in a freshly allocated console,
+it reports `stdout.isTTY=false` and `stdin.isTTY=false` where `node.exe` in that
+same console reports `true` for both. `stdin` is the fatal half: `tui/screen.ts`
+needs `setRawMode` and there is no console input to switch. This is not a PATH or
+terminal problem and no launcher change fixes it while `Otto.exe` is the only Node
+host in the installer. `commands/ui.ts` detects this case and points at the npm CLI
+(`npm i -g @otto-code/cli`), which runs on console-subsystem `node.exe`. Every
+non-interactive verb works fine through the bundled shim.
 
 Standalone (no full CLI installed): the same verbs are on `bin/otto-brain`
 (`otto-brain serve …`). Every non-interactive command supports `--format
