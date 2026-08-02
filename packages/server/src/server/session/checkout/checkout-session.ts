@@ -388,7 +388,11 @@ export class CheckoutSession {
     const resolvedCwd = expandTilde(cwd);
 
     try {
-      this.github.invalidate({ cwd: resolvedCwd });
+      // Invalidate the resolved forge, not GitHub specifically: every other
+      // mutation path goes through invalidateForge, and hitting Refresh on a
+      // Bitbucket or GitLab workspace was clearing a GitHub cache it does not
+      // use while leaving its own stale.
+      this.workspaceGitService.invalidateForge(resolvedCwd);
       await this.workspaceGitService.getSnapshot(resolvedCwd, {
         force: true,
         includeForge: true,
