@@ -2195,6 +2195,7 @@ export class AgentManager {
       labels: options.labels,
       initialTitle: options.initialTitle,
       workspaceId: options.workspaceId,
+      ...(options.owner ? { owner: options.owner } : {}),
     });
     const spawnedPersonalityId = storedConfig.personalitySnapshot?.personalityId;
     if (spawnedPersonalityId) {
@@ -2450,6 +2451,7 @@ export class AgentManager {
       return this.registerSession(session, storedConfig, agentId, {
         labels: existing.labels,
         workspaceId: existing.workspaceId,
+        ...(existing.owner ? { owner: existing.owner } : {}),
         createdAt: existing.createdAt,
         updatedAt: existing.updatedAt,
         lastUserMessageAt: existing.lastUserMessageAt,
@@ -4770,6 +4772,7 @@ export class AgentManager {
       initialTitle?: string | null;
       publishWhenReady?: boolean;
       workspaceId?: string;
+      owner?: AgentOwner;
     },
   ): Promise<ManagedAgent> {
     let registered = false;
@@ -4905,22 +4908,25 @@ export class AgentManager {
           attention?: AttentionState;
           persistence?: AgentPersistenceHandle;
           workspaceId?: string;
+          owner?: AgentOwner;
         }
       | undefined;
   }): ActiveManagedAgent {
-    const { resolvedAgentId, session, config, now, durableTimelineHasRows, options } = params;
+    const { resolvedAgentId, session, config, now, durableTimelineHasRows } = params;
+    // Defaulted once instead of optional-chaining every field below.
+    const options = params.options ?? {};
     return {
       id: resolvedAgentId,
       provider: config.provider,
       cwd: config.cwd,
-      workspaceId: options?.workspaceId,
+      workspaceId: options.workspaceId,
       session,
       capabilities: session.capabilities,
       config,
       runtimeInfo: undefined,
       lifecycle: "initializing",
-      createdAt: options?.createdAt ?? now,
-      updatedAt: options?.updatedAt ?? now,
+      createdAt: options.createdAt ?? now,
+      updatedAt: options.updatedAt ?? now,
       availableModes: [],
       currentModeId: null,
       pendingPermissions: new Map<string, AgentPermissionRequest>(),
@@ -4934,19 +4940,24 @@ export class AgentManager {
       finalizedForegroundTurnIds: new Set<string>(),
       unsubscribeSession: null,
       persistence: attachPersistenceCwd(
-        options?.persistence ?? session.describePersistence(),
+        options.persistence ?? session.describePersistence(),
         config.cwd,
       ),
-      historyPrimed: options?.historyPrimed ?? durableTimelineHasRows,
-      lastUserMessageAt: options?.lastUserMessageAt ?? null,
-      lastUsage: options?.lastUsage,
-      lastError: options?.lastError,
-      attention: resolveInitialAttention(options?.attention),
+      historyPrimed: options.historyPrimed ?? durableTimelineHasRows,
+      lastUserMessageAt: options.lastUserMessageAt ?? null,
+      lastUsage: options.lastUsage,
+      lastError: options.lastError,
+      attention: resolveInitialAttention(options.attention),
       unattended: config.unattended ?? false,
       guardrailDenials: 0,
       internal: config.internal ?? false,
       observable: config.observable ?? false,
-      labels: options?.labels ?? {},
+      labels: options.labels ?? {},
+      // Ownership has to reach the ManagedAgent, not just the create call:
+      // toStoredAgentRecord projects it off the agent, so leaving it here meant
+      // no hub execution was ever stamped onto its record and every duplicate
+      // create missed findByDaemonExecution and spawned a second agent.
+      owner: options.owner,
     } as ActiveManagedAgent;
   }
 

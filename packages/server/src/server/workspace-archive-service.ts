@@ -138,6 +138,13 @@ export async function archiveByScope(
     request.scope,
     request.ottoWorktreesBaseRoot,
   );
+  // Callers that know the repo root pass it; the rest get it derived here from
+  // the workspaces being archived. Without a repo root, deleteOttoWorktree skips
+  // `git worktree remove` and `git worktree prune` entirely, so the directory
+  // disappeared while the parent repo went on listing it as a live worktree.
+  const repoRoot =
+    request.repoRoot ?? (await resolveArchiveRepoRoot(dependencies, targetWorkspaceIds));
+  const resolvedRequest = repoRoot ? { ...request, repoRoot } : request;
 
   if (targetWorkspaceIds.length > 0) {
     dependencies.markWorkspaceArchiving(targetWorkspaceIds, new Date().toISOString());
@@ -164,15 +171,15 @@ export async function archiveByScope(
       });
     }
 
-    if (request.repoRoot) {
+    if (resolvedRequest.repoRoot) {
       try {
-        await dependencies.workspaceGitService.getSnapshot(request.repoRoot, {
+        await dependencies.workspaceGitService.getSnapshot(resolvedRequest.repoRoot, {
           force: true,
           reason: "archive-worktree",
         });
       } catch (error) {
         dependencies.sessionLogger?.warn(
-          { err: error, cwd: request.repoRoot, requestId: request.requestId },
+          { err: error, cwd: resolvedRequest.repoRoot, requestId: request.requestId },
           "Failed to force-refresh workspace git snapshot after archiving",
         );
       }
@@ -181,7 +188,7 @@ export async function archiveByScope(
     if (targetDir !== null) {
       const removal = await maybeRemoveDirectory(
         dependencies,
-        request,
+        resolvedRequest,
         targetDir,
         archivedWorkspaceIds,
       );
@@ -201,6 +208,25 @@ export async function archiveByScope(
       await dependencies.emitWorkspaceUpdatesForWorkspaceIds(targetWorkspaceIds);
     }
   }
+}
+
+// The repo a worktree workspace was cut from, as recorded on its placement.
+// Only worktree records carry one; a plain checkout has nothing to prune.
+async function resolveArchiveRepoRoot(
+  dependencies: ArchiveDependencies,
+  targetWorkspaceIds: string[],
+): Promise<string | null> {
+  if (targetWorkspaceIds.length === 0) {
+    return null;
+  }
+  const targets = new Set(targetWorkspaceIds);
+  const active = await dependencies.listActiveWorkspaces();
+  for (const workspace of active) {
+    if (targets.has(workspace.workspaceId) && workspace.mainRepoRoot) {
+      return workspace.mainRepoRoot;
+    }
+  }
+  return null;
 }
 
 async function resolveArchiveTargets(

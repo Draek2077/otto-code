@@ -7,7 +7,11 @@ import {
   createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
 } from "./workspace-registry.js";
-import { deriveProjectGroupingName, generateWorkspaceId } from "./workspace-registry-model.js";
+import {
+  deriveProjectGroupingName,
+  generateWorkspaceId,
+  initialWorkspacePlacement,
+} from "./workspace-registry-model.js";
 import { classifyDirectoryForProjectMembership } from "./workspace-registry-bootstrap-legacy.js";
 import {
   createWorktreeCore,
@@ -262,11 +266,19 @@ async function upsertWorkspaceForWorktree(options: {
   const workspace = createPersistedWorkspaceRecord({
     workspaceId,
     projectId: sourceProject.projectId,
-    cwd: normalizedCwd,
-    kind: "worktree",
-    displayName: options.worktree.branchName || normalizedCwd,
-    branch: options.worktree.branchName || null,
-    baseBranch: options.baseBranch ?? null,
+    // Placement comes from the shared builder, not hand-rolled fields. Spelling
+    // it out here left worktreeRoot, mainRepoRoot, and isOttoOwnedWorktree unset,
+    // so every worktree Otto created recorded itself as un-owned and each caller
+    // gated on isOttoOwnedWorktree (hub archive included) quietly declined to
+    // tear the directory down.
+    ...initialWorkspacePlacement({
+      source: "created_worktree",
+      cwd: normalizedCwd,
+      worktreeRoot: normalizedCwd,
+      branch: options.worktree.branchName || null,
+      baseBranch: options.baseBranch ?? null,
+      mainRepoRoot: normalizedRepoRoot,
+    }),
     title: options.title ?? null,
     hidden: options.hidden ?? false,
     createdAt: now,

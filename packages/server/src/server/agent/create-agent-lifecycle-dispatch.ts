@@ -218,6 +218,10 @@ export class CreateAgentLifecycleDispatch {
       {
         scope: { kind: "workspace", workspaceId: createdWorktree.workspace.workspaceId },
         requestId: randomUUID(),
+        // Without the repo root, deleteOttoWorktree skips both `git worktree
+        // remove` and `git worktree prune` and only deletes the directory, so
+        // the parent repo kept listing the worktree we just tore down.
+        repoRoot: createdWorktree.repoRoot,
       },
     );
 

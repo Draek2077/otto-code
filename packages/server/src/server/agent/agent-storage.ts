@@ -281,6 +281,11 @@ export class AgentStorage {
 
     this.cache.set(agentId, record);
     this.pathById.set(agentId, nextPath);
+    // Keep the owner index in step with the cache. It used to be built only by
+    // the disk load pass, so a hub execution's agent was not findable by its
+    // (daemonId, executionId) until the daemon restarted — every replayed or
+    // reconnected create missed the idempotency lookup and spawned a duplicate.
+    this.indexOwner(record);
   }
 
   beginDelete(agentId: string): void {

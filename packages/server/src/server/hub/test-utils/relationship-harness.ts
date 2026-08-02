@@ -967,15 +967,17 @@ export class HubRelationshipHarness {
       .map((line) => line.slice("worktree ".length));
   }
 
+  // Spawns a second workspace on `cwd` through the agent path rather than
+  // workspace.create: explicit creation refuses a directory that already backs a
+  // live workspace ("open that one instead"), which is exactly the state this
+  // sets up. Agent spawns are allowed to share a directory, so this is the
+  // reachable way to get two workspaces onto one worktree.
   async createSiblingWorkspace(cwd: string): Promise<string> {
     const client = await this.trustedClient();
     try {
-      const result = await client.createWorkspace({
-        source: { kind: "directory", path: cwd },
-        title: "sibling",
-      });
-      if (!result.workspace) throw new Error(result.error ?? "Failed to create sibling workspace");
-      return result.workspace.id;
+      const agent = await client.createAgent({ provider: "codex", cwd });
+      if (!agent.workspaceId) throw new Error("Sibling agent did not receive a workspace");
+      return agent.workspaceId;
     } finally {
       await client.close();
     }
