@@ -2161,7 +2161,12 @@ export class AgentManager {
     const client = await this.requireAvailableClient({
       provider: storedConfig.provider,
     });
-    const launchContext = await this.buildLaunchContext(resolvedAgentId, client, options?.env);
+    const launchContext = await this.buildLaunchContext(
+      resolvedAgentId,
+      client,
+      storedConfig.cwd,
+      options?.env,
+    );
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     const createOptions = this.buildCreateSessionOptions(options);
     const session = await client.createSession(providerLaunchConfig, launchContext, createOptions);
@@ -2247,7 +2252,7 @@ export class AgentManager {
         `Provider '${handle.provider}' is not available. Please ensure the CLI is installed.`,
       );
     }
-    const launchContext = await this.buildLaunchContext(resolvedAgentId, client);
+    const launchContext = await this.buildLaunchContext(resolvedAgentId, client, storedConfig.cwd);
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     const session = await client.resumeSession(handle, providerLaunchConfig, launchContext);
     return this.registerSession(session, storedConfig, resolvedAgentId, options);
@@ -2286,7 +2291,7 @@ export class AgentManager {
       },
       resolvedAgentId,
     );
-    const launchContext = await this.buildLaunchContext(resolvedAgentId, client);
+    const launchContext = await this.buildLaunchContext(resolvedAgentId, client, storedConfig.cwd);
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
     const imported = await client.importSession(
       {
@@ -2362,7 +2367,7 @@ export class AgentManager {
       provider,
     } as AgentSessionConfig;
     const { storedConfig, launchConfig } = await this.prepareSessionConfig(refreshConfig, agentId);
-    const launchContext = await this.buildLaunchContext(agentId, client);
+    const launchContext = await this.buildLaunchContext(agentId, client, storedConfig.cwd);
     const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
 
     const session = handle
@@ -4981,6 +4986,27 @@ export class AgentManager {
     }
   }
 
+  /**
+   * Replaces the parent's provider children with the ones its session history
+   * reports. The removals are dispatched too, so a client already showing the
+   * old set is told they are gone rather than being left to guess.
+   */
+  private rebuildProviderSubagentsFromHistory(
+    agent: ActiveManagedAgent,
+    events: Extract<AgentStreamEvent, { type: "provider_subagent" }>[],
+    broadcast: boolean,
+  ): void {
+    for (const removal of this.providerSubagents.deleteParent(agent.id)) {
+      this.dispatch({ type: "provider_subagent", event: removal });
+    }
+    for (const event of events) {
+      const update = this.providerSubagents.apply(agent.id, event.provider, event.event);
+      if (broadcast) {
+        this.dispatch({ type: "provider_subagent", event: update });
+      }
+    }
+  }
+
   private async hydrateTimelineFromLegacyProviderHistory(
     agent: ActiveManagedAgent,
     options?: HydrateTimelineOptions,
@@ -4990,59 +5016,84 @@ export class AgentManager {
     }
 
     if (options?.force) {
-      const historyEvents: Extract<AgentStreamEvent, { type: "timeline" }>[] = [];
-      for await (const event of agent.session.streamHistory()) {
-        if (event.type === "timeline") {
-          if (event.item.type === "user_message" && isSystemInjectedEnvelope(event.item.text)) {
-            continue;
-          }
-          historyEvents.push(event);
-        }
-      }
-
-      this.agentStreamCoalescer.flushAndDiscard(agent.id);
-      await this.deleteCommittedTimeline(agent.id);
-      this.timelineStore.delete(agent.id);
-      this.timelineStore.initialize(agent.id, { timestamp: new Date().toISOString() });
-      agent.historyPrimed = true;
-
-      for (const event of historyEvents) {
-        const row = this.recordTimeline(
-          agent.id,
-          event.item,
-          event.timestamp ? { timestamp: event.timestamp } : undefined,
-        );
-        if (options?.broadcast) {
-          this.dispatchStream(agent.id, event, {
-            seq: row.seq,
-            epoch: this.timelineStore.getEpoch(agent.id),
-            timestamp: row.timestamp,
-          });
-        }
-      }
-      this.touchUpdatedAt(agent);
-      this.emitState(agent);
+      await this.rehydrateTimelineFromScratch(agent, options);
       return;
     }
 
     agent.historyPrimed = true;
     try {
-      for await (const event of agent.session.streamHistory()) {
-        if (event.type !== "timeline") {
-          continue;
-        }
-        if (event.item.type === "user_message" && isSystemInjectedEnvelope(event.item.text)) {
-          continue;
-        }
+      const { timeline, subagents } = await this.readProviderHistory(agent);
+      for (const event of timeline) {
         this.recordTimeline(
           agent.id,
           event.item,
           event.timestamp ? { timestamp: event.timestamp } : undefined,
         );
       }
+      // Only replaces the children once history actually produced some, so a
+      // read that yielded nothing does not empty a rail that was correct.
+      if (subagents.length > 0) {
+        this.rebuildProviderSubagentsFromHistory(agent, subagents, options?.broadcast === true);
+      }
     } catch {
       // ignore history failures
     }
+  }
+
+  /** Splits a session's replayed history into the two streams hydration needs. */
+  private async readProviderHistory(agent: ActiveManagedAgent): Promise<{
+    timeline: Extract<AgentStreamEvent, { type: "timeline" }>[];
+    subagents: Extract<AgentStreamEvent, { type: "provider_subagent" }>[];
+  }> {
+    const timeline: Extract<AgentStreamEvent, { type: "timeline" }>[] = [];
+    const subagents: Extract<AgentStreamEvent, { type: "provider_subagent" }>[] = [];
+    for await (const event of agent.session.streamHistory()) {
+      if (event.type === "provider_subagent") {
+        subagents.push(event);
+      } else if (
+        event.type === "timeline" &&
+        !(event.item.type === "user_message" && isSystemInjectedEnvelope(event.item.text))
+      ) {
+        timeline.push(event);
+      }
+    }
+    return { timeline, subagents };
+  }
+
+  /**
+   * Drops the retained timeline and children and rebuilds both from a fresh
+   * read of the session. A forced hydration is the authoritative read, so
+   * anything history no longer reports is gone rather than merged.
+   */
+  private async rehydrateTimelineFromScratch(
+    agent: ActiveManagedAgent,
+    options: HydrateTimelineOptions,
+  ): Promise<void> {
+    const { timeline, subagents } = await this.readProviderHistory(agent);
+
+    this.agentStreamCoalescer.flushAndDiscard(agent.id);
+    await this.deleteCommittedTimeline(agent.id);
+    this.timelineStore.delete(agent.id);
+    this.timelineStore.initialize(agent.id, { timestamp: new Date().toISOString() });
+    agent.historyPrimed = true;
+    this.rebuildProviderSubagentsFromHistory(agent, subagents, options.broadcast === true);
+
+    for (const event of timeline) {
+      const row = this.recordTimeline(
+        agent.id,
+        event.item,
+        event.timestamp ? { timestamp: event.timestamp } : undefined,
+      );
+      if (options.broadcast) {
+        this.dispatchStream(agent.id, event, {
+          seq: row.seq,
+          epoch: this.timelineStore.getEpoch(agent.id),
+          timestamp: row.timestamp,
+        });
+      }
+    }
+    this.touchUpdatedAt(agent);
+    this.emitState(agent);
   }
 
   private notifyForegroundTurnWaiters(agentId: string, event: AgentStreamEvent): void {
@@ -6880,6 +6931,7 @@ export class AgentManager {
   private async buildLaunchContext(
     agentId: string,
     client: AgentClient,
+    cwd: string,
     env?: Record<string, string>,
   ): Promise<AgentLaunchContext> {
     const context: AgentLaunchContext = {
@@ -6887,6 +6939,10 @@ export class AgentManager {
       env: {
         ...env,
         OTTO_AGENT_ID: agentId,
+        // Alongside the id so anything the agent spawns — a hook, a workspace
+        // script, a nested tool — can find the workspace it belongs to without
+        // relying on having inherited the process cwd.
+        OTTO_AGENT_CWD: cwd,
       },
       // Resolved daemon-wide behavior toggles for this launch. Providers that
       // don't support a behavior ignore it (Claude reads promptSuggestions /
