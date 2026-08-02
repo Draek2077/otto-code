@@ -258,16 +258,17 @@ import {
 } from "./agent/create-agent/create.js";
 import { archiveAgentCommand, cancelAgentRunCommand } from "./agent/lifecycle-command.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
+// DISABLED(hub): these three specifiers used to read "./hub/...". They now
+// resolve to inert stand-ins so `server/hub/**` never enters the module graph.
+// The wiring below is left byte-identical to upstream on purpose, so their
+// changes to it keep auto-merging. See hub-disabled.ts for the whole rationale.
 import {
   HubRelationshipController,
   type HubRelationshipClock,
   type HubRelationshipRetryPolicy,
-} from "./hub/relationship-controller.js";
-import {
-  DirectHubRelationshipRemote,
-  type HubRelationshipRemote,
-} from "./hub/relationship-remote.js";
-import { DaemonExecutions } from "./hub/daemon-executions.js";
+} from "./hub-disabled.js";
+import { DirectHubRelationshipRemote, type HubRelationshipRemote } from "./hub-disabled.js";
+import { DaemonExecutions } from "./hub-disabled.js";
 
 const MAX_MCP_DEBUG_BATCH_ITEMS = 10;
 const REDACTED_LOG_VALUE = "[redacted]";

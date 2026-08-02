@@ -12,7 +12,8 @@ import { createTerminalCommand } from "./commands/terminal/index.js";
 import { createWorktreeCommand } from "./commands/worktree/index.js";
 import { createWorkspaceCommand } from "./commands/workspace/index.js";
 import { createHeartbeatCommand } from "./commands/heartbeat/index.js";
-import { createHubCommand } from "./commands/hub/index.js";
+// DISABLED(hub): specifier redirected away from "./commands/hub/index.js".
+import { createHubCommand } from "./commands/hub-disabled.js";
 import { createHooksCommand } from "./commands/hooks.js";
 import { createBrainCommand } from "@otto-code/brain";
 import { startCommand as daemonStartCommand } from "./commands/daemon/start.js";

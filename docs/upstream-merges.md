@@ -112,17 +112,22 @@ Also check the port didn't sneak back:
 git grep -n '\b6767\b' -- ':!*package-lock.json'
 ```
 
-And check that upstream's Hub subsystem didn't ride in on a shared file. Hub is a
-**permanent exclusion** (see the standing decision below) but it is threaded
-through a dozen files Otto also edits, so it re-offers itself on every merge:
+And check that upstream's Hub subsystem is still inert. Hub is a **permanent
+exclusion** (see the standing decision below), but it landed anyway in the
+v0.2.5 merge, so the check is no longer "is it absent" but "is it unreachable".
+The source grep now returns plenty and that is expected:
 
 ```bash
-git grep -nE 'AgentOwnerSchema|daemonExecutionKey|findByDaemonExecution|HubRelationship|DaemonExecutions|hub\.(management|execution)\.' \
-  -- ':!docs/upstream-merges.md'
+# The real invariant: no runtime edge into the hub subsystem. Type-only imports
+# are fine because they are erased; a `.js` hit means Hub is loading again.
+npm run build:server
+grep -rln 'from "\./hub/\|from "\.\./hub/' packages/server/dist/server/ | grep '\.js$'
 ```
 
-Expected output: **nothing**. A hit means a Hub hunk survived — strip the Hub
-reference out of that file rather than pulling the subsystem in behind it.
+Expected output: **nothing**. A `.js` hit means something re-imported a real Hub
+module as a value. Point that specifier back at
+`packages/server/src/server/hub-disabled.ts` rather than letting the subsystem
+back into the module graph.
 
 ### 4. Bump the upstream base version
 
@@ -285,6 +290,41 @@ These carry across merges. Revisit only when the stated trigger fires.
 
   Enforce the exclusion in step 3 of the audit rather than trusting merge-time
   vigilance — the grep is in the audit block above.
+
+  **Update (2026-08-02): Hub landed, and is now gated off rather than stripped.**
+  The v0.2.5 merge brought the whole subsystem in: 12 files under
+  `packages/server/src/server/hub/`, `packages/cli/src/commands/hub/`,
+  `docs/hub.md`, `agent/agent-owner.ts`, and `owner` threading through seven
+  shared files. Exactly the recurring cost predicted above, arriving all at once.
+
+  Stripping it would mean hand-editing `bootstrap.ts`, `session.ts` and
+  `cli.ts`, which are the three files upstream edits most, so every future merge
+  would conflict on our deletions. We took the cheaper and more durable option
+  instead: **switch it off at the import specifier.**
+
+  `packages/server/src/server/hub-disabled.ts` and
+  `packages/cli/src/commands/hub-disabled.ts` export inert stand-ins with the
+  same names. The three value imports now resolve there, and every other line at
+  those call sites is left byte-identical to upstream, so upstream's future edits
+  to the hub wiring keep auto-merging instead of conflicting. Because nothing
+  imports `./hub/*` as a value any more, the subsystem never enters the daemon's
+  module graph: off means not loaded, not merely unused. The stubs re-export the
+  real modules' types (erased at compile time), so if upstream reshapes a Hub
+  interface, the stubs stop typechecking instead of drifting quietly.
+
+  Consequences to know:
+  - Three of the six hub suites boot a real daemon through `createOttoDaemon`
+    and therefore cannot pass. They are excluded in
+    `packages/server/vitest.config.ts`, not edited, so all six files stay
+    byte-identical to upstream. The other three construct the controllers
+    directly and still run, which is what keeps the stubs honest.
+  - `otto hub ...` still exists and reports one sentence explaining it is off.
+  - Re-enabling is repointing three specifiers and removing the test exclusion.
+    `rg "DISABLED\(hub\)"` finds every piece.
+
+  **This does not amend the standing decision.** Hub remains excluded and
+  unsupported. Should it ever be reconsidered, that is a product call, not an
+  implementation one.
 
 - **Forge abstraction (`a8ebd390f`) — took theirs, ported ours onto it.**
   Upstream shipped a pluggable forge layer (GitLab, Gitea/Forgejo/Codeberg,

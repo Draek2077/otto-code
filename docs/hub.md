@@ -1,5 +1,14 @@
 # Otto Hub relationship
 
+> **Hub is DISABLED in Otto and this page describes upstream behaviour, not
+> Otto's.** Hub is a permanent exclusion (see
+> [upstream-merges.md](upstream-merges.md), "Standing decisions"). It arrived
+> with the Paseo v0.2.5 merge and is switched off at the import specifier:
+> `packages/server/src/server/hub-disabled.ts` supplies inert stand-ins, so no
+> real Hub module is ever loaded. Nothing below is reachable in a running Otto
+> daemon. The page is kept because the code is still on disk and byte-identical
+> to upstream. `rg "DISABLED\(hub\)"` finds every part of the switch.
+
 Otto Hub is an explicit opt-in connection from one Otto daemon to one Hub. Running a daemon does
 not register it with a Hub. The relationship begins only when a user runs
 `otto hub connect <url> --token <token>` from the daemon machine.

@@ -226,7 +226,9 @@ import { ProjectConfigSession } from "./session/project-config/project-config-se
 import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
 import type { HubRelationshipManagement } from "./hub/relationship-controller.js";
-import { HubExecutionController } from "./hub/execution-controller.js";
+// DISABLED(hub): the only value import of the three; the two type imports
+// around it are erased at compile time and cost nothing. See hub-disabled.ts.
+import { HubExecutionController } from "./hub-disabled.js";
 import type { HubExecutionAgents } from "./hub/daemon-executions.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { PushTokenStore } from "./push/token-store.js";
