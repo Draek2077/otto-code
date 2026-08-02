@@ -1026,7 +1026,7 @@ export const en = {
       title: "Scripts",
       actions: {
         run: "Run",
-        view: "View",
+        view: "View terminal",
         chooseUrl: "Choose URL",
         copyUrl: "Copy URL",
         openService: "View service",
@@ -1035,7 +1035,6 @@ export const en = {
       },
       accessibility: {
         trigger: "Workspace scripts",
-        openAt: "Open {{scriptName}} at {{label}}",
         viewTerminal: "View {{scriptName}} terminal",
         runScript: "Run {{scriptName}} script",
         script: "{{scriptName}} script",

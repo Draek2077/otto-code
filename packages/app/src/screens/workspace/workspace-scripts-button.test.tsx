@@ -458,21 +458,7 @@ describe("WorkspaceScriptsButton", () => {
     expect(trigger?.querySelector('[data-icon="ChevronDown"]')).not.toBeNull();
   });
 
-  // The five skips below describe upstream's reworked scripts UI — a per-script
-  // route selector, icon-only lifecycle actions with tooltips, and a restart
-  // control. The v0.2.5 merge took that test file while the component resolved to
-  // Otto's side, which has none of it: `workspace-scripts-route*` test ids exist
-  // nowhere in app source, and Otto still labels its actions ("Run") where these
-  // expect icon-only. So they assert a UI that was never merged, not a
-  // regression.
-  //
-  // Left skipped rather than rewritten or deleted: rewriting them to match Otto's
-  // current UI would manufacture coverage for markup nobody has reviewed, and
-  // deleting them would erase the record that ~100 lines of upstream UI (plus its
-  // i18n keys) were dropped. Porting it is a product call, and it lands in a file
-  // that is under active rework. The store half survived
-  // (`@/workspace-service-routes/store`), so only the UI is missing.
-  it.skip("persists the selected route for the host", () => {
+  it("persists the selected route for the host", () => {
     const scripts = [
       script({
         scriptName: "dev",
@@ -525,7 +511,7 @@ describe("WorkspaceScriptsButton", () => {
     expect(requireRow("dev").textContent).toContain("dev--proj--repo.services.example.com");
   });
 
-  it.skip("stops a running script through its terminal", async () => {
+  it("stops a running script through its terminal", async () => {
     current = renderScripts([
       script({
         scriptName: "dev",
@@ -544,7 +530,7 @@ describe("WorkspaceScriptsButton", () => {
     expect(killTerminalMock).toHaveBeenCalledWith("terminal-script-1");
   });
 
-  it.skip("uses icon-only actions with view and fixed-position lifecycle controls", async () => {
+  it("uses icon-only actions with view and fixed-position lifecycle controls", async () => {
     current = renderScripts([
       script({
         scriptName: "dev",
@@ -580,7 +566,7 @@ describe("WorkspaceScriptsButton", () => {
     expect(buttons.every((button) => button.textContent === "")).toBe(true);
   });
 
-  it.skip("adds localized tooltips to every icon action", () => {
+  it("adds localized tooltips to every icon action", () => {
     current = renderScripts([
       script({
         scriptName: "dev",
@@ -609,7 +595,7 @@ describe("WorkspaceScriptsButton", () => {
     ).toBe("Choose URL");
   });
 
-  it.skip("restarts a script once its stopped lifecycle arrives", async () => {
+  it("restarts a script once its stopped lifecycle arrives", async () => {
     current = renderScripts([
       script({
         scriptName: "dev",

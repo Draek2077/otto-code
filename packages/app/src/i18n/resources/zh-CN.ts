@@ -995,7 +995,7 @@ export const zhCN: TranslationResources = {
       title: "脚本",
       actions: {
         run: "运行",
-        view: "查看",
+        view: "查看终端",
         chooseUrl: "选择 URL",
         copyUrl: "复制 URL",
         openService: "查看服务",
@@ -1004,7 +1004,6 @@ export const zhCN: TranslationResources = {
       },
       accessibility: {
         trigger: "Workspace 脚本",
-        openAt: "在 {{label}} 打开 {{scriptName}}",
         viewTerminal: "查看 {{scriptName}} Terminal",
         runScript: "运行 {{scriptName}} script",
         script: "{{scriptName}} 脚本",

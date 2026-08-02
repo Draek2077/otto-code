@@ -1015,7 +1015,7 @@ export const ptBR: TranslationResources = {
       title: "Scripts",
       actions: {
         run: "Executar",
-        view: "Ver",
+        view: "Ver terminal",
         chooseUrl: "Escolher URL",
         copyUrl: "Copiar URL",
         openService: "Ver serviço",
@@ -1024,7 +1024,6 @@ export const ptBR: TranslationResources = {
       },
       accessibility: {
         trigger: "Scripts do Workspace",
-        openAt: "Abrir {{scriptName}} em {{label}}",
         viewTerminal: "Ver terminal de {{scriptName}}",
         runScript: "Executar script {{scriptName}}",
         script: "script {{scriptName}}",

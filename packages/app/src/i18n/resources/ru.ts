@@ -1016,7 +1016,7 @@ export const ru: TranslationResources = {
       title: "Скрипты",
       actions: {
         run: "Бегать",
-        view: "Вид",
+        view: "Посмотреть терминал",
         chooseUrl: "Выбрать URL",
         copyUrl: "Скопировать URL",
         openService: "Просмотреть сервис",
@@ -1025,7 +1025,6 @@ export const ru: TranslationResources = {
       },
       accessibility: {
         trigger: "Скрипты Workspace",
-        openAt: "Откройте{{scriptName}}на{{label}}",
         viewTerminal: "Посмотреть терминал{{scriptName}}",
         runScript: "Запустите скрипт{{scriptName}}",
         script: "скрипт{{scriptName}}",

@@ -1014,7 +1014,7 @@ export const ja: TranslationResources = {
       title: "スクリプト",
       actions: {
         run: "実行",
-        view: "表示",
+        view: "ターミナルを表示",
         chooseUrl: "URLを選択",
         copyUrl: "URLをコピー",
         openService: "サービスを表示",
@@ -1023,7 +1023,6 @@ export const ja: TranslationResources = {
       },
       accessibility: {
         trigger: "ワークスペースのスクリプト",
-        openAt: "{{label}}で{{scriptName}}を開く",
         viewTerminal: "{{scriptName}}ターミナルを表示",
         runScript: "{{scriptName}}スクリプトを実行",
         script: "{{scriptName}}スクリプト",

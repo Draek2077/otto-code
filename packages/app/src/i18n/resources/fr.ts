@@ -1018,7 +1018,7 @@ export const fr: TranslationResources = {
       title: "Scripts",
       actions: {
         run: "Courir",
-        view: "Voir",
+        view: "Voir le terminal",
         chooseUrl: "Choisir l’URL",
         copyUrl: "Copier l’URL",
         openService: "Voir le service",
@@ -1027,7 +1027,6 @@ export const fr: TranslationResources = {
       },
       accessibility: {
         trigger: "Scripts du Workspace",
-        openAt: "Ouvrir{{scriptName}}à{{label}}",
         viewTerminal: "Voir le terminal{{scriptName}}",
         runScript: "Exécuter le script{{scriptName}}",
         script: "Script{{scriptName}}",

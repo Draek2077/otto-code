@@ -1004,7 +1004,7 @@ export const ar: TranslationResources = {
       title: "البرامج النصية",
       actions: {
         run: "يجري",
-        view: "منظر",
+        view: "عرض المحطة",
         chooseUrl: "اختيار الرابط",
         copyUrl: "نسخ الرابط",
         openService: "عرض الخدمة",
@@ -1013,7 +1013,6 @@ export const ar: TranslationResources = {
       },
       accessibility: {
         trigger: "سكربتات Workspace",
-        openAt: "افتح{{scriptName}}في{{label}}",
         viewTerminal: "عرض محطة{{scriptName}}",
         runScript: "قم بتشغيل البرنامج النصي{{scriptName}}",
         script: "البرنامج النصي{{scriptName}}",
