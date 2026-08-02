@@ -18,7 +18,11 @@ import {
   type CreateWorktreeCoreDeps,
   type CreateWorktreeCoreInput,
 } from "./worktree-core.js";
-import { validateBranchSlug, type WorktreeConfig } from "../utils/worktree.js";
+import {
+  isOttoOwnedWorktreeCwd,
+  validateBranchSlug,
+  type WorktreeConfig,
+} from "../utils/worktree.js";
 import { getCurrentBranch, localBranchExists, renameCurrentBranch } from "../utils/checkout-git.js";
 import {
   markOttoWorktreeFirstAgentBranchAutoNameAttempted,
@@ -96,6 +100,25 @@ export async function createOttoWorktree(
   };
 }
 
+/**
+ * Where this worktree's auto-name metadata actually lives.
+ *
+ * A workspace can be opened on a subdirectory of an Otto worktree, and
+ * `readOttoWorktreeMetadata` builds its path from whatever it is handed rather
+ * than walking up. Handing it the raw cwd made the read miss, and a miss is
+ * indistinguishable from "nothing to do", so the branch silently kept its
+ * placeholder name. Git resolves the worktree from any depth, so only the
+ * metadata reads and writes need this; a cwd outside an Otto worktree falls
+ * back to itself and behaves exactly as before.
+ */
+async function resolveAutoNameMetadataRoot(
+  cwd: string,
+  resolveOwnership: typeof isOttoOwnedWorktreeCwd,
+): Promise<string> {
+  const ownership = await resolveOwnership(cwd);
+  return ownership.allowed ? (ownership.worktreePath ?? cwd) : cwd;
+}
+
 export async function attemptFirstAgentBranchAutoName(options: {
   cwd: string;
   firstAgentContext: FirstAgentContext | undefined;
@@ -106,15 +129,21 @@ export async function attemptFirstAgentBranchAutoName(options: {
   getCurrentBranch?: typeof getCurrentBranch;
   renameCurrentBranch?: typeof renameCurrentBranch;
   localBranchExists?: typeof localBranchExists;
+  isOttoOwnedWorktreeCwd?: typeof isOttoOwnedWorktreeCwd;
 }): Promise<AttemptFirstAgentBranchAutoNameResult> {
   const firstAgentContext = options.firstAgentContext;
   if (!firstAgentContext || !buildAgentBranchNameSeed(firstAgentContext)) {
     return { attempted: false, renamed: false, branchName: null };
   }
 
+  const metadataRoot = await resolveAutoNameMetadataRoot(
+    options.cwd,
+    options.isOttoOwnedWorktreeCwd ?? isOttoOwnedWorktreeCwd,
+  );
+
   let metadata: ReturnType<typeof readOttoWorktreeMetadata>;
   try {
-    metadata = readOttoWorktreeMetadata(options.cwd);
+    metadata = readOttoWorktreeMetadata(metadataRoot);
   } catch {
     return { attempted: false, renamed: false, branchName: null };
   }
@@ -129,11 +158,11 @@ export async function attemptFirstAgentBranchAutoName(options: {
   const getCurrentBranchImpl = options.getCurrentBranch ?? getCurrentBranch;
   const placeholderBranchName = metadata.firstAgentBranchAutoName.placeholderBranchName;
   if ((await getCurrentBranchImpl(options.cwd)) !== placeholderBranchName) {
-    markOttoWorktreeFirstAgentBranchAutoNameAttempted(options.cwd);
+    markOttoWorktreeFirstAgentBranchAutoNameAttempted(metadataRoot);
     return { attempted: true, renamed: false, branchName: null };
   }
 
-  markOttoWorktreeFirstAgentBranchAutoNameAttempted(options.cwd);
+  markOttoWorktreeFirstAgentBranchAutoNameAttempted(metadataRoot);
 
   const branchName = await options.generateBranchNameFromContext({
     cwd: options.cwd,

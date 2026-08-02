@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
@@ -18,7 +18,7 @@ import {
   type CreateOttoWorktreeDeps,
 } from "./otto-worktree-service.js";
 import { readOttoWorktreeMetadata } from "../utils/worktree-metadata.js";
-import { createWorktree } from "../utils/worktree.js";
+import { createWorktree, isOttoOwnedWorktreeCwd } from "../utils/worktree.js";
 import { isPlatform } from "../test-utils/platform.js";
 import { createNoopWorkspaceGitService } from "./test-utils/workspace-git-service-stub.js";
 import { existsSync } from "node:fs";
@@ -277,6 +277,51 @@ test("renames an eligible unnamed branch-off worktree once on first agent contex
 
   expect(second).toEqual({ attempted: false, renamed: false, branchName: null });
   expect(branchAfterSecond).toBe("renamed-from-agent-context");
+});
+
+// A workspace can be opened on a subdirectory of an Otto worktree, and the
+// auto-name metadata only ever lives at the worktree root. Reading it from the
+// raw cwd missed, and a miss is indistinguishable from "nothing to do", so the
+// branch silently kept its placeholder name instead of being renamed.
+test("renames from a subdirectory of the worktree, where the metadata is not", async () => {
+  const { repoDir, tempDir } = createGitRepo();
+  cleanupPaths.push(tempDir);
+  const ottoHome = path.join(tempDir, ".otto");
+
+  const created = await createOttoWorktree(
+    { cwd: repoDir, worktreeSlug: "dazzling-yak", runSetup: false, ottoHome },
+    createDeps(),
+  );
+
+  const nestedDir = path.join(created.worktree.worktreePath, "packages", "nested");
+  mkdirSync(nestedDir, { recursive: true });
+
+  const result = await attemptFirstAgentBranchAutoName({
+    cwd: nestedDir,
+    firstAgentContext: { prompt: "Build the agent context name" },
+    generateBranchNameFromContext: async () => "renamed-from-subdirectory",
+    // The real resolver, rooted at this test's Otto home rather than the
+    // daemon's, so the path-shape logic under test is the production one.
+    isOttoOwnedWorktreeCwd: (cwd) => isOttoOwnedWorktreeCwd(cwd, { ottoHome }),
+  });
+
+  const branchAfter = execFileSync("git", ["branch", "--show-current"], {
+    cwd: created.worktree.worktreePath,
+    stdio: "pipe",
+  })
+    .toString()
+    .trim();
+
+  expect(result).toEqual({
+    attempted: true,
+    renamed: true,
+    branchName: "renamed-from-subdirectory",
+  });
+  expect(branchAfter).toBe("renamed-from-subdirectory");
+  // The attempt is recorded at the root, not beside the nested cwd.
+  expect(readOttoWorktreeMetadata(created.worktree.worktreePath)).toMatchObject({
+    firstAgentBranchAutoName: { status: "attempted" },
+  });
 });
 
 test("falls back to a numeric suffix when the desired branch name already exists", async () => {
