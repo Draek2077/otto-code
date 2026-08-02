@@ -337,6 +337,65 @@ lines. Worst by churn, with `Δtheirs` = permanent divergence now carried:
 byte-identical scan — `checkout-session.ts` (regression 5) is exactly that case. **That gap is the
 most likely home of further regressions and nobody has sized it.**
 
+## P2 status as of 2026-08-02
+
+**Corrections owed: all four closed.** `DEFERRED(paseoDiffTab)` is real in
+`workspace-tabs/identity.ts` with a test. The "consumers repointed rather than shimmed" claim is
+gone, and the shim now says outright that it is one. The `hostingProvider`/`forge` collapse claim is
+retracted at both schema sites, with the reason recorded inline: Otto registers every provider into
+the forge registry under the forge id `github`, which is a routing facade, so `forge` reads "github"
+for a Bitbucket workspace and only `hosting.provider` is true. The provider-subagent standing
+decision was amended on 2026-08-01.
+
+**COMPAT tags: audited properly, and the audit's count was low.** Grouping by tag name rather than
+by occurrence, 203 distinct names exist and 12 had no cleanup condition anywhere (the audit said
+14 undated occurrences, which conflated cross-references with canonical sites). Four had no
+condition at all and now do: `fsFileWatch`, `subagentLiveness`, `workspaces`, `claudeVersionGating`.
+Two prose dates were normalised to ISO so they are greppable. `compactionFailedStatus` now says
+explicitly that it has nothing to remove, which is why it never had a date. The rest carry
+event-based triggers, which the repo convention allows: `macOS-signing` clears when Apple signing is
+configured, `xterm-ipad-ctrl-c` when the xterm.js bump lands, `opencodeSlowAbort` when upstream
+acknowledges aborts. The two remaining hits are `COMPAT(...)` and `COMPAT(name)` placeholders in docs
+illustrating the convention.
+
+**Untagged shims: tagged, and two were not shims.** `hostingAttachments` gained its render half,
+`forgeBrandIcon` and `foregroundExtraMuted` and `visibilityCatchUpStub` are now tagged with the
+deletion that clears each. The two `hosting` blocks in `messages.ts` are documented as **permanent**
+rather than tagged, because they cannot collapse into `forge` (see above).
+
+**Dead modules: decided, not deferred.** Verified by import specifier, not stem grep, after the
+earlier orphan scan was shown to produce garbage. Six modules had zero import statements.
+
+- **Deleted** (Otto has its own equivalent, or the helper had no caller at all):
+  `sidebar-help-menu.tsx`, `sidebar-resize-handle.tsx`, `desktop-sidebar-layout.ts`,
+  `daemon-reconnect.ts`, `history-start-pagination.ts`, plus three companion unit tests.
+- **Kept, and tagged `UNWIRED(fileDownload)`:** `use-file-download.ts`. Deleting it would strand a
+  working server subsystem: the daemon mints download tokens (`file-download/token-store.ts`,
+  constructed in `bootstrap.ts`) and `stores/download-store.ts` exists. Only the hook joining them
+  to the file explorer is unreached, so downloading from the explorer does nothing today.
+- **Renamed, not deleted:** `utils/desktop-window.tsx` -> `utils/window-chrome.tsx`, tagged
+  `UNWIRED(windowChrome)`. It sat beside the live `utils/desktop-window.ts`; both resolve from the
+  same specifier and `.ts` wins, so all seven importers got the other file and none of its fifteen
+  exports were reachable. Worse than dead: an editor jumping to the specifier could land there, and
+  a future `WindowChromeProvider` import would have silently resolved to the wrong module.
+
+**Two E2E specs were exercising the deleted components.** `sidebar-help.spec.ts` and
+`sidebar-resize-handle.spec.ts` drove testIDs that exist nowhere in Otto's source, so both were
+guaranteed-red for the same reason `commit-diff-panel.spec.ts` was. Deleted, with their matrix rows
+moved from 🟡 to ❌ so the gap is recorded rather than hidden. Note the resize row is **P1**: Otto
+does have sidebar resize (`resizeGesture` in `left-sidebar.tsx` and `explorer-sidebar.tsx`), it
+simply carries no testIDs, so a shipped feature is uncovered. `npm run e2e:coverage` passes with all
+140 specs claimed.
+
+**The fifth documentation tree stays, and CLAUDE.md now says so.** The audit said to fold `findings/`
+into `projects/README.md`. That would have destroyed roughly 1,300 lines of measured evidence
+(method, numbers, retired hypotheses) by flattening it into a one-line-per-project ledger. What
+CLAUDE.md actually forbids is a rival **status** registry, and `findings/` rule 4 already bars itself
+from carrying status and requires linking to the row in `projects/README.md`. So the contradiction
+was in the count, not the content: `findings/` is now a documented fifth tree, and the prohibition is
+reworded to ban a status ledger rather than evidence. **This is a judgment call and cheap to
+reverse** if Philippe disagrees: delete the row and fold.
+
 ## Lower-priority, verified
 
 - **Mojibake introduced in 10 tracked files** — 169 lines in `protocol/src/messages.ts` alone have

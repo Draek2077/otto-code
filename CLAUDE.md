@@ -21,6 +21,7 @@ Four trees. Know which one you are in before you write anything down.
 | **[`docs/`](docs/README.md)**         | The official software documentation — how Otto works. **This is the spec we build against.** | Present             |
 | **[`projects/`](projects/README.md)** | Charters for unbuilt work, and **the single open-work ledger**                               | Future              |
 | [`archdocs/`](archdocs/README.md)     | The system-level architecture record — AsciiDoc + Mermaid, one level above `docs/`           | Present, wide-angle |
+| [`findings/`](findings/README.md)     | Measured investigations: method, numbers, what they ruled out. **Never status**              | Past                |
 | **This file**                         | Working rules for agents in this repo                                                        | Imperative          |
 
 **The indexes are [`docs/README.md`](docs/README.md) and [`projects/README.md`](projects/README.md).
@@ -64,8 +65,13 @@ Non-negotiable. Each one exists because someone got it wrong first.
 - **Point-in-time plans** (a feature build-out, a charter, a refactor plan) → `projects/<name>/`,
   one folder per initiative, **and a row in [`projects/README.md`](projects/README.md)**.
 - **Status — what is done and what is not** → [`projects/README.md`](projects/README.md) only. It is
-  the single source of truth. Do not start a second registry, a findings file, or a dated batch
-  document; that is how four competing ledgers happened last time.
+  the single source of truth. Do not start a second registry or a dated batch document; that is how
+  four competing ledgers happened last time. This bans a rival **status** ledger, not evidence:
+  a measured investigation belongs in [`findings/`](findings/README.md), whose own rules forbid it
+  from carrying status and require it to link to the row here instead.
+- **A measured investigation** (numbers, method, what was ruled out) →
+  [`findings/`](findings/README.md), one folder per question, one dated file per run. The durable
+  half graduates into `docs/`; the evidence stays as the audit trail.
 - **An external source that shaped a decision** → [`docs/references.md`](docs/references.md),
   including sources you evaluated and rejected.
 
