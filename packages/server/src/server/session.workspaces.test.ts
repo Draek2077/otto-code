@@ -67,6 +67,7 @@ import {
   FileBackedWorkspaceRegistry,
   createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
+  type PersistedProjectKind,
   type PersistedProjectRecord,
   type PersistedWorkspaceRecord,
 } from "./workspace-registry.js";
@@ -523,6 +524,54 @@ class CreateAgentTestClient implements AgentClient {
   }
 }
 
+/**
+ * An in-memory project registry. `getOrCreateActiveByRoot` is the one that
+ * matters: opening a project resolves its project record through it, and a stub
+ * without it fails the whole open with "not a function" rather than anything
+ * that points at the missing member.
+ */
+function createDefaultProjectRegistryStub(): SessionOptions["projectRegistry"] {
+  const projects = new Map<string, PersistedProjectRecord>();
+  return {
+    initialize: async () => {},
+    existsOnDisk: async () => true,
+    list: async () => Array.from(projects.values()),
+    get: async (projectId: string) => projects.get(projectId) ?? null,
+    getOrCreateActiveByRoot: async (input: {
+      rootPath: string;
+      kind: PersistedProjectKind;
+      displayName: string;
+      projectKey?: string;
+      timestamp: string;
+    }) => {
+      const existing = Array.from(projects.values()).find(
+        (project) => project.rootPath === input.rootPath && !project.archivedAt,
+      );
+      if (existing) return existing;
+      const project = createPersistedProjectRecord({
+        projectId: `prj_test_${projects.size + 1}`,
+        rootPath: input.rootPath,
+        kind: input.kind,
+        displayName: input.displayName,
+        createdAt: input.timestamp,
+        updatedAt: input.timestamp,
+      });
+      projects.set(project.projectId, project);
+      return project;
+    },
+    upsert: async (record: PersistedProjectRecord) => {
+      projects.set(record.projectId, record);
+    },
+    archive: async (projectId: string, archivedAt: string) => {
+      const project = projects.get(projectId);
+      if (project) projects.set(projectId, { ...project, archivedAt });
+    },
+    remove: async (projectId: string) => {
+      projects.delete(projectId);
+    },
+  };
+}
+
 function createSessionForWorkspaceTests(
   options: {
     appVersion?: string | null;
@@ -635,15 +684,7 @@ function createSessionForWorkspaceTests(
             : null,
         upsert: async () => {},
       }),
-      projectRegistry: options.projectRegistry ?? {
-        initialize: async () => {},
-        existsOnDisk: async () => true,
-        list: async () => [],
-        get: async () => null,
-        upsert: async () => {},
-        archive: async () => {},
-        remove: async () => {},
-      },
+      projectRegistry: options.projectRegistry ?? createDefaultProjectRegistryStub(),
       workspaceRegistry,
       filesystem: { isDirectory: async () => true },
       chatService: asChatService(),
