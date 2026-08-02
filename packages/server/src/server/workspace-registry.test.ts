@@ -210,6 +210,41 @@ describe("workspace registries", () => {
     expect(await projectRegistry.get(archived.projectId)).toEqual(archived);
   });
 
+  // The v0.2.5 merge changed `deriveProjectKey` to lowercase GitHub owner/repo,
+  // so every install that had persisted a mixed-case key re-derives a different
+  // one on upgrade. The audit predicted duplicate projects from that. It does
+  // not happen, and this pins the reason: lookup is by rootPath, and a project
+  // found that way has its stale key rewritten in place. The mixed-case
+  // `projectId` deliberately survives, because it is an opaque primary key that
+  // workspace records point at. Never compare a stored projectId against a
+  // freshly derived key: that comparison is what would create the duplicate.
+  test("rewrites a legacy mixed-case project key in place instead of duplicating the project", async () => {
+    await projectRegistry.initialize();
+    const rootPath = path.join(tmpDir, "upgraded-root");
+    const legacy = createPersistedProjectRecord({
+      projectId: "remote:github.com/Draek2077/otto-code",
+      rootPath,
+      kind: "git",
+      displayName: "otto-code",
+      projectKey: "remote:github.com/Draek2077/otto-code",
+      createdAt: "2026-03-01T00:00:00.000Z",
+      updatedAt: "2026-03-01T00:00:00.000Z",
+    });
+    await projectRegistry.upsert(legacy);
+
+    const afterUpgrade = await projectRegistry.getOrCreateActiveByRoot({
+      rootPath,
+      kind: "git",
+      displayName: "otto-code",
+      projectKey: "remote:github.com/draek2077/otto-code",
+      timestamp: "2026-03-02T00:00:00.000Z",
+    });
+
+    expect(afterUpgrade.projectId).toBe(legacy.projectId);
+    expect(afterUpgrade.projectKey).toBe("remote:github.com/draek2077/otto-code");
+    expect(await projectRegistry.list()).toEqual([afterUpgrade]);
+  });
+
   test("refreshes the oldest active legacy duplicate kind without rewriting its identity", async () => {
     await projectRegistry.initialize();
     const rootPath = path.join(tmpDir, "legacy-root");

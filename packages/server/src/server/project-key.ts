@@ -2,7 +2,21 @@ import { resolve, win32 } from "node:path";
 import { isGitHubHost, parseGitRemoteLocation } from "@otto-code/protocol/git-remote";
 import { getRealpathAwareRelativePath, normalizePathForIdentity } from "../utils/path.js";
 
-/** Persisted opaque key used to join the same remote across hosts. */
+/**
+ * Persisted opaque key used to join the same remote across hosts.
+ *
+ * GitHub owner/repo is case-insensitive, so the remote path is lowercased and
+ * two clones spelled differently collapse to one project. That changed in the
+ * v0.2.5 merge: keys persisted before it kept the original case.
+ *
+ * **Never compare a stored `projectId` against a value from this function.**
+ * Upgrading installs still carry mixed-case ids, and legacy ids were derived
+ * from this same shape, so such a comparison reads as "different project" and
+ * duplicates it. Nothing does this today and the upgrade is safe because
+ * lookups go through `rootPath` and rewrite a stale `projectKey` in place
+ * (pinned by `workspace-registry.test.ts`). `projectId` is opaque: workspace
+ * records point at it, so it is deliberately never re-derived.
+ */
 export function deriveProjectKey(input: {
   rootPath: string;
   remoteUrl: string | null;
