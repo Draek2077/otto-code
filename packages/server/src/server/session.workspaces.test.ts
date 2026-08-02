@@ -125,11 +125,10 @@ interface SessionTestAccess {
   agentUpdates: AgentUpdatesService;
   workspaceUpdatesSubscription: unknown;
   interruptAgentIfRunning(agentId: string): unknown;
-  recreateOwningWorktreeForRestore(
-    workspace: PersistedWorkspaceRecord,
-    branch: string,
-  ): Promise<void>;
-  reconcileActiveWorkspaceRecords(...args: unknown[]): Promise<Set<string>>;
+  workspaceRecovery: {
+    inspect(workspaceId: string): Promise<unknown>;
+    restore(workspaceId: string): Promise<{ workspaceId: string; action: string }>;
+  };
   reconcileWorkspaceRecord(workspaceId: string): Promise<{
     changed: boolean;
     workspace?: Record<string, unknown> | null;
@@ -1118,58 +1117,10 @@ test("unsupported persisted agents are excluded from active lists but preserved 
   );
 });
 
-test("workspace reconciliation reports archived workspaces to subscribed clients", async () => {
-  const missingCwd = path.join(tmpdir(), `otto-missing-workspace-${Date.now()}`);
-  rmSync(missingCwd, { recursive: true, force: true });
-  const projects = new Map([
-    [
-      "proj-missing",
-      createPersistedProjectRecord({
-        projectId: "proj-missing",
-        rootPath: missingCwd,
-        kind: "non_git",
-        displayName: "missing",
-        createdAt: "2026-03-01T12:00:00.000Z",
-        updatedAt: "2026-03-01T12:00:00.000Z",
-      }),
-    ],
-  ]);
-  const workspaces = new Map([
-    [
-      "ws-missing",
-      createPersistedWorkspaceRecord({
-        workspaceId: "ws-missing",
-        projectId: "proj-missing",
-        cwd: missingCwd,
-        kind: "directory",
-        displayName: "missing",
-        createdAt: "2026-03-01T12:00:00.000Z",
-        updatedAt: "2026-03-01T12:00:00.000Z",
-      }),
-    ],
-  ]);
-  const session = createSessionForWorkspaceTests();
-  session.projectRegistry.list = async () => Array.from(projects.values());
-  session.projectRegistry.archive = async (projectId: string, archivedAt: string) => {
-    const project = projects.get(projectId);
-    if (project) {
-      projects.set(projectId, { ...project, archivedAt });
-    }
-  };
-  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
-  session.workspaceRegistry.archive = async (workspaceId: string, archivedAt: string) => {
-    const workspace = workspaces.get(workspaceId);
-    if (workspace) {
-      workspaces.set(workspaceId, { ...workspace, archivedAt });
-    }
-  };
-
-  const changedWorkspaceIds = await session.reconcileActiveWorkspaceRecords();
-
-  expect(changedWorkspaceIds).toEqual(new Set(["ws-missing"]));
-  expect(workspaces.get("ws-missing")?.archivedAt).toBeTruthy();
-  expect(projects.get("proj-missing")?.archivedAt).toBeFalsy();
-});
+// Reconciliation moved off Session to the daemon-level WorkspaceReconciliationService
+// (bootstrap wires it with onWorkspaceArchived/onWorkspacesChanged). Its coverage lives
+// in workspace-reconciliation-service.test.ts: "archives workspaces whose directories no
+// longer exist" and "keeps a project active after all its workspaces are archived".
 
 test("agent_update placement does not refresh git snapshots", async () => {
   const emitted: SessionOutboundMessage[] = [];
@@ -3118,7 +3069,6 @@ test("workspace update stream keeps persisted workspace visible after agents sto
     pendingUpdatesByWorkspaceId: new Map(),
     lastEmittedByWorkspaceId: new Map(),
   };
-  session.reconcileActiveWorkspaceRecords = async () => new Set();
 
   session.buildWorkspaceDescriptorMap = async () =>
     new Map([
@@ -3211,16 +3161,34 @@ test("archiving the last workspace emits a remove carrying the now-empty project
     subscriptionId: "sub-1",
     filter: undefined,
     isBootstrapping: false,
+    // Primed: a client is only told to remove a workspace it was previously sent.
+    lastEmittedByWorkspaceId: new Map([
+      [
+        archivedWorkspace.workspaceId,
+        {
+          kind: "upsert",
+          workspace: {
+            id: archivedWorkspace.workspaceId,
+            projectId: project.projectId,
+            projectDisplayName: project.displayName,
+            projectRootPath: project.rootPath,
+            workspaceDirectory: archivedWorkspace.cwd,
+            projectKind: project.kind,
+            workspaceKind: archivedWorkspace.kind,
+            name: archivedWorkspace.displayName,
+            status: "done",
+            activityAt: null,
+            diffStat: null,
+          },
+        },
+      ],
+    ]),
     pendingUpdatesByWorkspaceId: new Map(),
-    lastEmittedByWorkspaceId: new Map(),
   };
-  session.reconcileActiveWorkspaceRecords = async () => new Set();
   // The archived workspace no longer resolves to an active descriptor.
   session.buildWorkspaceDescriptorMap = async () => new Map();
 
-  await session.emitWorkspaceUpdatesForWorkspaceIds([archivedWorkspace.workspaceId], {
-    skipReconcile: true,
-  });
+  await session.emitWorkspaceUpdatesForWorkspaceIds([archivedWorkspace.workspaceId]);
 
   const removeUpdate = filterByType(emitted, "workspace_update").find(
     (message) => message.payload.kind === "remove",
@@ -3285,7 +3253,6 @@ test("project.remove.request archives active workspaces and removes the project 
     pendingUpdatesByWorkspaceId: new Map(),
     lastEmittedByWorkspaceId: new Map(),
   };
-  session.reconcileActiveWorkspaceRecords = async () => new Set();
   session.listAgentPayloads = async () => [];
   session.buildWorkspaceDescriptorMap = async (options: { workspaceIds?: Iterable<string> }) => {
     const workspaceIds = Array.from(options.workspaceIds ?? workspaces.keys());
@@ -3383,7 +3350,6 @@ test("project.remove.request removes an already-empty project", async () => {
     pendingUpdatesByWorkspaceId: new Map(),
     lastEmittedByWorkspaceId: new Map(),
   };
-  session.reconcileActiveWorkspaceRecords = async () => new Set();
   session.listAgentPayloads = async () => [];
   session.buildWorkspaceDescriptorMap = async () => new Map();
 
@@ -3556,8 +3522,6 @@ test("workspace update fanout for multiple cwd values is deduplicated", async ()
     pendingUpdatesByWorkspaceId: new Map(),
     lastEmittedByWorkspaceId: new Map(),
   };
-  session.reconcileActiveWorkspaceRecords = async () =>
-    new Set(["ws-repo-main", "ws-repo-feature"]);
   session.buildWorkspaceDescriptorMap = async () =>
     new Map([
       [
@@ -3593,7 +3557,13 @@ test("workspace update fanout for multiple cwd values is deduplicated", async ()
     if (isSessionOutboundMessage(message)) emitted.push(message);
   };
 
-  await session.emitWorkspaceUpdateForCwd("/tmp/repo/worktree");
+  // Repeated ids collapse: the caller may reach the same workspace through more
+  // than one cwd on the same checkout, and each workspace still gets one update.
+  await session.emitWorkspaceUpdatesForWorkspaceIds([
+    "ws-repo-main",
+    "ws-repo-feature",
+    "ws-repo-main",
+  ]);
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   const workspaceUpdates = filterByType(emitted, "workspace_update");
@@ -3967,7 +3937,6 @@ test("open_project_request emits a workspace_update with githubRuntime once the 
     pendingUpdatesByWorkspaceId: new Map(),
     lastEmittedByWorkspaceId: new Map(),
   };
-  session.reconcileActiveWorkspaceRecords = async () => new Set();
 
   await session.handleMessage({
     type: "open_project_request",
@@ -4578,6 +4547,9 @@ test("open_project_request recreates a missing project record when unarchiving i
 test("refresh_agent_request unarchives the owning workspace when its directory exists", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const session = createSessionForWorkspaceTests({
+    // COMPAT(worktreeRestore): refresh_agent_request only restores the owning
+    // workspace for pre-0.1.105 clients; newer ones call worktree.reattach.
+    appVersion: "0.1.104",
     onMessage: (message) => {
       if (isSessionOutboundMessage(message)) emitted.push(message);
     },
@@ -4676,6 +4648,9 @@ test("refresh_agent_request unarchives the owning workspace when its directory e
 test("refresh_agent_request leaves the owning workspace archived when its directory is missing", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const session = createSessionForWorkspaceTests({
+    // COMPAT(worktreeRestore): refresh_agent_request only restores the owning
+    // workspace for pre-0.1.105 clients; newer ones call worktree.reattach.
+    appVersion: "0.1.104",
     onMessage: (message) => {
       if (isSessionOutboundMessage(message)) emitted.push(message);
     },
@@ -4765,6 +4740,9 @@ test("refresh_agent_request leaves the owning workspace archived when its direct
 test("refresh_agent_request recreates a deleted worktree directory and unarchives the same workspace", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const session = createSessionForWorkspaceTests({
+    // COMPAT(worktreeRestore): refresh_agent_request only restores the owning
+    // workspace for pre-0.1.105 clients; newer ones call worktree.reattach.
+    appVersion: "0.1.104",
     onMessage: (message) => {
       if (isSessionOutboundMessage(message)) emitted.push(message);
     },
@@ -4828,11 +4806,22 @@ test("refresh_agent_request recreates a deleted worktree directory and unarchive
   session.agentStorage.get = async (id: string) => (id === agentId ? storedAgent : null);
   session.agentStorage.upsert = async () => {};
 
+  // The git mechanics of recreating a worktree live in WorkspaceRecoveryService
+  // (covered by workspace-recovery-service.test.ts). What Session owns is the
+  // decision to run that restore on refresh, so stub at that seam.
   const recreateCalls: string[] = [];
-  session.recreateOwningWorktreeForRestore = async (
-    workspace: PersistedWorkspaceRecord,
-  ): Promise<void> => {
-    recreateCalls.push(workspace.workspaceId);
+  session.workspaceRecovery.inspect = async () => ({
+    kind: "recoverable",
+    workspaceId,
+    action: "restore",
+  });
+  session.workspaceRecovery.restore = async (id: string) => {
+    recreateCalls.push(id);
+    const archived = workspaces.get(id);
+    if (archived) {
+      workspaces.set(id, { ...archived, archivedAt: null });
+    }
+    return { workspaceId: id, action: "restore" as const };
   };
 
   const managed = makeManagedAgent({
@@ -4872,6 +4861,9 @@ test("refresh_agent_request recreates a deleted worktree directory and unarchive
 test("refresh_agent_request leaves the worktree archived and surfaces a typed error when recreation fails", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const session = createSessionForWorkspaceTests({
+    // COMPAT(worktreeRestore): refresh_agent_request only restores the owning
+    // workspace for pre-0.1.105 clients; newer ones call worktree.reattach.
+    appVersion: "0.1.104",
     onMessage: (message) => {
       if (isSessionOutboundMessage(message)) emitted.push(message);
     },
@@ -4935,7 +4927,12 @@ test("refresh_agent_request leaves the worktree archived and surfaces a typed er
   session.agentStorage.get = async (id: string) => (id === agentId ? storedAgent : null);
   session.agentStorage.upsert = async () => {};
 
-  session.recreateOwningWorktreeForRestore = async (): Promise<void> => {
+  session.workspaceRecovery.inspect = async () => ({
+    kind: "recoverable",
+    workspaceId,
+    action: "restore",
+  });
+  session.workspaceRecovery.restore = async (): Promise<never> => {
     throw toWorktreeRequestError(new UnknownBranchError({ branchName: "feature/gone", cwd }));
   };
 
@@ -5004,6 +5001,9 @@ test("refresh_agent_request recreates a real deleted worktree against a temp git
 
   const emitted: SessionOutboundMessage[] = [];
   const session = createSessionForWorkspaceTests({
+    // COMPAT(worktreeRestore): refresh_agent_request only restores the owning
+    // workspace for pre-0.1.105 clients; newer ones call worktree.reattach.
+    appVersion: "0.1.104",
     ottoHome,
     worktreesRoot,
     onMessage: (message) => {
@@ -6166,7 +6166,6 @@ test("emitWorkspaceUpdatesForWorkspaceIds includes archiving state and dedupes u
     pendingUpdatesByWorkspaceId: new Map(),
     lastEmittedByWorkspaceId: new Map(),
   };
-  session.reconcileActiveWorkspaceRecords = async () => new Set();
   session.listAgentPayloads = async () => [];
   session.projectRegistry.list = async () => [project];
   session.workspaceRegistry.list = async () => [workspace];
@@ -6419,7 +6418,6 @@ test("workspace_update includes updated runtime fields", async () => {
     pendingUpdatesByWorkspaceId: new Map(),
     lastEmittedByWorkspaceId: new Map(),
   };
-  session.reconcileActiveWorkspaceRecords = async () => new Set();
   session.listAgentPayloads = async () => [];
   session.projectRegistry.list = async () => [project];
   session.workspaceRegistry.list = async () => [workspace];
