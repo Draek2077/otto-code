@@ -41,7 +41,11 @@ export interface ReopenWorktreeControl {
 // host row can wire "Reopen worktree" with two values and no local branching.
 export function useReopenWorktreeControl(input: {
   serverId: string | undefined;
-  projectId: string;
+  // Both of these come off the project row's host target, which is null for a
+  // project with no worktree-capable host, so both are optional and the sheet
+  // stays closed unless the pair is real. The id must be the host's project id:
+  // the cross-host grouping key does not resolve on the daemon.
+  projectId: string | undefined;
   projectCwd?: string | null;
   onWorkspacePress?: () => void;
 }): ReopenWorktreeControl {
@@ -49,17 +53,18 @@ export function useReopenWorktreeControl(input: {
   const [open, setOpen] = useState(false);
   const handleOpen = useCallback(() => setOpen(true), []);
   const handleClose = useCallback(() => setOpen(false), []);
-  const active = enabled && Boolean(input.serverId);
+  const active = enabled && Boolean(input.serverId) && Boolean(input.projectId);
   const serverId = input.serverId;
+  const projectId = input.projectId;
   return {
     onReopenWorktree: active ? handleOpen : undefined,
     reopenWorktreeSheet:
-      active && serverId ? (
+      active && serverId && projectId ? (
         <ReopenWorktreeSheet
           visible={open}
           onClose={handleClose}
           serverId={serverId}
-          projectId={input.projectId}
+          projectId={projectId}
           projectCwd={input.projectCwd}
           onWorkspacePress={input.onWorkspacePress}
         />

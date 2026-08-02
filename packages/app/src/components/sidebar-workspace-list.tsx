@@ -945,10 +945,12 @@ function NewWorkspaceGhostRow({
         serverId: worktreeTarget.serverId,
         sourceDirectory: worktreeTarget.iconWorkingDir,
         displayName,
-        projectId: project.projectKey,
+        // Per-host id, not the cross-host grouping key. See the sibling
+        // handler on the project row for why the key does not work here.
+        projectId: worktreeTarget.projectId,
       }) as Href,
     );
-  }, [displayName, onWorkspacePress, project.projectKey, worktreeTarget]);
+  }, [displayName, onWorkspacePress, worktreeTarget]);
   const rowStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.newWorkspaceGhostRow,
@@ -1255,17 +1257,21 @@ function ProjectHeaderRow({
         serverId: worktreeTarget.serverId,
         sourceDirectory: worktreeTarget.iconWorkingDir,
         displayName,
-        projectId: project.projectKey,
+        // The host target's id, not `project.projectKey`. A project row groups
+        // hosts by key, so the key is not a per-host identifier and the daemon
+        // rejects it (`Project not found for worktree`). See the host target.
+        projectId: worktreeTarget.projectId,
       }) as Href,
     );
-  }, [displayName, onWorkspacePress, project.projectKey, worktreeTarget]);
+  }, [displayName, onWorkspacePress, worktreeTarget]);
   // "Reopen worktree" surfaces left/orphaned Otto worktrees for a git project.
   // Gated on the host capability; only meaningful when the project has a worktree
   // target (a git repo we can cut/reattach worktrees against).
+  const reopenTarget: Partial<SidebarProjectHostTarget> = worktreeTarget ?? {};
   const { onReopenWorktree, reopenWorktreeSheet } = useReopenWorktreeControl({
-    serverId: worktreeTarget?.serverId,
-    projectId: project.projectKey,
-    projectCwd: worktreeTarget?.iconWorkingDir,
+    serverId: reopenTarget.serverId,
+    projectId: reopenTarget.projectId,
+    projectCwd: reopenTarget.iconWorkingDir,
     onWorkspacePress,
   });
   const interaction = useLongPressDragInteraction({

@@ -76,6 +76,7 @@ import { toErrorMessage } from "@/utils/error-messages";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import { navigateToPreparedWorkspaceTab } from "@/utils/workspace-navigation";
 import {
+  getHostProjectId,
   getHostProjectSourceDirectory,
   hostProjectFromRoute,
   hostProjectFromWorkspace,
@@ -917,19 +918,23 @@ async function createMultiplicityWorkspace(input: {
     prompt: input.prompt,
     attachments: input.attachments,
   });
+  // The daemon wants this host's project id. `projectKey` is the cross-host
+  // grouping key and it does not resolve there ("Project not found for
+  // worktree"); `getHostProjectId` is the accessor that picks the right one.
+  const hostProjectId = getHostProjectId(input.project, input.serverId) ?? undefined;
   const payload = await input.client.createWorkspace({
     source: isWorktree
       ? {
           kind: "worktree",
           cwd: input.sourceDirectory,
-          projectId: input.project.projectKey,
+          projectId: hostProjectId,
           worktreeSlug: createNameId(),
           ...checkoutRequest,
         }
       : {
           kind: "directory",
           path: input.sourceDirectory,
-          projectId: input.project.projectKey,
+          projectId: hostProjectId,
         },
     ...(firstAgentContext ? { firstAgentContext } : {}),
   });
@@ -2031,13 +2036,15 @@ export function NewWorkspaceScreen({
 
       return {
         cwd: selectedSourceDirectory,
-        projectId: selectedProject.projectKey,
+        // Per-host id, not the cross-host grouping key. See
+        // createMultiplicityWorkspace for why the key is rejected here.
+        projectId: getHostProjectId(selectedProject, selectedServerId) ?? undefined,
         worktreeSlug: createNameId(),
         ...(firstAgentContext ? { firstAgentContext } : {}),
         ...checkoutRequest,
       };
     },
-    [currentBranch, selectedItem, selectedProject, selectedSourceDirectory],
+    [currentBranch, selectedItem, selectedProject, selectedServerId, selectedSourceDirectory],
   );
 
   const ensureWorkspace = useCallback(
