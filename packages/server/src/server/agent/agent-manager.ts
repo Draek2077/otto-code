@@ -174,6 +174,12 @@ interface PreparedSessionConfig {
 
 interface NormalizeConfigOptions {
   resolveDefaultModel?: boolean;
+  /**
+   * Launch env, passed on to the provider's `resolveDefaultModeId`. Some
+   * providers pick a different default mode depending on how they are hosted
+   * (Claude on Bedrock, for instance), which the static manifest cannot express.
+   */
+  env?: Record<string, string>;
 }
 
 interface TimeoutOptions {
@@ -367,6 +373,14 @@ export interface AgentManagerOptions {
   idFactory?: () => string;
   registry?: AgentStorage;
   onAgentAttention?: AgentAttentionCallback;
+  /**
+   * True when a connected client reports it is looking straight at this agent.
+   * Attention is an unread signal, so it is never raised for a chat somebody
+   * already has open; otherwise the badge flashes on and is cleared a round trip
+   * later. Wired to live client presence in bootstrap. Absent means "nobody is
+   * watching", which preserves the old always-raise behaviour.
+   */
+  isAgentActivelyWatched?: (agentId: string) => boolean;
   onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
   /**
    * Fires once per agent spawned with a bound personality (fire-and-forget
@@ -1360,6 +1374,7 @@ export class AgentManager {
   // read by the Otto tools for the notify-on-finish default.
   private agentBehaviors: AgentBehaviorSettings;
   private onAgentAttention?: AgentAttentionCallback;
+  private isAgentActivelyWatched?: (agentId: string) => boolean;
   private onAgentArchived?: AgentArchivedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
   private onPersonalitySpawn?: (personalityId: string) => void;
@@ -1371,18 +1386,19 @@ export class AgentManager {
   private acceptingAgentRegistrations = true;
 
   constructor(options: AgentManagerOptions) {
-    this.idFactory = options?.idFactory ?? (() => randomUUID());
-    this.registry = options?.registry;
-    this.durableTimelineStore = options?.durableTimelineStore;
+    this.idFactory = options.idFactory ?? (() => randomUUID());
+    this.registry = options.registry;
+    this.durableTimelineStore = options.durableTimelineStore;
     this.retainedTranscripts = options.retainedTranscripts;
-    this.onAgentAttention = options?.onAgentAttention;
-    this.onWorkspaceStateMayHaveChanged = options?.onWorkspaceStateMayHaveChanged;
-    this.onPersonalitySpawn = options?.onPersonalitySpawn;
+    this.onAgentAttention = options.onAgentAttention;
+    this.isAgentActivelyWatched = options.isAgentActivelyWatched;
+    this.onWorkspaceStateMayHaveChanged = options.onWorkspaceStateMayHaveChanged;
+    this.onPersonalitySpawn = options.onPersonalitySpawn;
     this.resolvePersonalityMemoryBrief = options.resolvePersonalityMemoryBrief;
     this.onActivity = options.onActivity;
     this.onUsageEvent = options.onUsageEvent;
-    this.mcpBaseUrl = options?.mcpBaseUrl ?? null;
-    this.mcpAuthToken = options?.mcpAuthToken ?? null;
+    this.mcpBaseUrl = options.mcpBaseUrl ?? null;
+    this.mcpAuthToken = options.mcpAuthToken ?? null;
     this.configureOttoTools(options);
     this.appendSystemPrompt = options.appendSystemPrompt ?? "";
     this.agentBehaviors = resolveAgentBehaviorSettings(options.agentBehaviors);
@@ -1455,6 +1471,14 @@ export class AgentManager {
 
   setAgentAttentionCallback(callback: AgentAttentionCallback): void {
     this.onAgentAttention = callback;
+  }
+
+  /**
+   * Late-bound because client presence lives in the websocket server, which is
+   * constructed after the agent manager.
+   */
+  setAgentActivelyWatchedProbe(probe: (agentId: string) => boolean): void {
+    this.isAgentActivelyWatched = probe;
   }
 
   setAgentArchivedCallback(callback: AgentArchivedCallback): void {
@@ -2124,7 +2148,11 @@ export class AgentManager {
   ): Promise<ManagedAgent> {
     this.assertAcceptingAgentRegistrations();
     const resolvedAgentId = validateAgentId(agentId ?? this.idFactory(), "createAgent");
-    const { storedConfig, launchConfig } = await this.prepareSessionConfig(config, resolvedAgentId);
+    const { storedConfig, launchConfig } = await this.prepareSessionConfig(
+      config,
+      resolvedAgentId,
+      options?.env,
+    );
     this.requireEnabledProvider(storedConfig.provider);
     const client = await this.requireAvailableClient({
       provider: storedConfig.provider,
@@ -6384,6 +6412,19 @@ export class AgentManager {
       return;
     }
 
+    // Don't raise an unread badge on a chat somebody is already reading. The
+    // client can only clear a raised badge a round trip later, which reads as a
+    // flash in the tab strip and the sidebar; not raising it is the only way to
+    // not show it at all.
+    //
+    // Scoped to the finished/error transitions below, which is the whole of this
+    // function. A pending permission is a prompt to act rather than an unread
+    // marker, and it badges off pendingPermissions instead of requiresAttention
+    // (see deriveSidebarStateBucket), so it still surfaces to a watching reader.
+    if (this.isAgentActivelyWatched?.(agent.id)) {
+      return;
+    }
+
     // Check if agent transitioned from running to idle (finished)
     if (previousStatus === "running" && currentStatus === "idle") {
       agent.attention = {
@@ -6610,15 +6651,38 @@ export class AgentManager {
     }
 
     if (!normalized.modeId) {
-      try {
-        normalized.modeId =
-          getAgentProviderDefinition(normalized.provider).defaultModeId ?? undefined;
-      } catch {
-        // Unknown provider
-      }
+      // Ask the provider first: some pick a different default depending on how
+      // they are hosted (Claude on Bedrock exposes a different approval set),
+      // which the static manifest cannot express. The manifest is the fallback
+      // for providers that do not implement the hook, or that decline to answer.
+      normalized.modeId = await this.resolveDefaultModeId(normalized, options.env);
     }
 
     return normalized;
+  }
+
+  private async resolveDefaultModeId(
+    config: AgentSessionConfig,
+    env?: Record<string, string>,
+  ): Promise<string | undefined> {
+    try {
+      const resolved = await this.clients.get(config.provider)?.resolveDefaultModeId?.({
+        config,
+        ...(env ? { env } : {}),
+      });
+      if (resolved) {
+        return resolved;
+      }
+    } catch {
+      // A provider that cannot answer falls through to the manifest rather than
+      // failing agent creation over a default.
+    }
+    try {
+      return getAgentProviderDefinition(config.provider).defaultModeId ?? undefined;
+    } catch {
+      // Unknown provider
+      return undefined;
+    }
   }
 
   private async resolveDefaultModelId(config: AgentSessionConfig): Promise<string | undefined> {
@@ -6642,8 +6706,14 @@ export class AgentManager {
   private async prepareSessionConfig(
     config: AgentSessionConfig,
     agentId: string,
+    // Launch env, so a provider whose default mode depends on how it is hosted
+    // can answer with the mode this particular launch will actually run under.
+    env?: Record<string, string>,
   ): Promise<PreparedSessionConfig> {
-    const storedConfig = await this.normalizeConfig(stripInternalOttoMcpServer(config));
+    const storedConfig = await this.normalizeConfig(
+      stripInternalOttoMcpServer(config),
+      env ? { env } : {},
+    );
     const launchConfig = await this.applyPersonalityMemory(
       this.applyDaemonAppendSystemPrompt(
         withRuntimeOttoMcpServer({

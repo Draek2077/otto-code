@@ -1,4 +1,5 @@
 import { expect, test, vi } from "vitest";
+import { getAgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -964,7 +965,10 @@ test("normalizeConfig injects the provider default model when omitted", async ()
   );
 
   expect(snapshot.config.model).toBe("gpt-5.4");
-  expect(snapshot.config.modeId).toBe("auto-review");
+  // Otto declares codex's default mode in the provider manifest; asserting the
+  // manifest keeps this about "normalizeConfig injects the provider default"
+  // rather than pinning which permission mode that default happens to be.
+  expect(snapshot.config.modeId).toBe(getAgentProviderDefinition("codex").defaultModeId);
 });
 
 test("normalizeConfig injects Claude's automatic approval default when omitted", async () => {
@@ -978,7 +982,7 @@ test("normalizeConfig injects Claude's automatic approval default when omitted",
     workspaceId: undefined,
   });
 
-  expect(snapshot.config.modeId).toBe("auto");
+  expect(snapshot.config.modeId).toBe(getAgentProviderDefinition("claude").defaultModeId);
 });
 
 test("normalizeConfig uses a capability-aware provider mode default", async () => {
@@ -1060,7 +1064,10 @@ test("normalizeConfig strips legacy 'default' model id", async () => {
   );
 
   expect(snapshot.config.model).toBe("gpt-5.4");
-  expect(snapshot.config.modeId).toBe("auto-review");
+  // Otto declares codex's default mode in the provider manifest; asserting the
+  // manifest keeps this about "normalizeConfig injects the provider default"
+  // rather than pinning which permission mode that default happens to be.
+  expect(snapshot.config.modeId).toBe(getAgentProviderDefinition("codex").defaultModeId);
 });
 
 test("listDraftCommands returns no commands without guessing a missing model", async () => {
@@ -1157,7 +1164,7 @@ test("listDraftCommands uses explicit model config without default model fetchin
       provider: "codex",
       cwd: workdir,
       model: "gpt-5.4",
-      modeId: "auto-review",
+      modeId: getAgentProviderDefinition("codex").defaultModeId,
     },
   ]);
 });
@@ -1257,7 +1264,7 @@ test("listDraftFeatures uses explicit model config without default model fetchin
       provider: "codex",
       cwd: workdir,
       model: "gpt-5.4",
-      modeId: "auto-review",
+      modeId: getAgentProviderDefinition("codex").defaultModeId,
     },
   ]);
 });
@@ -1714,7 +1721,7 @@ test("createAgent passes daemon launch env through the provider launch context",
     provider: "codex",
     cwd: workdir,
     model: "gpt-5.4",
-    modeId: "auto-review",
+    modeId: getAgentProviderDefinition("codex").defaultModeId,
   });
   expect(client.lastLaunchContext).toEqual({
     agentId: snapshot.id,
@@ -2513,7 +2520,7 @@ test("resumeAgentFromPersistence keeps metadata config, applies overrides, and p
   });
   expect(client.lastResumeOverrides).toMatchObject({
     model: "gpt-5.4",
-    modeId: "auto-review",
+    modeId: getAgentProviderDefinition("codex").defaultModeId,
     systemPrompt: "new prompt",
     mcpServers: {
       otto: {
