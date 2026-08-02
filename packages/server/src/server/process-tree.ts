@@ -23,6 +23,16 @@ export function killProcessTree(child: ChildProcess, signal: NodeJS.Signals = "S
     return;
   }
 
+  // Never taskkill a pid we no longer own. Windows recycles pids aggressively,
+  // and this call is fire-and-forget and detached: if the child has already
+  // exited, the pid may belong to something else entirely by the time taskkill
+  // runs, and `/T /F` would take that stranger and its whole tree down without a
+  // trace. POSIX has no such exposure, because there the signal goes to a handle
+  // rather than a number.
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+
   try {
     // Detached with ignored stdio: this is fire-and-forget cleanup, and a taskkill
     // that outlives the caller is better than one that blocks shutdown. `/F` because
