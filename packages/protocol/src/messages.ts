@@ -1336,6 +1336,8 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
     // COMPAT(compactionFailedStatus): "failed" added in v0.4.3. Clients older
     // than that drop the whole timeline event on parse and keep showing the
     // loading row — exactly their pre-"failed" behavior, so no gate is needed.
+    // Nothing to remove: this tag records why the enum could be widened without
+    // a shim, so it has no cleanup date by design.
     status: z.enum(["loading", "completed", "failed"]),
     trigger: z.enum(["auto", "manual"]).optional(),
     preTokens: z.number().optional(),
@@ -1540,7 +1542,9 @@ export const AgentSnapshotPayloadSchema = z.object({
   // a finished agent isn't "running Bash"). Both are purely additive optional
   // leaves: a provider that can't report them leaves them absent and the row
   // omits the readout rather than showing a wrong value.
-  // COMPAT(subagentLiveness): added in v0.6.7; old clients ignore both.
+  // COMPAT(subagentLiveness): added in v0.6.7, drop the optional gate when the
+  // floor is >= v0.6.7. Old clients ignore both fields and show the row without
+  // its liveness readouts, which is their pre-v0.6.7 behaviour.
   // See docs/chat-lifecycle.md (the subagents track).
   toolUseCount: z.number().optional(),
   currentTool: z.string().optional(),
@@ -7236,7 +7240,9 @@ export const WorkspaceDescriptorPayloadSchema = z
     projectRootPath: z.string(),
     workspaceDirectory: z.string().optional(),
     projectKind: z.enum(["git", "non_git", "directory"]),
-    // COMPAT(workspaces): keep legacy directory workspace kind parseable.
+    // COMPAT(workspaces): keep the legacy "directory" workspace kind parseable.
+    // Persisted registries still carry it and there is no migration, so this
+    // stays until a migration retires the kind rather than expiring on a date.
     workspaceKind: z.enum(["directory", "local_checkout", "checkout", "worktree"]),
     name: z.string(),
     // COMPAT(workspaceTitles): added in v0.1.97, drop the optional gate when floor >= v0.1.97.
@@ -8647,6 +8653,14 @@ export const CheckoutPrStatusSchema = z.object({
   github: CheckoutPrGithubStatusSchema,
   // Provider-neutral per-PR hosting facts. Absent from old daemons; for
   // GitHub projects both this and the legacy `github` field are populated.
+  //
+  // NOT a shim, and deliberately untagged: this does not collapse into `forge`.
+  // Otto registers every hosting provider into the forge registry under the
+  // forge id `github`, which is the provider-routing facade rather than the gh
+  // CLI (bootstrap.ts, `createGitHostingResolver`). So `forge` reads "github"
+  // for a Bitbucket workspace and only `hosting.provider` carries the truth.
+  // The two disagree by design; a reader wanting the real provider must use
+  // this field.
   hosting: z
     .object({
       provider: GitHostingProviderIdWireSchema,
@@ -8684,6 +8698,9 @@ const CheckoutPrStatusPayloadSchema = z.object({
   githubFeaturesEnabled: z.boolean(),
   // Provider-neutral enablement. Present even when status is null so clients
   // can drive search/create-PR affordances for the workspace's provider.
+  // Permanent for the same reason as the `hosting` block on the PR status
+  // schema above: `forge` is a routing-facade id and cannot answer "which
+  // provider is this really".
   hosting: z
     .object({
       provider: GitHostingProviderIdWireSchema,

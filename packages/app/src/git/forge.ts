@@ -129,6 +129,12 @@ export function buildForgeSignInCommand(forge: string, host: string | null): str
  * Narrow a forge id to the two providers Otto's GitHostingIcon draws. Upstream's
  * ForgeBrandIcon covers the full set; this keeps the existing badge rendering
  * correct until those call sites move over.
+ *
+ * COMPAT(forgeBrandIcon): not date-bound, and it clears by deletion rather than
+ * expiry. Two call sites still use it (sidebar-workspace-row-content.tsx,
+ * workspace-hover-card.tsx); move both to ForgeBrandIcon and this function goes
+ * with them. Until then a GitLab or Gitea workspace draws the GitHub badge,
+ * because those are the only two glyphs Otto's icon has.
  */
 export function forgeToHostingProvider(
   forge: string | null | undefined,

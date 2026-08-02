@@ -155,8 +155,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   secondary: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
-  // Paseo has a third text tier (foregroundExtraMuted); Otto's themes stop at
-  // muted, and each tint would need its own value. Use muted until that lands.
+  // COMPAT(foregroundExtraMuted): Paseo has a third text tier
+  // (foregroundExtraMuted); Otto's themes stop at muted, and each tint would
+  // need its own value. Use muted until that lands. Not date-bound: it clears
+  // when the theme grows the tier, and this alias is then a one-line delete.
   whisper: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
   error: { color: theme.colors.palette.red[300], fontSize: theme.fontSize.xs },
   dirtyDot: {

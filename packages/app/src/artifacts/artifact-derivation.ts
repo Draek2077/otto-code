@@ -75,8 +75,8 @@ export function artifactMatchesWorkspace(input: {
   // COMPAT(artifactGroupingKeyProjectId): until 0.4.4 create_artifact stamped
   // artifacts with the registry's opaque grouping key (remote:host/owner/repo)
   // instead of the project root path. Persisted artifacts keep that value
-  // forever (no migrations), so also accept a grouping-key match. Drop when
-  // pre-0.4.5 artifacts no longer matter (~2027-01).
+  // forever (no migrations), so also accept a grouping-key match. Drop after
+  // 2027-01-31, once pre-0.4.5 artifacts no longer matter.
   return artifactBelongsToProject(input.artifactProjectId, input.workspaceProjectId);
 }
 

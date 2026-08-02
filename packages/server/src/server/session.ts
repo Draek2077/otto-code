@@ -839,8 +839,11 @@ export class Session {
   private readonly filesystem: SessionFileSystem;
   private readonly github: ForgeService;
   private readonly gitHostingResolver: GitHostingResolver | null;
-  // COMPAT(fsFileWatch): subscriptionId -> {cwd, path} for Paseo's namespaced
-  // watch RPCs, which unsubscribe by id where Otto's handler wants the pair.
+  // COMPAT(fsFileWatch): landed with the Paseo v0.2.5 merge on 2026-08-01;
+  // remove after 2027-02-02. subscriptionId -> {cwd, path} for Paseo's
+  // namespaced watch RPCs, which unsubscribe by id where Otto's handler wants
+  // the pair. The cleanup is to key Otto's own watch handler by subscription id
+  // and delete this map, not to keep translating between the two shapes.
   private readonly fsFileWatchTargets = new Map<string, { cwd: string; path: string }>();
   private readonly renameCurrentBranch: typeof renameCurrentBranchDefault;
   private readonly workspaceGitService: WorkspaceGitService;

@@ -149,7 +149,7 @@ export interface OmpNoTurnScheduler {
 
 // COMPAT(ompDelayedLocalOnlyResult): OMP 17.0.5 can report a regular prompt as
 // local-only shortly before an extension-queued model turn starts. Added in
-// v0.2.0-beta.1; remove after January 20, 2027 once the minimum OMP version
+// v0.2.0-beta.1; remove after 2027-01-20 once the minimum OMP version
 // guarantees prompt_result waits for queued extension work.
 const OMP_NO_TURN_SETTLE_MS = 5_000;
 

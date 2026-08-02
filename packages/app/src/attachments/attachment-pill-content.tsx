@@ -72,6 +72,12 @@ export function getAgentAttachmentPillContent(
         title: attachment.title,
         subtitle: `Issue #${attachment.number}`,
       };
+    // COMPAT(hostingAttachments): added in v0.7.6, remove after 2027-02-01.
+    // The render half of the schemas in protocol/src/messages.ts, which carry
+    // the same tag and say to retire both halves together. No current client
+    // sends these: the forge merge replaced them with forge_change_request and
+    // forge_issue above, and they stay only so a client from before that merge
+    // still renders its pills instead of falling through to the default.
     case "hosting_pr":
       return {
         icon: attachmentGithubPrIcon,

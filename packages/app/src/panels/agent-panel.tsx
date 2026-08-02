@@ -851,6 +851,11 @@ function ChatAgentContent({
     readTimelineStatus,
     readTimelineStatus,
   );
+  // COMPAT(visibilityCatchUpStub): forcing "ready" for a hidden pane suppresses
+  // exactly two states, `sync_error` on catch-up failure and the `catching_up`
+  // indicator after backgrounding, neither of which a user can see on a pane
+  // that is not on screen. Not date-bound: it clears if hidden panes ever need
+  // to surface catch-up state, which today they do not.
   const visibilityCatchUpStatus = isPaneVisible ? timelineStatus : "ready";
   const hasActiveCreateHandoff = useCreateFlowStore((state) =>
     findActiveCreateHandoff({ pendingByDraftId: state.pendingByDraftId, serverId, agentId }),
