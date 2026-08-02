@@ -88,6 +88,7 @@ import {
   InMemoryAgentTimelineStore,
   type SeedAgentTimelineOptions,
 } from "./agent-timeline-store.js";
+import { limitAgentTimelineItemContent } from "./agent-timeline-content.js";
 import { estimateContextComposition } from "./context-composition.js";
 import type {
   AgentTimelineFetchOptions,
@@ -1178,7 +1179,10 @@ function buildImportedTimelineRows(entries: readonly ImportedTimelineEntry[]): A
     rows.push({
       seq: rows.length + 1,
       timestamp: entry.timestamp ?? new Date().toISOString(),
-      item: normalizeTimelineItemForDisplay(entry.item),
+      // Hydration builds rows directly instead of going through
+      // recordTimeline, so it has to bound for itself. Provider history is
+      // exactly where an unbounded output arrives in bulk.
+      item: limitAgentTimelineItemContent(normalizeTimelineItemForDisplay(entry.item)),
     });
   }
   return rows;
@@ -3224,7 +3228,7 @@ export class AgentManager {
       agentId,
       {
         type: "timeline",
-        item,
+        item: row.item,
         provider: agent.provider,
       },
       {
@@ -3240,8 +3244,11 @@ export class AgentManager {
     const agent = this.requireAgent(agentId);
     this.touchUpdatedAt(agent);
     this.dispatchStream(agentId, {
+      // Live-only items skip the store, so they skip the bound recordTimeline
+      // applies. The client renders these the same as persisted ones and
+      // should not have to cope with a megabyte here either.
       type: "timeline",
-      item,
+      item: limitAgentTimelineItemContent(item),
       provider: agent.provider,
     });
   }
@@ -6189,8 +6196,8 @@ export class AgentManager {
     // Normalize once so persistence, the dispatched event, and activity
     // counters all see the same display-clean item (unwraps voice spoken-input,
     // and turns a show_widget call into a renderable widget).
-    const item = normalizeTimelineItemForDisplay(rawItem);
-    const row = this.recordTimeline(agentId, item);
+    const row = this.recordTimeline(agentId, rawItem);
+    const item = row.item;
     this.recordTimelineActivity(item);
     const event: AgentStreamEvent = {
       type: "timeline",
@@ -6311,7 +6318,16 @@ export class AgentManager {
     item: AgentTimelineItem,
     options?: { timestamp?: string },
   ): AgentTimelineRow {
-    const row = this.timelineStore.append(agentId, normalizeTimelineItemForDisplay(item), options);
+    // Bound here rather than at each caller: this is the one gate every
+    // timeline write passes through, and an unbounded shell output otherwise
+    // lands in the row store, the durable log, the stream, and from there in
+    // the next model request. Callers dispatch row.item so the client is shown
+    // exactly what was persisted.
+    const row = this.timelineStore.append(
+      agentId,
+      limitAgentTimelineItemContent(normalizeTimelineItemForDisplay(item)),
+      options,
+    );
     this.enqueueDurableTimelineAppend(agentId, row);
     return row;
   }
