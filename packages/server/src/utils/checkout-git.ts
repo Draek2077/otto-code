@@ -2116,7 +2116,7 @@ export async function getCheckoutSnapshotFacts(
   }
   let pullRequestLookupTarget = inspected.currentBranch
     ? (buildPullRequestLookupTargetFromMetadata(
-        inspected.ottoWorktree ? inspected.worktreeRoot : null,
+        inspected.ottoWorktree.isOttoOwnedWorktree ? inspected.ottoWorktree.worktreeRoot : null,
       ) ??
       buildPullRequestLookupTargetFromBranchConfig({
         currentBranch: inspected.currentBranch,
