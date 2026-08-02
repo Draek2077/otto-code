@@ -57,10 +57,12 @@ describe("buildImageAssetTarget", () => {
       now: NOW,
       index: 0,
     });
-    expect(target).toEqual({
-      path: "docs/assets/pasted-image-20260802-163055.png",
-      insert: "![](assets/pasted-image-20260802-163055.png)",
-    });
+    expect(target).toEqual({ path: "docs/assets/pasted-image-20260802-163055.png" });
+    // The link is built from the path the write actually took, never from the
+    // path we asked for, so the two are asserted separately on purpose.
+    expect(buildImageInsert("docs/guide.md", target!.path)).toBe(
+      "![](assets/pasted-image-20260802-163055.png)",
+    );
   });
 
   it("links back up out of the assets folder for a document at the root", () => {
@@ -71,7 +73,9 @@ describe("buildImageAssetTarget", () => {
       index: 0,
     });
     expect(target?.path).toBe("assets/pasted-image-20260802-163055.png");
-    expect(target?.insert).toBe("![](assets/pasted-image-20260802-163055.png)");
+    expect(buildImageInsert("README.md", target!.path)).toBe(
+      "![](assets/pasted-image-20260802-163055.png)",
+    );
   });
 
   it("keeps a dropped file's own name and extension", () => {
@@ -82,7 +86,7 @@ describe("buildImageAssetTarget", () => {
       index: 0,
     });
     expect(target?.path).toBe("docs/nested/assets/logo.svg");
-    expect(target?.insert).toBe("![](assets/logo.svg)");
+    expect(buildImageInsert("docs/nested/guide.md", target!.path)).toBe("![](assets/logo.svg)");
   });
 
   it("cannot be talked out of the assets folder by the dropped name", () => {

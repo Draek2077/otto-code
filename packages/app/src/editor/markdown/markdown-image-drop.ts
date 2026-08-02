@@ -66,8 +66,6 @@ export interface DroppedImage {
 export interface ImageAssetTarget {
   /** Workspace-relative path to write, `/`-separated. */
   path: string;
-  /** The markdown to insert at the caret, document-relative and encoded. */
-  insert: string;
 }
 
 /** The extension for an image MIME type, or null when it is not one we write. */
@@ -136,6 +134,12 @@ function splitFileName(fileName: string): { stem: string; extension: string } {
  * daemon refuses to clobber and the caller retries with
  * {@link suffixImageAssetPath}, because only the daemon can see what is
  * already on disk.
+ *
+ * Deliberately returns the path ALONE, with no ready-made `![](...)`. The name
+ * asked for here is not necessarily the name that ends up free, so the link has
+ * to be built from the write's answer through {@link buildImageInsert}. A
+ * pre-built link on this object would be the wrong one exactly when a collision
+ * happened, which is the case nobody tests by hand.
  */
 export function buildImageAssetTarget(input: {
   /** The document being edited, workspace-relative. */
@@ -158,9 +162,7 @@ export function buildImageAssetTarget(input: {
   const fileName = `${stem}${suffix}.${extension}`;
 
   const documentDirectory = input.documentPath.slice(0, input.documentPath.lastIndexOf("/") + 1);
-  const path = `${documentDirectory}${ASSET_DIRECTORY}/${fileName}`;
-
-  return { path, insert: buildImageInsert(input.documentPath, path) };
+  return { path: `${documentDirectory}${ASSET_DIRECTORY}/${fileName}` };
 }
 
 /** The `![](...)` for an image already written at a workspace-relative path. */
