@@ -248,7 +248,48 @@ every colour is a token that already exists in all themes.
 the document's own source as `[!NOTE]`, and a reader comparing the rendering against the source
 should see the same word.
 
+## Footnotes
+
+`A claim[^src]` becomes a superscript marker and `[^src]: The source.` moves into a numbered list
+at the end of the document, under a rule. Numbering follows first reference, not definition order,
+and a repeated reference reuses its number.
+
+**A core-ruler rewrite cannot implement this, unlike task lists and alerts.** By the time core rules
+run, markdown-it has already read `[^src]: The source.` as a _link reference definition_, which is
+exactly what the syntax looks like to CommonMark, and rewritten every `[^src]` in the body into a
+link to it. The definition is gone from the token stream and the reference is a
+`link_open`/`text`/`link_close` triple, so there is nothing left to match. `footnotes.ts` therefore
+registers a **block rule before `reference`** to claim the definitions first; with no reference
+definition left, `[^src]` stays a plain text token and the core rule can rewrite it.
+
+Two deliberate limits:
+
+- **A reference is not a tappable link.** The rewrite produces plain text and an ordinary list, so
+  every surface that already renders markdown got footnotes with no new render rules and no
+  divergence between the chat bubble and the file viewer. A jump target would need both.
+- **A definition is one line.** Lazy continuation would mean reimplementing paragraph continuation
+  inside the block rule.
+
+An unreferenced definition is left exactly where the author wrote it, as an ordinary paragraph.
+Dropping it would silently delete text; numbering it would invent a note nothing points at.
+
+## Task lists are real checkboxes
+
+`- [ ]` and `- [x]` no longer bake a glyph into the item's text. The marker is lifted out and
+re-expressed as `data-otto-task` and `data-otto-task-line` on the `list_item_open` token, which
+`tokensToAST` hands to the `list_item` rule as `node.attributes`.
+
+Read-only is the default and looks exactly as it did: a surface only gets a tickable box when it
+passes `onToggleTask`, which is right, because a task list in an assistant message has no document
+behind it to write to. The markdown preview beside the editor passes one, and a tick routes through
+`selectLines` + `replaceSelection` so it lands in the editor's own undo history.
+
+The line number is the catch. The renderer counts lines of the _rendered body_, and the file may
+have frontmatter above it, so `toRenderedDocument` reports a `bodyLineOffset`. It is **null** for
+mermaid and AsciiDoc, whose bodies are translations rather than slices of the source, and a null
+offset keeps their checkboxes read-only rather than writing to a line that means nothing.
+
 ## What is still missing
 
 Tracked in the File rendering section of [`projects/README.md`](../projects/README.md#file-rendering):
-CSV/TSV table view, Jupyter notebooks, footnotes, math (KaTeX), interactive checkboxes, and PDF.
+CSV/TSV table view, Jupyter notebooks, math (KaTeX), and PDF.

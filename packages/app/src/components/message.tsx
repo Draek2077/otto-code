@@ -73,6 +73,7 @@ import {
   type MarkdownStyles,
 } from "@/components/markdown/renderer";
 import { applyTaskListMarkers } from "@/components/markdown/task-lists";
+import { applyFootnotes } from "@/components/markdown/footnotes";
 import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import { TodoTaskList, useTodoCounts } from "@/components/todo-task-list";
 import type { AgentAttachment } from "@otto-code/protocol/messages";
@@ -1721,7 +1722,9 @@ export const AssistantMessage = memo(function AssistantMessage({
       ? message
       : sliceAtSafeBoundary(message, revealBudget);
   const markdownParser = useMemo(() => {
-    const parser = applyTaskListMarkers(MarkdownIt({ typographer: true, linkify: true }));
+    const parser = applyFootnotes(
+      applyTaskListMarkers(MarkdownIt({ typographer: true, linkify: true })),
+    );
     const defaultValidateLink = parser.validateLink.bind(parser);
     parser.validateLink = (url: string) => {
       if (url.trim().toLowerCase().startsWith("file://")) {

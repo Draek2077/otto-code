@@ -50,6 +50,7 @@ import {
   type MarkdownTaskToggle,
 } from "./task-context";
 import { ALERT_ATTRIBUTE, applyGithubAlerts, type GithubAlertKind } from "./github-alerts";
+import { applyFootnotes } from "./footnotes";
 import { resolveInlineImageSize, type InlineImageDimensions } from "./inline-image-size";
 import { parseSvgIntrinsicSize } from "./svg-intrinsic-size";
 import {
@@ -83,8 +84,8 @@ function compactMarkdownStyleMapping(theme: Theme): Partial<MarkdownWithStableRe
   return { style: createCompactMarkdownStyles(theme) };
 }
 
-const defaultMarkdownParser = applyGithubAlerts(
-  applyTaskListMarkers(MarkdownIt({ typographer: true, linkify: true })),
+const defaultMarkdownParser = applyFootnotes(
+  applyGithubAlerts(applyTaskListMarkers(MarkdownIt({ typographer: true, linkify: true }))),
 );
 
 /**

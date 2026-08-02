@@ -188,3 +188,26 @@ header.
     <tr><td>AsciiDoc</td><td>yes</td><td>source only</td></tr>
   </tbody>
 </table>
+
+## Footnotes
+
+A claim needs a source[^src], and so does a second one[^book]. Referencing the
+first one again[^src] must reuse its number rather than adding a note.
+
+A reference to something undefined[^nothing] stays exactly as written, because
+numbering it would leave a hole in the list below.
+
+[^src]: The source, moved down here from where it was written.
+[^book]: A book, numbered second because it was cited second.
+[^unused]: Never referenced, so this paragraph stays where it is.
+
+## Task lists
+
+Read-only in chat, tickable in the preview beside the editor.
+
+- [ ] An open item
+- [x] A finished item
+- A plain item, which has no checkbox at all
+  - [ ] A nested open item
+
+1. [ ] An ordered task keeps its number and gains a box
