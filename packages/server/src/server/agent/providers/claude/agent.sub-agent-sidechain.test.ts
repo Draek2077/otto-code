@@ -353,7 +353,7 @@ describe("ClaudeAgentSession sub-agent sidechain updates", () => {
         text: "Sub-agent narration belongs inside the Task row, not the parent transcript.",
       },
     });
-    expect(providerEvents.at(-1)).toMatchObject({
+    expect(providerEvents.findLast((event) => event.type === "upsert")).toMatchObject({
       type: "upsert",
       id: "task-call-1",
       title: "Explore",

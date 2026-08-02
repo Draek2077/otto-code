@@ -12,7 +12,6 @@ import {
   isExpectedTransportTeardownError,
   normalizeClaudeAskUserQuestionRequestInput,
   normalizeClaudeAskUserQuestionUpdatedInput,
-  resolveClaudeCodeVersion,
   toClaudeSdkMcpConfig,
 } from "./agent.js";
 import { claudeProjectDirSync } from "./project-dir.js";
@@ -436,15 +435,14 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
         force: false,
       });
 
+      // No `[1m]` row for Fable 5, Opus 5, Opus 4.8, Sonnet 5 or Opus 4.7: those are
+      // native 1M, so the plain id already resolves to a 1M window and a second
+      // "1M" entry would duplicate the same model. See model-manifest.ts.
       expect(models.map((m) => m.id)).toEqual([
-        "claude-opus-5",
-        "claude-fable-5[1m]",
         "claude-fable-5",
         "claude-opus-5",
         "claude-opus-4-8",
         "claude-sonnet-5",
-        "claude-sonnet-5[1m]",
-        "claude-opus-4-7[1m]",
         "claude-opus-4-7",
         "claude-opus-4-6[1m]",
         "claude-opus-4-6",
@@ -485,7 +483,7 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
       });
 
       expect(models.find((model) => model.isDefault)?.id).toBe("claude-opus-5");
-      expect(models.map((model) => model.id)).toContain("claude-fable-5[1m]");
+      expect(models.map((model) => model.id)).toContain("claude-fable-5");
     } finally {
       await fs.rm(emptyConfigDir, { recursive: true, force: true });
     }
@@ -526,9 +524,10 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
 describe("ClaudeAgentClient binary resolution", () => {
   const logger = createTestLogger();
 
-  test("resolves the installed Claude Code version", async () => {
-    await expect(resolveClaudeCodeVersion()).resolves.toMatch(/^\d+\.\d+\.\d+$/);
-  });
+  // No "resolves the installed Claude Code version" case: Otto's model catalog is
+  // hardcoded rather than derived from the installed CLI (getClaudeModels takes
+  // `_claudeCodeVersion` and ignores it), so there is no version-resolution entry
+  // point to cover. Upstream needs one because its catalog is version-derived.
 
   test("loads user, project, and local Claude settings", async () => {
     const queryReturn = vi.fn();

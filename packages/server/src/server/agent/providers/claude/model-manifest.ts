@@ -22,6 +22,11 @@ interface ClaudeModelManifestEntry {
   contextWindowMaxTokens?: number;
   effortLevels?: readonly ClaudeEffortLevel[];
   supportsFastMode?: boolean;
+  // Whether the model accepts `thinking: {type: "disabled"}`. Defaults to true
+  // for any model that exposes effort levels; set false only where the API
+  // rejects it outright. Off clears `effort` entirely, so Opus 5's
+  // "disabled only at effort <= high" rule is satisfied by construction.
+  supportsThinkingOff?: boolean;
   autoModeSupport?: ClaudeAutoModeSupport;
 }
 
@@ -39,6 +44,7 @@ const CLAUDE_EFFORT_LABELS = {
 } as const satisfies Record<ClaudeEffortLevel, string>;
 
 export const CLAUDE_ULTRACODE_THINKING_OPTION_ID = "ultracode";
+export const CLAUDE_THINKING_OFF_OPTION_ID = "off";
 
 /**
  * The Claude models Otto offers, mirroring the Claude Code CLI's own catalog.
@@ -70,6 +76,9 @@ export const CLAUDE_MODEL_MANIFEST = [
     description: "Fable 5 · Most powerful model",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
+    // Thinking is always on for Fable 5: an explicit `{type: "disabled"}` is a
+    // 400 at any effort, so Off is withheld rather than offered and rejected.
+    supportsThinkingOff: false,
     autoModeSupport: "all",
   },
   {
@@ -171,15 +180,26 @@ export const CLAUDE_MODEL_MANIFEST = [
 
 function buildThinkingOptions(
   effortLevels: readonly ClaudeEffortLevel[] | undefined,
+  supportsThinkingOff: boolean,
 ): AgentSelectOption[] | undefined {
   if (!effortLevels) {
     return undefined;
   }
 
-  const options: AgentSelectOption[] = effortLevels.map((id) => ({
-    id,
-    label: CLAUDE_EFFORT_LABELS[id],
-  }));
+  const options: AgentSelectOption[] = [];
+
+  // Off leads the list: it reads as the floor below the effort ladder rather
+  // than a peer of it.
+  if (supportsThinkingOff) {
+    options.push({ id: CLAUDE_THINKING_OFF_OPTION_ID, label: "Off" });
+  }
+
+  options.push(
+    ...effortLevels.map((id) => ({
+      id,
+      label: CLAUDE_EFFORT_LABELS[id],
+    })),
+  );
 
   if (effortLevels.includes("xhigh")) {
     options.push({ id: CLAUDE_ULTRACODE_THINKING_OPTION_ID, label: "Ultra Code" });
@@ -192,6 +212,7 @@ export function getClaudeManifestModels(): AgentModelDefinition[] {
   return CLAUDE_MODEL_MANIFEST.map((model) => {
     const thinkingOptions = buildThinkingOptions(
       "effortLevels" in model ? model.effortLevels : undefined,
+      !("supportsThinkingOff" in model) || model.supportsThinkingOff !== false,
     );
     return {
       provider: "claude",
@@ -233,6 +254,25 @@ export function claudeManifestModelAutoModeSupport(
     return undefined;
   }
   return entry.autoModeSupport;
+}
+
+/**
+ * Whether a model accepts `thinking: {type: "disabled"}`. Only manifest models
+ * that expose effort levels can turn thinking off; a custom or unknown id
+ * returns false so Off is never staged against a model we cannot vouch for.
+ */
+export function claudeManifestModelSupportsThinkingOff(
+  modelId: string | null | undefined,
+): boolean {
+  const normalizedModelId = normalizeClaudeManifestModelId(modelId);
+  if (!normalizedModelId) {
+    return false;
+  }
+  const entry = CLAUDE_MODEL_MANIFEST.find((model) => model.id === normalizedModelId);
+  if (!entry || !("effortLevels" in entry)) {
+    return false;
+  }
+  return !("supportsThinkingOff" in entry) || entry.supportsThinkingOff !== false;
 }
 
 export function claudeManifestModelSupportsFastMode(modelId: string | null | undefined): boolean {

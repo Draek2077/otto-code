@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTestLogger } from "../../../../test-utils/test-logger.js";
 import { checkClaudeAutoModeSupport, ClaudeAgentClient } from "./agent.js";
 import {
+  CLAUDE_THINKING_OFF_OPTION_ID,
   CLAUDE_ULTRACODE_THINKING_OPTION_ID,
   claudeManifestModelAutoModeSupport,
   claudeManifestModelSupportsFastMode,
@@ -92,6 +93,7 @@ describe("getClaudeModels", () => {
     const models = new Map(getClaudeModels().map((model) => [model.id, model]));
 
     expect(models.get("claude-sonnet-5")?.thinkingOptions?.map((option) => option.id)).toEqual([
+      CLAUDE_THINKING_OFF_OPTION_ID,
       "low",
       "medium",
       "high",
@@ -107,6 +109,7 @@ describe("getClaudeModels", () => {
     ).toBe("Ultra Code");
 
     expect(models.get("claude-opus-4-7")?.thinkingOptions?.map((option) => option.id)).toEqual([
+      CLAUDE_THINKING_OFF_OPTION_ID,
       "low",
       "medium",
       "high",
@@ -115,12 +118,19 @@ describe("getClaudeModels", () => {
       CLAUDE_ULTRACODE_THINKING_OPTION_ID,
     ]);
     expect(models.get("claude-sonnet-4-6")?.thinkingOptions?.map((option) => option.id)).toEqual([
+      CLAUDE_THINKING_OFF_OPTION_ID,
       "low",
       "medium",
       "high",
       "max",
     ]);
     expect(models.get("claude-haiku-4-5")?.thinkingOptions).toBeUndefined();
+
+    // Fable 5 rejects disabled thinking at any effort, so Off is withheld from
+    // the picker rather than offered and rejected by the CLI mid-turn.
+    expect(models.get("claude-fable-5")?.thinkingOptions?.map((option) => option.id)).not.toContain(
+      CLAUDE_THINKING_OFF_OPTION_ID,
+    );
   });
 
   it("returns fresh copies each call", () => {

@@ -35,8 +35,11 @@ import {
   normalizeClaudeRuntimeModelId,
 } from "./models.js";
 import {
+  CLAUDE_THINKING_OFF_OPTION_ID,
   CLAUDE_ULTRACODE_THINKING_OPTION_ID,
   claudeManifestModelAutoModeSupport,
+  claudeManifestModelSupportsThinkingOff,
+  normalizeClaudeManifestModelId,
 } from "./model-manifest.js";
 import { deniedToolsForAccess, resolveWorkspaceAccess } from "../../workspace-access.js";
 import { parsePartialJsonObject } from "./partial-json.js";
@@ -112,6 +115,7 @@ import {
   type ImportProviderSessionContext,
   type ImportProviderSessionInput,
   type ListImportableSessionsOptions,
+  type ResolveAgentDefaultModeInput,
   type McpServerConfig,
   type ProviderCatalog,
   type ResolveAgentCreateConfigInput,
@@ -279,8 +283,21 @@ interface AsyncMessageInput<T> {
 }
 
 interface PersistedTimelineEntry {
-  item: AgentTimelineItem;
+  /** Absent on rows that carry only a subagent upsert (announce/settle). */
+  item?: AgentTimelineItem;
   timestamp?: string;
+  /**
+   * Tool-use id of the Task call this entry belongs to, when it came from a
+   * sidechain. Set means it belongs inside that subagent row rather than the
+   * parent transcript, and replay emits it as a provider_subagent event.
+   */
+  subagentToolUseId?: string;
+  /** Row announce/settle for `subagentToolUseId`, replayed as an upsert. */
+  subagentUpsert?: {
+    title: string;
+    description: string | null;
+    status: "running" | "completed" | "failed";
+  };
 }
 
 interface ClaudeRewindTurnAnchor {
@@ -436,7 +453,10 @@ interface ClaudeAgentSessionOptions {
 }
 
 type ClaudeThinkingEffort = "low" | "medium" | "high" | "xhigh" | "max";
-type ClaudeThinkingOption = ClaudeThinkingEffort | typeof CLAUDE_ULTRACODE_THINKING_OPTION_ID;
+type ClaudeThinkingOption =
+  | ClaudeThinkingEffort
+  | typeof CLAUDE_ULTRACODE_THINKING_OPTION_ID
+  | typeof CLAUDE_THINKING_OFF_OPTION_ID;
 
 function resolvePathEnvKey(): "Path" | "PATH" | null {
   if (process.env["Path"] !== undefined) return "Path";
@@ -484,7 +504,30 @@ function isClaudeThinkingEffort(value: string | null | undefined): value is Clau
 }
 
 function isClaudeThinkingOption(value: string | null | undefined): value is ClaudeThinkingOption {
-  return value === CLAUDE_ULTRACODE_THINKING_OPTION_ID || isClaudeThinkingEffort(value);
+  return (
+    value === CLAUDE_ULTRACODE_THINKING_OPTION_ID ||
+    value === CLAUDE_THINKING_OFF_OPTION_ID ||
+    isClaudeThinkingEffort(value)
+  );
+}
+
+/**
+ * Off is the one thinking option that is not universally available: some models
+ * reject `thinking: {type: "disabled"}` outright. Guarding here keeps the
+ * rejection local and legible instead of surfacing as a CLI 400 mid-turn.
+ */
+function assertThinkingOptionAvailable(
+  thinkingOptionId: string,
+  modelId: string | null | undefined,
+): void {
+  if (thinkingOptionId !== CLAUDE_THINKING_OFF_OPTION_ID) {
+    return;
+  }
+  if (!claudeManifestModelSupportsThinkingOff(modelId)) {
+    throw new Error(
+      `Thinking option '${CLAUDE_THINKING_OFF_OPTION_ID}' is not available for model '${modelId}'`,
+    );
+  }
 }
 
 // Map a resolved thinkingOptionId onto a Claude `effort` for a bare completion.
@@ -1608,6 +1651,12 @@ export class ClaudeAgentClient implements AgentClient {
     options?: AgentCreateSessionOptions,
   ): Promise<AgentSession> {
     const claudeConfig = this.assertConfig(config);
+    // Fail the launch rather than silently downgrading: an explicit Off in the
+    // launch config is a stated intent, and starting a session that quietly
+    // thinks anyway is worse than telling the caller the pairing is invalid.
+    if (claudeConfig.thinkingOptionId) {
+      assertThinkingOptionAvailable(claudeConfig.thinkingOptionId, claudeConfig.model);
+    }
     return new ClaudeAgentSession(claudeConfig, {
       defaults: this.defaults,
       runtimeSettings: this.runtimeSettings,
@@ -1753,7 +1802,16 @@ export class ClaudeAgentClient implements AgentClient {
       return [];
     }
     const limit = options?.limit ?? 20;
-    const candidates = await collectRecentClaudeSessions(projectsRoot, limit * 3);
+    // A cwd hint maps straight onto Claude's per-project transcript directory,
+    // so scan only that one. Ranking every project and slicing afterwards lets a
+    // busier project crowd out the sessions actually being asked for, and would
+    // offer an unrelated repo's transcript for import.
+    const candidates = options?.cwd
+      ? await collectClaudeSessionsInProjects(
+          [claudeProjectDirSync(options.cwd, { configDir })],
+          limit * 3,
+        )
+      : await collectRecentClaudeSessions(projectsRoot, limit * 3);
     const parsed = await Promise.all(
       candidates.map((candidate) => parseClaudeSessionDescriptor(candidate.path, candidate.mtime)),
     );
@@ -1769,6 +1827,24 @@ export class ClaudeAgentClient implements AgentClient {
       context,
       resumeSession: this.resumeSession.bind(this),
     });
+  }
+
+  /**
+   * Permission mode a new Claude session starts in. Auto (model-classifier
+   * approvals) cannot run on every model/transport pairing, so hand back the
+   * plain default wherever the classifier is unavailable rather than starting a
+   * session in a mode the CLI refuses mid-turn. Env precedence matches the
+   * launch path: process env is the base, runtime settings override it, and an
+   * explicit launch env wins — so a launch can both inherit and disable an
+   * ambient Bedrock/Vertex transport.
+   */
+  async resolveDefaultModeId(input: ResolveAgentDefaultModeInput): Promise<string> {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      ...this.runtimeSettings?.env,
+      ...input.env,
+    };
+    return checkClaudeAutoModeSupport(input.config.model, env).supported ? "auto" : "default";
   }
 
   async isAvailable(): Promise<boolean> {
@@ -2370,6 +2446,12 @@ class ClaudeAgentSession implements AgentSession {
   private readonly backgroundShellKeyByTaskId = new Map<string, string>();
   private persistedHistory: PersistedTimelineEntry[] = [];
   private historyPending = false;
+  /** Open Task/Agent tool call while replaying history; see replayHistorySubagentRow. */
+  private historySidechainParent: {
+    toolUseId: string;
+    title: string;
+    description: string | null;
+  } | null = null;
   private turnState: TurnState = "idle";
   private nextTurnOrdinal = 1;
   private cancelCurrentTurn: (() => void) | null = null;
@@ -2627,6 +2709,40 @@ class ClaudeAgentSession implements AgentSession {
     this.persistedHistory = [];
     this.historyPending = false;
     for (const entry of history) {
+      // Sidechain items belong to a Task row, not the parent transcript. Routing
+      // them here mirrors the live path, so a resumed session shows the same
+      // sub-agent transcript it showed while running instead of an empty row.
+      if (entry.subagentToolUseId && entry.subagentUpsert) {
+        yield {
+          type: "provider_subagent",
+          provider: "claude",
+          event: {
+            type: "upsert",
+            id: entry.subagentToolUseId,
+            title: entry.subagentUpsert.title,
+            description: entry.subagentUpsert.description,
+            status: entry.subagentUpsert.status,
+            toolCallId: entry.subagentToolUseId,
+          },
+        };
+        continue;
+      }
+      if (entry.subagentToolUseId && entry.item) {
+        yield {
+          type: "provider_subagent",
+          provider: "claude",
+          event: {
+            type: "timeline",
+            id: entry.subagentToolUseId,
+            item: entry.item,
+            ...(entry.timestamp ? { timestamp: entry.timestamp } : {}),
+          },
+        };
+        continue;
+      }
+      if (!entry.item) {
+        continue;
+      }
       yield {
         type: "timeline",
         item: entry.item,
@@ -2725,6 +2841,7 @@ class ClaudeAgentSession implements AgentSession {
     if (!claudeModelSupportsFastMode(this.config.model) && this.config.featureValues?.fast_mode) {
       await this.applyFastModeFeature(false);
     }
+    this.reconcileThinkingOptionForModel();
     this.contextUsage.setInitialContextWindowMaxTokens(
       findClaudeModel(this.config.model)?.contextWindowMaxTokens,
     );
@@ -2733,6 +2850,28 @@ class ClaudeAgentSession implements AgentSession {
     this.cachedRuntimeInfo = null;
     // Model change affects persistence metadata, so invalidate cached handle.
     this.persistence = null;
+  }
+
+  /**
+   * Off is model-gated, so a model switch can strand it. Rather than fail the
+   * switch (the user asked for a model, not a thinking level), downgrade to the
+   * nearest honest setting: the lowest effort on a known model that simply
+   * cannot disable thinking, and the provider default when the new model is
+   * custom or unknown and we cannot vouch for either.
+   */
+  private reconcileThinkingOptionForModel(): void {
+    if (this.config.thinkingOptionId !== CLAUDE_THINKING_OFF_OPTION_ID) {
+      return;
+    }
+    if (claudeManifestModelSupportsThinkingOff(this.config.model)) {
+      return;
+    }
+    this.config.thinkingOptionId = normalizeClaudeManifestModelId(this.config.model)
+      ? "low"
+      : undefined;
+    // Thinking rides in the query options, not the live setModel call, so the
+    // downgrade only takes effect once the query is rebuilt.
+    this.queryRestartNeeded = true;
   }
 
   async setThinkingOption(thinkingOptionId: string | null): Promise<void | AgentProviderNotice> {
@@ -2744,6 +2883,7 @@ class ClaudeAgentSession implements AgentSession {
     if (!normalizedThinkingOptionId || normalizedThinkingOptionId === "default") {
       this.config.thinkingOptionId = undefined;
     } else if (isClaudeThinkingOption(normalizedThinkingOptionId)) {
+      assertThinkingOptionAvailable(normalizedThinkingOptionId, this.config.model);
       this.config.thinkingOptionId = normalizedThinkingOptionId;
     } else {
       throw new Error(`Unknown thinking option: ${normalizedThinkingOptionId}`);
@@ -3210,7 +3350,7 @@ class ClaudeAgentSession implements AgentSession {
 
     for (let idx = this.persistedHistory.length - 1; idx >= 0; idx -= 1) {
       const entry = this.persistedHistory[idx];
-      if (entry?.item.type === "user_message") {
+      if (entry?.item?.type === "user_message") {
         pushUnique(entry.item.messageId);
       }
     }
@@ -3512,6 +3652,12 @@ class ClaudeAgentSession implements AgentSession {
         : undefined;
     if (thinkingOptionId === CLAUDE_ULTRACODE_THINKING_OPTION_ID) {
       return { thinking: { type: "adaptive" }, effort: "xhigh", ultracode: true };
+    }
+    // Off sends no effort at all. Effort is a thinking-depth dial, so pairing it
+    // with disabled thinking is contradictory, and on some models an effort
+    // above `high` alongside disabled thinking is rejected outright.
+    if (thinkingOptionId === CLAUDE_THINKING_OFF_OPTION_ID) {
+      return { thinking: { type: "disabled" }, effort: undefined, ultracode: false };
     }
     if (thinkingOptionId && isClaudeThinkingEffort(thinkingOptionId)) {
       return { thinking: { type: "adaptive" }, effort: thinkingOptionId, ultracode: false };
@@ -5804,8 +5950,26 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     if (entry.isSidechain) {
+      // Persisted sidechain entries carry no parent pointer; they simply follow
+      // the Task tool_use that spawned them, so the most recent one is the
+      // attribution. Without a parent there is no row to put them in, and
+      // dropping them is still better than leaking them into the transcript.
+      const openRow = this.historySidechainParent;
+      if (!openRow) {
+        return;
+      }
+      const sidechainTimestamp = normalizeProviderReplayTimestamp(entry.timestamp);
+      for (const item of this.convertHistoryEntry(entry)) {
+        timeline.push({
+          item,
+          timestamp: sidechainTimestamp ?? undefined,
+          subagentToolUseId: openRow.toolUseId,
+        });
+      }
       return;
     }
+
+    this.replayHistorySubagentRow(entry, timeline);
 
     const historyTimestamp = normalizeProviderReplayTimestamp(entry.timestamp);
     const items = this.convertHistoryEntry(entry);
@@ -5855,6 +6019,82 @@ class ClaudeAgentSession implements AgentSession {
       }
     }
     return path.join(claudeProjectDirSync(cwd, { configDir }), `${sessionId}.jsonl`);
+  }
+
+  /**
+   * Rebuild subagent rows while replaying history. A persisted Task/Agent
+   * tool_use opens a row (and becomes the parent for the sidechain entries that
+   * follow it, which carry no parent pointer of their own); its tool_result
+   * closes the row. Replaying both ends means a resumed session shows the same
+   * settled Task rows it showed while running.
+   */
+  private replayHistorySubagentRow(
+    entry: ClaudeHistoryEntry,
+    timeline: PersistedTimelineEntry[],
+  ): void {
+    const message = toObjectRecord(entry.message);
+    const content = message?.content;
+    if (!Array.isArray(content)) {
+      return;
+    }
+    for (const block of content) {
+      const record = toObjectRecord(block);
+      if (!record) {
+        continue;
+      }
+      if (this.openHistorySubagentRow(record, timeline)) {
+        continue;
+      }
+      this.closeHistorySubagentRow(record, timeline);
+    }
+  }
+
+  /** Replay a Task/Agent tool_use as a row announce. Returns whether it matched. */
+  private openHistorySubagentRow(
+    record: Record<string, unknown>,
+    timeline: PersistedTimelineEntry[],
+  ): boolean {
+    if (record.type !== "tool_use" || typeof record.id !== "string") {
+      return false;
+    }
+    if (!isClaudeSubagentToolName(typeof record.name === "string" ? record.name : undefined)) {
+      return false;
+    }
+    const input = toObjectRecord(record.input);
+    const title =
+      (typeof input?.name === "string" && input.name) ||
+      (typeof input?.subagent_type === "string" && input.subagent_type) ||
+      "Claude subagent";
+    const description = typeof input?.description === "string" ? input.description : null;
+    this.historySidechainParent = { toolUseId: record.id, title, description };
+    timeline.push({
+      subagentToolUseId: record.id,
+      subagentUpsert: { title, description, status: "running" },
+    });
+    return true;
+  }
+
+  /** Replay the matching tool_result as the row's terminal status. */
+  private closeHistorySubagentRow(
+    record: Record<string, unknown>,
+    timeline: PersistedTimelineEntry[],
+  ): void {
+    const openRow = this.historySidechainParent;
+    if (!openRow || record.type !== "tool_result") {
+      return;
+    }
+    if (record.tool_use_id !== openRow.toolUseId) {
+      return;
+    }
+    timeline.push({
+      subagentToolUseId: openRow.toolUseId,
+      subagentUpsert: {
+        title: openRow.title,
+        description: openRow.description,
+        status: record.is_error ? "failed" : "completed",
+      },
+    });
+    this.historySidechainParent = null;
   }
 
   private convertHistoryEntry(entry: ClaudeHistoryEntry): AgentTimelineItem[] {
@@ -6064,11 +6304,30 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     if (typeof block.tool_use_id === "string") {
-      this.bindTaskTranscriptFromToolResult(toolName, block.tool_use_id, block.content);
-      this.enqueueObservedSubagentSettled(toolName, block.tool_use_id, Boolean(block.is_error));
-      this.toolUseCache.delete(block.tool_use_id);
-      this.sidechainTracker.delete(block.tool_use_id);
+      this.settleToolResultSubagentState(toolName, block.tool_use_id, block);
     }
+  }
+
+  /**
+   * Retire the per-tool-call state a tool_result closes out. The sidechain row is
+   * settled rather than merely dropped: the tracker emits a "running" upsert when
+   * the sidechain opens and the provider subagent panel renders from those
+   * upserts, so a bare delete strands the row as running forever. `finish` emits
+   * the terminal upsert and clears the same state `delete` would have, and is a
+   * no-op for tool ids that never opened a sidechain.
+   */
+  private settleToolResultSubagentState(
+    toolName: string,
+    toolUseId: string,
+    block: ClaudeContentChunk,
+  ): void {
+    const isError = Boolean(block.is_error);
+    this.bindTaskTranscriptFromToolResult(toolName, toolUseId, block.content);
+    this.enqueueObservedSubagentSettled(toolName, toolUseId, isError);
+    this.toolUseCache.delete(toolUseId);
+    this.pendingObservedEvents.push(
+      ...this.sidechainTracker.finish(toolUseId, isError ? "failed" : "completed"),
+    );
   }
 
   /**
@@ -6853,9 +7112,23 @@ async function collectRecentClaudeSessions(
   } catch {
     return [];
   }
+  return collectClaudeSessionsInProjects(
+    projectDirs.map((dirName) => path.join(root, dirName)),
+    limit,
+  );
+}
+
+/**
+ * Collect session candidates from an explicit set of Claude project directories,
+ * newest first. Split out from the root scan so a cwd hint can target the single
+ * project directory it maps to instead of ranking every project on disk.
+ */
+async function collectClaudeSessionsInProjects(
+  projectPaths: string[],
+  limit: number,
+): Promise<ClaudeSessionCandidate[]> {
   const projectFileLists = await Promise.all(
-    projectDirs.map(async (dirName) => {
-      const projectPath = path.join(root, dirName);
+    projectPaths.map(async (projectPath) => {
       try {
         const stats = await fsPromises.stat(projectPath);
         if (!stats.isDirectory()) return { projectPath, files: [] as string[] };
