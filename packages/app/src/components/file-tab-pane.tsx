@@ -17,6 +17,7 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  FileText,
   History,
   List,
   Save,
@@ -70,8 +71,13 @@ import { useEditorPrefsStore } from "@/editor/editor-prefs-store";
 import { GoToLineDialog } from "@/editor/go-to-line-dialog";
 import { useCodeIndexFeature } from "@/editor/use-code-index-feature";
 import { useMarkdownLinkTargets } from "@/editor/use-markdown-link-targets";
+import { useMarkdownImageDrop } from "@/editor/markdown/use-markdown-image-drop";
 import { useSessionStore } from "@/stores/session-store";
 import { exportMarkdownAsHtml } from "@/components/markdown/export-markdown-html";
+import { exportMarkdownAsPdf } from "@/components/markdown/export-markdown-pdf";
+import { useBinaryFileWriteFeature } from "@/file-explorer/use-binary-file-write-feature";
+import { getDesktopHost } from "@/desktop/host";
+import { getIsElectron } from "@/constants/platform";
 import { isMarkdownPath } from "@/editor/markdown/markdown-path";
 import type { MarkdownTaskToggleInput } from "@/components/markdown/task-context";
 import { setTaskCheckedAtLine } from "@/editor/markdown/markdown-format";
@@ -100,7 +106,11 @@ import {
   type PreviewScrollMetrics,
 } from "@/components/file-pane";
 import { MAX_PREVIEW_FIND_MATCHES, type PreviewFindQuery } from "@/components/file-preview-find";
-import { FileViewModeBar, type FileViewModeBarProps } from "@/components/file-view-mode-bar";
+import {
+  FileViewModeBar,
+  type FileViewFormattedToggle,
+  type FileViewModeBarProps,
+} from "@/components/file-view-mode-bar";
 import {
   contentFractionToLine,
   contentYFraction,
@@ -146,6 +156,7 @@ const ThemedHistory = withUnistyles(History);
 const ThemedSourceControl = withUnistyles(SourceControlPanelIcon);
 const ThemedWandStars = withUnistyles(WandStars);
 const ThemedDownload = withUnistyles(Download);
+const ThemedFileText = withUnistyles(FileText);
 const ThemedSave = withUnistyles(Save);
 const ThemedUndo2 = withUnistyles(Undo2);
 const ThemedWrapText = withUnistyles(WrapText);
@@ -484,6 +495,8 @@ function PreviewOnlyView({
   modeBarProps,
   toolbarLeadingSlot,
   onExportHtml,
+  onExportPdf,
+  exportPdfPending,
   fileInfo,
   onFileInfo,
   onOpenHistory,
@@ -498,6 +511,8 @@ function PreviewOnlyView({
   toolbarLeadingSlot: ReactNode;
   /** Null when the document is not markdown, or the host cannot write it. */
   onExportHtml: (() => void) | null;
+  onExportPdf: (() => void) | null;
+  exportPdfPending: boolean;
   fileInfo: FilePreviewFileInfo | null;
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
   onOpenHistory: ((range: FileHistoryRange | null) => void) | null;
@@ -622,7 +637,11 @@ function PreviewOnlyView({
           onRefine={onRefine}
           showLeadingSeparator={Boolean(handleOpenHistory || onViewChanges)}
         />
-        <FileExportToolbarGroup onExportHtml={onExportHtml} />
+        <FileExportToolbarGroup
+          onExportHtml={onExportHtml}
+          onExportPdf={onExportPdf}
+          exportPdfPending={exportPdfPending}
+        />
         <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
         <ToolbarSeparator />
         {hasCodeIndex ? (
@@ -725,18 +744,44 @@ function PreviewOnlyView({
  * The export button, as a component so neither toolbar spends a branch of its
  * cyclomatic-complexity budget on it. Same reason `FileAiToolbarGroup` exists.
  */
-function FileExportToolbarGroup({ onExportHtml }: { onExportHtml: (() => void) | null }) {
+function FileExportToolbarGroup({
+  onExportHtml,
+  onExportPdf,
+  exportPdfPending,
+}: {
+  onExportHtml: (() => void) | null;
+  onExportPdf: (() => void) | null;
+  exportPdfPending: boolean;
+}) {
   const { t } = useTranslation();
-  if (!onExportHtml) {
+  if (!onExportHtml && !onExportPdf) {
     return null;
   }
   return (
-    <ToolbarIconButton
-      label={t("editor.exportHtml.action")}
-      testID="file-export-html"
-      Icon={ThemedDownload}
-      onPress={onExportHtml}
-    />
+    <>
+      {onExportHtml ? (
+        <ToolbarIconButton
+          label={t("editor.exportHtml.action")}
+          testID="file-export-html"
+          Icon={ThemedDownload}
+          onPress={onExportHtml}
+        />
+      ) : null}
+      {/* Desktop only: printing is `webContents.printToPDF`, and there is no
+          browser or native equivalent worth a second renderer. The button is
+          absent elsewhere rather than present and broken. The spinner is the
+          pending state — a print spins up a window and lays the document out,
+          which is long enough to need one. */}
+      {onExportPdf ? (
+        <ToolbarIconButton
+          label={t("editor.exportPdf.action")}
+          testID="file-export-pdf"
+          Icon={ThemedFileText}
+          loading={exportPdfPending}
+          onPress={onExportPdf}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -1168,6 +1213,8 @@ function EditorModeView({
   modeBarProps,
   toolbarLeadingSlot,
   onExportHtml,
+  onExportPdf,
+  exportPdfPending,
   controllerRef,
   onFileInfo,
   onOpenHistory,
@@ -1183,6 +1230,8 @@ function EditorModeView({
   toolbarLeadingSlot: ReactNode;
   /** Null when the document is not markdown, or the host cannot write it. */
   onExportHtml: (() => void) | null;
+  onExportPdf: (() => void) | null;
+  exportPdfPending: boolean;
   controllerRef: RefObject<EditorController | null>;
   onFileInfo: (info: FilePreviewFileInfo | null) => void;
   onOpenHistory: ((range: FileHistoryRange | null) => void) | null;
@@ -1212,9 +1261,13 @@ function EditorModeView({
   const byteSize = useBufferByteSize(buffer);
 
   const wordWrap = useEditorPrefsStore((state) => state.wordWrap);
+  // Read, not toggled, here: the Formatted control lives on the mode bar, which
+  // the outer pane owns (it also renders in preview, where this view does not).
   const livePreview = useEditorPrefsStore((state) => state.markdownLivePreview);
-  const toggleLivePreview = useEditorPrefsStore((state) => state.toggleMarkdownLivePreview);
   const markdownLinkTargets = useMarkdownLinkTargets({ serverId, workspaceRoot, path });
+  // Undefined on a daemon without `features.binaryFileWrite`, which is what
+  // withholds the drop handler from the editor entirely.
+  const handleImageDrop = useMarkdownImageDrop({ serverId, workspaceRoot, path, controllerRef });
   const toggleWordWrap = useEditorPrefsStore((state) => state.toggleWordWrap);
   // Only the buttons with a real binding get a hint; revert, history, outline
   // and wrap have none, and inventing one would be a lie the tooltip cannot
@@ -1756,6 +1809,7 @@ function EditorModeView({
       wordWrap={wordWrap}
       markdownLivePreview={livePreview}
       markdownLinkTargets={markdownLinkTargets}
+      onImageDrop={handleImageDrop}
       rulerColumn={rulerColumn}
       docSyncDebounceMs={split ? SPLIT_DOC_SYNC_DEBOUNCE_MS : undefined}
       onDirtyChanged={onDirtyChanged}
@@ -1804,7 +1858,11 @@ function EditorModeView({
           showLeadingSeparator
         />
         <FileAiToolbarGroup onRefine={onRefine} showLeadingSeparator />
-        <FileExportToolbarGroup onExportHtml={onExportHtml} />
+        <FileExportToolbarGroup
+          onExportHtml={onExportHtml}
+          onExportPdf={onExportPdf}
+          exportPdfPending={exportPdfPending}
+        />
         <ToolbarLeadingSlot>{toolbarLeadingSlot}</ToolbarLeadingSlot>
         {/* Save/revert/history act on the FILE; outline and find navigate WITHIN
             it. The separator is the line between those two jobs, and both groups
@@ -1860,12 +1918,7 @@ function EditorModeView({
 
       {/* Directly above the editing surface in both modes, and only for markdown.
           On a phone it is the only way to reach these commands at all. */}
-      <MarkdownToolbarForPath
-        path={path}
-        onRun={handleMarkdownCommand}
-        livePreview={livePreview}
-        onToggleLivePreview={toggleLivePreview}
-      />
+      <MarkdownToolbarForPath path={path} onRun={handleMarkdownCommand} />
 
       {split ? (
         <View style={styles.splitRow}>
@@ -2098,12 +2151,37 @@ export function FileTabPane({
     [location.path, serverId, setMode, workspaceId],
   );
 
+  // Formatted (markdown live preview) is an axis of the mode bar, not a mode.
+  // It applies to the EDITOR PANE, so it is live in both Editor and Split (a
+  // formatted editor next to the rendered preview is the pairing that makes
+  // ticking a checkbox on the right edit the document on the left), and inert
+  // in Preview, where no editor is on screen. Withheld outright for anything
+  // that is not markdown. See docs/text-editor.md.
+  const livePreview = useEditorPrefsStore((state) => state.markdownLivePreview);
+  const toggleLivePreview = useEditorPrefsStore((state) => state.toggleMarkdownLivePreview);
+  const formattedToggle = useMemo<FileViewFormattedToggle | null>(
+    () =>
+      isMarkdownPath(location.path)
+        ? {
+            on: livePreview,
+            disabled: effectiveMode === "preview",
+            onToggle: toggleLivePreview,
+          }
+        : null,
+    [effectiveMode, livePreview, location.path, toggleLivePreview],
+  );
+
   const modeBarProps = useMemo<FileViewModeBarProps | null>(
     () =>
       editorAllowed
-        ? { mode: effectiveMode, showSplit: splitAllowed, onChange: handleModeChange }
+        ? {
+            mode: effectiveMode,
+            showSplit: splitAllowed,
+            onChange: handleModeChange,
+            formatted: formattedToggle,
+          }
         : null,
-    [editorAllowed, effectiveMode, handleModeChange, splitAllowed],
+    [editorAllowed, effectiveMode, formattedToggle, handleModeChange, splitAllowed],
   );
 
   // Git file investigation — history, per-commit diffs, blame, origin commit.
@@ -2213,6 +2291,17 @@ export function FileTabPane({
   // there captures whatever client existed when the memo last ran, which is the
   // stale-read this codebase has been bitten by before.
   const exportClient = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
+  /** The live document: the editor's buffer, or its baseline when no editor is mounted. */
+  const readExportSource = useCallback(async () => {
+    return (
+      (await controllerRef.current?.getDoc()) ??
+      useEditorBufferStore.getState().buffers[
+        buildEditorBufferKey({ serverId, workspaceId, path: location.path })
+      ]?.baseline?.content ??
+      ""
+    );
+  }, [controllerRef, location.path, serverId, workspaceId]);
+
   const onExportHtml = useMemo(() => {
     const client = exportClient;
     if (!client || !isMarkdownPath(location.path)) {
@@ -2220,17 +2309,11 @@ export function FileTabPane({
     }
     return () => {
       void (async () => {
-        const markdown =
-          (await controllerRef.current?.getDoc()) ??
-          useEditorBufferStore.getState().buffers[
-            buildEditorBufferKey({ serverId, workspaceId, path: location.path })
-          ]?.baseline?.content ??
-          "";
         const result = await exportMarkdownAsHtml({
           writer: client,
           cwd: workspaceRoot,
           path: location.path,
-          markdown,
+          markdown: await readExportSource(),
         });
         if (result.status === "written") {
           toast.show(t("editor.exportHtml.written", { path: result.path }));
@@ -2239,7 +2322,51 @@ export function FileTabPane({
         }
       })();
     };
-  }, [controllerRef, exportClient, location.path, serverId, t, toast, workspaceId, workspaceRoot]);
+  }, [exportClient, location.path, readExportSource, t, toast, workspaceRoot]);
+
+  /**
+   * Export the document as a PDF beside itself, from the same HTML.
+   *
+   * Three things all have to be true, and each is absent rather than degraded
+   * when it is not: the shell has to be Electron (`printToPDF` is the whole
+   * implementation), the daemon has to serve the binary write (the text write
+   * refuses binary targets outright), and the file has to be markdown.
+   *
+   * Slower than the HTML export by enough to need a pending state — a print
+   * loads the document in a window and lays it out — so the button spins, and
+   * spinning also disables it, which is what stops a second export racing the
+   * first onto the same path.
+   */
+  const canWriteBinaryFiles = useBinaryFileWriteFeature(serverId);
+  const [exportPdfPending, setExportPdfPending] = useState(false);
+  const onExportPdf = useMemo(() => {
+    const client = exportClient;
+    const printHtml = getIsElectron() ? getDesktopHost()?.pdf?.printHtml : undefined;
+    if (!client || !printHtml || !canWriteBinaryFiles || !isMarkdownPath(location.path)) {
+      return null;
+    }
+    return () => {
+      void (async () => {
+        setExportPdfPending(true);
+        try {
+          const result = await exportMarkdownAsPdf({
+            printer: { printHtml },
+            writer: client,
+            cwd: workspaceRoot,
+            path: location.path,
+            markdown: await readExportSource(),
+          });
+          if (result.status === "written") {
+            toast.show(t("editor.exportPdf.written", { path: result.path }));
+          } else {
+            toast.error(t("editor.exportPdf.failed", { message: result.message }));
+          }
+        } finally {
+          setExportPdfPending(false);
+        }
+      })();
+    };
+  }, [canWriteBinaryFiles, exportClient, location.path, readExportSource, t, toast, workspaceRoot]);
 
   const content =
     effectiveMode === "preview" ? (
@@ -2251,6 +2378,8 @@ export function FileTabPane({
         modeBarProps={modeBarProps}
         toolbarLeadingSlot={toolbarLeadingSlot}
         onExportHtml={onExportHtml}
+        onExportPdf={onExportPdf}
+        exportPdfPending={exportPdfPending}
         fileInfo={fileInfo}
         onFileInfo={setFileInfo}
         onOpenHistory={onOpenHistory}
@@ -2267,6 +2396,8 @@ export function FileTabPane({
         modeBarProps={modeBarProps}
         toolbarLeadingSlot={toolbarLeadingSlot}
         onExportHtml={onExportHtml}
+        onExportPdf={onExportPdf}
+        exportPdfPending={exportPdfPending}
         controllerRef={controllerRef}
         onFileInfo={setFileInfo}
         onOpenHistory={onOpenHistory}

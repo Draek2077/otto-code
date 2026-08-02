@@ -102,9 +102,25 @@ The base layer. Everything after this depends on it.
   direction. A library evaluation belongs beside this charter before a dependency is chosen, weighed
   against bundle size and whether it runs in the native webview.
 - **Paste or drop an image.** The image is written into the workspace and a relative `![](...)` is
-  inserted. **This goes through the daemon**, `file.create` under `features.fileMutations`, because
-  the client never touches its own filesystem for workspace files. The insert path then resolves
-  through the viewer's existing workspace-bounded image resolver, which already works.
+  inserted. **This goes through the daemon**, because the client never touches its own filesystem
+  for workspace files. The insert path then resolves through the viewer's existing
+  workspace-bounded image resolver, which already works.
+  - **Not `file.create`, and the reason must not be rediscovered.** An earlier version of this
+    charter named `file.create` under `features.fileMutations`. That RPC cannot carry an image:
+    `FileCreateRequestSchema` creates an _empty_ file or directory and has no content field at all.
+    Neither of the neighbours works either — `file.write` takes `content: z.string()`, which the
+    daemon LF-normalizes and re-EOLs, so any byte sequence that is not text comes out corrupted;
+    and `file.upload` does stream real bytes but lands them in `$OTTO_HOME/uploads/<id>/`, outside
+    every workspace, so a document could never link to what it wrote.
+  - The write is **`fs.file.write_binary`**, gated on `features.binaryFileWrite` — bytes to a
+    workspace-relative path, workspace-bounded the way create/delete/rename are. It was added for
+    the Phase 5 exports and this is its second consumer. Images land in an `assets/` folder beside
+    the document; the daemon creates that parent and never clobbers, so an occupied name comes back
+    as `exists` and the client retries `x-2.png`.
+  - The editor cannot perform any of this itself: on native it runs inside a webview with no daemon
+    connection, so the CM6 handler only recognises the image and pushes the bytes to the host, which
+    writes them and inserts the link. That is a push callback, with the touchpoint cost
+    [`docs/text-editor.md`](../../docs/text-editor.md) states.
 - **Table editing.** Auto-format a GFM table on edit (column alignment maintained as you type), plus
   add/remove row and column commands. On mobile these are toolbar actions, since selecting a table
   cell precisely on a phone is not realistic.
@@ -146,11 +162,32 @@ because a live preview that cannot render math is not a live preview.
 - **HTML `<table>` translation to GFM**, following `renderTable` in the AsciiDoc converter.
 - **Interactive checkboxes**, replacing the read-only glyphs task lists render today.
 
-### Phase 5: export
+### Phase 5: export — shipped
 
 - **HTML export** everywhere, from the rendered document.
 - **PDF** via Electron print-to-PDF on desktop. Named but never built in the
   [user-mode](../user-mode/user-mode.md) charter; this is where it lands.
+
+Both shipped. Three decisions worth keeping:
+
+- **The PDF is the HTML export, printed.** `markdownToHtmlDocument` produces the document and
+  `webContents.printToPDF` renders that exact HTML in a hidden window. One converter, one
+  stylesheet, two containers, so the two formats cannot drift. The window runs with
+  `javascript: false`, which the export can afford because embedded HTML is translated on the way in
+  and KaTeX math ships as MathML.
+- **It lands beside the source**, `docs/design.md` -> `docs/design.pdf`, matching HTML rather than
+  opening a save dialog. A native dialog returns a path on the _host running the app_, and the
+  workspace may be on another machine entirely — the same click would mean two different things for
+  a local and a remote daemon. Consistency was the smaller argument; that was the deciding one.
+- **The bytes go back through the daemon**, not out of Electron main to disk, for the same reason.
+  That needed a new capability: the text write is UTF-8, re-applies a detected EOL, and _refuses a
+  binary target outright_, so it could never have written a PDF, let alone replaced one on
+  re-export. `fs.file.write_binary` is that capability, gated on
+  `server_info.features.binaryFileWrite`. It is also the capability image paste/drop was blocked on.
+
+Verified by unit tests for the naming, path and both failure paths, and by a server test that pins
+the binary-overwrite behaviour against the text write's refusal. `printToPDF` itself has no headless
+stand-in; it was exercised by hand.
 
 ## Testing
 

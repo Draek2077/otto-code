@@ -89,6 +89,12 @@ export function CodeEditor(props: CodeEditorProps) {
       onRenameSymbolShortcut: () => callbacksRef.current.onRenameSymbolShortcut?.(),
       onScrolled: (metrics) => callbacksRef.current.onScrolled?.(metrics),
       onPointerSelect: (select) => callbacksRef.current.onPointerSelect?.(select),
+      // Same shape as the context menu below: no handler, no drop extension, so
+      // a host without the daemon's binary-write capability leaves the drop to
+      // the platform. Read once at mount, like every other option here.
+      onImageDrop: callbacksRef.current.onImageDrop
+        ? (images) => callbacksRef.current.onImageDrop?.(images)
+        : undefined,
       // Only claim the right-click when the host actually has a menu: without a
       // handler the core leaves the platform menu alone.
       onContextMenu: callbacksRef.current.onContextMenu

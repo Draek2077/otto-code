@@ -2421,6 +2421,7 @@ export const zhCN: TranslationResources = {
       editor: "编辑器",
       split: "编辑器与预览",
       preview: "预览",
+      formatted: "格式化的 Markdown",
     },
     markdownToolbar: {
       label: "Markdown 格式",
@@ -2440,8 +2441,6 @@ export const zhCN: TranslationResources = {
       blockquote: "引用",
       table: "表格",
       horizontalRule: "分隔线",
-      showMarkers: "显示 Markdown 源码",
-      hideMarkers: "隐藏 Markdown 标记",
       tableFormat: "格式化表格",
       tableRowBelow: "添加行",
       tableRowDelete: "删除行",
@@ -2455,6 +2454,11 @@ export const zhCN: TranslationResources = {
     },
     exportHtml: {
       action: "导出为 HTML",
+      written: "已导出到 {{path}}",
+      failed: "无法导出：{{message}}",
+    },
+    exportPdf: {
+      action: "导出为 PDF",
       written: "已导出到 {{path}}",
       failed: "无法导出：{{message}}",
     },

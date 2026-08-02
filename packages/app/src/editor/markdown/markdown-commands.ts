@@ -1,7 +1,7 @@
 import { markdownLanguage } from "@codemirror/lang-markdown";
-import type { EditorState, StateCommand } from "@codemirror/state";
+import type { EditorState, Extension, StateCommand } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import type { MarkdownCommandName } from "../editor-contract";
+import type { EditorDroppedImage, MarkdownCommandName } from "../editor-contract";
 import {
   insertHorizontalRule,
   insertImage,
@@ -152,3 +152,106 @@ export const markdownPasteHandler = EditorView.domEventHandlers({
     return true;
   },
 });
+
+/**
+ * Paste or drop an image into a markdown file: the core hands the bytes to the
+ * host, which writes them into the workspace and inserts the link.
+ *
+ * The split is forced by the architecture rather than chosen. On native the
+ * editor runs inside a webview and cannot reach the daemon, and on web the
+ * client never touches a workspace file either — so the only thing the core can
+ * do with a dropped image is recognise it and pass it on. That is also why the
+ * bytes are base64: this crosses a JSON bridge.
+ *
+ * Passing no handler registers nothing at all, which is the capability gate. A
+ * host on a daemon without `features.binaryFileWrite` leaves the drop to the
+ * platform instead of swallowing it into a feature that cannot complete.
+ */
+export type MarkdownImageDropHandler = (images: readonly EditorDroppedImage[]) => void;
+
+export function markdownImageDropHandler(
+  onImageDrop: MarkdownImageDropHandler | undefined,
+): Extension {
+  if (!onImageDrop) {
+    return [];
+  }
+
+  /**
+   * Claim the event only when there is an image on it. Returning false for
+   * everything else is what leaves ordinary text paste, the HTML-to-markdown
+   * conversion above, and CodeMirror's own drop handling untouched.
+   */
+  const claimImages = (files: FileList | null | undefined, view: EditorView): boolean => {
+    if (!inMarkdownContext(view.state)) {
+      return false;
+    }
+    const images = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
+    if (images.length === 0) {
+      return false;
+    }
+    // The reads are asynchronous, so this hands the host a batch once every
+    // image has resolved rather than one message per file — several images in
+    // one gesture must insert in the order they were dropped, and independent
+    // reads finish in whatever order they please.
+    void Promise.all(images.map(readImageAsBase64)).then((results) => {
+      const resolved = results.filter((image): image is EditorDroppedImage => image !== null);
+      if (resolved.length > 0) {
+        onImageDrop(resolved);
+      }
+      return undefined;
+    });
+    return true;
+  };
+
+  return EditorView.domEventHandlers({
+    paste(event, view) {
+      if (!claimImages(event.clipboardData?.files, view)) {
+        return false;
+      }
+      event.preventDefault();
+      return true;
+    },
+    drop(event, view) {
+      if (!claimImages(event.dataTransfer?.files, view)) {
+        return false;
+      }
+      event.preventDefault();
+      // Put the caret where the image was actually dropped. Without this the
+      // link lands wherever the caret happened to be, which is rarely the place
+      // the user aimed at — and by the time the read resolves there is no
+      // pointer position left to consult.
+      const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      if (position !== null) {
+        view.dispatch({ selection: { anchor: position } });
+      }
+      view.focus();
+      return true;
+    },
+  });
+}
+
+/**
+ * A dropped `File` as base64, or null when it could not be read.
+ *
+ * `readAsDataURL` rather than `arrayBuffer()` plus a hand-rolled encoder: the
+ * platform already has a correct base64 implementation on this path, and
+ * chunking a multi-megabyte screenshot through `String.fromCharCode` to reach
+ * `btoa` is exactly the kind of code that works until someone pastes a big
+ * enough image.
+ */
+function readImageAsBase64(file: File): Promise<EditorDroppedImage | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      const comma = result.indexOf(",");
+      resolve(
+        comma < 0
+          ? null
+          : { name: file.name, mimeType: file.type, dataBase64: result.slice(comma + 1) },
+      );
+    });
+    reader.addEventListener("error", () => resolve(null));
+    reader.readAsDataURL(file);
+  });
+}

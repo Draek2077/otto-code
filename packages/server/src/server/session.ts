@@ -4080,6 +4080,8 @@ export class Session {
         return undefined;
       case "file.write.request":
         return this.workspaceFilesSession.handleFileWriteRequest(msg);
+      case "fs.file.write_binary.request":
+        return this.workspaceFilesSession.handleFsFileWriteBinaryRequest(msg);
       case "file.create.request":
         return this.workspaceFilesSession.handleFileCreateRequest(msg);
       case "file.delete.request":

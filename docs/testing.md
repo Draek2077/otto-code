@@ -111,6 +111,8 @@ The harness launches the unpacked packaged app with isolated user data and daemo
 
 - the `otto://app/` renderer mounts into `#root`;
 - the sandboxed preload exposes the desktop bridge;
+- `webContents.printToPDF` returns real PDF bytes through that bridge (the markdown PDF export has
+  no headless stand-in, so this is the only tier that can prove it);
 - the renderer starts a fresh desktop-managed daemon through the normal startup bootstrap;
 - the bundled CLI can query that daemon and run a terminal command.
 

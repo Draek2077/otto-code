@@ -18,6 +18,7 @@ const REQUIRED_DESKTOP_BRIDGE_KEYS = [
   "events",
   "window",
   "dialog",
+  "pdf",
   "notification",
   "opener",
   "editor",
@@ -527,6 +528,47 @@ async function assertPackagedRendererLoaded(page, deadline) {
       `Packaged renderer is missing desktop preload bridge keys: ${missingBridgeKeys.join(", ")}. Present keys: ${bridgeKeys.join(", ") || "<none>"}`,
     );
   }
+
+  await verifyPrintToPdf(page);
+}
+
+/**
+ * Print a document and check the bytes really are a PDF.
+ *
+ * `webContents.printToPDF` has no headless stand-in, so the markdown PDF export
+ * has nothing below this that can prove it produces a file. This is the real
+ * production handler on the real packaged app — the smoke adds no branch to
+ * main, it just calls what the export calls.
+ */
+async function verifyPrintToPdf(page) {
+  const result = await page.evaluate(async () => {
+    const printHtml = window.ottoDesktop?.pdf?.printHtml;
+    if (typeof printHtml !== "function") {
+      return { error: "ottoDesktop.pdf.printHtml is not a function" };
+    }
+    try {
+      const base64 = await printHtml({
+        html: "<!doctype html><html><body><h1>Otto smoke</h1></body></html>",
+      });
+      if (typeof base64 !== "string" || base64.length === 0) {
+        return { error: `printHtml returned ${typeof base64} of length ${base64?.length}` };
+      }
+      // Decode just the header rather than the whole file.
+      return { header: atob(base64.slice(0, 12)).slice(0, 5), length: base64.length };
+    } catch (error) {
+      return { error: String(error) };
+    }
+  });
+
+  if (result.error) {
+    throw new Error(`Packaged renderer could not print to PDF: ${result.error}`);
+  }
+  if (result.header !== "%PDF-") {
+    throw new Error(
+      `Packaged renderer printed something that is not a PDF: header ${JSON.stringify(result.header)}`,
+    );
+  }
+  console.log(`Packaged desktop smoke: printToPDF produced ${result.length} base64 chars of PDF`);
 }
 
 async function waitForRendererStartedDaemon({

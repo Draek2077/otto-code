@@ -12,8 +12,11 @@ export interface MathFormulaProps {
   /** Block math, which sits centred on its own line rather than inline. */
   display: boolean;
   /**
-   * The surrounding text style. Web reads the colour off it; native renders the
-   * source with it, since it has no formula layout of its own.
+   * The surrounding text style.
+   *
+   * Web reads the colour off it and inherits the rest through CSS. Native has to
+   * hand both the colour and the size to its webview, which has no surrounding
+   * document to inherit from, and styles the source with it when it falls back.
    */
   style: TextStyle;
 }

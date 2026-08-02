@@ -2501,6 +2501,7 @@ export const ptBR: TranslationResources = {
       editor: "Editor",
       split: "Editor e pré-visualização",
       preview: "Pré-visualização",
+      formatted: "Markdown formatado",
     },
     markdownToolbar: {
       label: "Formatação Markdown",
@@ -2520,8 +2521,6 @@ export const ptBR: TranslationResources = {
       blockquote: "Citação",
       table: "Tabela",
       horizontalRule: "Divisor",
-      showMarkers: "Mostrar o código Markdown",
-      hideMarkers: "Ocultar os marcadores Markdown",
       tableFormat: "Formatar tabela",
       tableRowBelow: "Adicionar linha",
       tableRowDelete: "Excluir linha",
@@ -2535,6 +2534,11 @@ export const ptBR: TranslationResources = {
     },
     exportHtml: {
       action: "Exportar como HTML",
+      written: "Exportado para {{path}}",
+      failed: "Não foi possível exportar: {{message}}",
+    },
+    exportPdf: {
+      action: "Exportar como PDF",
       written: "Exportado para {{path}}",
       failed: "Não foi possível exportar: {{message}}",
     },

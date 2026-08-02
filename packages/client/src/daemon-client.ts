@@ -107,6 +107,7 @@ import type {
   CheckoutForgeSetAutoMergeResponse,
   ProjectCreateDirectoryResponse,
   FsFileWriteResult,
+  FsFileWriteBinaryResult,
   GitHubSearchResponse,
   GitHubSearchRequest,
   ForgeSearchResponse,
@@ -554,6 +555,20 @@ export interface FileWriteOptions {
   /** Only the deleted-file "save re-creates" flow sets these two. */
   allowCreate?: boolean;
   eol?: FileEol;
+  requestId?: string;
+}
+/**
+ * Bytes to a workspace path. Gated on `features.binaryFileWrite`. Unlike
+ * {@link FileWriteOptions} this carries no precondition: `overwrite` is the
+ * whole policy — see `FsFileWriteBinaryRequestSchema` for why a generated
+ * artifact has nothing to reconcile against.
+ */
+export interface FileWriteBinaryOptions {
+  cwd: string;
+  /** Workspace-relative, like every other file RPC. */
+  path: string;
+  contentBase64: string;
+  overwrite?: boolean;
   requestId?: string;
 }
 /**
@@ -5567,6 +5582,27 @@ export class DaemonClient {
         eol: options.eol,
       },
       responseType: "file.write.response",
+    });
+    return payload.result;
+  }
+
+  /**
+   * Write bytes to a workspace file — the path for generated artifacts the
+   * text write cannot carry (it refuses binary targets outright). Gated on
+   * `features.binaryFileWrite`; there is no client-side substitute, because
+   * the client never touches a workspace file on any platform.
+   */
+  async writeBinaryFile(options: FileWriteBinaryOptions): Promise<FsFileWriteBinaryResult> {
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "fs.file.write_binary.request",
+        cwd: options.cwd,
+        path: options.path,
+        contentBase64: options.contentBase64,
+        overwrite: options.overwrite,
+      },
+      responseType: "fs.file.write_binary.response",
     });
     return payload.result;
   }

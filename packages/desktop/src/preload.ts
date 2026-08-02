@@ -77,6 +77,10 @@ contextBridge.exposeInMainWorld("ottoDesktop", {
       ipcRenderer.invoke("otto:dialog:askWithCheckbox", message, options),
     open: (options?: Record<string, unknown>) => ipcRenderer.invoke("otto:dialog:open", options),
   },
+  pdf: {
+    /** Standalone HTML in, base64 PDF bytes out. See features/print-to-pdf.ts. */
+    printHtml: (input: { html: string }) => ipcRenderer.invoke("otto:pdf:printHtml", input),
+  },
   notification: {
     isSupported: () => ipcRenderer.invoke("otto:notification:isSupported"),
     sendNotification: (payload: { title: string; body?: string; data?: Record<string, unknown> }) =>

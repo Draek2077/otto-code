@@ -86,7 +86,38 @@ function settlePendingReply(message: EditorWebViewOutbound, pending: PendingRequ
 }
 
 /** The half the webview pushes on its own; forwarded straight to the host. */
+/**
+ * The keystrokes the editor forwards for the host to act on. Split out of
+ * {@link forwardPushedEvent} purely to keep each switch under the complexity
+ * cap — a new *shortcut* adds a branch here, any other pushed event adds one
+ * there.
+ */
+function forwardShortcutEvent(message: EditorWebViewOutbound, props: CodeEditorProps): boolean {
+  switch (message.type) {
+    case "saveShortcut":
+      props.onSaveShortcut?.();
+      return true;
+    case "findShortcut":
+      props.onFindShortcut?.();
+      return true;
+    case "closeFindShortcut":
+      props.onCloseFindShortcut?.();
+      return true;
+    case "goToLineShortcut":
+      props.onGoToLineShortcut?.();
+      return true;
+    case "goToDefinitionShortcut":
+      props.onGoToDefinitionShortcut?.();
+      return true;
+    default:
+      return false;
+  }
+}
+
 function forwardPushedEvent(message: EditorWebViewOutbound, props: CodeEditorProps): void {
+  if (forwardShortcutEvent(message, props)) {
+    return;
+  }
   switch (message.type) {
     case "dirtyChanged":
       props.onDirtyChanged?.(message.dirty);
@@ -97,20 +128,8 @@ function forwardPushedEvent(message: EditorWebViewOutbound, props: CodeEditorPro
     case "cursorMoved":
       props.onCursorMoved?.(message.position);
       break;
-    case "saveShortcut":
-      props.onSaveShortcut?.();
-      break;
-    case "findShortcut":
-      props.onFindShortcut?.();
-      break;
-    case "closeFindShortcut":
-      props.onCloseFindShortcut?.();
-      break;
-    case "goToLineShortcut":
-      props.onGoToLineShortcut?.();
-      break;
-    case "goToDefinitionShortcut":
-      props.onGoToDefinitionShortcut?.();
+    case "imageDrop":
+      props.onImageDrop?.(message.images);
       break;
     case "docSync":
       props.onDocSync?.(message.doc);
@@ -219,6 +238,10 @@ export function CodeEditor(props: CodeEditorProps) {
       theme: callbacksRef.current.theme,
       wordWrap: callbacksRef.current.wordWrap,
       markdownLivePreview: callbacksRef.current.markdownLivePreview,
+      // The webview cannot ask the daemon what it supports, so the capability
+      // answer travels in with the mount: a handler on the props means the host
+      // can write the bytes.
+      imageDropEnabled: callbacksRef.current.onImageDrop !== undefined,
     });
     const queued = pendingMessagesRef.current.splice(0);
     for (const queuedMessage of queued) {

@@ -2527,6 +2527,7 @@ export const fr: TranslationResources = {
       editor: "Éditeur",
       split: "Éditeur et aperçu",
       preview: "Aperçu",
+      formatted: "Markdown mis en forme",
     },
     markdownToolbar: {
       label: "Mise en forme Markdown",
@@ -2546,8 +2547,6 @@ export const fr: TranslationResources = {
       blockquote: "Citation",
       table: "Tableau",
       horizontalRule: "Séparateur",
-      showMarkers: "Afficher la source Markdown",
-      hideMarkers: "Masquer les marqueurs Markdown",
       tableFormat: "Formater le tableau",
       tableRowBelow: "Ajouter une ligne",
       tableRowDelete: "Supprimer la ligne",
@@ -2561,6 +2560,11 @@ export const fr: TranslationResources = {
     },
     exportHtml: {
       action: "Exporter en HTML",
+      written: "Exporté vers {{path}}",
+      failed: "Export impossible : {{message}}",
+    },
+    exportPdf: {
+      action: "Exporter en PDF",
       written: "Exporté vers {{path}}",
       failed: "Export impossible : {{message}}",
     },

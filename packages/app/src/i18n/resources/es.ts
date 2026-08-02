@@ -2516,6 +2516,7 @@ export const es: TranslationResources = {
       editor: "Editor",
       split: "Editor y vista previa",
       preview: "Vista previa",
+      formatted: "Markdown formateado",
     },
     markdownToolbar: {
       label: "Formato Markdown",
@@ -2535,8 +2536,6 @@ export const es: TranslationResources = {
       blockquote: "Cita",
       table: "Tabla",
       horizontalRule: "Separador",
-      showMarkers: "Mostrar el código Markdown",
-      hideMarkers: "Ocultar los marcadores Markdown",
       tableFormat: "Formatear tabla",
       tableRowBelow: "Añadir fila",
       tableRowDelete: "Eliminar fila",
@@ -2550,6 +2549,11 @@ export const es: TranslationResources = {
     },
     exportHtml: {
       action: "Exportar como HTML",
+      written: "Exportado a {{path}}",
+      failed: "No se pudo exportar: {{message}}",
+    },
+    exportPdf: {
+      action: "Exportar como PDF",
       written: "Exportado a {{path}}",
       failed: "No se pudo exportar: {{message}}",
     },

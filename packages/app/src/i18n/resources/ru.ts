@@ -2499,6 +2499,7 @@ export const ru: TranslationResources = {
       editor: "Редактор",
       split: "Редактор и предпросмотр",
       preview: "Предпросмотр",
+      formatted: "Markdown с форматированием",
     },
     markdownToolbar: {
       label: "Форматирование Markdown",
@@ -2518,8 +2519,6 @@ export const ru: TranslationResources = {
       blockquote: "Цитата",
       table: "Таблица",
       horizontalRule: "Разделитель",
-      showMarkers: "Показать исходный Markdown",
-      hideMarkers: "Скрыть маркеры Markdown",
       tableFormat: "Форматировать таблицу",
       tableRowBelow: "Добавить строку",
       tableRowDelete: "Удалить строку",
@@ -2533,6 +2532,11 @@ export const ru: TranslationResources = {
     },
     exportHtml: {
       action: "Экспорт в HTML",
+      written: "Экспортировано в {{path}}",
+      failed: "Не удалось экспортировать: {{message}}",
+    },
+    exportPdf: {
+      action: "Экспорт в PDF",
       written: "Экспортировано в {{path}}",
       failed: "Не удалось экспортировать: {{message}}",
     },

@@ -156,6 +156,23 @@ export interface EditorCursorPosition {
 }
 
 /**
+ * An image pasted or dropped into a markdown document, on its way to the host.
+ *
+ * The bytes are base64 because this crosses the native webview bridge, which is
+ * a JSON `postMessage` and cannot carry a `File` or an `ArrayBuffer`. The core
+ * has already decided this is an image worth writing; the host decides where it
+ * goes and performs the write, because the editor cannot reach the daemon on
+ * either platform.
+ */
+export interface EditorDroppedImage {
+  /** The file's own name, or `""` for a clipboard paste, which has none. */
+  name: string;
+  mimeType: string;
+  /** Raw base64, with no `data:` prefix. */
+  dataBase64: string;
+}
+
+/**
  * Imperative surface both hosts expose to the app. `getDoc` is async because
  * the native host resolves it over the webview bridge.
  */
@@ -445,6 +462,17 @@ export interface CodeEditorProps {
   /** The `renameSymbol` binding fired; the host opens the rename dialog. */
   onRenameSymbolShortcut?: () => void;
   /**
+   * An image was pasted or dropped into a markdown document. The host writes it
+   * into the workspace and inserts the link, because the editor cannot reach
+   * the daemon on either platform.
+   *
+   * **Omitting this is the capability gate.** Without it the core registers no
+   * handler at all, so the drop keeps whatever the platform does with it rather
+   * than being swallowed by a feature that cannot finish — which is what a host
+   * on a daemon without `features.binaryFileWrite` passes.
+   */
+  onImageDrop?: (images: readonly EditorDroppedImage[]) => void;
+  /**
    * Debounced buffer mirror. The document lives inside the editor (web DOM or
    * native webview); this keeps a recoverable copy outside it so host
    * remounts and webview crashes cannot lose edits. Never used for saves.
@@ -488,6 +516,14 @@ export type EditorWebViewInbound =
       theme: EditorThemeSpec;
       wordWrap: boolean;
       markdownLivePreview?: boolean;
+      /**
+       * Whether the host can write a dropped image into the workspace — the
+       * `features.binaryFileWrite` answer, which the webview cannot ask for
+       * itself. Read at mount only: a daemon that gains the capability
+       * mid-session reaches the editor at its next mount, and a capability that
+       * appears while a file is already open is not worth a second message.
+       */
+      imageDropEnabled?: boolean;
     }
   | { type: "setDoc"; doc: string }
   | { type: "setCleanDoc"; doc: string }
@@ -521,6 +557,7 @@ export type EditorWebViewOutbound =
   | { type: "closeFindShortcut" }
   | { type: "goToLineShortcut" }
   | { type: "goToDefinitionShortcut" }
+  | { type: "imageDrop"; images: readonly EditorDroppedImage[] }
   | { type: "doc"; requestId: number; doc: string }
   | { type: "selection"; requestId: number; selection: EditorSelection }
   | { type: "wordAtCursor"; requestId: number; word: string }

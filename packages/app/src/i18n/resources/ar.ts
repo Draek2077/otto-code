@@ -2450,6 +2450,7 @@ export const ar: TranslationResources = {
       editor: "المحرّر",
       split: "المحرّر والمعاينة",
       preview: "المعاينة",
+      formatted: "Markdown منسّق",
     },
     markdownToolbar: {
       label: "تنسيق Markdown",
@@ -2469,8 +2470,6 @@ export const ar: TranslationResources = {
       blockquote: "اقتباس",
       table: "جدول",
       horizontalRule: "فاصل",
-      showMarkers: "إظهار مصدر Markdown",
-      hideMarkers: "إخفاء علامات Markdown",
       tableFormat: "تنسيق الجدول",
       tableRowBelow: "إضافة صف",
       tableRowDelete: "حذف الصف",
@@ -2484,6 +2483,11 @@ export const ar: TranslationResources = {
     },
     exportHtml: {
       action: "تصدير كـ HTML",
+      written: "تم التصدير إلى {{path}}",
+      failed: "تعذّر التصدير: {{message}}",
+    },
+    exportPdf: {
+      action: "تصدير كـ PDF",
       written: "تم التصدير إلى {{path}}",
       failed: "تعذّر التصدير: {{message}}",
     },

@@ -59,6 +59,19 @@ export interface WriteFileParams {
   eol?: ExplorerEol;
 }
 
+export interface WriteBinaryFileParams {
+  root: string;
+  relativePath: string;
+  bytes: Buffer;
+  /** Replace an existing file. Off by default; an existing target is `exists`. */
+  overwrite?: boolean;
+  // Missing parent directories are created either way; see the implementation.
+}
+
+export type WriteExplorerBinaryFileResult =
+  | { status: "written"; modifiedAt: string; size: number }
+  | { status: "exists" };
+
 export interface ExplorerFileIdentity {
   modifiedAt: string;
   hash: string;
@@ -348,6 +361,75 @@ export async function writeExplorerFile({
     size: outputBytes.length,
     eol,
   };
+}
+
+/**
+ * Write bytes to a file, verbatim.
+ *
+ * The sibling of `writeExplorerFile` for content that is not text. It shares
+ * that function's path scoping and its atomic replace, and deliberately shares
+ * none of its text handling: no EOL detection, no EOL re-application, and none
+ * of the `isLikelyBinary` refusal — a PNG or a PDF *is* the binary file that
+ * check exists to protect, so re-exporting one has to be allowed.
+ *
+ * There is no conditional-write precondition here either; see
+ * `FsFileWriteBinaryRequestSchema` for why. `overwrite` is the whole policy.
+ */
+export async function writeExplorerBinaryFile({
+  root,
+  relativePath,
+  bytes,
+  overwrite,
+}: WriteBinaryFileParams): Promise<WriteExplorerBinaryFileResult> {
+  const filePath = await resolveScopedPath({ root, relativePath });
+
+  // Both branches below create the target's parent directories, because one of
+  // them would anyway: `writeFileAtomic` mkdirs before it writes, and an
+  // exclusive `open(…, "wx")` does not. Directory creation that depended on
+  // whether the caller passed `overwrite` would be nobody's intent. The path is
+  // already contained within `root`, so this can only build a tree inside the
+  // workspace.
+  await fs.mkdir(path.dirname(filePath.resolvedPath), { recursive: true });
+
+  if (!overwrite) {
+    // Exclusive create, so the not-there check and the write are one operation
+    // rather than a stat the target can slip through behind.
+    let handle: FileHandle;
+    try {
+      handle = await fs.open(filePath.resolvedPath, "wx");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException | null)?.code === "EEXIST") {
+        return { status: "exists" };
+      }
+      throw error;
+    }
+    try {
+      await handle.writeFile(bytes);
+    } finally {
+      await handle.close();
+    }
+    const stats = await fs.stat(filePath.resolvedPath);
+    return { status: "written", modifiedAt: stats.mtime.toISOString(), size: bytes.length };
+  }
+
+  // Preserve the existing file's mode when there is one, matching the text
+  // write: replacing a generated artifact should not change its permissions.
+  let mode: number | undefined;
+  try {
+    const existing = await fs.stat(filePath.resolvedPath);
+    if (!existing.isFile()) {
+      throw new Error("Requested path is not a file");
+    }
+    mode = existing.mode;
+  } catch (error) {
+    if (!isMissingEntryError(error)) {
+      throw error;
+    }
+  }
+
+  await writeFileAtomic(filePath.resolvedPath, bytes, mode === undefined ? undefined : { mode });
+  const stats = await fs.stat(filePath.resolvedPath);
+  return { status: "written", modifiedAt: stats.mtime.toISOString(), size: bytes.length };
 }
 
 async function createExplorerFile({

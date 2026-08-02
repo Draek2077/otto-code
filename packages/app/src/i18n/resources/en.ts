@@ -2539,6 +2539,7 @@ export const en = {
       editor: "Editor",
       split: "Editor and preview",
       preview: "Preview",
+      formatted: "Formatted markdown",
     },
     markdownToolbar: {
       label: "Markdown formatting",
@@ -2558,8 +2559,6 @@ export const en = {
       blockquote: "Blockquote",
       table: "Table",
       horizontalRule: "Divider",
-      showMarkers: "Show markdown source",
-      hideMarkers: "Hide markdown markers",
       tableFormat: "Format table",
       tableRowBelow: "Add row",
       tableRowDelete: "Delete row",
@@ -2573,6 +2572,11 @@ export const en = {
     },
     exportHtml: {
       action: "Export as HTML",
+      written: "Exported to {{path}}",
+      failed: "Could not export: {{message}}",
+    },
+    exportPdf: {
+      action: "Export as PDF",
       written: "Exported to {{path}}",
       failed: "Could not export: {{message}}",
     },

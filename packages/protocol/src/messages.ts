@@ -5448,6 +5448,40 @@ export const FsFileWriteRequestSchema = z.object({
   requestId: z.string(),
 });
 
+/**
+ * Write bytes to a workspace file.
+ *
+ * The counterpart to `fs.file.write`, which is text only: it LF-normalizes,
+ * re-applies the file's detected EOL, and outright refuses to overwrite a file
+ * whose current bytes look binary. None of that can carry a PDF, an image or
+ * any other generated artifact, so those go through here instead — the bytes
+ * land verbatim.
+ *
+ * Deliberately not a conditional write. Callers are producing a generated file
+ * from a source they already hold, so there is no "the file changed under you"
+ * to reconcile: either the caller means to replace what is there or it does
+ * not, and `overwrite` says which. Keeping that explicit is what stops this
+ * from being a clobber-any-path primitive.
+ *
+ * Workspace-bounded, like the create/delete/rename surface and unlike
+ * `file.write`. `file.write` is unbounded because a tab may edit a file the
+ * user opened from anywhere; putting new bytes at an arbitrary path on the host
+ * is a different power and does not need to be that wide.
+ */
+export const FsFileWriteBinaryRequestSchema = z.object({
+  type: z.literal("fs.file.write_binary.request"),
+  cwd: z.string(),
+  path: z.string(),
+  /** base64. Decoded and written as-is: no EOL translation, no re-encoding. */
+  contentBase64: z.string(),
+  /**
+   * Replace an existing file. Absent (the default) an existing target comes
+   * back as `exists` and nothing is written.
+   */
+  overwrite: z.boolean().optional(),
+  requestId: z.string(),
+});
+
 export const ProjectIconRequestSchema = z.object({
   type: z.literal("project_icon_request"),
   cwd: z.string(),
@@ -6280,6 +6314,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   FileSubscribeRequestSchema,
   FileUnsubscribeRequestSchema,
   FsFileWriteRequestSchema,
+  FsFileWriteBinaryRequestSchema,
   ProjectIconRequestSchema,
   FileDownloadTokenRequestSchema,
   FileUploadRequestSchema,
@@ -6856,6 +6891,13 @@ export const ServerInfoStatusPayloadSchema = z
         // There is no client-side substitute (the client never touches the
         // filesystem), so an old daemon simply does not get the menu items.
         fileMutations: z.boolean().optional(),
+        // COMPAT(binaryFileWrite): added in v0.7.6, drop the gate when daemon
+        // floor >= v0.7.6. Set when the daemon serves
+        // `fs.file.write_binary` — bytes to a workspace path, as opposed to
+        // `fs.file.write`, which is text and refuses binary targets outright.
+        // The client cannot write a workspace file itself on any platform, so
+        // an old daemon simply does not offer the exports that produce bytes.
+        binaryFileWrite: z.boolean().optional(),
         // COMPAT(attachmentStorage): added in v0.7.1, drop the gate when daemon floor >= v0.7.1.
         // Set when the daemon serves `attachments.images.get_stats` and
         // `attachments.images.clear` — the readout and reclaim for the images it
@@ -9658,6 +9700,27 @@ export const FsFileWriteResponseSchema = z.object({
   }),
 });
 
+export const FsFileWriteBinaryResultSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("written"),
+    modifiedAt: z.string(),
+    size: z.number(),
+  }),
+  // The target is already there and the request did not ask to replace it.
+  z.object({ status: z.literal("exists") }),
+  z.object({ status: z.literal("error"), error: z.string() }),
+]);
+
+export const FsFileWriteBinaryResponseSchema = z.object({
+  type: z.literal("fs.file.write_binary.response"),
+  payload: z.object({
+    cwd: z.string(),
+    path: z.string(),
+    result: FsFileWriteBinaryResultSchema,
+    requestId: z.string(),
+  }),
+});
+
 export const FileUpdateSchema = z.object({
   type: z.literal("fs.file.update"),
   payload: z.object({
@@ -11051,6 +11114,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FileSubscribeResponseSchema,
   FileUnsubscribeResponseSchema,
   FsFileWriteResponseSchema,
+  FsFileWriteBinaryResponseSchema,
   FileUpdateSchema,
   ProjectIconResponseSchema,
   FileDownloadTokenResponseSchema,
@@ -11735,6 +11799,9 @@ export type FileUnsubscribeResponse = z.infer<typeof FileUnsubscribeResponseSche
 export type FsFileWriteRequest = z.infer<typeof FsFileWriteRequestSchema>;
 export type FsFileWriteResponse = z.infer<typeof FsFileWriteResponseSchema>;
 export type FsFileWriteResult = z.infer<typeof FsFileWriteResultSchema>;
+export type FsFileWriteBinaryRequest = z.infer<typeof FsFileWriteBinaryRequestSchema>;
+export type FsFileWriteBinaryResponse = z.infer<typeof FsFileWriteBinaryResponseSchema>;
+export type FsFileWriteBinaryResult = z.infer<typeof FsFileWriteBinaryResultSchema>;
 export type FileUpdate = z.infer<typeof FileUpdateSchema>;
 export type ProjectIconRequest = z.infer<typeof ProjectIconRequestSchema>;
 export type ProjectIconResponse = z.infer<typeof ProjectIconResponseSchema>;

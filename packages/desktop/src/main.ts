@@ -60,6 +60,7 @@ import {
 } from "./features/app-user-model-id.js";
 import { resolveBrandedAssetPath } from "./features/dev-icon.js";
 import { registerDialogHandlers } from "./features/dialogs.js";
+import { registerPrintToPdfHandlers } from "./features/print-to-pdf.js";
 import {
   registerNotificationHandlers,
   ensureNotificationCenterRegistration,
@@ -1435,6 +1436,7 @@ async function bootstrap(): Promise<void> {
     },
   });
   registerDialogHandlers();
+  registerPrintToPdfHandlers();
   registerNotificationHandlers();
   registerOpenerHandlers();
   registerEditorTargetHandlers();

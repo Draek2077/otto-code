@@ -41,6 +41,8 @@ import type {
   FileWatchUnsubscribeRequest,
   FileWriteRequest,
   FileWriteResult,
+  FsFileWriteBinaryRequest,
+  FsFileWriteBinaryResult,
   SessionInboundMessage,
   SessionOutboundMessage,
 } from "../../messages.js";
@@ -54,6 +56,7 @@ import {
   readExplorerFile,
   renameExplorerEntry,
   streamExplorerFile,
+  writeExplorerBinaryFile,
   writeExplorerFile,
 } from "../../file-explorer/service.js";
 import { SessionFileWatcher } from "../../file-explorer/file-watcher.js";
@@ -405,6 +408,52 @@ export class WorkspaceFilesSession {
         `Failed to fulfill file write request for workspace ${cwd}`,
       );
       emitResult({ status: "error", message: getErrorMessage(error) });
+    }
+  }
+
+  /**
+   * The binary sibling of `file.write`. Workspace-bounded, unlike that one —
+   * see `FsFileWriteBinaryRequestSchema` for the reasoning.
+   */
+  async handleFsFileWriteBinaryRequest(request: FsFileWriteBinaryRequest): Promise<void> {
+    const cwd = request.cwd.trim();
+    const emitResult = (result: FsFileWriteBinaryResult): void => {
+      this.host.emit({
+        type: "fs.file.write_binary.response",
+        payload: {
+          cwd: cwd || request.cwd,
+          path: request.path,
+          result,
+          requestId: request.requestId,
+        },
+      });
+    };
+
+    if (!cwd) {
+      emitResult({ status: "error", error: "cwd is required" });
+      return;
+    }
+
+    try {
+      await this.assertCwdWithinKnownWorkspace(cwd);
+      const outcome = await writeExplorerBinaryFile({
+        root: cwd,
+        relativePath: request.path,
+        bytes: Buffer.from(request.contentBase64, "base64"),
+        overwrite: request.overwrite,
+      });
+      if (outcome.status === "written") {
+        // A generated artifact carries no symbols, but the tree it landed in
+        // may be indexed and now has one more entry.
+        this.symbolIndex.invalidate(cwd);
+      }
+      emitResult(outcome);
+    } catch (error) {
+      this.logger.error(
+        { err: error, cwd, path: request.path },
+        `Failed to write binary file ${request.path} in workspace ${cwd}`,
+      );
+      emitResult({ status: "error", error: getErrorMessage(error) });
     }
   }
 

@@ -1,5 +1,5 @@
 import type { FileEol, FileWriteResult } from "@otto-code/protocol/messages";
-import { htmlExportFileName, markdownToHtmlDocument } from "./markdown-to-html";
+import { exportSiblingPath, markdownToHtmlDocument } from "./markdown-to-html";
 
 /**
  * Write a markdown document out as an HTML file beside it.
@@ -30,11 +30,7 @@ export type HtmlExportResult =
 
 /** `notes/design.md` exports to `notes/design.html`. */
 export function htmlExportPath(markdownPath: string): string {
-  const separator = markdownPath.includes("\\") && !markdownPath.includes("/") ? "\\" : "/";
-  const segments = markdownPath.split(/[/\\]/);
-  const name = htmlExportFileName(markdownPath);
-  segments[segments.length - 1] = name;
-  return segments.join(separator);
+  return exportSiblingPath(markdownPath, "html");
 }
 
 function baseName(path: string): string {

@@ -39,6 +39,7 @@ import { getLanguageForFile, getParserForFile, highlightCode } from "@otto-code/
 import {
   getMarkdownCommand,
   isMarkdownCommandName,
+  markdownImageDropHandler,
   markdownPasteHandler,
 } from "./markdown/markdown-commands";
 import {
@@ -54,6 +55,7 @@ import {
   DEFAULT_EDITOR_KEY_BINDINGS,
   type EditorCursorPosition,
   type EditorDiagnostic,
+  type EditorDroppedImage,
   type EditorFindState,
   type EditorHoverAnswer,
   type EditorKeyAction,
@@ -100,6 +102,13 @@ export interface EditorCoreOptions {
   onDirtyChanged?: (dirty: boolean) => void;
   onMatchInfo?: (info: EditorMatchInfo | null) => void;
   onCursorMoved?: (position: EditorCursorPosition) => void;
+  /**
+   * An image was pasted or dropped into a markdown document. Omitting it
+   * registers no handler, which is how a host without the daemon's
+   * binary-write capability declines the feature — see
+   * `markdownImageDropHandler`.
+   */
+  onImageDrop?: (images: readonly EditorDroppedImage[]) => void;
   /**
    * Which key runs which of the `on*Shortcut` callbacks. The app host feeds this
    * from the user's shortcut registry; omitting it falls back to
@@ -1183,6 +1192,12 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
       // flips, and mounting it conditionally would mean a remount to turn live
       // preview on. The plugin costs nothing while the field is false.
       markdownLivePreviewExtension(options.markdownLivePreview ?? false),
+      // Ordered ahead of the HTML paste handler on purpose. Copying an image
+      // out of a browser puts both an image file and an `<img>` tag on the
+      // clipboard; writing the image into the workspace gives a document that
+      // still renders offline, where the HTML conversion would leave it
+      // pointing at someone else's server.
+      markdownImageDropHandler(options.onImageDrop),
       // Declines in a non-markdown file and for structure-free clipboard HTML,
       // so CodeMirror keeps its ordinary paste in both cases.
       markdownPasteHandler,

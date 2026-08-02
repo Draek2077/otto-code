@@ -1985,6 +1985,8 @@ export class VoiceAssistantWebSocketServer {
         // handlers live on the per-session file subsystem every daemon wires,
         // with nothing optional behind them.
         fileMutations: true,
+        // COMPAT(binaryFileWrite): added in v0.7.6, drop the gate when daemon floor >= v0.7.6.
+        binaryFileWrite: true,
         // COMPAT(attachmentStorage): added in v0.7.1, drop the gate when daemon floor >= v0.7.1.
         // `attachments.images.get_stats` and `attachments.images.clear`.
         // Unconditionally true: both read the $OTTO_HOME attachment store

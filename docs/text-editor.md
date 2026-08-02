@@ -225,6 +225,8 @@ Originally two tab kinds (a `file` viewer and an `editor` buffer) were planned; 
 - **Editor + preview split** — web/desktop only; a draggable `ResizeHandle` ratio with proportional scroll sync and click-to-align (`file-split-sync.ts`).
 - **Preview**
 
+Riding in the same bar, behind a divider, is one control that is deliberately **not** a mode: **Formatted** (see [Live preview](#live-preview)). Read the rules for adding to this bar in [Three modes and one axis](#three-modes-and-one-axis) before adding a fourth glyph.
+
 **Preview reads are gated on visibility, never on focus.** The preview's read (`isFileQueryEnabled` in `file-pane-enabled.ts`) is disabled while its tab is hidden or the app is backgrounded, so a revisited tab refetches instead of showing a frozen snapshot. A disabled query is indistinguishable from an in-flight one — both are `isPending` — so anything that wrongly reports "not visible" leaves the pane spinning "Loading file..." forever, with no timeout and no error to explain it. Use `getIsAppInForeground` (AppState + `document.visibilityState`) for that gate, **not** `getIsAppActivelyVisible`, which additionally requires `document.hasFocus()`: focus leaves the host document for an Electron `<webview>`, devtools, or a second window while the pane is plainly on screen. Reserve the focus-sensitive predicate for "is the user actually looking at this chat" questions like attention-clearing and notifications.
 
 The view mode is remembered per file in `file-view-store.ts`, with a path-derived default (`defaultFileViewMode`): rendered formats (markdown, images, binaries) open in preview; plain text/code opens straight in the editor. The editor buffer survives mode switches (preview renders the live draft); the discard guard runs only on tab close. Persisted legacy `editor` tab targets coerce to `file` targets — see **`COMPAT(unifiedFileTab)`** in the workspace-tabs store (`packages/app/src/stores/workspace-tabs-store/state.ts`).
@@ -303,12 +305,51 @@ so only _inline_ code marks hide. And block markers own the whitespace that sepa
 their content: hiding just the `#` of a heading leaves it indented by one space.
 
 It defaults **on**, unlike every other editor preference, because it is the point of editing
-markdown in a markdown editor rather than a text editor. The toolbar toggle is pinned outside the
-scrolling group, since it is the one control that changes what the whole document looks like.
+markdown in a markdown editor rather than a text editor.
 
 `markdown-live-preview.browser.test.ts` covers it against real CM6 in a real browser, asserting the
 **rendered text of the content DOM** rather than the decoration set: a decoration that exists but
 hides nothing would pass a structural assertion and fail the user.
+
+### Three modes and one axis
+
+**Formatted is not a fourth view mode, and the divider in the mode bar is what says so.** The
+control lives in `FileViewModeBar` as a trailing segment after `Editor | Split | Preview`, separated
+by a rule; state stays in `markdownLivePreview` (`editor-prefs-store.ts`), device-local and global,
+never in `FileViewMode`.
+
+This shape was chosen over folding it into the mode enum, and the reason is the only thing here
+worth remembering. **The modes and this flag are orthogonal, so together they are a 2x2:
+{Editor, Split} x {Formatted on, off}, plus Preview.** Collapsing that into a 1x4 buys one label at
+the cost of one cell, and the cell it takes is the best one: **a formatted editor beside the
+rendered preview**, which is where ticking a checkbox in the right pane edits the document in the
+left one (`onToggleTask` in `file-tab-pane.tsx`). No arrangement of four radio positions can express
+"split, and the editor half is formatted", because a radio group only ever holds one answer.
+
+Three rules follow, and each is load-bearing:
+
+- **The segment is withheld for non-markdown files** (`formatted: null`), the same withhold-rather-
+  than-show-a-dead-position rule the image viewer applies to the whole bar.
+- **In Preview mode it stays visible and goes inert** (`disabled: true`), which is the one place this
+  differs from the withhold rule, and on purpose. A markdown file in Preview still has a formatted
+  editor, you are simply not looking at it, so the control keeps its place instead of making the bar
+  change width every time the mode does.
+- **Formatted governs the editor pane, so it is live in Editor and in Split alike.** Anything that
+  reads it per-mode has misunderstood the axis.
+
+The complaint that produced this was **discoverability, not structure**: the toggle used to sit
+pinned on the markdown toolbar, which only appears for markdown files, so it read as a formatting
+button next to bold and italic rather than as the thing that decides what the document looks like.
+Moving it into the mode bar puts it where people already look for a view control, while the divider
+keeps it honest about not being one. The markdown toolbar is now uniformly **commands that act on a
+selection**; if you are tempted to pin a second whole-document control there, put it in the mode bar
+instead.
+
+The UI label is **Formatted** (`editor.viewMode.formatted`, tooltip "Formatted markdown"), and the
+glyph is Material's `wysiwyg`. Do not label it "Live preview" on screen: the bar already contains a
+mode called Preview, and two controls a divider apart both saying "preview" is exactly the confusion
+this arrangement exists to prevent. "Live preview" stays the name of the mechanism in code and in
+this document. See [glossary.md](glossary.md).
 
 ### The toolbar is the mobile story
 
@@ -339,6 +380,42 @@ handler rather than a keymap entry because paste is not only a keystroke — the
 middle-click reach the same event. Conversion is **skipped** for HTML carrying no structure:
 copying out of a plain-text editor still puts a lone `<span>` on the clipboard, and round-tripping
 that can only lose the exact whitespace the user copied.
+
+### Images: paste and drop
+
+An image pasted or dropped into a markdown buffer is written into an `assets/` folder beside the
+document, and a relative `![](...)` lands at the caret.
+
+**The core cannot do any of this, and that is what shapes the design.** On native the editor runs
+inside a webview with no daemon connection, and on no platform does the client touch a workspace
+file. So `markdownImageDropHandler` only _recognises_ the image and pushes base64 to the host
+(`onImageDrop`, a push callback with the seven touchpoints above); the host writes it and calls
+`replaceSelection`. The bytes are base64 because this crosses a JSON `postMessage` bridge that
+cannot carry a `File`.
+
+Four decisions worth keeping:
+
+- **The write is `fs.file.write_binary`, gated on `features.binaryFileWrite`.** Not `file.create` —
+  that makes an _empty_ file and has no content field. Not `file.write` — its `content` is a string
+  the daemon LF-normalizes and re-EOLs, which corrupts any non-text bytes. Not `file.upload` — it
+  streams real bytes but into `$OTTO_HOME/uploads/`, outside every workspace, so the document could
+  not link to what it wrote. This trap has been walked into once already; the markdown-editing
+  charter named the wrong RPC for months.
+- **No handler means no extension.** Omitting `onImageDrop` registers nothing, so a daemon without
+  the capability leaves a dropped image to the platform instead of swallowing it into a feature that
+  cannot finish. That is the whole gate — there is no degraded path, because there is nothing the
+  client could degrade _to_.
+- **The drop moves the caret to the drop point** before the write starts. The read is asynchronous,
+  and by the time it resolves the pointer position is gone.
+- **The image handler is ordered ahead of the HTML one.** Copying an image out of a browser puts
+  both an image file and an `<img>` tag on the clipboard; writing the image into the workspace gives
+  a document that still renders offline, where the HTML conversion would leave it pointing at
+  someone else's server.
+
+Naming and path arithmetic are pure and unit-tested in `markdown/markdown-image-drop.ts`, reusing
+`relativeLinkPath` from link completion rather than restating it. The daemon never clobbers, so an
+occupied name comes back as `exists` and the client retries `x-2.png` — a drop can only ever add a
+file.
 
 ## AI Refactor — the safe core
 

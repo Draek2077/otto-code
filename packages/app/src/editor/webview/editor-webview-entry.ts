@@ -73,6 +73,12 @@ const mount = (message: Extract<EditorWebViewInbound, { type: "mount" }>): void 
     onDirtyChanged: (dirty) => sendToNative({ type: "dirtyChanged", dirty }),
     onMatchInfo: (info) => sendToNative({ type: "matchInfo", info }),
     onCursorMoved: (position) => sendToNative({ type: "cursorMoved", position }),
+    // Gated from the host: the webview cannot ask the daemon what it supports,
+    // so `imageDropEnabled` is the answer travelling in with the mount. Absent
+    // means no handler is registered at all.
+    onImageDrop: message.imageDropEnabled
+      ? (images) => sendToNative({ type: "imageDrop", images })
+      : undefined,
     onSaveShortcut: () => sendToNative({ type: "saveShortcut" }),
     onFindShortcut: () => sendToNative({ type: "findShortcut" }),
     onCloseFindShortcut: () => sendToNative({ type: "closeFindShortcut" }),

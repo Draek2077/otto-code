@@ -2488,6 +2488,7 @@ export const ja: TranslationResources = {
       editor: "エディター",
       split: "エディターとプレビュー",
       preview: "プレビュー",
+      formatted: "書式付き Markdown",
     },
     markdownToolbar: {
       label: "Markdown 書式",
@@ -2507,8 +2508,6 @@ export const ja: TranslationResources = {
       blockquote: "引用",
       table: "表",
       horizontalRule: "区切り線",
-      showMarkers: "Markdown ソースを表示",
-      hideMarkers: "Markdown 記号を隠す",
       tableFormat: "表を整形",
       tableRowBelow: "行を追加",
       tableRowDelete: "行を削除",
@@ -2522,6 +2521,11 @@ export const ja: TranslationResources = {
     },
     exportHtml: {
       action: "HTML として書き出す",
+      written: "{{path}} に書き出しました",
+      failed: "書き出せませんでした: {{message}}",
+    },
+    exportPdf: {
+      action: "PDF として書き出す",
       written: "{{path}} に書き出しました",
       failed: "書き出せませんでした: {{message}}",
     },

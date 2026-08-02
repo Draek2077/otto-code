@@ -182,8 +182,33 @@ export function markdownToHtmlDocument(
   return { html, title };
 }
 
+/**
+ * `notes/design.md` exports as `design.<extension>`.
+ *
+ * Shared by every export format so they cannot disagree about what a document
+ * is called — a `design.html` beside a `design-1.pdf` would be nobody's intent.
+ */
+export function exportFileName(path: string, extension: string): string {
+  const base = path.split(/[/\\]/).findLast(Boolean) ?? "document";
+  return `${base.replace(/\.[^.]+$/, "")}.${extension}`;
+}
+
 /** `notes/design.md` exports as `design.html`. */
 export function htmlExportFileName(path: string): string {
-  const base = path.split(/[/\\]/).findLast(Boolean) ?? "document";
-  return `${base.replace(/\.[^.]+$/, "")}.html`;
+  return exportFileName(path, "html");
+}
+
+/**
+ * The full path an export lands on: beside the source document, same name, new
+ * extension. `notes/design.md` -> `notes/design.pdf`.
+ *
+ * The separator is inferred rather than assumed, because a workspace-relative
+ * path arrives in whichever style the host uses and rebuilding it in the other
+ * one produces a path the daemon will not resolve.
+ */
+export function exportSiblingPath(markdownPath: string, extension: string): string {
+  const separator = markdownPath.includes("\\") && !markdownPath.includes("/") ? "\\" : "/";
+  const segments = markdownPath.split(/[/\\]/);
+  segments[segments.length - 1] = exportFileName(markdownPath, extension);
+  return segments.join(separator);
 }

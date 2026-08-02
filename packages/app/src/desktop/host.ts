@@ -169,6 +169,17 @@ export interface DesktopBrowserBridge {
   copyElement?: (payload: { text?: string; imageDataUrl?: string }) => Promise<boolean>;
 }
 
+export interface DesktopPdfBridge {
+  /**
+   * Render a standalone HTML document to PDF bytes, base64-encoded.
+   *
+   * Optional like every other bridge member: an older desktop shell simply
+   * does not have it, and the caller omits the affordance rather than
+   * offering one that cannot work.
+   */
+  printHtml?: (input: { html: string }) => Promise<string>;
+}
+
 export interface DesktopInvokeBridge {
   invoke?: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 }
@@ -181,6 +192,7 @@ export interface DesktopHostBridge {
   events?: DesktopEventsBridge;
   window?: DesktopWindowModuleBridge;
   dialog?: DesktopDialogBridge;
+  pdf?: DesktopPdfBridge;
   notification?: DesktopNotificationBridge;
   opener?: DesktopOpenerBridge;
   editor?: DesktopEditorBridge;
