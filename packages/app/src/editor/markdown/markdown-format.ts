@@ -245,6 +245,41 @@ export function toggleTaskChecked(doc: string, range: DocRange): MarkdownEdit | 
   );
 }
 
+/**
+ * Set one line's task checkbox to an explicit state.
+ *
+ * The toolbar's {@link toggleTaskChecked} works from the caret; this works from
+ * a line number, because that is all a tap in the rendered preview knows. It
+ * also sets rather than toggles: the preview already shows the user which way
+ * the box is going, and re-deriving that from the buffer could disagree with
+ * what they just pressed.
+ *
+ * Returns null when the line is not a task item, so a preview rendered against
+ * an older revision cannot rewrite a line that has since become something else.
+ */
+export function setTaskCheckedAtLine(
+  doc: string,
+  line: number,
+  checked: boolean,
+): MarkdownEdit | null {
+  const lines = doc.split("\n");
+  const index = line - 1;
+  const text = lines[index];
+  if (text === undefined || !TASK_PREFIX.test(text)) {
+    return null;
+  }
+  const insert = text.replace(/\[[ xX]\]/, checked ? "[x]" : "[ ]");
+  if (insert === text) {
+    return null;
+  }
+  let from = 0;
+  for (let scan = 0; scan < index; scan += 1) {
+    from += lines[scan].length + 1;
+  }
+  const to = from + text.length;
+  return { from, to, insert, selection: { from, to: from + insert.length } };
+}
+
 // --- block operations ---
 
 /**

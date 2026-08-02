@@ -5,6 +5,7 @@ import {
   insertLink,
   insertTable,
   selectedLineSpan,
+  setTaskCheckedAtLine,
   toggleBlockquote,
   toggleCode,
   toggleCodeFence,
@@ -245,5 +246,48 @@ describe("blocks", () => {
     const doc = "prose";
     const result = apply(doc, insertTable(doc, at(doc, 5), 1, 1));
     expect(result.startsWith("prose\n\n| «Column 1» |")).toBe(true);
+  });
+});
+
+describe("setTaskCheckedAtLine", () => {
+  const DOC = ["# Notes", "", "- [ ] first", "- [x] second", "- plain", ""].join("\n");
+
+  function applyEdit(doc: string, edit: MarkdownEdit | null): string {
+    if (!edit) return doc;
+    return doc.slice(0, edit.from) + edit.insert + doc.slice(edit.to);
+  }
+
+  it("ticks the line it is given and leaves the rest alone", () => {
+    expect(applyEdit(DOC, setTaskCheckedAtLine(DOC, 3, true))).toBe(
+      ["# Notes", "", "- [x] first", "- [x] second", "- plain", ""].join("\n"),
+    );
+  });
+
+  it("unticks", () => {
+    expect(applyEdit(DOC, setTaskCheckedAtLine(DOC, 4, false))).toBe(
+      ["# Notes", "", "- [ ] first", "- [ ] second", "- plain", ""].join("\n"),
+    );
+  });
+
+  // Setting, not toggling: the preview already showed the user which way it went.
+  it("is a no-op when the line is already in the requested state", () => {
+    expect(setTaskCheckedAtLine(DOC, 4, true)).toBeNull();
+  });
+
+  // A preview rendered against an older revision must not rewrite prose.
+  it("declines a line that is not a task item", () => {
+    expect(setTaskCheckedAtLine(DOC, 1, true)).toBeNull();
+    expect(setTaskCheckedAtLine(DOC, 5, true)).toBeNull();
+  });
+
+  it("declines a line past the end of the document", () => {
+    expect(setTaskCheckedAtLine(DOC, 99, true)).toBeNull();
+  });
+
+  it("keeps the indentation of a nested item", () => {
+    const nested = ["- [ ] outer", "  - [ ] inner", ""].join("\n");
+    expect(applyEdit(nested, setTaskCheckedAtLine(nested, 2, true))).toBe(
+      ["- [ ] outer", "  - [x] inner", ""].join("\n"),
+    );
   });
 });

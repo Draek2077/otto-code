@@ -68,6 +68,9 @@ import { EditorStatusBar, useBufferByteSize } from "@/editor/editor-status-bar";
 import { useEditorPrefsStore } from "@/editor/editor-prefs-store";
 import { GoToLineDialog } from "@/editor/go-to-line-dialog";
 import { useCodeIndexFeature } from "@/editor/use-code-index-feature";
+import { useMarkdownLinkTargets } from "@/editor/use-markdown-link-targets";
+import type { MarkdownTaskToggleInput } from "@/components/markdown/task-context";
+import { setTaskCheckedAtLine } from "@/editor/markdown/markdown-format";
 import { useDefinitionSources } from "@/editor/use-definition-sources";
 import { useCodeHover } from "@/editor/use-code-hover";
 import { mirrorableText, useCodeDocument } from "@/editor/use-code-document";
@@ -1180,6 +1183,7 @@ function EditorModeView({
   const wordWrap = useEditorPrefsStore((state) => state.wordWrap);
   const livePreview = useEditorPrefsStore((state) => state.markdownLivePreview);
   const toggleLivePreview = useEditorPrefsStore((state) => state.toggleMarkdownLivePreview);
+  const markdownLinkTargets = useMarkdownLinkTargets({ serverId, workspaceRoot, path });
   const toggleWordWrap = useEditorPrefsStore((state) => state.toggleWordWrap);
   // Only the buttons with a real binding get a hint; revert, history, outline
   // and wrap have none, and inventing one would be a lie the tooltip cannot
@@ -1264,6 +1268,38 @@ function EditorModeView({
   const handleMarkdownCommand = useCallback(
     (command: MarkdownCommandName) => {
       controllerRef.current?.runMarkdownCommand(command);
+    },
+    [controllerRef],
+  );
+
+  /**
+   * Ticking a checkbox in the preview edits the document beside it.
+   *
+   * Deliberately routed through `selectLines` + `replaceSelection` rather than
+   * a new controller method: those are the same two calls any other edit makes,
+   * so the change lands in the editor's own history and Ctrl+Z undoes a tick
+   * exactly like it undoes a keystroke. `reveal: false` because the line is
+   * already on screen in the other pane — scrolling the editor to it would move
+   * the page out from under the reader.
+   *
+   * The transform declines when the line is no longer a task item, which is
+   * what protects a preview rendered a moment before the document changed.
+   */
+  const handleToggleTask = useCallback(
+    ({ line, checked }: MarkdownTaskToggleInput) => {
+      const controller = controllerRef.current;
+      if (!controller) {
+        return;
+      }
+      void (async () => {
+        const doc = await controller.getDoc();
+        const edit = setTaskCheckedAtLine(doc, line, checked);
+        if (!edit) {
+          return;
+        }
+        controller.selectLines(line, line, { reveal: false });
+        controller.replaceSelection(edit.insert);
+      })();
     },
     [controllerRef],
   );
@@ -1688,6 +1724,7 @@ function EditorModeView({
       cleanDoc={buffer.baseline.content}
       wordWrap={wordWrap}
       markdownLivePreview={livePreview}
+      markdownLinkTargets={markdownLinkTargets}
       rulerColumn={rulerColumn}
       docSyncDebounceMs={split ? SPLIT_DOC_SYNC_DEBOUNCE_MS : undefined}
       onDirtyChanged={onDirtyChanged}
@@ -1821,6 +1858,7 @@ function EditorModeView({
               syncRef={previewSyncRef}
               onScrolledSync={handlePreviewScrolled}
               onPointerDownSync={handlePreviewPointerDown}
+              onToggleTask={handleToggleTask}
             />
           </View>
         </View>

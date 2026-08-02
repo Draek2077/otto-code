@@ -356,6 +356,15 @@ export interface EditorController {
    * with nothing to change) simply leaves the document alone.
    */
   runMarkdownCommand(name: MarkdownCommandName): void;
+  /**
+   * The workspace file list markdown link completion offers after `](`.
+   *
+   * Pushed rather than pulled: on native the editor runs inside a webview and
+   * cannot reach the daemon, so anything it knows about the workspace has to
+   * arrive as a serialisable message. Empty means no completions, which is what
+   * a host without the code-index capability sends.
+   */
+  setMarkdownLinkTargets(paths: readonly string[]): void;
   // Split-view scroll sync. Optional: the web host implements these; the
   // native webview host does not (split view is web/desktop only).
   getScrollMetrics?(): EditorScrollMetrics | null;
@@ -394,6 +403,12 @@ export interface CodeEditorProps {
    * so there is nothing to hide in a `.ts` file and no need to gate the flag.
    */
   markdownLivePreview?: boolean;
+  /**
+   * Workspace-relative paths offered when a markdown link target is being
+   * typed. Omitted or empty simply means no file completions; heading anchors
+   * come from the document and need nothing from the host.
+   */
+  markdownLinkTargets?: readonly string[];
   onDirtyChanged?: (dirty: boolean) => void;
   onMatchInfo?: (info: EditorMatchInfo | null) => void;
   /** Caret/selection moved; drives the status bar's Ln/Col readout. */
@@ -490,6 +505,7 @@ export type EditorWebViewInbound =
   | { type: "selectAll" }
   | { type: "replaceSelection"; text: string }
   | { type: "runMarkdownCommand"; name: MarkdownCommandName }
+  | { type: "setMarkdownLinkTargets"; paths: readonly string[] }
   | { type: "setDiagnostics"; diagnostics: readonly EditorDiagnostic[] }
   | { type: "getDoc"; requestId: number }
   | { type: "getSelection"; requestId: number }

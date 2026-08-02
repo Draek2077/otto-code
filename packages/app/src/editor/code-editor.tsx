@@ -141,6 +141,7 @@ export function CodeEditor(props: CodeEditorProps) {
       scrollToFraction: (fraction) => core.scrollToFraction(fraction),
       scrollToLineAtOffset: (line, offset) => core.scrollToLineAtOffset(line, offset),
       setDiagnostics: (diagnostics) => core.setDiagnostics(diagnostics),
+      setMarkdownLinkTargets: (paths) => core.setMarkdownLinkTargets(paths),
     };
     callbacksRef.current.onReady?.(controller);
 
@@ -172,6 +173,13 @@ export function CodeEditor(props: CodeEditorProps) {
   useEffect(() => {
     coreRef.current?.setMarkdownLivePreview(props.markdownLivePreview ?? false);
   }, [props.markdownLivePreview]);
+
+  const linkTargets = props.markdownLinkTargets;
+  useEffect(() => {
+    if (linkTargets !== undefined) {
+      coreRef.current?.setMarkdownLinkTargets(linkTargets);
+    }
+  }, [linkTargets]);
 
   // Rebinding a shortcut in Settings must land on an editor that is already
   // open, not only on the next remount. Keyed by value for the same reason the

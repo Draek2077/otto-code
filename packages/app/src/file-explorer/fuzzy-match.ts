@@ -60,7 +60,10 @@ function scoreCandidate(
 }
 
 export function fuzzyFilter<T>(
-  items: T[],
+  // Read-only because it is: the list is scanned, never mutated. Markdown link
+  // completion holds its candidates as `readonly string[]`, and copying an
+  // entire workspace listing per keystroke to satisfy a type would be absurd.
+  items: readonly T[],
   query: string,
   toHaystack: (item: T) => string,
   limit = 100,

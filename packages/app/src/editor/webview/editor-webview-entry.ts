@@ -134,6 +134,9 @@ const applyCommand = (target: EditorCore, message: EditorCommand): void => {
     case "setMarkdownLivePreview":
       target.setMarkdownLivePreview(message.enabled);
       break;
+    case "setMarkdownLinkTargets":
+      target.setMarkdownLinkTargets(message.paths);
+      break;
     case "runMarkdownCommand":
       target.runMarkdownCommand(message.name);
       break;

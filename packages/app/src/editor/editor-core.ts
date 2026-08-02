@@ -42,6 +42,10 @@ import {
   markdownPasteHandler,
 } from "./markdown/markdown-commands";
 import {
+  markdownCompletionExtension,
+  setMarkdownLinkTargetsEffect,
+} from "./markdown/markdown-completion";
+import {
   markdownLivePreviewExtension,
   setMarkdownLivePreview,
 } from "./markdown/markdown-live-preview";
@@ -186,6 +190,11 @@ export interface EditorCore {
   runMarkdownCommand(name: MarkdownCommandName): boolean;
   /** Hide markdown markers except on the line being edited. */
   setMarkdownLivePreview(enabled: boolean): void;
+  /**
+   * Replace the workspace file list markdown link completion offers. A snapshot,
+   * not a delta, for the same reason `setDiagnostics` is.
+   */
+  setMarkdownLinkTargets(paths: readonly string[]): void;
   /** Replace the whole problem set; see the contract's note on why it is never a delta. */
   setDiagnostics(diagnostics: readonly EditorDiagnostic[]): void;
   destroy(): void;
@@ -846,16 +855,21 @@ function buildLanguageExtension(path: string): Extension {
   // rides at Prec.high but each of its commands returns false outside markdown
   // context, so it never shadows the default keymap in a code fence.
   if (isMarkdownPath(path)) {
-    return markdownSupport({
-      // The GFM dialect, not strict CommonMark: tables, task lists and
-      // strikethrough are what people actually write.
-      base: markdownLanguage,
-      codeLanguages: markdownFenceLanguage,
-      // No autocompletion extension is mounted, so the HTML tag source would be
-      // inert data plus dead bundle weight. Flip this back on when Phase 2 adds
-      // the link/heading completion sources.
-      completeHTMLTags: false,
-    });
+    return [
+      markdownSupport({
+        // The GFM dialect, not strict CommonMark: tables, task lists and
+        // strikethrough are what people actually write.
+        base: markdownLanguage,
+        codeLanguages: markdownFenceLanguage,
+        // Worth its weight now that link completion mounts an `autocompletion()`
+        // for markdown: the tag source has somewhere to run, and raw HTML in a
+        // markdown file is common enough to be worth completing.
+        completeHTMLTags: true,
+      }),
+      // Link targets and heading anchors. Mounted here rather than in the shared
+      // extension list so the completion keymap cannot reach a code buffer.
+      markdownCompletionExtension(path),
+    ];
   }
   const parser = getParserForFile(path);
   if (!parser) {
@@ -1457,6 +1471,11 @@ export function createEditorCore(options: EditorCoreOptions): EditorCore {
     },
     setMarkdownLivePreview: (enabled) => {
       view.dispatch({ effects: setMarkdownLivePreview.of(enabled) });
+    },
+    setMarkdownLinkTargets: (paths) => {
+      // The field only exists in a markdown editor, and dispatching an effect
+      // nothing reads is a no-op, so the host can push unconditionally.
+      view.dispatch({ effects: setMarkdownLinkTargetsEffect.of(paths) });
     },
     runMarkdownCommand: (name) => {
       // Focus first: the toolbar button took focus on press, and a command that

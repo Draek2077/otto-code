@@ -10,6 +10,16 @@ export interface RenderedDocument {
   body: string;
   /** Whether the embedded-HTML translation pass should run over the body. */
   enableHtmlish: boolean;
+  /**
+   * How many source lines sit above `body`, so a line number the renderer
+   * reports can be turned back into a line in the file.
+   *
+   * **Null means the mapping does not exist.** A mermaid document is rewritten
+   * into a single synthesised fence and an AsciiDoc one is translated to
+   * markdown, so neither body's line 4 is the file's line 4 plus a constant.
+   * Anything that writes back to the file must refuse rather than guess.
+   */
+  bodyLineOffset: number | null;
 }
 
 /**
@@ -29,12 +39,26 @@ export interface RenderedDocument {
  */
 export function toRenderedDocument(kind: RenderedDocumentKind, content: string): RenderedDocument {
   if (kind === "mermaid") {
-    return { frontmatter: null, body: toMermaidFenceDocument(content), enableHtmlish: false };
+    return {
+      frontmatter: null,
+      body: toMermaidFenceDocument(content),
+      enableHtmlish: false,
+      bodyLineOffset: null,
+    };
   }
   if (kind === "asciidoc") {
     const { frontmatter, body } = asciiDocToMarkdown(content);
-    return { frontmatter, body, enableHtmlish: false };
+    return { frontmatter, body, enableHtmlish: false, bodyLineOffset: null };
   }
   const { frontmatter, body } = splitMarkdownFrontmatter(content);
-  return { frontmatter, body, enableHtmlish: true };
+  // `body` is a suffix of `content`, so what was dropped is exactly the prefix,
+  // and its newline count is the offset. Derived rather than reported by the
+  // splitter so the two can never disagree.
+  const dropped = content.slice(0, content.length - body.length);
+  return {
+    frontmatter,
+    body,
+    enableHtmlish: true,
+    bodyLineOffset: dropped.split("\n").length - 1,
+  };
 }

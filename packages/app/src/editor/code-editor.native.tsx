@@ -200,6 +200,7 @@ export function CodeEditor(props: CodeEditorProps) {
       selectAll: () => sendToWebView({ type: "selectAll" }),
       replaceSelection: (text) => sendToWebView({ type: "replaceSelection", text }),
       runMarkdownCommand: (name) => sendToWebView({ type: "runMarkdownCommand", name }),
+      setMarkdownLinkTargets: (paths) => sendToWebView({ type: "setMarkdownLinkTargets", paths }),
       setDiagnostics: (diagnostics) => sendToWebView({ type: "setDiagnostics", diagnostics }),
     }),
     [sendToWebView],
@@ -229,6 +230,13 @@ export function CodeEditor(props: CodeEditorProps) {
     const known = callbacksRef.current.diagnostics;
     if (known !== undefined && known.length > 0) {
       sendToWebView({ type: "setDiagnostics", diagnostics: known });
+    }
+    // Same reasoning for the link targets: `mount` does not carry them, so a
+    // remount would leave link completion silently empty until the host's
+    // workspace listing happened to change.
+    const targets = callbacksRef.current.markdownLinkTargets;
+    if (targets !== undefined && targets.length > 0) {
+      sendToWebView({ type: "setMarkdownLinkTargets", paths: targets });
     }
     if (!controllerAnnouncedRef.current) {
       controllerAnnouncedRef.current = true;
@@ -306,6 +314,13 @@ export function CodeEditor(props: CodeEditorProps) {
       sendToWebView({ type: "setDiagnostics", diagnostics });
     }
   }, [diagnostics, sendToWebView]);
+
+  const linkTargets = props.markdownLinkTargets;
+  useEffect(() => {
+    if (bridgeReadyRef.current && linkTargets !== undefined) {
+      sendToWebView({ type: "setMarkdownLinkTargets", paths: linkTargets });
+    }
+  }, [linkTargets, sendToWebView]);
 
   // The saved text is a prop, not a command (see CodeEditorProps.cleanDoc). The
   // mount message already carries the current value, so only later changes are

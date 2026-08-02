@@ -13,6 +13,7 @@ import {
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "@/components/markdown/renderer";
+import type { MarkdownTaskToggle } from "@/components/markdown/task-context";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
@@ -67,7 +68,7 @@ export interface FilePreviewFileInfo {
   kind: "text" | "image" | "binary";
   /**
    * The preview renders this file through the markdown pipeline (`.md`,
-   * `.markdown`, `.mmd`, `.mermaid`) rather than as highlighted lines â€” so
+   * `.markdown`, `.mmd`, `.mermaid`) rather than as highlighted lines — so
    * there is no line mapping for find-in-file to highlight.
    */
   isRenderedDocument: boolean;
@@ -77,7 +78,7 @@ export interface FilePreviewFileInfo {
   eol: FileEol | null;
   /**
    * Natural pixel size, for images whose container we could parse. Null for
-   * every other kind, and for an image format we have no header reader for â€”
+   * every other kind, and for an image format we have no header reader for —
    * in which case the viewer keeps working, minus the zoom controls.
    */
   imageDimensions: ImageDimensions | null;
@@ -106,7 +107,7 @@ function readPreviewFileFacts(file: ExplorerFile | null | undefined): {
  *
  * A hook rather than an inline effect so `FilePreview` keeps its
  * cyclomatic-complexity budget for the query itself. Every dependency is a
- * primitive â€” including the two halves of the dimensions â€” because a refetch
+ * primitive — including the two halves of the dimensions — because a refetch
  * hands back equal-but-new objects, and depending on those would re-report on
  * every poll.
  */
@@ -165,10 +166,10 @@ export interface FilePreviewSyncHandle {
   /** Scroll so content Y `contentY` sits `viewportOffsetY` px below the viewport top. */
   scrollToContentY(contentY: number, viewportOffsetY: number): void;
   /**
-   * Scroll a 1-based line just below the top of the viewport â€” the preview's
+   * Scroll a 1-based line just below the top of the viewport — the preview's
    * answer to the editor's `goToLine`, so the outline can drive both views.
    * Exact over the code view, whose lines are a fixed height. Rendered markdown
-   * has no lineâ†’pixel mapping, so it lands proportionally: the same
+   * has no line→pixel mapping, so it lands proportionally: the same
    * approximation the split view already scrolls by.
    */
   scrollToLine(line: number): void;
@@ -186,7 +187,7 @@ interface FilePreviewBodyProps {
   /** Where a rendered document's own relative image srcs resolve; null outside a workspace. */
   workspaceImages: WorkspaceImageSource | null;
   /**
-   * Soft-wrap long code lines instead of scrolling sideways â€” the same
+   * Soft-wrap long code lines instead of scrolling sideways — the same
    * preference the editor toolbar toggles, so the two views agree. Compact
    * always wraps: there is no room to scroll sideways on a phone.
    */
@@ -202,6 +203,8 @@ interface FilePreviewBodyProps {
   syncRef?: React.Ref<FilePreviewSyncHandle>;
   onScrolledSync?: (metrics: PreviewScrollMetrics) => void;
   onPointerDownSync?: (pointer: PreviewPointerDown) => void;
+  /** Ticking a rendered task list; `line` is already a line of the file. */
+  onToggleTask?: MarkdownTaskToggle | null;
 }
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -476,12 +479,13 @@ function FilePreviewBody({
   syncRef,
   onScrolledSync,
   onPointerDownSync,
+  onToggleTask = null,
 }: FilePreviewBodyProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const filePath = location.path;
   // Which files render through the markdown pipeline instead of as highlighted
-  // source. A deep link to a line always wins â€” you asked for that line.
+  // source. A deep link to a line always wins — you asked for that line.
   const documentKind = useMemo(
     () => (preview?.kind === "text" && !location.lineStart ? renderedDocumentKind(filePath) : null),
     [filePath, location.lineStart, preview?.kind],
@@ -492,6 +496,28 @@ function FilePreviewBody({
     }
     return contentOverride ?? preview.content ?? "";
   }, [contentOverride, preview]);
+
+  // Hoisted out of the render branch below so the memo and the callback that
+  // depends on it are hooks, not work redone on every keystroke of a live
+  // split-view draft.
+  const renderedDocument = useMemo(
+    () => (documentKind ? toRenderedDocument(documentKind, effectiveContent) : null),
+    [documentKind, effectiveContent],
+  );
+
+  /**
+   * The renderer counts lines of the rendered body; the caller writes to the
+   * file. `bodyLineOffset` is null for the kinds whose body is a translation
+   * rather than a slice of the source, and a null handler is what keeps their
+   * checkboxes read-only instead of wrong.
+   */
+  const bodyLineOffset = renderedDocument?.bodyLineOffset ?? null;
+  const handleToggleTask = useMemo<MarkdownTaskToggle | null>(() => {
+    if (!onToggleTask || bodyLineOffset === null) {
+      return null;
+    }
+    return ({ line, checked }) => onToggleTask({ line: line + bodyLineOffset, checked });
+  }, [bodyLineOffset, onToggleTask]);
 
   const previewScrollRef = useRef<RNScrollView>(null);
   const scrollbar = useWebScrollViewScrollbar(previewScrollRef, {
@@ -644,7 +670,7 @@ function FilePreviewBody({
           return;
         }
         // Rendered markdown: prose has no line height, so place the line
-        // proportionally through the rendered document â€” close enough to land
+        // proportionally through the rendered document — close enough to land
         // on the heading the outline named.
         const lineCount = effectiveContent ? effectiveContent.split("\n").length : 0;
         if (lineCount <= 0) {
@@ -699,11 +725,8 @@ function FilePreviewBody({
   }
 
   if (preview.kind === "text") {
-    if (documentKind) {
-      const { frontmatter, body, enableHtmlish } = toRenderedDocument(
-        documentKind,
-        effectiveContent,
-      );
+    if (renderedDocument) {
+      const { frontmatter, body, enableHtmlish } = renderedDocument;
       return (
         <View style={styles.previewScrollContainer}>
           <RNScrollView
@@ -724,13 +747,14 @@ function FilePreviewBody({
                   </Text>
                 </View>
               ) : null}
-              {/* A repo document must not be able to reach the network just by being previewed â€”
+              {/* A repo document must not be able to reach the network just by being previewed —
                   but it may show its own images, read back through the daemon. */}
               <MarkdownRenderer
                 text={body}
                 remoteImages="altText"
                 enableHtmlish={enableHtmlish}
                 workspaceImages={workspaceImages}
+                onToggleTask={handleToggleTask}
               />
             </View>
           </RNScrollView>
@@ -835,7 +859,7 @@ function FilePreviewBody({
 /**
  * The end of the line for a file nothing can render: a plain statement plus the
  * facts a file manager would show. It stays a statement rather than becoming a
- * hex dump on purpose â€” a hex view of an arbitrary binary answers a question
+ * hex dump on purpose — a hex view of an arbitrary binary answers a question
  * almost nobody opening a file tab is asking, and the honest read here is
  * "there is nothing to see", said clearly.
  */
@@ -843,7 +867,7 @@ function BinaryPreview({ file }: { file: ExplorerFile }) {
   const { t } = useTranslation();
   const extension = useMemo(() => {
     // `getFileNameFromPath` returns null for a path that is empty or all
-    // separators â€” a shape the explorer should never hand us, but the facts row
+    // separators — a shape the explorer should never hand us, but the facts row
     // simply omits the extension rather than asserting it away.
     const name = getFileNameFromPath(file.path);
     if (!name) {
@@ -868,7 +892,7 @@ function BinaryPreview({ file }: { file: ExplorerFile }) {
     <View style={styles.centerState}>
       <Text style={styles.emptyText}>{t("panels.file.binaryPreviewUnavailable")}</Text>
       <Text style={styles.binaryMetaText}>{t("panels.file.binaryPreviewHint")}</Text>
-      <Text style={styles.binaryMetaText}>{facts.join(" Â· ")}</Text>
+      <Text style={styles.binaryMetaText}>{facts.join(" · ")}</Text>
       {modified ? (
         <Text style={styles.binaryMetaText}>
           {t("panels.file.binaryPreviewModified", { when: modified })}
@@ -897,6 +921,13 @@ export interface FilePreviewProps {
   syncRef?: React.Ref<FilePreviewSyncHandle>;
   onScrolledSync?: (metrics: PreviewScrollMetrics) => void;
   onPointerDownSync?: (pointer: PreviewPointerDown) => void;
+  /**
+   * Makes rendered task lists tickable, with `line` already translated into a
+   * line of the file rather than of the rendered body. Unset leaves them as
+   * read-only glyphs, which is right for any surface that does not own an
+   * editable buffer for this file.
+   */
+  onToggleTask?: MarkdownTaskToggle | null;
 }
 
 export function FilePreview({
@@ -912,6 +943,7 @@ export function FilePreview({
   syncRef,
   onScrolledSync,
   onPointerDownSync,
+  onToggleTask = null,
 }: FilePreviewProps) {
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
@@ -983,7 +1015,7 @@ export function FilePreview({
   const imagePreviewUri = useAttachmentPreviewUrl(query.data?.imageAttachment ?? null);
 
   // What a rendered document resolves `![](docs/x.png)` against. Reads go out with
-  // the workspace root as their cwd, and only for paths contained under it â€” a
+  // the workspace root as their cwd, and only for paths contained under it — a
   // document outside the workspace gets no base at all, and keeps showing alt text.
   const workspaceImages = useMemo<WorkspaceImageSource | null>(() => {
     if (!client || !normalizedFilePath) {
@@ -1048,6 +1080,7 @@ export function FilePreview({
         syncRef={syncRef}
         onScrolledSync={onScrolledSync}
         onPointerDownSync={onPointerDownSync}
+        onToggleTask={onToggleTask}
       />
     </View>
   );
