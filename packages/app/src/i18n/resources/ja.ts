@@ -3429,6 +3429,8 @@ export const ja: TranslationResources = {
           "テキストフィールドまたはターミナルにフォーカスがない場合に利用できます。",
       },
       searchPlaceholder: "ショートカットを検索",
+      // Literal English pending the pre-release i18n sweep.
+      searchEmpty: "No shortcuts match that search",
     },
     integrations: {
       title: "連携",

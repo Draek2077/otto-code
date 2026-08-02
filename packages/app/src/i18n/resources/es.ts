@@ -3466,6 +3466,8 @@ export const es: TranslationResources = {
         showKeyboardShortcuts: "Disponible cuando el foco no está en un campo de texto o terminal.",
       },
       searchPlaceholder: "Buscar atajos",
+      // Literal English pending the pre-release i18n sweep.
+      searchEmpty: "No shortcuts match that search",
     },
     integrations: {
       title: "Integraciones",

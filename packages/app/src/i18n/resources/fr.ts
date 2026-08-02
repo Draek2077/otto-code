@@ -3480,6 +3480,8 @@ export const fr: TranslationResources = {
           "Disponible lorsque le focus n’est pas dans un champ de texte ou un terminal.",
       },
       searchPlaceholder: "Rechercher des raccourcis",
+      // Literal English pending the pre-release i18n sweep.
+      searchEmpty: "No shortcuts match that search",
     },
     integrations: {
       title: "Intégrations",

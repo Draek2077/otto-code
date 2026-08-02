@@ -3442,6 +3442,8 @@ export const ru: TranslationResources = {
         showKeyboardShortcuts: "Доступно, когда фокус находится не в текстовом поле или терминале.",
       },
       searchPlaceholder: "Поиск сочетаний клавиш",
+      // Literal English pending the pre-release i18n sweep.
+      searchEmpty: "No shortcuts match that search",
     },
     integrations: {
       title: "Интеграции",

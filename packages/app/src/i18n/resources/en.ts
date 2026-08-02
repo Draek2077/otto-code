@@ -3436,6 +3436,7 @@ export const en = {
         showKeyboardShortcuts: "Available when focus is not in a text field or terminal.",
       },
       searchPlaceholder: "Search shortcuts",
+      searchEmpty: "No shortcuts match that search",
     },
     integrations: {
       title: "Integrations",

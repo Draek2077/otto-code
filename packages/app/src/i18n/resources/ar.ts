@@ -3385,6 +3385,8 @@ export const ar: TranslationResources = {
         showKeyboardShortcuts: "متاح عندما لا يكون التركيز في حقل نص أو محطة طرفية.",
       },
       searchPlaceholder: "البحث في الاختصارات",
+      // Literal English pending the pre-release i18n sweep.
+      searchEmpty: "No shortcuts match that search",
     },
     integrations: {
       title: "التكامل",

@@ -3348,6 +3348,8 @@ export const zhCN: TranslationResources = {
         showKeyboardShortcuts: "焦点不在文本输入框或终端内时可用。",
       },
       searchPlaceholder: "搜索快捷键",
+      // Literal English pending the pre-release i18n sweep.
+      searchEmpty: "No shortcuts match that search",
     },
     integrations: {
       title: "集成",

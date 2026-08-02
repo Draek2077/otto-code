@@ -3448,6 +3448,8 @@ export const ptBR: TranslationResources = {
           "Disponível quando o foco não está em um campo de texto ou terminal.",
       },
       searchPlaceholder: "Pesquisar atalhos",
+      // Literal English pending the pre-release i18n sweep.
+      searchEmpty: "No shortcuts match that search",
     },
     integrations: {
       title: "Integrações",
