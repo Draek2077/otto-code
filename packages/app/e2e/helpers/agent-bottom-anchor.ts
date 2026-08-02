@@ -203,7 +203,15 @@ export async function clickToolCallBesideScrollToBottomButton(page: Page): Promi
   expect(buttonBounds, "Expected visible scroll-to-bottom button bounds").not.toBeNull();
   const visibleButtonBounds = buttonBounds!;
 
-  const toolCalls = page.locator('[data-testid="tool-call-badge"] [role="button"]');
+  // A settled transcript folds a run of tool calls into one action group, so a
+  // finished stream has `action-group-badge` rows where a live one has
+  // `tool-call-badge` rows. Both are tool-call rows for the purpose of this
+  // check — it is about the scroll button's hit area, not about which row kind
+  // happens to be beside it — and matching only the ungrouped kind is why this
+  // found zero candidates on a stream the test had already waited to finish.
+  const toolCalls = page.locator(
+    '[data-testid="tool-call-badge"] [role="button"], [data-testid="action-group-badge"] [role="button"]',
+  );
   const toolCallBounds = await Promise.all(
     Array.from({ length: await toolCalls.count() }, async (_, index) => ({
       index,
@@ -223,7 +231,13 @@ export async function clickToolCallBesideScrollToBottomButton(page: Page): Promi
     )[0];
   expect(
     candidate,
+    // Report the badge count separately from the interactive-child count: "no
+    // tool calls in this transcript" and "badges rendered but none exposes a
+    // button role" are different bugs, and the bounds array alone cannot tell
+    // them apart.
     `Expected at least one rendered tool-call badge: ${JSON.stringify({
+      actionGroupCount: await page.locator('[data-testid="action-group-badge"]').count(),
+      badgeCount: await page.locator('[data-testid="tool-call-badge"]').count(),
       buttonBounds,
       scrollMetrics: await readScrollMetrics(page),
       toolCallBounds,
