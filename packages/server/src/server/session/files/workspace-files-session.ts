@@ -59,6 +59,7 @@ import {
   writeExplorerBinaryFile,
   writeExplorerFile,
 } from "../../file-explorer/service.js";
+import { WorkspaceBinaryWriteStore } from "../../file-explorer/binary-write-store.js";
 import { SessionFileWatcher } from "../../file-explorer/file-watcher.js";
 import { replaceInWorkspaceFiles, searchWorkspaceFiles } from "../../file-explorer/file-search.js";
 import {
@@ -143,6 +144,7 @@ export class WorkspaceFilesSession {
   private readonly logger: pino.Logger;
   private readonly resolveAllowedRoots: () => Promise<string[]>;
   private readonly fileUploads: FileUploadStore;
+  private readonly binaryWrites = new WorkspaceBinaryWriteStore();
   private readonly fileWatcher: SessionFileWatcher;
   private readonly symbolIndex = new WorkspaceSymbolIndex();
   private readonly lspService: LspService;
@@ -414,8 +416,11 @@ export class WorkspaceFilesSession {
   /**
    * The binary sibling of `file.write`. Workspace-bounded, unlike that one —
    * see `FsFileWriteBinaryRequestSchema` for the reasoning.
+   *
+   * The bytes normally follow as file-transfer frames, so this is the metadata
+   * half and the response comes at FileEnd rather than from here.
    */
-  async handleFsFileWriteBinaryRequest(request: FsFileWriteBinaryRequest): Promise<void> {
+  handleFsFileWriteBinaryRequest(request: FsFileWriteBinaryRequest): Promise<void> {
     const cwd = request.cwd.trim();
     const emitResult = (result: FsFileWriteBinaryResult): void => {
       this.host.emit({
@@ -431,29 +436,76 @@ export class WorkspaceFilesSession {
 
     if (!cwd) {
       emitResult({ status: "error", error: "cwd is required" });
-      return;
+      return Promise.resolve();
     }
 
-    try {
-      await this.assertCwdWithinKnownWorkspace(cwd);
-      const outcome = await writeExplorerBinaryFile({
-        root: cwd,
-        relativePath: request.path,
+    // COMPAT(binaryWriteBase64): added in v0.7.6, drop this branch on
+    // 2027-02-02. A client that has not moved to frames still sends the payload
+    // inline, and the whole of it is here when the handler runs.
+    if (request.contentBase64 !== undefined) {
+      return this.writeBinaryBytes({
+        cwd,
+        path: request.path,
         bytes: Buffer.from(request.contentBase64, "base64"),
         overwrite: request.overwrite,
+        emitResult,
       });
-      if (outcome.status === "written") {
-        // A generated artifact carries no symbols, but the tree it landed in
-        // may be indexed and now has one more entry.
-        this.symbolIndex.invalidate(cwd);
-      }
-      emitResult(outcome);
+    }
+
+    if (request.size === undefined) {
+      emitResult({ status: "error", error: "size is required when no content is inlined" });
+      return Promise.resolve();
+    }
+
+    // Registration is synchronous, and the boundary check rides along as a
+    // promise rather than being awaited: the frames are already behind this
+    // message in the socket, and a transfer the store has not heard of yet is
+    // one `handleFileTransferFrame` hands to the upload store instead. The
+    // store settles the guard before it writes.
+    const guard = this.assertCwdWithinKnownWorkspace(cwd);
+    guard.catch(() => undefined);
+    this.binaryWrites.begin({
+      requestId: request.requestId,
+      cwd,
+      path: request.path,
+      size: request.size,
+      overwrite: request.overwrite,
+      guard,
+    });
+    return Promise.resolve();
+  }
+
+  private async writeBinaryBytes(input: {
+    cwd: string;
+    path: string;
+    bytes: Buffer;
+    overwrite?: boolean;
+    emitResult: (result: FsFileWriteBinaryResult) => void;
+  }): Promise<void> {
+    try {
+      await this.assertCwdWithinKnownWorkspace(input.cwd);
+      const outcome = await writeExplorerBinaryFile({
+        root: input.cwd,
+        relativePath: input.path,
+        bytes: input.bytes,
+        overwrite: input.overwrite,
+      });
+      this.noteBinaryWrite(input.cwd, outcome);
+      input.emitResult(outcome);
     } catch (error) {
       this.logger.error(
-        { err: error, cwd, path: request.path },
-        `Failed to write binary file ${request.path} in workspace ${cwd}`,
+        { err: error, cwd: input.cwd, path: input.path },
+        `Failed to write binary file ${input.path} in workspace ${input.cwd}`,
       );
-      emitResult({ status: "error", error: getErrorMessage(error) });
+      input.emitResult({ status: "error", error: getErrorMessage(error) });
+    }
+  }
+
+  private noteBinaryWrite(cwd: string, result: FsFileWriteBinaryResult): void {
+    if (result.status === "written") {
+      // A generated artifact carries no symbols, but the tree it landed in
+      // may be indexed and now has one more entry.
+      this.symbolIndex.invalidate(cwd);
     }
   }
 
@@ -1335,7 +1387,31 @@ export class WorkspaceFilesSession {
     this.fileUploads.beginUpload(request);
   }
 
+  /**
+   * File-transfer frames feed two stores. They are told apart by which one owns
+   * the `requestId`, asked before anything is applied — not by letting one store
+   * decline the frame, because `FileUploadStore.receiveFrame` returns null both
+   * for "not mine" and for "mine, nothing to report yet", and a frame routed on
+   * that would be applied twice.
+   */
   async handleFileTransferFrame(frame: FileTransferFrame): Promise<void> {
+    if (this.binaryWrites.hasPending(frame.requestId)) {
+      const completion = await this.binaryWrites.receiveFrame(frame);
+      if (completion) {
+        this.noteBinaryWrite(completion.cwd, completion.result);
+        this.host.emit({
+          type: "fs.file.write_binary.response",
+          payload: {
+            cwd: completion.cwd,
+            path: completion.path,
+            result: completion.result,
+            requestId: completion.requestId,
+          },
+        });
+      }
+      return;
+    }
+
     const response = await this.fileUploads.receiveFrame(frame);
     if (response) {
       this.host.emit(response);

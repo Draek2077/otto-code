@@ -1915,6 +1915,74 @@ test("uploadFile sends metadata request and file bytes as binary chunks", async 
   });
 });
 
+test("writeBinaryFile declares the size and sends the bytes as binary chunks", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const responsePromise = client.writeBinaryFile({
+    cwd: "/repo",
+    path: "docs/design.pdf",
+    bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+    overwrite: true,
+    requestId: "req-binary",
+    chunkSize: 3,
+  });
+
+  // The request is metadata only. No `contentBase64` — that is the whole point
+  // of the change, and a base64 field that crept back in would show up here.
+  expect(JSON.parse(assertStr(mock.sent[0]))).toEqual({
+    type: "session",
+    message: {
+      type: "fs.file.write_binary.request",
+      cwd: "/repo",
+      path: "docs/design.pdf",
+      size: 4,
+      overwrite: true,
+      requestId: "req-binary",
+    },
+  });
+  const frames = mock.sent.slice(1).map(assertUint8Array).map(decodeFileTransferFrame);
+  expect(frames.map((frame) => frame?.opcode)).toEqual([
+    FileTransferOpcode.FileBegin,
+    FileTransferOpcode.FileChunk,
+    FileTransferOpcode.FileChunk,
+    FileTransferOpcode.FileEnd,
+  ]);
+  expect(frames[1]?.payload).toEqual(new Uint8Array([0x25, 0x50, 0x44]));
+  expect(frames[2]?.payload).toEqual(new Uint8Array([0x46]));
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "fs.file.write_binary.response",
+      payload: {
+        cwd: "/repo",
+        path: "docs/design.pdf",
+        result: { status: "written", modifiedAt: "2026-08-02T00:00:00.000Z", size: 4 },
+        requestId: "req-binary",
+      },
+    }),
+  );
+
+  await expect(responsePromise).resolves.toEqual({
+    status: "written",
+    modifiedAt: "2026-08-02T00:00:00.000Z",
+    size: 4,
+  });
+});
+
 test("normalizes workspace_setup_progress into a workspace-scoped daemon event", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();

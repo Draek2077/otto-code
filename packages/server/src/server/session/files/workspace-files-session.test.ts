@@ -76,7 +76,7 @@ function makeSubsystem(options: { hasBinaryChannel?: boolean; allowedRoots?: str
   };
 }
 
-function uploadFrame(args: Parameters<typeof encodeFileTransferFrame>[0]): FileTransferFrame {
+function transferFrame(args: Parameters<typeof encodeFileTransferFrame>[0]): FileTransferFrame {
   const frame = decodeFileTransferFrame(encodeFileTransferFrame(args));
   if (!frame) {
     throw new Error("Expected a file transfer frame");
@@ -255,7 +255,7 @@ describe("WorkspaceFilesSession", () => {
       requestId: "req-upload",
     });
     await subsystem.handleFileTransferFrame(
-      uploadFrame({
+      transferFrame({
         opcode: FileTransferOpcode.FileBegin,
         requestId: "req-upload",
         metadata: {
@@ -268,14 +268,14 @@ describe("WorkspaceFilesSession", () => {
       }),
     );
     await subsystem.handleFileTransferFrame(
-      uploadFrame({
+      transferFrame({
         opcode: FileTransferOpcode.FileChunk,
         requestId: "req-upload",
         payload: new TextEncoder().encode("hello world"),
       }),
     );
     await subsystem.handleFileTransferFrame(
-      uploadFrame({ opcode: FileTransferOpcode.FileEnd, requestId: "req-upload" }),
+      transferFrame({ opcode: FileTransferOpcode.FileEnd, requestId: "req-upload" }),
     );
 
     const message = emitted.find((entry) => entry.type === "file.upload.response");
@@ -287,6 +287,111 @@ describe("WorkspaceFilesSession", () => {
     expect(readFileSync(join(ottoHome, "uploads", "upload_req-upload", "notes.txt"), "utf8")).toBe(
       "hello world",
     );
+  });
+
+  // The binary write shares the upload's transport and not its destination:
+  // these bytes land in a workspace, at a path the client named. The two are
+  // told apart by which store owns the requestId, so a spec that gets the bytes
+  // to the right file has also proven the routing.
+  test("lands a chunked binary write in the workspace", async () => {
+    const cwd = makeDir("workspace-files-binary-write-");
+    const { subsystem, emitted } = makeSubsystem();
+    const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]);
+
+    await subsystem.handleFsFileWriteBinaryRequest({
+      type: "fs.file.write_binary.request",
+      cwd,
+      path: "out/report.pdf",
+      size: bytes.byteLength,
+      requestId: "req-binary-write",
+    });
+    await subsystem.handleFileTransferFrame(
+      transferFrame({
+        opcode: FileTransferOpcode.FileBegin,
+        requestId: "req-binary-write",
+        metadata: {
+          mime: "application/octet-stream",
+          size: bytes.byteLength,
+          encoding: "binary",
+          modifiedAt: "2026-08-02T00:00:00.000Z",
+        },
+      }),
+    );
+    // Split, because a single-chunk transfer would not prove the bytes are
+    // reassembled in order.
+    await subsystem.handleFileTransferFrame(
+      transferFrame({
+        opcode: FileTransferOpcode.FileChunk,
+        requestId: "req-binary-write",
+        payload: bytes.subarray(0, 5),
+      }),
+    );
+    await subsystem.handleFileTransferFrame(
+      transferFrame({
+        opcode: FileTransferOpcode.FileChunk,
+        requestId: "req-binary-write",
+        payload: bytes.subarray(5),
+      }),
+    );
+    await subsystem.handleFileTransferFrame(
+      transferFrame({ opcode: FileTransferOpcode.FileEnd, requestId: "req-binary-write" }),
+    );
+
+    const message = emitted.at(-1);
+    if (message?.type !== "fs.file.write_binary.response") {
+      throw new Error(`expected fs.file.write_binary.response, got ${message?.type}`);
+    }
+    expect(message.payload.result.status).toBe("written");
+    expect(message.payload.path).toBe("out/report.pdf");
+    // The parent directory did not exist; the write created it, one contained
+    // segment at a time.
+    expect(new Uint8Array(readFileSync(join(cwd, "out", "report.pdf")))).toEqual(bytes);
+  });
+
+  test("refuses a binary write that overruns its declared size", async () => {
+    const cwd = makeDir("workspace-files-binary-overrun-");
+    const { subsystem, emitted } = makeSubsystem();
+
+    await subsystem.handleFsFileWriteBinaryRequest({
+      type: "fs.file.write_binary.request",
+      cwd,
+      path: "over.bin",
+      size: 4,
+      requestId: "req-binary-overrun",
+    });
+    await subsystem.handleFileTransferFrame(
+      transferFrame({
+        opcode: FileTransferOpcode.FileBegin,
+        requestId: "req-binary-overrun",
+        metadata: {
+          mime: "application/octet-stream",
+          size: 4,
+          encoding: "binary",
+          modifiedAt: "2026-08-02T00:00:00.000Z",
+        },
+      }),
+    );
+    await subsystem.handleFileTransferFrame(
+      transferFrame({
+        opcode: FileTransferOpcode.FileChunk,
+        requestId: "req-binary-overrun",
+        payload: new Uint8Array([1, 2, 3, 4, 5]),
+      }),
+    );
+    await subsystem.handleFileTransferFrame(
+      transferFrame({ opcode: FileTransferOpcode.FileEnd, requestId: "req-binary-overrun" }),
+    );
+
+    const message = emitted.at(-1);
+    if (message?.type !== "fs.file.write_binary.response") {
+      throw new Error(`expected fs.file.write_binary.response, got ${message?.type}`);
+    }
+    expect(message.payload.result).toEqual({
+      status: "error",
+      error: "Binary write exceeded declared size: expected 4, received 5.",
+    });
+    // Refused outright, not truncated to the declared length.
+    expect(existsSync(join(cwd, "over.bin"))).toBe(false);
   });
 });
 

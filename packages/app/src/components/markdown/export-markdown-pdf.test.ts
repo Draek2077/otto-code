@@ -28,12 +28,12 @@ function createPrinter(result: string | Error) {
 }
 
 function createWriter(outcome: Awaited<ReturnType<PdfExportWriter["writeBinaryFile"]>>) {
-  const writes: Array<{ path: string; contentBase64: string; overwrite?: boolean }> = [];
+  const writes: Array<{ path: string; bytes: Uint8Array; overwrite?: boolean }> = [];
   const writer: PdfExportWriter = {
     writeBinaryFile: async (options) => {
       writes.push({
         path: options.path,
-        contentBase64: options.contentBase64,
+        bytes: options.bytes,
         overwrite: options.overwrite,
       });
       return outcome;
@@ -76,8 +76,14 @@ describe("exportMarkdownAsPdf", () => {
     });
 
     expect(result).toEqual({ status: "written", path: "docs/design.pdf", title: "Design" });
+    // Decoded, not forwarded: the bridge encodes because IPC cannot carry
+    // bytes, and the daemon write is binary frames from here on.
     expect(writes).toEqual([
-      { path: "docs/design.pdf", contentBase64: "JVBERi0=", overwrite: true },
+      {
+        path: "docs/design.pdf",
+        bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]),
+        overwrite: true,
+      },
     ]);
     // The printer is handed the same standalone document the HTML export
     // writes, which is the reason the two formats cannot drift.

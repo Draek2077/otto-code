@@ -389,10 +389,19 @@ generates on the client that is not text, and it exposed a real boundary:
 - The text write could not carry it. `fs.file.write` LF-normalizes, re-applies a detected EOL, and
   **refuses a binary target outright** — so it could never have replaced a PDF on re-export.
 
-So the bytes go back through the daemon as base64 on `fs.file.write_binary`, gated on
+So the bytes go back through the daemon on `fs.file.write_binary`, gated on
 `server_info.features.binaryFileWrite`. That RPC is workspace-bounded (unlike `fs.file.write`, which
 is deliberately not, because a tab may edit a file opened from anywhere) and takes an explicit
 `overwrite` rather than a precondition: a generated artifact has nothing to reconcile against.
+
+**The payload does not ride in the request.** The JSON message says where the bytes go and how many
+to expect; the bytes follow as `FileTransfer` binary frames correlated on `requestId`, the transport
+`file.upload` already used. A printed document is routinely several MB, and base64 in JSON costs a
+third again on the wire plus the whole encoded string allocated on both sides and walked by the
+validator. The daemon buffers a transfer in memory and writes it in one call, so every containment
+guarantee (resolving through `resolveMutationPath`, creating parent directories one re-checked
+segment at a time, the exclusive create) stays at a single open instead of being reimplemented by a
+streaming writer. `contentBase64` is still accepted and no longer sent — `COMPAT(binaryWriteBase64)`.
 
 PDF export is desktop-only and simply absent elsewhere, per the no-fallback rule in the root
 `CLAUDE.md`. `printToPDF` has no headless stand-in, so it is proven by the packaged desktop smoke;

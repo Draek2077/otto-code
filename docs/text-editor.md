@@ -401,6 +401,12 @@ Four decisions worth keeping:
   streams real bytes but into `$OTTO_HOME/uploads/`, outside every workspace, so the document could
   not link to what it wrote. This trap has been walked into once already; the markdown-editing
   charter named the wrong RPC for months.
+- **The base64 stops at the host.** `fs.file.write_binary` borrows `file.upload`'s transport rather
+  than its destination: the request declares the size, the bytes follow as `FileTransfer` frames on
+  the same `requestId`, and the daemon tells the two apart by which store owns that id. So the
+  decode happens once, where the webview bridge hands the string over, and a dropped photo does not
+  pay a third again on the wire. See
+  [markdown-rendering.md](markdown-rendering.md#export-html-and-pdf-as-printed-html).
 - **No handler means no extension.** Omitting `onImageDrop` registers nothing, so a daemon without
   the capability leaves a dropped image to the platform instead of swallowing it into a feature that
   cannot finish. That is the whole gate — there is no degraded path, because there is nothing the

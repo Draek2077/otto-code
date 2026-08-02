@@ -1,4 +1,5 @@
 import type { FsFileWriteBinaryResult } from "@otto-code/protocol/messages";
+import { base64ToBytes } from "@/utils/base64";
 import { exportSiblingPath, markdownToHtmlDocument } from "./markdown-to-html";
 
 /**
@@ -37,7 +38,7 @@ export interface PdfExportWriter {
   writeBinaryFile(options: {
     cwd: string;
     path: string;
-    contentBase64: string;
+    bytes: Uint8Array;
     overwrite?: boolean;
   }): Promise<FsFileWriteBinaryResult>;
 }
@@ -84,7 +85,9 @@ export async function exportMarkdownAsPdf(input: {
   const result = await input.writer.writeBinaryFile({
     cwd: input.cwd,
     path: target,
-    contentBase64,
+    // The bridge encodes because IPC cannot carry bytes; this is the last point
+    // that string exists, and the write itself goes out as binary frames.
+    bytes: base64ToBytes(contentBase64),
     overwrite: true,
   });
 

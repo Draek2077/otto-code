@@ -594,6 +594,12 @@ export const MutableBrainRemoteConfigSchema = z
     secure: z.boolean().default(false),
     // Secret: masked with DAEMON_CONFIG_SECRET_SENTINEL on the way out.
     authToken: z.string().nullable().default(null),
+    // SHA-256 fingerprint of the remote brain's TLS certificate (openssl's
+    // "AB:CD:..." form; colons optional). When set, the daemon pins HTTPS
+    // connections to exactly this certificate instead of the system trust
+    // store — required for a brain serving tls.mode=self-signed. When null,
+    // the certificate must validate against the system trust store.
+    certFingerprint: z.string().nullable().default(null),
   })
   .passthrough();
 
@@ -610,6 +616,7 @@ export const MutableBrainConfigSchema = z
       port: 1234,
       secure: false,
       authToken: null,
+      certFingerprint: null,
     }),
     listen: z
       .object({
@@ -675,6 +682,7 @@ const MutableBrainRemotePatchSchema = z
     port: z.number().int(),
     secure: z.boolean(),
     authToken: z.string().nullable(),
+    certFingerprint: z.string().nullable(),
   })
   .partial()
   .passthrough();
@@ -709,7 +717,7 @@ export const DEFAULT_MUTABLE_BRAIN_CONFIG = {
   enabled: false,
   autoStart: false,
   mode: "local" as const,
-  remote: { host: "", port: 1234, secure: false, authToken: null },
+  remote: { host: "", port: 1234, secure: false, authToken: null, certFingerprint: null },
   listen: { host: "127.0.0.1", port: 1234 },
   defaultModel: null,
   lockModel: false,
@@ -5467,13 +5475,35 @@ export const FsFileWriteRequestSchema = z.object({
  * `file.write`. `file.write` is unbounded because a tab may edit a file the
  * user opened from anywhere; putting new bytes at an arbitrary path on the host
  * is a different power and does not need to be that wide.
+ *
+ * The bytes themselves do not ride in this message. They follow it as
+ * `FileTransfer` binary frames correlated on `requestId` — FileBegin, then
+ * FileChunk, then FileEnd — the same transport `file.upload` uses. This request
+ * is the metadata half: where the bytes go and how many of them to expect.
+ * Everything here writes multi-megabyte files (a printed PDF, a dropped image),
+ * and base64 in a JSON message costs a third again on the wire plus the whole
+ * encoded string allocated on both sides and walked by the validator.
  */
 export const FsFileWriteBinaryRequestSchema = z.object({
   type: z.literal("fs.file.write_binary.request"),
   cwd: z.string(),
   path: z.string(),
-  /** base64. Decoded and written as-is: no EOL translation, no re-encoding. */
-  contentBase64: z.string(),
+  /**
+   * Byte length of the payload to follow. The daemon refuses a transfer that
+   * overruns it and refuses one that ends short, so a truncated stream fails
+   * loudly instead of landing a half file. Optional only because the base64
+   * form below predates it and carries its own length.
+   */
+  size: z.number().int().nonnegative().optional(),
+  /**
+   * base64. Decoded and written as-is: no EOL translation, no re-encoding.
+   *
+   * COMPAT(binaryWriteBase64): added in v0.7.6, drop this field and its daemon
+   * branch on 2027-02-02. Superseded by `size` plus file-transfer frames. The
+   * daemon still reads it — a field we stopped sending is not a field we stop
+   * accepting — and picks the branch from which of the two is present.
+   */
+  contentBase64: z.string().optional(),
   /**
    * Replace an existing file. Absent (the default) an existing target comes
    * back as `exists` and nothing is written.

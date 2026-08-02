@@ -558,6 +558,22 @@ describe("agent personalities compatibility", () => {
     expect(parsed.brain?.listen).not.toHaveProperty("port");
   });
 
+  test("brain.remote.certFingerprint defaults to null and round-trips through a patch", () => {
+    // An old daemon's config (no certFingerprint on disk) must parse with the
+    // pin absent-but-well-formed, so remote HTTPS validates against the system
+    // trust store by default.
+    const parsed = MutableDaemonConfigSchema.parse({
+      mcp: { injectIntoAgents: true },
+      brain: { mode: "remote" },
+    });
+    expect(parsed.brain.remote.certFingerprint).toBeNull();
+
+    const patch = MutableDaemonConfigPatchSchema.parse({
+      brain: { remote: { certFingerprint: "AB:CD" } },
+    });
+    expect(patch.brain).toEqual({ remote: { certFingerprint: "AB:CD" } });
+  });
+
   test("agent.personality.set request/response round-trip through the unions", () => {
     const request = SessionInboundMessageSchema.parse({
       type: "agent.personality.set.request",
@@ -572,5 +588,39 @@ describe("agent personalities compatibility", () => {
       payload: { requestId: "req-1", agentId: "agent-1", accepted: true, error: null },
     });
     expect(response.type).toBe("agent.personality.set.response");
+  });
+
+  test("fs.file.write_binary still parses the base64 request a pre-frames client sends", () => {
+    // COMPAT(binaryWriteBase64): the payload moved onto file-transfer frames,
+    // which means `size` and no `contentBase64`. A client from before that
+    // sends the opposite pair, and a field we stopped sending is not a field we
+    // stopped accepting — this is the "does a 6-month-old client still parse?"
+    // half of the contract.
+    const legacy = SessionInboundMessageSchema.parse({
+      type: "fs.file.write_binary.request",
+      cwd: "/repo",
+      path: "docs/design.pdf",
+      contentBase64: "JVBERi0=",
+      overwrite: true,
+      requestId: "req-legacy",
+    });
+    if (legacy.type !== "fs.file.write_binary.request") {
+      throw new Error(`expected fs.file.write_binary.request, got ${legacy.type}`);
+    }
+    expect(legacy.contentBase64).toBe("JVBERi0=");
+    expect(legacy.size).toBeUndefined();
+
+    const framed = SessionInboundMessageSchema.parse({
+      type: "fs.file.write_binary.request",
+      cwd: "/repo",
+      path: "docs/design.pdf",
+      size: 5,
+      requestId: "req-framed",
+    });
+    if (framed.type !== "fs.file.write_binary.request") {
+      throw new Error(`expected fs.file.write_binary.request, got ${framed.type}`);
+    }
+    expect(framed.size).toBe(5);
+    expect(framed.contentBase64).toBeUndefined();
   });
 });

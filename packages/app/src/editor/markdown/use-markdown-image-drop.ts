@@ -1,6 +1,7 @@
 import { useCallback, type RefObject } from "react";
 import { useSessionStore } from "@/stores/session-store";
 import { useBinaryFileWriteFeature } from "@/file-explorer/use-binary-file-write-feature";
+import { base64ToBytes } from "@/utils/base64";
 import type { EditorController, EditorDroppedImage } from "../editor-contract";
 import {
   buildImageAssetTarget,
@@ -70,7 +71,9 @@ export function useMarkdownImageDrop(input: {
               client.writeBinaryFile({
                 cwd: workspaceRoot,
                 path: candidate,
-                contentBase64: image.dataBase64,
+                // The webview bridge is JSON, so the drop arrives encoded; the
+                // write leaves as binary frames.
+                bytes: base64ToBytes(image.dataBase64),
               }),
             path: target.path,
           });

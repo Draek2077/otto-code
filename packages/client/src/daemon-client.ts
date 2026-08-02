@@ -567,9 +567,12 @@ export interface FileWriteBinaryOptions {
   cwd: string;
   /** Workspace-relative, like every other file RPC. */
   path: string;
-  contentBase64: string;
+  /** Sent as file-transfer frames, not inside the request. */
+  bytes: Uint8Array | ArrayBuffer;
   overwrite?: boolean;
   requestId?: string;
+  /** Frame size, for tests that want to observe chunking. Defaults to 1 MB. */
+  chunkSize?: number;
 }
 /**
  * The general file-mutation surface — what exists in a directory, rather than
@@ -5591,20 +5594,88 @@ export class DaemonClient {
    * text write cannot carry (it refuses binary targets outright). Gated on
    * `features.binaryFileWrite`; there is no client-side substitute, because
    * the client never touches a workspace file on any platform.
+   *
+   * Shaped like {@link uploadFile}: the JSON request says where the bytes go
+   * and how many to expect, then the bytes follow as file-transfer frames
+   * correlated on the same `requestId`. The daemon answers at FileEnd.
    */
   async writeBinaryFile(options: FileWriteBinaryOptions): Promise<FsFileWriteBinaryResult> {
-    const payload = await this.sendCorrelatedSessionRequest({
-      requestId: options.requestId,
+    const bytes = asUint8Array(options.bytes);
+    if (!bytes) {
+      throw new Error("File bytes are required.");
+    }
+    const resolvedRequestId = this.createRequestId(options.requestId);
+    const responsePromise = this.sendCorrelatedSessionRequest({
+      requestId: resolvedRequestId,
       message: {
         type: "fs.file.write_binary.request",
         cwd: options.cwd,
         path: options.path,
-        contentBase64: options.contentBase64,
+        size: bytes.byteLength,
         overwrite: options.overwrite,
       },
       responseType: "fs.file.write_binary.response",
     });
+
+    this.sendFileTransfer({
+      requestId: resolvedRequestId,
+      bytes,
+      // Nothing downstream reads the mime for a workspace write — the path
+      // decides what the file is — but the frame metadata requires one.
+      mime: "application/octet-stream",
+      chunkSize: options.chunkSize,
+    });
+
+    const payload = await responsePromise;
     return payload.result;
+  }
+
+  /**
+   * FileBegin, chunks, FileEnd. Synchronous through `sendBinaryFrame`, so the
+   * frames leave in order and behind the JSON request that announced them.
+   */
+  private sendFileTransfer(input: {
+    requestId: string;
+    bytes: Uint8Array;
+    mime: string;
+    fileName?: string;
+    modifiedAt?: string;
+    chunkSize?: number;
+  }): void {
+    this.sendBinaryFrame(
+      encodeFileTransferFrame({
+        opcode: FileTransferOpcode.FileBegin,
+        requestId: input.requestId,
+        metadata: {
+          mime: input.mime,
+          size: input.bytes.byteLength,
+          encoding: "binary",
+          modifiedAt: input.modifiedAt ?? new Date().toISOString(),
+          ...(input.fileName ? { fileName: input.fileName } : {}),
+        },
+      }),
+    );
+
+    const chunkSize = input.chunkSize ?? 1024 * 1024;
+    for (let offset = 0; offset < input.bytes.byteLength; offset += chunkSize) {
+      this.sendBinaryFrame(
+        encodeFileTransferFrame({
+          opcode: FileTransferOpcode.FileChunk,
+          requestId: input.requestId,
+          payload: input.bytes.subarray(
+            offset,
+            Math.min(offset + chunkSize, input.bytes.byteLength),
+          ),
+        }),
+      );
+    }
+
+    this.sendBinaryFrame(
+      encodeFileTransferFrame({
+        opcode: FileTransferOpcode.FileEnd,
+        requestId: input.requestId,
+      }),
+    );
   }
 
   /** Create an empty file or a directory. Never overwrites — see FileCreateResultSchema. */
@@ -6138,37 +6209,14 @@ export class DaemonClient {
       options: { skipQueue: true },
     });
 
-    this.sendBinaryFrame(
-      encodeFileTransferFrame({
-        opcode: FileTransferOpcode.FileBegin,
-        requestId: resolvedRequestId,
-        metadata: {
-          mime: input.mimeType,
-          size: bytes.byteLength,
-          encoding: "binary",
-          modifiedAt,
-          fileName: input.fileName,
-        },
-      }),
-    );
-
-    const chunkSize = input.chunkSize ?? 1024 * 1024;
-    for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
-      this.sendBinaryFrame(
-        encodeFileTransferFrame({
-          opcode: FileTransferOpcode.FileChunk,
-          requestId: resolvedRequestId,
-          payload: bytes.subarray(offset, Math.min(offset + chunkSize, bytes.byteLength)),
-        }),
-      );
-    }
-
-    this.sendBinaryFrame(
-      encodeFileTransferFrame({
-        opcode: FileTransferOpcode.FileEnd,
-        requestId: resolvedRequestId,
-      }),
-    );
+    this.sendFileTransfer({
+      requestId: resolvedRequestId,
+      bytes,
+      mime: input.mimeType,
+      fileName: input.fileName,
+      modifiedAt,
+      ...(input.chunkSize === undefined ? {} : { chunkSize: input.chunkSize }),
+    });
 
     return responsePromise;
   }
