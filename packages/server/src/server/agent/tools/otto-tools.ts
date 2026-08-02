@@ -50,7 +50,9 @@ import type { AgentStorage } from "../agent-storage.js";
 import { ensureAgentLoaded } from "../agent-loading.js";
 import { isStoredAgentProviderAvailable } from "../../persistence-hooks.js";
 import {
+  archiveByScope,
   killTerminalsForWorkspace,
+  requireActiveWorkspaceForArchive,
   type ArchiveDependencies,
 } from "../../workspace-archive-service.js";
 import {
@@ -105,8 +107,13 @@ import {
 } from "../lifecycle-command.js";
 import type { ForgeService } from "../../../services/github-service.js";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
-import type { ProjectRegistry, WorkspaceRegistry } from "../../workspace-registry.js";
+import type {
+  PersistedWorkspaceRecord,
+  ProjectRegistry,
+  WorkspaceRegistry,
+} from "../../workspace-registry.js";
 import { WorktreeRequestError } from "../../worktree-errors.js";
+import { resolveWorktreeSourceCwd } from "../../workspace-source.js";
 import {
   archiveCommand,
   type ArchiveCommandDependencies,
@@ -175,7 +182,17 @@ export interface OttoToolHostDependencies {
   listActiveWorkspaces?: ArchiveDependencies["listActiveWorkspaces"];
   archiveWorkspaceRecord?: ArchiveDependencies["archiveWorkspaceRecord"];
   emitWorkspaceUpdatesForWorkspaceIds?: ArchiveDependencies["emitWorkspaceUpdatesForWorkspaceIds"];
-  workspaceRegistry?: Pick<WorkspaceRegistry, "get" | "upsert">;
+  workspaceRegistry?: Pick<WorkspaceRegistry, "get" | "upsert" | "list">;
+  /**
+   * Creates a workspace on an existing directory, for create_workspace's
+   * "local" isolation. Supplied by the workspace provisioning service; the
+   * worktree half goes through createOttoWorktree instead.
+   */
+  createDirectoryWorkspace?: (
+    cwd: string,
+    title?: string | null,
+    projectId?: string,
+  ) => Promise<PersistedWorkspaceRecord>;
   /**
    * Resolves a workspace's project grouping key to the project's canonical
    * root path, so create_artifact can stamp artifacts with the same
@@ -506,6 +523,97 @@ const WorktreeSummarySchema = z.object({
   branchName: z.string().optional(),
   head: z.string().optional(),
 });
+
+/**
+ * What the workspace-level tools report back. `isolation` is the create-time
+ * intent (see docs/glossary.md); `kind` is the git-derived property it produced.
+ * They are reported separately because a "local" intent lands as `directory` or
+ * `local_checkout` depending on whether the cwd is a git repo.
+ */
+const WorkspaceAutomationSummarySchema = z.object({
+  workspaceId: z.string(),
+  projectId: z.string(),
+  cwd: z.string(),
+  isolation: z.enum(["local", "worktree"]),
+  kind: z.enum(["directory", "local_checkout", "worktree"]),
+  title: z.string().nullable(),
+});
+
+function toWorkspaceAutomationSummary(workspace: PersistedWorkspaceRecord) {
+  return {
+    workspaceId: workspace.workspaceId,
+    projectId: workspace.projectId,
+    cwd: workspace.cwd,
+    isolation: workspace.kind === "worktree" ? ("worktree" as const) : ("local" as const),
+    kind: workspace.kind,
+    title: workspace.title,
+  };
+}
+
+function assertWorkspaceOptionsAbsent(
+  entries: Array<[name: string, value: unknown]>,
+  message: string,
+): void {
+  if (entries.some(([, value]) => value !== undefined)) {
+    throw new Error(message);
+  }
+}
+
+/**
+ * Maps create_workspace's flat worktree options onto the same target shape
+ * create_worktree takes, so both tools go through one worktree code path.
+ */
+function resolveWorkspaceWorktreeTarget(input: {
+  mode?: "branch-off" | "checkout-branch" | "checkout-pr";
+  worktreeSlug?: string;
+  branchName?: string;
+  baseBranch?: string;
+  branch?: string;
+  prNumber?: number;
+}): McpCreateWorktreeTarget {
+  switch (input.mode ?? "branch-off") {
+    case "checkout-branch":
+      if (!input.branch) {
+        throw new Error("branch is required for checkout-branch mode");
+      }
+      assertWorkspaceOptionsAbsent(
+        [
+          ["branchName", input.branchName],
+          ["baseBranch", input.baseBranch],
+          ["prNumber", input.prNumber],
+        ],
+        "branchName, baseBranch, and prNumber are not valid for checkout-branch mode",
+      );
+      return { kind: "checkout-branch", branch: input.branch };
+    case "checkout-pr":
+      if (input.prNumber === undefined) {
+        throw new Error("prNumber is required for checkout-pr mode");
+      }
+      assertWorkspaceOptionsAbsent(
+        [
+          ["branchName", input.branchName],
+          ["baseBranch", input.baseBranch],
+          ["branch", input.branch],
+        ],
+        "branchName, baseBranch, and branch are not valid for checkout-pr mode",
+      );
+      return { kind: "checkout-pr", githubPrNumber: input.prNumber };
+    default:
+      assertWorkspaceOptionsAbsent(
+        [
+          ["branch", input.branch],
+          ["prNumber", input.prNumber],
+        ],
+        "branch and prNumber require a checkout mode",
+      );
+      return {
+        kind: "branch-off",
+        ...(input.worktreeSlug ? { worktreeSlug: input.worktreeSlug } : {}),
+        ...(input.branchName ? { branchName: input.branchName } : {}),
+        ...(input.baseBranch ? { baseBranch: input.baseBranch } : {}),
+      };
+  }
+}
 
 function resolveTerminalKeyToken(key: string, literal: boolean): string {
   if (literal) {
@@ -4261,6 +4369,195 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
           modes: summary.modes,
           selectedModel: selectedModel ?? null,
           features,
+        }),
+      };
+    },
+  );
+
+  // Workspace-level counterparts to the worktree tools below. These speak the
+  // noun the UI uses: one create_workspace call covers both an existing
+  // checkout and a fresh worktree, selected by `isolation` (docs/glossary.md).
+  // The worktree tools stay registered — they are the lower-level operation,
+  // and archive_worktree in particular archives every workspace on a worktree,
+  // which archive_workspace deliberately does not do.
+  registerTool(
+    "create_workspace",
+    {
+      title: "Create workspace",
+      description:
+        "Create a workspace using an existing local checkout or a new Otto-managed worktree.",
+      inputSchema: {
+        isolation: z.enum(["local", "worktree"]),
+        path: z
+          .string()
+          .optional()
+          .describe("Local directory or source checkout. Defaults to your current workspace."),
+        projectId: z.string().optional().describe("Existing project id to own the workspace."),
+        title: z.string().trim().min(1).optional(),
+        mode: z
+          .enum(["branch-off", "checkout-branch", "checkout-pr"])
+          .optional()
+          .describe("Worktree creation mode. Defaults to branch-off."),
+        worktreeSlug: z.string().trim().min(1).optional(),
+        branchName: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe("New branch name for branch-off mode."),
+        baseBranch: z.string().trim().min(1).optional().describe("Base ref for branch-off mode."),
+        branch: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe("Existing branch for checkout-branch mode."),
+        prNumber: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Pull request number for checkout-pr mode."),
+      },
+      outputSchema: WorkspaceAutomationSummarySchema.shape,
+    },
+    async ({
+      isolation,
+      path,
+      projectId,
+      title,
+      mode,
+      worktreeSlug,
+      branchName,
+      baseBranch,
+      branch,
+      prNumber,
+    }) => {
+      let workspace: PersistedWorkspaceRecord;
+      if (isolation === "local") {
+        const cwd = resolveScopedCwd(path, { required: true });
+        assertWorkspaceOptionsAbsent(
+          [
+            ["mode", mode],
+            ["worktreeSlug", worktreeSlug],
+            ["branchName", branchName],
+            ["baseBranch", baseBranch],
+            ["branch", branch],
+            ["prNumber", prNumber],
+          ],
+          "Worktree options require isolation worktree",
+        );
+        if (!options.createDirectoryWorkspace) {
+          throw new Error("Workspace provisioning is not configured");
+        }
+        workspace = await options.createDirectoryWorkspace(cwd, title ?? null, projectId);
+      } else {
+        // A projectId alone is enough: the worktree source falls back to the
+        // project's root checkout, so an agent can cut a worktree for a project
+        // it has never had a cwd in.
+        let cwd =
+          path !== undefined || !projectId ? resolveScopedCwd(path, { required: true }) : null;
+        if (!cwd) {
+          if (!options.projectRegistry) {
+            throw new Error("Project registry is not configured");
+          }
+          cwd = await resolveWorktreeSourceCwd({ projectId }, options.projectRegistry);
+        }
+        const commandResult = await createOttoWorktreeCommand(
+          {
+            ottoHome: options.ottoHome,
+            worktreesRoot: options.worktreesRoot,
+            createOttoWorktreeWorkflow: options.createOttoWorktree,
+          },
+          {
+            ...createMcpWorktreeCommandInput(
+              cwd,
+              resolveWorkspaceWorktreeTarget({
+                ...(mode ? { mode } : {}),
+                ...(worktreeSlug ? { worktreeSlug } : {}),
+                ...(branchName ? { branchName } : {}),
+                ...(baseBranch ? { baseBranch } : {}),
+                ...(branch ? { branch } : {}),
+                ...(prNumber === undefined ? {} : { prNumber }),
+              }),
+            ),
+            ...(projectId ? { projectId } : {}),
+            ...(title ? { title } : {}),
+          },
+        );
+        if (!commandResult.ok) {
+          throw new WorktreeRequestError(commandResult.error);
+        }
+        workspace = commandResult.createdWorktree.workspace;
+      }
+
+      return {
+        content: [],
+        structuredContent: ensureValidJson(toWorkspaceAutomationSummary(workspace)),
+      };
+    },
+  );
+
+  registerTool(
+    "list_workspaces",
+    {
+      title: "List workspaces",
+      description: "List active workspaces.",
+      inputSchema: {},
+      outputSchema: { workspaces: z.array(WorkspaceAutomationSummarySchema) },
+    },
+    async () => {
+      if (!options.workspaceRegistry?.list) {
+        throw new Error("Workspace registry is not configured");
+      }
+      const workspaces = (await options.workspaceRegistry.list())
+        .filter((workspace) => !workspace.archivedAt)
+        .map(toWorkspaceAutomationSummary);
+      return {
+        content: [],
+        structuredContent: ensureValidJson({ workspaces }),
+      };
+    },
+  );
+
+  registerTool(
+    "archive_workspace",
+    {
+      title: "Archive workspace",
+      description: "Archive a workspace and everything it owns.",
+      inputSchema: { workspaceId: z.string().min(1) },
+      outputSchema: {
+        workspaceId: z.string(),
+        archivedAgentIds: z.array(z.string()),
+        removedDirectory: z.boolean(),
+      },
+    },
+    async ({ workspaceId }) => {
+      if (!options.listActiveWorkspaces) {
+        throw new Error("Active workspace lister is required to archive workspaces");
+      }
+      const workspace = await requireActiveWorkspaceForArchive(
+        { listActiveWorkspaces: options.listActiveWorkspaces },
+        workspaceId,
+      );
+      const result = await archiveByScope(
+        archiveWorktreeDependencies(options, {
+          agentManager,
+          agentStorage,
+          terminalManager: terminalManager ?? null,
+          logger: childLogger,
+        }),
+        {
+          requestId: "mcp:archive_workspace",
+          scope: { kind: "workspace", workspaceId: workspace.workspaceId },
+        },
+      );
+      return {
+        content: [],
+        structuredContent: ensureValidJson({
+          workspaceId,
+          archivedAgentIds: result.archivedAgentIds,
+          removedDirectory: result.removedDirectory,
         }),
       };
     },

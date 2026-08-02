@@ -1868,6 +1868,11 @@ export async function createOttoDaemon(
     emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
     workspaceRegistry,
     projectRegistry,
+    // Backs create_workspace's "local" isolation. The worktree half rides on
+    // createOttoWorktree below, so both isolations reach the same services the
+    // New Workspace screen uses.
+    createDirectoryWorkspace: (cwd, title, projectId) =>
+      workspaceProvisioning.createWorkspaceForDirectory(cwd, title, projectId),
     markWorkspaceArchiving: markWorkspaceArchivingExternal,
     clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
     ensureWorkspaceForCreate: createAgentCommandDependencies.ensureWorkspaceForCreate,
