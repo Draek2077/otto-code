@@ -48,23 +48,20 @@ jobs:
   # would make Desktop Release wait out a fifteen-minute gradle run to create
   # the release it is about to publish into.
   ensure-release:
-    # Shared with desktop-release.yml and release-notes-sync.yml. All three
-    # ensure this release exists, and a `v*` tag starts all three at once.
-    # GitHub does NOT enforce tag_name uniqueness on create, so two concurrent
-    # `gh release create` calls both succeed and leave two releases on one tag;
-    # from then on every PATCH fails with 422 already_exists, which is how a
-    # duplicate created here surfaces as a Release Notes Sync failure two
-    # workflows later (0.7.3, two creates 82ms apart). Uniqueness IS enforced on
-    # update, so the damage is only visible after the fact. Concurrency group
-    # names are repo-wide, not workflow-scoped, so an identical string across
-    # workflows serializes these jobs and the loser then takes its existing
-    # "already exists, skipping" path. Must stay byte-identical in all three.
-    concurrency:
-      group: otto-release-ensure-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-      cancel-in-progress: false
+    # On a `v*` tag Desktop Release creates the release and this job only waits
+    # for it. On an `android-v*` retry tag Desktop Release does not run at all,
+    # so this job is the creator instead.
+    #
+    # Do not restore the repo-wide concurrency group these three workflows used
+    # to share to serialize their creates. A group holds at most ONE pending
+    # job, so a third arrival cancels the one already waiting, and a cancelled
+    # lock job silently skips everything downstream of it: 0.7.5 lost this APK
+    # that way, 0.7.6 lost all three desktop platforms. See
+    # scripts/ensure-github-release.mjs.
     permissions:
       contents: write
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v7
@@ -77,30 +74,24 @@ jobs:
         run: node scripts/emit-release-env.mjs --source-tag "$SOURCE_TAG" >> "$GITHUB_ENV"
 
       - name: Ensure GitHub release exists
+        if: env.IS_SMOKE_TAG != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A plain `v*` push also starts Desktop Release, which owns creation.
+          # Anything else reached this workflow on its own and must create.
+          ENSURE_MODE: ${{ github.event_name == 'push' && startsWith(github.ref_name, 'v') && 'wait' || 'create' }}
         shell: bash
         run: |
           set -euo pipefail
-
-          if gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            exit 0
-          fi
-
-          release_args=(
-            release create "$RELEASE_TAG"
-            --repo "${{ github.repository }}"
-            --title "Otto $RELEASE_TAG"
-            --notes ""
-          )
-
+          prerelease_flag=()
           if [[ "$IS_PRERELEASE" == "true" ]]; then
-            release_args+=(--prerelease)
+            prerelease_flag=(--prerelease)
           fi
-
-          if ! gh "${release_args[@]}"; then
-            echo "Release creation raced with another workflow; continuing."
-          fi
+          node scripts/ensure-github-release.mjs \
+            --tag "$RELEASE_TAG" \
+            --repo "${{ github.repository }}" \
+            --mode "$ENSURE_MODE" \
+            "${prerelease_flag[@]}"
 
   publish-android-apk:
     needs: ensure-release
@@ -108,12 +99,45 @@ jobs:
       contents: write
       packages: read
     runs-on: ubuntu-latest
+    # A healthy run is ~45 minutes, almost all of it inside assembleRelease. The
+    # cap exists so a stalled build says "exceeded the maximum execution time"
+    # instead of sitting there; without it the default is six hours.
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      # Native ABI compilation and the Hermes bytecode pass are the memory peak
+      # of this build, and they land right after Metro finishes bundling. On EAS
+      # the same peak OOM-killed Hermes until production moved to a `large`
+      # worker (packages/app/eas.json). A GitHub-hosted runner cannot be resized,
+      # so buy the headroom instead: the preinstalled Android SDK/NDK, .NET and
+      # Haskell trees are dead weight here, and the default 4GB swapfile is thin
+      # for a peak this shape. A run terminated with a bare "The operation was
+      # canceled." and no annotation is what that peak looks like from outside.
+      - name: Make room for the native build
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Before:"
+          df -h / | tail -1
+          free -h | sed -n '1,3p'
+
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+
+          sudo swapoff -a || true
+          sudo rm -f /mnt/swapfile /swapfile || true
+          sudo fallocate -l 12G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+
+          echo "After:"
+          df -h / | tail -1
+          free -h | sed -n '1,3p'
 
       - name: Resolve release tag
         shell: bash
@@ -147,6 +171,24 @@ jobs:
           APP_VARIANT: production
         run: npx expo prebuild --platform android --clean --non-interactive
         working-directory: packages/app
+
+      # `--clean` regenerates android/ from scratch every run, so anything set
+      # here has to be written after prebuild, not committed. Expo's default is
+      # -Xmx2048m, which leaves R8 and the Kotlin daemon fighting over one small
+      # heap on a build this size. The daemon is disabled outright: it survives
+      # the task that starts it, and a second JVM sitting on the runner is
+      # exactly the memory this build cannot spare.
+      - name: Give Gradle room for the release build
+        shell: bash
+        working-directory: packages/app/android
+        run: |
+          set -euo pipefail
+          {
+            echo "org.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+            echo "kotlin.compiler.execution.strategy=in-process"
+            echo "kotlin.daemon.jvmargs=-Xmx2g"
+          } >> gradle.properties
+          grep -E "jvmargs|execution.strategy" gradle.properties
 
       # `-Pandroid.injected.version.code` is a NO-OP for assembleRelease under
       # AGP 8 — it silently yields versionCode 1, which Android refuses to

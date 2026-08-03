@@ -20,20 +20,24 @@ on:
         default: false
         type: boolean
 
-# Shared with desktop-release.yml and android-apk-release.yml so the three
-# workflows that can create this release queue instead of racing. See the note
-# on desktop-release.yml's create-release job for why a race here is invisible
-# at creation time and only surfaces later as a 422 on update. This workflow
-# reaches the create path only on a tag push (--create-if-missing below), but it
-# shares the group anyway so its update also lands after any pending create.
-# Must stay byte-identical in all three.
+# This workflow never creates the release on a tag push: Desktop Release owns
+# creation for a `v*` tag and this one waits for it below. Two workflows both
+# running `gh release create` for one tag both succeed (GitHub does not enforce
+# tag_name uniqueness on create) and every later PATCH then fails with 422
+# already_exists, which is exactly how 0.7.3 broke.
+#
+# The three workflows used to share one repo-wide concurrency group to
+# serialize instead. Do not restore it: a group holds at most ONE pending job,
+# so a third arrival cancels the job already waiting, and downstream jobs treat
+# a cancelled lock as "skip me". See scripts/ensure-github-release.mjs.
 concurrency:
-  group: otto-release-ensure-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+  group: release-notes-sync-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   sync-release-notes:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
 
@@ -41,6 +45,18 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Wait for the release to exist
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ensure-github-release.mjs \
+            --tag "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --mode wait
 
       - name: Sync release body from changelog
         env:
@@ -60,10 +76,11 @@ jobs:
             args+=(--tag "$INPUT_TAG")
           fi
 
+          # A tag push deliberately does NOT create: the wait step above already
+          # confirmed Desktop Release created it, and a second creator is how a
+          # tag ends up with two releases and a permanently 422-ing update.
           create_if_missing="false"
-          if [[ "$EVENT_NAME" = "push" && "$REF" == refs/tags/v* ]]; then
-            create_if_missing="true"
-          elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "${INPUT_CREATE_IF_MISSING:-false}" = "true" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "${INPUT_CREATE_IF_MISSING:-false}" = "true" ]; then
             create_if_missing="true"
           fi
 
