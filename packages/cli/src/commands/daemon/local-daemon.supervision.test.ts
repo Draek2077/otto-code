@@ -122,7 +122,9 @@ describe("local daemon launch supervision", () => {
     await vi.advanceTimersByTimeAsync(1200);
     const result = await resultPromise;
 
-    expect(result).toEqual({ pid: 4242, logPath: "/tmp/otto-test/daemon.log" });
+    // logPath is a real filesystem path built with path.join, so its separator
+    // is platform-native; a hardcoded POSIX literal fails on Windows.
+    expect(result).toEqual({ pid: 4242, logPath: path.join("/tmp/otto-test", "daemon.log") });
     expect(runtime.daemonProcess.wasUnreferenced).toBe(true);
     expect(runtime.recordedLaunches.map((launch) => launch.mode)).toEqual(["detached"]);
     const launch = runtime.recordedLaunches[0];

@@ -4,7 +4,7 @@ import assert from "node:assert";
 import { readFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { $ } from "zx";
+import { $ } from "./helpers/zx-shell.ts";
 import { getAvailablePort } from "./helpers/network.ts";
 
 $.verbose = false;

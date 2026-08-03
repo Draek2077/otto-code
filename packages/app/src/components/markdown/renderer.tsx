@@ -93,6 +93,26 @@ const defaultMarkdownParser = applyMath(
 );
 
 /**
+ * Past this many characters a document skips the html-ish splitter and
+ * markdown parsing entirely and renders as plain themed text. Both run on the
+ * UI thread over content the app does not author (model output, repo files),
+ * so this bounds the worst case if any parser rule turns out super-linear:
+ * the resolved markdown-it once shipped quadratic smartquotes and linkify
+ * rules (GHSA-6v5v-wf23-fmfq, GHSA-v245-v573-v5vm).
+ */
+const MAX_MARKDOWN_PARSE_LENGTH = 500_000;
+
+const ThemedOversizedText = withUnistyles(Text);
+
+function oversizedTextStyleMapping(theme: Theme): Partial<TextProps> {
+  return { style: createMarkdownStyles(theme).body as TextStyle };
+}
+
+function compactOversizedTextStyleMapping(theme: Theme): Partial<TextProps> {
+  return { style: createCompactMarkdownStyles(theme).body as TextStyle };
+}
+
+/**
  * Deliberately untranslated. These are GitHub's markdown vocabulary, written
  * into the document's own source as `[!NOTE]`, and a reader comparing the
  * rendering to the source should see the same word.
@@ -151,16 +171,17 @@ export function MarkdownRenderer({
   workspaceImages = null,
   onToggleTask = null,
 }: MarkdownRendererProps) {
+  const oversized = text.length > MAX_MARKDOWN_PARSE_LENGTH;
   const markdownRules = useMemo(() => rules ?? createSharedMarkdownRules(), [rules]);
   const parts = useMemo(
     () =>
-      enableHtmlish
+      enableHtmlish && !oversized
         ? splitHtmlishMarkdown(text, {
             remoteImages,
             localImages: workspaceImages ? "workspace" : "off",
           })
         : [{ kind: "markdown" as const, text }],
-    [enableHtmlish, remoteImages, text, workspaceImages],
+    [enableHtmlish, oversized, remoteImages, text, workspaceImages],
   );
   const rendererProps = useMemo(
     () => ({
@@ -180,6 +201,19 @@ export function MarkdownRenderer({
       topLevelMaxExceededItem,
     ],
   );
+
+  if (oversized) {
+    return (
+      <AppearanceStyleBoundary>
+        <ThemedOversizedText
+          uniProps={compact ? compactOversizedTextStyleMapping : oversizedTextStyleMapping}
+          selectable
+        >
+          {text}
+        </ThemedOversizedText>
+      </AppearanceStyleBoundary>
+    );
+  }
 
   return (
     <AppearanceStyleBoundary>

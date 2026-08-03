@@ -56,6 +56,10 @@ import type {
 } from "./workspace-git-service.js";
 import type { GitCommandRuntimeMetricsSnapshot } from "../utils/git-command-runtime-metrics.js";
 import { snapshotGitCommandRuntimeMetrics } from "../utils/run-git-command.js";
+import {
+  snapshotWorkspaceDescriptorMetrics,
+  type WorkspaceDescriptorMetricsSnapshot,
+} from "./workspace-directory.js";
 import type { WorkspaceAutoName } from "./workspace-auto-name.js";
 import type { AgentAutoTitle } from "./agent/agent-auto-title.js";
 import { deriveProjectSlug } from "./workspace-git-metadata.js";
@@ -154,7 +158,8 @@ interface WebSocketServerConfig {
   hostnames?: HostnamesConfig;
 }
 
-type WebSocketRuntimeMetrics = SessionRuntimeMetrics & CheckoutDiffMetrics;
+type WebSocketRuntimeMetrics = SessionRuntimeMetrics &
+  CheckoutDiffMetrics & { workspaceDescriptor: WorkspaceDescriptorMetricsSnapshot };
 interface GitRuntimeMetrics {
   commands: GitCommandRuntimeMetricsSnapshot;
   workspaceService: WorkspaceGitServiceMetrics;
@@ -222,6 +227,15 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     setActiveWorkspace: () => {},
     peekSnapshot: () => null,
     getCheckout: async (cwd: string) => ({
+      cwd,
+      isGit: false,
+      currentBranch: null,
+      remoteUrl: null,
+      worktreeRoot: null,
+      isOttoOwnedWorktree: false,
+      mainRepoRoot: null,
+    }),
+    getCheckoutLite: async (cwd: string) => ({
       cwd,
       isGit: false,
       currentBranch: null,
@@ -2166,6 +2180,7 @@ export class VoiceAssistantWebSocketServer {
     }
 
     this.sessions.delete(ws);
+    this.releaseActiveWorkspaceIfUnattended();
     if (connection.kind === "hub") {
       this.socketIdentities.delete(ws);
       connection.connectionLogger.info(
@@ -2223,6 +2238,24 @@ export class VoiceAssistantWebSocketServer {
     await this.cleanupConnection(connection, "Client disconnected");
   }
 
+  /**
+   * Drop the sticky active workspace once the last socket goes away.
+   *
+   * `setActiveWorkspace` is only ever called from a client focus signal and is
+   * deliberately sticky, so without this it would survive every disconnect and
+   * keep the git service's 60 s self-heal and 180 s background `git fetch`
+   * running against a daemon nobody is attached to — overnight network fetches
+   * with zero clients. The next heartbeat after a client returns re-derives the
+   * active workspace from its focus (`Session.syncActiveWorkspaceFromActivity`),
+   * so this is a pause, not a loss.
+   */
+  private releaseActiveWorkspaceIfUnattended(): void {
+    if (this.sessions.size > 0) {
+      return;
+    }
+    this.workspaceGitService.setActiveWorkspace(null);
+  }
+
   private async cleanupConnection(
     connection: TrustedSessionConnection,
     logMessage: string,
@@ -2238,6 +2271,7 @@ export class VoiceAssistantWebSocketServer {
       this.socketIdentities.delete(socket);
     }
     connection.sockets.clear();
+    this.releaseActiveWorkspaceIfUnattended();
     const existing = this.externalSessionsByKey.get(connection.clientId);
     if (existing === connection) {
       this.externalSessionsByKey.delete(connection.clientId);
@@ -2705,6 +2739,9 @@ export class VoiceAssistantWebSocketServer {
 
     return {
       ...this.checkoutDiffManager.getMetrics(),
+      // Process-wide, not per-session: one rebuild per session per lifecycle
+      // event is exactly the cost this window exists to expose.
+      workspaceDescriptor: snapshotWorkspaceDescriptorMetrics(),
       terminalDirectorySubscriptionCount,
       terminalSubscriptionCount,
       workspaceGitWatchedDirectoryCount,

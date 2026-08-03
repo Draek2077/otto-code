@@ -504,6 +504,50 @@ describe("real provider usage fetchers", () => {
     expect(usageCalls).toBe(2);
   });
 
+  it("preserves unmodeled Claude credential fields across a token refresh", async () => {
+    writeFileSync(
+      join(claudeHome, ".credentials.json"),
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "at_expired",
+          refreshToken: "rt_valid",
+          expiresAt: 1_750_000_000_000,
+          scopes: ["user:inference", "user:profile"],
+          subscriptionType: "pro",
+        },
+        unmodeledTopLevel: { keep: true },
+      }),
+    );
+    let usageCalls = 0;
+    fetchApi = vi.fn(async (url: RequestInfo | URL) => {
+      const endpoint = url.toString();
+      if (endpoint === "https://api.anthropic.com/api/oauth/usage") {
+        usageCalls += 1;
+        if (usageCalls === 1) return new Response(null, { status: 401 });
+        return jsonResponse(makeClaudeResponse());
+      }
+      if (endpoint === "https://platform.claude.com/v1/oauth/token") {
+        return jsonResponse({ access_token: "at_refreshed", refresh_token: "rt_new" });
+      }
+      throw new Error(`Unmocked: ${endpoint}`);
+    }) as never;
+
+    const result = await service().listUsage();
+
+    expect(findProvider(result, "claude").status).toBe("available");
+    const saved = JSON.parse(readFileSync(join(claudeHome, ".credentials.json"), "utf8"));
+    expect(saved).toEqual({
+      claudeAiOauth: {
+        accessToken: "at_refreshed",
+        refreshToken: "rt_new",
+        expiresAt: 1_750_000_000_000,
+        scopes: ["user:inference", "user:profile"],
+        subscriptionType: "pro",
+      },
+      unmodeledTopLevel: { keep: true },
+    });
+  });
+
   it("returns unavailable Claude usage when 401 persists after refresh", async () => {
     writeClaudeCredentials(claudeHome, "at_bad", "rt_bad");
     fetchApi = mockFetch(
@@ -629,6 +673,54 @@ describe("real provider usage fetchers", () => {
     } finally {
       rmSync(alternateCodexHome, { recursive: true, force: true });
     }
+  });
+
+  it("preserves unmodeled Codex auth fields across a token refresh", async () => {
+    writeFileSync(
+      join(codexHome, "auth.json"),
+      JSON.stringify({
+        OPENAI_API_KEY: "sk-user-key",
+        tokens: {
+          id_token: "idt_codex",
+          access_token: "at_codex_stale",
+          refresh_token: "rt_codex_valid",
+          account_id: "acc_1",
+        },
+        last_refresh: "2026-01-01T00:00:00Z",
+      }),
+    );
+    let usageCalls = 0;
+    fetchApi = mockFetch(
+      new Map([
+        [
+          "https://chatgpt.com/backend-api/wham/usage",
+          () => {
+            usageCalls += 1;
+            if (usageCalls === 1) return new Response(null, { status: 401 });
+            return jsonResponse(makeCodexResponse());
+          },
+        ],
+        [
+          "https://auth.openai.com/oauth/token",
+          () => jsonResponse({ access_token: "at_codex_fresh" }),
+        ],
+      ]),
+    );
+
+    const result = await service().listUsage();
+
+    expect(findProvider(result, "codex").status).toBe("available");
+    const saved = JSON.parse(readFileSync(join(codexHome, "auth.json"), "utf8"));
+    expect(saved).toEqual({
+      OPENAI_API_KEY: "sk-user-key",
+      tokens: {
+        id_token: "idt_codex",
+        access_token: "at_codex_fresh",
+        refresh_token: "rt_codex_valid",
+        account_id: "acc_1",
+      },
+      last_refresh: "2026-01-01T00:00:00Z",
+    });
   });
 
   it("fetches Copilot usage from COPILOT_TOKEN", async () => {

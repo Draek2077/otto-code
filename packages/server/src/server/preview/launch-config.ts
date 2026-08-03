@@ -11,7 +11,7 @@ import { z } from "zod";
 
 export const LAUNCH_CONFIG_RELATIVE_PATH = path.join(".claude", "launch.json");
 
-const LaunchConfigurationSchema = z.object({
+export const LaunchConfigurationSchema = z.object({
   name: z.string().min(1),
   runtimeExecutable: z.string().min(1),
   runtimeArgs: z.array(z.string()).default([]),
@@ -19,7 +19,7 @@ const LaunchConfigurationSchema = z.object({
   env: z.record(z.string(), z.string()).optional(),
 });
 
-const LaunchConfigSchema = z.object({
+export const LaunchConfigSchema = z.object({
   version: z.string().optional(),
   configurations: z.array(LaunchConfigurationSchema),
 });

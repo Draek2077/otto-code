@@ -744,6 +744,10 @@ function BrainServerSection({ serverId }: { serverId: string }) {
     (raw: string) => patchRemote({ authToken: raw.trim().length > 0 ? raw.trim() : null }),
     [patchRemote],
   );
+  const handleRemoteFingerprint = useCallback(
+    (raw: string) => patchRemote({ certFingerprint: raw.trim().length > 0 ? raw.trim() : null }),
+    [patchRemote],
+  );
 
   if (!brain) {
     return null;
@@ -823,6 +827,17 @@ function BrainServerSection({ serverId }: { serverId: string }) {
                 testID="host-brain-remote-secure-switch"
               />
             </View>
+            {brain.remote.secure ? (
+              <BrainTextRow
+                title="Certificate fingerprint"
+                hint="SHA-256 fingerprint of the remote brain's certificate. Set it to pin a self-signed certificate; leave empty when the certificate is trusted normally."
+                value={brain.remote.certFingerprint ?? ""}
+                placeholder="AB:12:CD:34:..."
+                showBorder
+                onCommit={handleRemoteFingerprint}
+                testID="host-brain-remote-fingerprint-input"
+              />
+            ) : null}
             <BrainTextRow
               title="Auth token"
               hint="Bearer token the remote brain requires, if any."

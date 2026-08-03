@@ -1599,7 +1599,7 @@ describe("executeAutomationCommand", () => {
 
   test("evaluate returns oversized results with explicit truncation", async () => {
     const browser = new BrowserAutomationHarness();
-    browser.tab.evaluateScriptResult = { ok: true, resultJson: "x".repeat(80_010) };
+    browser.tab.evaluateScriptResult = { ok: true, resultJson: "x".repeat(30_010) };
 
     const result = await browser.execute({
       command: "evaluate",
@@ -1612,14 +1612,14 @@ describe("executeAutomationCommand", () => {
       result: {
         command: "evaluate",
         browserId: BROWSER_A,
-        resultJson: JSON.stringify("x".repeat(79_000)),
+        resultJson: JSON.stringify("x".repeat(29_000)),
         truncated: true,
       },
     });
     if (!result.ok) {
       throw new Error("Expected evaluate to succeed");
     }
-    expect(JSON.parse(result.result.resultJson)).toBe("x".repeat(79_000));
+    expect(JSON.parse(result.result.resultJson)).toBe("x".repeat(29_000));
   });
 
   test("evaluate caps oversized results inside the page script", async () => {
@@ -1631,9 +1631,9 @@ describe("executeAutomationCommand", () => {
     });
 
     expect(
-      containsScript(browser.tab, "__OTTO_BROWSER_EVALUATE__", "resultJson.length <= 80000"),
+      containsScript(browser.tab, "__OTTO_BROWSER_EVALUATE__", "resultJson.length <= 30000"),
     ).toBe(true);
-    expect(containsScript(browser.tab, "resultJson.slice(0, 79000)")).toBe(true);
+    expect(containsScript(browser.tab, "resultJson.slice(0, 29000)")).toBe(true);
   });
 
   test("screenshot captures the painted viewport", async () => {

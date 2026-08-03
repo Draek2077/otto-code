@@ -60,17 +60,17 @@ const testWithGitHubCliAuth = hasRequiredGitHubCliAuth ? test : test.skip;
 
 function initGitRepo(repoDir: string): void {
   execSync("git init -b main", { cwd: repoDir, stdio: "pipe" });
-  execSync("git config user.email 'otto-test@example.com'", {
+  execSync('git config user.email "otto-test@example.com"', {
     cwd: repoDir,
     stdio: "pipe",
   });
-  execSync("git config user.name 'Otto Test'", {
+  execSync('git config user.name "Otto Test"', {
     cwd: repoDir,
     stdio: "pipe",
   });
   writeFileSync(path.join(repoDir, "README.md"), "init\n");
   execSync("git add README.md", { cwd: repoDir, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'Initial commit'", {
+  execSync('git -c commit.gpgsign=false commit -m "Initial commit"', {
     cwd: repoDir,
     stdio: "pipe",
   });

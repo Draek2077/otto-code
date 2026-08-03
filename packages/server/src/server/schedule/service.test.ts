@@ -35,10 +35,15 @@ import { archiveByScope, type ActiveWorkspaceRef } from "../workspace-archive-se
 import {
   ScheduleService,
   ScheduleTargetGoneError,
+  pruneScheduleRuns,
   type ScheduleServiceOptions,
 } from "./service.js";
 import { ScheduleStore } from "./store.js";
-import type { ScheduleExecutionResult, StoredSchedule } from "@otto-code/protocol/schedule/types";
+import type {
+  ScheduleExecutionResult,
+  ScheduleRun,
+  StoredSchedule,
+} from "@otto-code/protocol/schedule/types";
 
 interface ScheduleServiceInternals {
   executeSchedule(schedule: StoredSchedule, runId: string): Promise<ScheduleExecutionResult>;
@@ -2407,6 +2412,245 @@ describe("ScheduleService", () => {
     await service2.stop();
   });
 
+  test("rejects an unsatisfiable cron expression at creation even with runOnCreate", async () => {
+    const service = createScheduleService({
+      ottoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({ agentId: null, output: "ok" }),
+    });
+
+    await expect(
+      service.create({
+        prompt: "Never fires",
+        cadence: { type: "cron", expression: "0 0 31 4 *" },
+        target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+        runOnCreate: true,
+      }),
+    ).rejects.toThrow("Cron expression has no matching run time within the next year: 0 0 31 4 *");
+    expect(await service.list()).toHaveLength(0);
+  });
+
+  test("pauses a persisted unsatisfiable cron schedule after its run instead of re-firing", async () => {
+    let runCount = 0;
+    const service = createScheduleService({
+      ottoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => {
+        runCount += 1;
+        return { agentId: null, output: "ok" };
+      },
+    });
+    // Seed directly through the store, bypassing creation-time validation, to
+    // model a schedule persisted before the satisfiability probe existed.
+    const store = new ScheduleStore(join(tempDir, "schedules"));
+    const seeded = await store.create({
+      name: null,
+      prompt: "Poisoned cadence",
+      cadence: { type: "cron", expression: "0 0 31 4 *" },
+      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+      status: "active",
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      nextRunAt: now.toISOString(),
+      lastRunAt: null,
+      lastRunStatus: null,
+      lastRunError: null,
+      pausedAt: null,
+      expiresAt: null,
+      maxRuns: null,
+      runs: [],
+    });
+
+    await service.tick();
+
+    const afterFirstTick = await service.inspect(seeded.id);
+    expect(runCount).toBe(1);
+    expect(afterFirstTick.runs).toHaveLength(1);
+    expect(afterFirstTick.runs[0].status).toBe("succeeded");
+    expect(afterFirstTick.runs[0].endedAt).not.toBeNull();
+    expect(afterFirstTick.status).toBe("paused");
+    expect(afterFirstTick.nextRunAt).toBeNull();
+    expect(afterFirstTick.lastRunError).toBe(
+      "Schedule paused: cron expression has no matching run time within the next year: 0 0 31 4 *",
+    );
+
+    now = new Date("2026-01-01T00:01:00.000Z");
+    await service.tick();
+    expect(runCount).toBe(1);
+    expect((await service.inspect(seeded.id)).runs).toHaveLength(1);
+  });
+
+  test("startup pauses a persisted unsatisfiable cron schedule instead of failing to boot", async () => {
+    const store = new ScheduleStore(join(tempDir, "schedules"));
+    const seeded = await store.create({
+      name: null,
+      prompt: "Poisoned cadence at boot",
+      cadence: { type: "cron", expression: "0 0 31 4 *" },
+      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+      status: "active",
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      nextRunAt: now.toISOString(),
+      lastRunAt: null,
+      lastRunStatus: null,
+      lastRunError: null,
+      pausedAt: null,
+      expiresAt: null,
+      maxRuns: null,
+      runs: [
+        {
+          id: "run-poisoned-interrupted",
+          scheduledFor: now.toISOString(),
+          startedAt: now.toISOString(),
+          endedAt: null,
+          status: "running",
+          agentId: null,
+          output: null,
+          error: null,
+        },
+      ],
+    });
+
+    now = new Date("2026-01-01T00:10:00.000Z");
+    const service = createScheduleService({
+      ottoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({ agentId: null, output: "ok" }),
+    });
+    await service.start();
+
+    const inspected = await service.inspect(seeded.id);
+    expect(inspected.status).toBe("paused");
+    expect(inspected.nextRunAt).toBeNull();
+    expect(inspected.runs[0]).toMatchObject({
+      status: "failed",
+      error: "Daemon restarted before the scheduled run completed",
+    });
+    await service.stop();
+  });
+
+  test("caps how many schedule runs may be in flight across overlapping ticks", async () => {
+    let releaseRuns: (() => void) | null = null;
+    const gate = new Promise<void>((resolve) => {
+      releaseRuns = resolve;
+    });
+    let started = 0;
+    let notifyStart: (() => void) | null = null;
+    const service = createScheduleService({
+      ottoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => {
+        started += 1;
+        notifyStart?.();
+        await gate;
+        return { agentId: null, output: "ok" };
+      },
+    });
+    for (let index = 0; index < 6; index += 1) {
+      await service.create({
+        prompt: `due schedule ${index}`,
+        cadence: { type: "every", everyMs: 60_000 },
+        target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+      });
+    }
+
+    // Each tick starts the first due-and-not-running schedule and blocks on its
+    // runner; waiting for the start signal before the next tick makes the
+    // in-flight count deterministic.
+    const blockedTicks: Promise<void>[] = [];
+    for (let index = 0; index < 5; index += 1) {
+      const runStarted = new Promise<void>((resolve) => {
+        notifyStart = resolve;
+      });
+      blockedTicks.push(service.tick());
+      await runStarted;
+    }
+    expect(started).toBe(5);
+
+    // The sixth schedule is due, but the cap keeps this tick from starting it.
+    await service.tick();
+    expect(started).toBe(5);
+
+    releaseRuns?.();
+    await Promise.all(blockedTicks);
+  });
+
+  test("does not restart a schedule an overlapping tick already ran from a stale snapshot", async () => {
+    let releaseSlowRun: (() => void) | null = null;
+    const slowRunGate = new Promise<void>((resolve) => {
+      releaseSlowRun = resolve;
+    });
+    let notifySlowRunStarted: (() => void) | null = null;
+    const slowRunStarted = new Promise<void>((resolve) => {
+      notifySlowRunStarted = resolve;
+    });
+    let fastRuns = 0;
+    const service = createScheduleService({
+      ottoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async (schedule) => {
+        if (schedule.prompt === "slow") {
+          notifySlowRunStarted?.();
+          await slowRunGate;
+          return { agentId: null, output: "ok" };
+        }
+        fastRuns += 1;
+        return { agentId: null, output: "ok" };
+      },
+    });
+    const slow = await service.create({
+      prompt: "slow",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+    });
+    // A later createdAt sorts the fast schedule after the slow one, so the
+    // first tick's snapshot processes slow first and holds fast's stale entry.
+    now = new Date("2026-01-01T00:00:00.001Z");
+    const fast = await service.create({
+      prompt: "fast",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+    });
+
+    // The first tick snapshots [slow, fast] and blocks awaiting slow's run.
+    now = new Date("2026-01-01T00:01:00.000Z");
+    const blockedTick = service.tick();
+    await slowRunStarted;
+
+    // An overlapping tick skips the claimed slow schedule and runs fast to
+    // completion, advancing its nextRunAt past the blocked tick's snapshot.
+    await service.tick();
+    expect(fastRuns).toBe(1);
+
+    // When the blocked tick resumes, its snapshot entry for fast is stale and
+    // still looks due; the pre-start re-read must keep it from running again.
+    releaseSlowRun?.();
+    await blockedTick;
+    expect(fastRuns).toBe(1);
+    expect((await service.inspect(fast.id)).runs).toHaveLength(1);
+    expect((await service.inspect(slow.id)).runs).toHaveLength(1);
+  });
+
   test("keeps schedules paused when an in-flight run finishes after pause", async () => {
     let releaseRun: (() => void) | null = null;
     const runStarted = new Promise<void>((resolve) => {
@@ -3647,5 +3891,177 @@ describe("ScheduleService", () => {
     now = new Date("2026-01-01T00:01:00.000Z");
     expect(await service.completeForAgent(agentId)).toBe(1);
     expect(await service.completeForAgent(agentId)).toBe(0);
+  });
+
+  // Run history is persisted whole and replayed whole by `schedule_logs`, so
+  // both the record count and each record's output are token-economy surfaces.
+  test("prunes run history to the retention window, keeping the newest runs", async () => {
+    const service = createScheduleService({
+      ottoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({ agentId: null, output: `ran-at-${now.toISOString()}` }),
+    });
+
+    const created = await service.create({
+      prompt: "open ended",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+    });
+
+    for (let minute = 1; minute <= 60; minute++) {
+      now = new Date(Date.UTC(2026, 0, 1, 0, minute, 0));
+      await service.tick();
+    }
+
+    const inspected = await service.inspect(created.id);
+    expect(inspected.runs).toHaveLength(50);
+    // Oldest dropped, newest kept.
+    expect(inspected.runs[0]?.output).toBe("ran-at-2026-01-01T00:11:00.000Z");
+    expect(inspected.runs.at(-1)?.output).toBe("ran-at-2026-01-01T01:00:00.000Z");
+  });
+
+  test("a maxRuns above the retention window still completes", async () => {
+    const service = createScheduleService({
+      ottoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({ agentId: null, output: "ok" }),
+    });
+
+    const created = await service.create({
+      prompt: "bounded",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+      maxRuns: 55,
+    });
+
+    for (let minute = 1; minute <= 60; minute++) {
+      now = new Date(Date.UTC(2026, 0, 1, 0, minute, 0));
+      await service.tick();
+    }
+
+    const inspected = await service.inspect(created.id);
+    // Completion counts the retained array, so retention never prunes below
+    // maxRuns — otherwise this schedule would run forever.
+    expect(inspected.runs).toHaveLength(55);
+    expect(inspected.status).toBe("completed");
+  });
+
+  test("truncates a long run output head/tail with a marker", async () => {
+    const service = createScheduleService({
+      ottoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({
+        agentId: null,
+        output: `${"H".repeat(2_000)}${"M".repeat(50_000)}${"T".repeat(2_000)}`,
+      }),
+    });
+
+    const created = await service.create({
+      prompt: "verbose",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+    });
+
+    now = new Date("2026-01-01T00:01:00.000Z");
+    await service.tick();
+
+    const output = (await service.inspect(created.id)).runs[0]?.output ?? "";
+    expect(output.length).toBeLessThan(2_500);
+    expect(output.startsWith("H".repeat(1_600))).toBe(true);
+    expect(output.endsWith("T".repeat(400))).toBe(true);
+    expect(output).toContain("characters truncated");
+    expect(output).toContain("open the run's chat for the full transcript");
+  });
+
+  test("a short run output is stored verbatim", async () => {
+    const service = createScheduleService({
+      ottoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({ agentId: null, output: "all green" }),
+    });
+
+    const created = await service.create({
+      prompt: "terse",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+    });
+
+    now = new Date("2026-01-01T00:01:00.000Z");
+    await service.tick();
+
+    expect((await service.inspect(created.id)).runs[0]?.output).toBe("all green");
+  });
+});
+
+describe("pruneScheduleRuns", () => {
+  function scheduleWithRuns(input: {
+    runs: ScheduleRun[];
+    maxRuns?: number | null;
+  }): StoredSchedule {
+    return {
+      id: "sched-1",
+      name: null,
+      prompt: "p",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "new-agent", config: { provider: "claude", cwd: "/tmp" } },
+      status: "active",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      nextRunAt: null,
+      lastRunAt: null,
+      pausedAt: null,
+      expiresAt: null,
+      maxRuns: input.maxRuns ?? null,
+      runs: input.runs,
+    };
+  }
+
+  function run(index: number, status: ScheduleRun["status"]): ScheduleRun {
+    return {
+      id: `run-${index}`,
+      scheduledFor: "2026-01-01T00:00:00.000Z",
+      startedAt: `2026-01-01T00:00:${String(index).padStart(2, "0")}.000Z`,
+      endedAt: status === "running" ? null : "2026-01-01T00:01:00.000Z",
+      status,
+      agentId: null,
+      output: null,
+      error: null,
+    };
+  }
+
+  test("leaves a history inside the window untouched", () => {
+    const schedule = scheduleWithRuns({
+      runs: Array.from({ length: 50 }, (_, index) => run(index, "succeeded")),
+    });
+    expect(pruneScheduleRuns(schedule)).toBe(schedule);
+  });
+
+  test("keeps every still-running run even when the window is full", () => {
+    // Dropping a running run would orphan the finishRun update that closes it.
+    const runs = [
+      ...Array.from({ length: 60 }, (_, index) => run(index, "succeeded")),
+      run(99, "running"),
+    ];
+    const pruned = pruneScheduleRuns(scheduleWithRuns({ runs }));
+
+    expect(pruned.runs).toHaveLength(50);
+    expect(pruned.runs.some((entry) => entry.id === "run-99")).toBe(true);
+    expect(pruned.runs.filter((entry) => entry.status !== "running")).toHaveLength(49);
   });
 });

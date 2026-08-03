@@ -31,6 +31,17 @@ interface HighlightDiffWithFileContentOptions {
   newFileContent?: string | null;
 }
 
+// Full-file highlighting buys the parser real context, but nothing bounds the file it runs
+// over: the 1 MB cap in `checkout-git.ts` bounds the *patch* text, not the file behind it. A
+// one-line edit to a 1.5 MB lockfile would otherwise push ~3 MB (old side plus new side)
+// through Lezer on the daemon thread on every watcher-driven refresh. Past this size the
+// hunk-reconstructed tokens are close enough, and they are already computed either way.
+const MAX_FULL_FILE_HIGHLIGHT_CHARS = 256 * 1024;
+
+export function isFullFileHighlightable(fileContent: string): boolean {
+  return fileContent.length <= MAX_FULL_FILE_HIGHLIGHT_CHARS;
+}
+
 interface ParseAndHighlightDiffOptions {
   getOldFileContent?: (file: ParsedDiffFile) => Promise<string | null>;
   getNewFileContent?: (file: ParsedDiffFile) => Promise<string | null>;
@@ -310,19 +321,26 @@ export async function highlightDiffWithFileContent(
   let newTokensByLine = reconstructedTokens.newTokensByLine;
   let oldTokensByLine = reconstructedTokens.oldTokensByLine;
 
-  if (typeof options.oldFileContent === "string") {
+  if (
+    typeof options.oldFileContent === "string" &&
+    isFullFileHighlightable(options.oldFileContent)
+  ) {
     oldTokensByLine = buildFullFileTokenLookup(options.oldFileContent, file.path);
   }
 
   if (typeof options.newFileContent === "string") {
-    newTokensByLine = buildFullFileTokenLookup(options.newFileContent, file.path);
+    if (isFullFileHighlightable(options.newFileContent)) {
+      newTokensByLine = buildFullFileTokenLookup(options.newFileContent, file.path);
+    }
     return applyTokensToHunks(file, newTokensByLine, oldTokensByLine);
   }
 
   const filePath = resolve(cwd, file.path);
   try {
     const fileContent = await readFile(filePath, "utf-8");
-    newTokensByLine = buildFullFileTokenLookup(fileContent, file.path);
+    if (isFullFileHighlightable(fileContent)) {
+      newTokensByLine = buildFullFileTokenLookup(fileContent, file.path);
+    }
   } catch {
     // If file read fails (deleted file, etc.), fall back to reconstructed new-side tokens.
   }

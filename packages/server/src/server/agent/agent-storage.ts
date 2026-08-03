@@ -156,6 +156,8 @@ export class AgentStorage {
   private cache: Map<string, StoredAgentRecord> = new Map();
   private daemonAgentIdsByExecution: Map<string, string> = new Map();
   private daemonExecutionKeysByAgentId: Map<string, string> = new Map();
+  private agentIdsByWorkspaceId: Map<string, Set<string>> = new Map();
+  private workspaceIdByAgentId: Map<string, string> = new Map();
   private pathById: Map<string, string> = new Map();
   private pathsById: Map<string, Set<string>> = new Map();
   private pendingWrites: Map<string, Promise<void>> = new Map();
@@ -174,9 +176,49 @@ export class AgentStorage {
     await this.load();
   }
 
-  async list(): Promise<StoredAgentRecord[]> {
+  /**
+   * Every stored record, or — with `scope` — the records reachable from it,
+   * resolved through the owner index instead of a full scan. A seeded home
+   * carries thousands of archived records, and the descriptor rebuild that runs
+   * on every agent lifecycle event only needs the handful owned by the
+   * workspaces it is rebuilding (plus, by id, the out-of-scope parents a
+   * subagent chain points at).
+   *
+   * `scope` narrows what is FETCHED, and callers must stay correct against a
+   * superset — the descriptor rebuild is, since it drops any agent whose
+   * workspace it is not building. That is what lets the scope be a pure
+   * optimization rather than a second source of truth about which agents count.
+   *
+   * A record with no `workspaceId` is reachable by id only: it has no owning
+   * workspace to be scoped to.
+   */
+  async list(scope?: {
+    workspaceIds?: ReadonlySet<string>;
+    agentIds?: ReadonlySet<string>;
+  }): Promise<StoredAgentRecord[]> {
     await this.load();
-    return Array.from(this.cache.values());
+    if (!scope) {
+      return Array.from(this.cache.values());
+    }
+
+    const matchedIds = new Set<string>();
+    for (const workspaceId of scope.workspaceIds ?? []) {
+      for (const agentId of this.agentIdsByWorkspaceId.get(workspaceId) ?? []) {
+        matchedIds.add(agentId);
+      }
+    }
+    for (const agentId of scope.agentIds ?? []) {
+      matchedIds.add(agentId);
+    }
+
+    const records: StoredAgentRecord[] = [];
+    for (const agentId of matchedIds) {
+      const record = this.cache.get(agentId);
+      if (record) {
+        records.push(record);
+      }
+    }
+    return records;
   }
 
   async get(agentId: string): Promise<StoredAgentRecord | null> {
@@ -201,9 +243,29 @@ export class AgentStorage {
       this.daemonAgentIdsByExecution.set(key, record.id);
       this.daemonExecutionKeysByAgentId.set(record.id, key);
     }
+    if (record.workspaceId) {
+      const siblings = this.agentIdsByWorkspaceId.get(record.workspaceId) ?? new Set<string>();
+      siblings.add(record.id);
+      this.agentIdsByWorkspaceId.set(record.workspaceId, siblings);
+      this.workspaceIdByAgentId.set(record.id, record.workspaceId);
+    }
   }
 
   private removeOwnerIndex(agentId: string): void {
+    // A chat that moves workspace re-indexes through here, so the workspace half
+    // must be unlinked even when the record carries no daemon-execution key.
+    const workspaceId = this.workspaceIdByAgentId.get(agentId);
+    if (workspaceId) {
+      const siblings = this.agentIdsByWorkspaceId.get(workspaceId);
+      if (siblings) {
+        siblings.delete(agentId);
+        if (siblings.size === 0) {
+          this.agentIdsByWorkspaceId.delete(workspaceId);
+        }
+      }
+      this.workspaceIdByAgentId.delete(agentId);
+    }
+
     const key = this.daemonExecutionKeysByAgentId.get(agentId);
     if (!key) return;
     if (this.daemonAgentIdsByExecution.get(key) === agentId) {
@@ -385,6 +447,8 @@ export class AgentStorage {
     this.cache.clear();
     this.daemonAgentIdsByExecution.clear();
     this.daemonExecutionKeysByAgentId.clear();
+    this.agentIdsByWorkspaceId.clear();
+    this.workspaceIdByAgentId.clear();
     this.pathById.clear();
     this.pathsById.clear();
 

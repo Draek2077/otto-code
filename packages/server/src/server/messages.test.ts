@@ -1,7 +1,11 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import type { AgentStreamEvent } from "./agent/agent-sdk-types.js";
-import { SessionInboundMessageSchema, serializeAgentStreamEvent } from "./messages.js";
+import {
+  AgentStreamEventPayloadSchema,
+  SessionInboundMessageSchema,
+  serializeAgentStreamEvent,
+} from "./messages.js";
 
 describe("serializeAgentStreamEvent", () => {
   test("accepts create_agent_request env records", () => {
@@ -161,5 +165,82 @@ describe("serializeAgentStreamEvent", () => {
     ];
 
     expect(events.map((event) => serializeAgentStreamEvent(event))).toEqual([null, null, null]);
+  });
+
+  test("parses a given event object once, however many sessions serialize it", () => {
+    const event: AgentStreamEvent = {
+      type: "timeline",
+      provider: "claude",
+      item: {
+        type: "user_message",
+        text: "shared across sessions",
+        messageId: "m-memo",
+      },
+    };
+    const safeParse = vi.spyOn(AgentStreamEventPayloadSchema, "safeParse");
+
+    try {
+      const first = serializeAgentStreamEvent(event);
+      const second = serializeAgentStreamEvent(event);
+      const third = serializeAgentStreamEvent(event);
+
+      expect(first).not.toBeNull();
+      expect(second).toBe(first);
+      expect(third).toBe(first);
+      expect(safeParse).toHaveBeenCalledTimes(1);
+    } finally {
+      safeParse.mockRestore();
+    }
+  });
+
+  test("parses distinct event objects separately, even when identical in content", () => {
+    const build = (): AgentStreamEvent => ({
+      type: "timeline",
+      provider: "claude",
+      item: {
+        type: "user_message",
+        text: "same content, different object",
+        messageId: "m-distinct",
+      },
+    });
+    const safeParse = vi.spyOn(AgentStreamEventPayloadSchema, "safeParse");
+
+    try {
+      const first = serializeAgentStreamEvent(build());
+      const second = serializeAgentStreamEvent(build());
+
+      expect(first).toEqual(second);
+      expect(first).not.toBe(second);
+      expect(safeParse).toHaveBeenCalledTimes(2);
+    } finally {
+      safeParse.mockRestore();
+    }
+  });
+
+  test("memoizes rejected events without re-parsing them", () => {
+    const invalid = {
+      type: "timeline",
+      provider: "codex",
+      item: {
+        type: "tool_call",
+        callId: "call_memo_invalid",
+        name: "shell",
+        status: "inProgress",
+        detail: {
+          type: "unknown",
+          input: { command: "pwd" },
+          output: null,
+        },
+      },
+    } as unknown as AgentStreamEvent;
+    const safeParse = vi.spyOn(AgentStreamEventPayloadSchema, "safeParse");
+
+    try {
+      expect(serializeAgentStreamEvent(invalid)).toBeNull();
+      expect(serializeAgentStreamEvent(invalid)).toBeNull();
+      expect(safeParse).toHaveBeenCalledTimes(1);
+    } finally {
+      safeParse.mockRestore();
+    }
   });
 });

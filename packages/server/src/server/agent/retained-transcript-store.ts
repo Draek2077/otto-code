@@ -4,6 +4,7 @@ import type { Logger } from "pino";
 import type { AgentSnapshotPayload } from "../messages.js";
 import type { AgentTimelineRow } from "./agent-timeline-store-types.js";
 import { writeJsonFileAtomic } from "../atomic-file.js";
+import { RETAINED_TRANSCRIPT_RESIDENCY_LIMIT } from "./retained-timeline-residency.js";
 
 // What produced a retained transcript, so it can be cascade-deleted when its
 // owner is deleted. Schedule and artifact generation agents are internal +
@@ -60,7 +61,10 @@ export class RetainedTranscriptStore {
   private readonly baseDir: string;
   private readonly logger: Logger;
   // In-memory cache so the hot read path (viewer opens a transcript) doesn't hit
-  // disk every time. Populated lazily on get() and on save().
+  // disk every time. Populated lazily on get() and on save(). LRU-capped at the
+  // same residency limit the timeline store uses: a cached record carries the
+  // full row set, so an unbounded cache would keep every transcript ever opened
+  // resident no matter what the timeline store evicted.
   private readonly cache = new Map<string, RetainedTranscriptRecord | null>();
 
   constructor(options: { ottoHome: string; logger: Logger }) {
@@ -80,7 +84,7 @@ export class RetainedTranscriptStore {
   async save(record: RetainedTranscriptRecord): Promise<void> {
     await this.ensureDir();
     await writeJsonFileAtomic(this.recordPath(record.agentId), record);
-    this.cache.set(record.agentId, record);
+    this.cacheRecord(record.agentId, record);
   }
 
   async get(agentId: string): Promise<RetainedTranscriptRecord | null> {
@@ -89,11 +93,27 @@ export class RetainedTranscriptStore {
     }
     const cached = this.cache.get(agentId);
     if (cached !== undefined) {
+      // Refresh recency so the transcript being read is not the next evicted.
+      this.cacheRecord(agentId, cached);
       return cached;
     }
     const record = await this.readFromDisk(agentId);
-    this.cache.set(agentId, record);
+    this.cacheRecord(agentId, record);
     return record;
+  }
+
+  // Map insertion order IS the LRU order: re-caching deletes and re-inserts, so
+  // the first key is always the least recently used.
+  private cacheRecord(agentId: string, record: RetainedTranscriptRecord | null): void {
+    this.cache.delete(agentId);
+    this.cache.set(agentId, record);
+    while (this.cache.size > RETAINED_TRANSCRIPT_RESIDENCY_LIMIT) {
+      const oldest = this.cache.keys().next();
+      if (oldest.done) {
+        break;
+      }
+      this.cache.delete(oldest.value);
+    }
   }
 
   has(agentId: string): boolean {

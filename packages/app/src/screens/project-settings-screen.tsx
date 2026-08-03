@@ -360,9 +360,15 @@ function ProjectSettingsBody({
         <HostContext hosts={hosts} selectedHost={selectedHost} onSelectHost={onSelectHost} />
       </View>
 
+      {/*
+        The selected host's project id, not `project.projectKey`. Links are a
+        per-host relation between two registry ids: the key would never equal a
+        `descriptor.projectId`, so this project stayed in its own "link to"
+        list, and `linkProjects` sent an id the daemon cannot resolve.
+      */}
       <ProjectLinksSection
         serverId={selectedHost.serverId}
-        projectId={project.projectKey}
+        projectId={selectedHost.projectId}
         client={client}
       />
 

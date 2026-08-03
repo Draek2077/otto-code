@@ -383,6 +383,41 @@ describe("Codex app-server provider", () => {
     });
   });
 
+  test('a "read" workspace access ceiling narrows thread/start sandbox below the mode preset', async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const session = createSession({ thinkingOptionId: "medium", workspaceAccess: "read" });
+    session.currentThreadId = null;
+    session.activeForegroundTurnId = null;
+    session.client = {
+      request: vi.fn(async (method: string, params: unknown) => {
+        requests.push({ method, params });
+        if (method === "thread/start") {
+          return { thread: { id: "ceiling-thread" } };
+        }
+        if (method === "turn/start") {
+          return {};
+        }
+        throw new Error(`Unexpected request: ${method}`);
+      }),
+    };
+
+    await session.startTurn("trigger thread creation");
+
+    const startCall = requests.find((req) => req.method === "thread/start");
+    // The "auto" preset asks for workspace-write; the ceiling must win.
+    expect(startCall?.params).toMatchObject({ sandbox: "read-only" });
+  });
+
+  test('capabilities admit "read" but not "none" — Codex has no tier below read-only', () => {
+    const provider = new CodexAppServerAgentClient(createTestLogger());
+    expect(provider.capabilities.supportsWorkspaceAccess).toBe(true);
+    // Never set without the enforcement behind it: the app-server protocol has
+    // no tool-deny list and the shell reads inside every sandbox tier, so
+    // "none" cannot be enforced here — the spawn gate refuses such nodes
+    // (capabilitiesEnforceAccess in agent/workspace-access.ts).
+    expect(provider.capabilities.supportsWorkspaceAccessNone).toBeUndefined();
+  });
+
   test("setMode and setThinkingOption return a next-turn notice while a turn is active", async () => {
     const session = createSession({ modeId: "auto", thinkingOptionId: "medium" });
 

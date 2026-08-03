@@ -41,7 +41,12 @@ import {
   claudeManifestModelSupportsThinkingOff,
   normalizeClaudeManifestModelId,
 } from "./model-manifest.js";
-import { deniedToolsForAccess, resolveWorkspaceAccess } from "../../workspace-access.js";
+import {
+  type WorkspaceAccess,
+  deniedToolsForAccess,
+  ottoToolsDeniedForAccess,
+  resolveWorkspaceAccess,
+} from "../../workspace-access.js";
 import { parsePartialJsonObject } from "./partial-json.js";
 import { ClaudeSidechainTracker } from "./sidechain-tracker.js";
 import { buildClaudeFeatures, claudeModelSupportsFastMode } from "./feature-definitions.js";
@@ -323,6 +328,9 @@ const CLAUDE_CAPABILITIES: AgentCapabilityFlags = {
   // Enforced in applyWorkspaceAccess: the level's denied tools are added to
   // disallowedTools and stripped from allowedTools at every option build.
   supportsWorkspaceAccess: true,
+  // "none" holds by the same mechanism: deniedToolsForAccess("none") covers
+  // the read tools and the shell as well.
+  supportsWorkspaceAccessNone: true,
 };
 
 const DEFAULT_MODES: AgentMode[] = [
@@ -617,6 +625,22 @@ const SUBMITTED_USER_MESSAGE_ID_LIMIT = 64;
 const MAX_RECENT_STDERR_CHARS = 4000;
 const STDERR_FLUSH_WAIT_MS = 150;
 const STDERR_FLUSH_POLL_INTERVAL_MS = 10;
+
+// A streamed tool input arrives as dozens of small JSON deltas. Re-reading the
+// whole accumulated buffer per delta is quadratic, and every change we surface
+// pushes a running tool_call carrying the entire content-so-far, which the
+// timeline store then retains as its own row. Below the floor the per-delta cost
+// is noise, so only large inputs (streamed Write/Edit bodies) are rate-limited;
+// the tail is always flushed when the input block ends.
+const RUNNING_TOOL_INPUT_THROTTLE_FLOOR_CHARS = 4 * 1024;
+const RUNNING_TOOL_INPUT_EMIT_INTERVAL_MS = 500;
+const RUNNING_TOOL_INPUT_EMIT_GROWTH_CHARS = 4 * 1024;
+
+interface RunningToolInputEmitState {
+  lastEmitAt: number;
+  lastEmitLength: number;
+  pending: boolean;
+}
 
 function summarizeClaudeOptionsForLog(options: ClaudeOptions): ClaudeOptionsLogSummary {
   const systemPromptRaw = options.systemPrompt;
@@ -2371,6 +2395,7 @@ class ClaudeAgentSession implements AgentSession {
   private toolUseCache = new Map<string, ToolUseCacheEntry>();
   private toolUseIndexToId = new Map<number, string>();
   private toolUseInputBuffers = new Map<string, string>();
+  private toolUseInputEmitState = new Map<string, RunningToolInputEmitState>();
   private pendingPermissions = new Map<string, PendingPermission>();
   private activeForegroundTurnId: string | null = null;
   private autonomousTurn: AutonomousTurnState | null = null;
@@ -3820,7 +3845,8 @@ class ClaudeAgentSession implements AgentSession {
    * legible to the next reader as well.
    */
   private applyWorkspaceAccess(base: ClaudeOptions): void {
-    const denied = deniedToolsForAccess(resolveWorkspaceAccess(this.config.workspaceAccess));
+    const access = resolveWorkspaceAccess(this.config.workspaceAccess);
+    const denied = [...deniedToolsForAccess(access), ...this.deniedOttoToolNames(access)];
     if (denied.length === 0) {
       return;
     }
@@ -3831,6 +3857,30 @@ class ClaudeAgentSession implements AgentSession {
       const deniedSet = new Set(denied);
       base.allowedTools = base.allowedTools.filter((tool) => !deniedSet.has(tool));
     }
+  }
+
+  /**
+   * The Otto catalog names the level forbids, in the `mcp__<server>__<tool>`
+   * form Claude sees them under. The daemon's MCP server already withholds
+   * these at catalog registration keyed on this agent's stored config
+   * (otto-tools.ts); this second layer rides the session's own config so the
+   * ceiling holds even if that lookup ever misses. Covers every otto-ish
+   * server name, matching the `mcp__otto…` grants in applyDontAskAllowlist.
+   */
+  private deniedOttoToolNames(access: WorkspaceAccess): string[] {
+    const leaves = ottoToolsDeniedForAccess(access);
+    if (leaves.length === 0) {
+      return [];
+    }
+    const names: string[] = [];
+    for (const serverName of Object.keys(this.config.mcpServers ?? {})) {
+      if (serverName === "otto" || serverName.startsWith("otto_")) {
+        for (const leaf of leaves) {
+          names.push(`mcp__${serverName}__${leaf}`);
+        }
+      }
+    }
+    return names;
   }
 
   /**
@@ -5830,6 +5880,7 @@ class ClaudeAgentSession implements AgentSession {
       }
     }
     this.toolUseCache.clear();
+    this.toolUseInputEmitState.clear();
     this.sidechainTracker.clear();
     this.observedSubagentUsage.clear();
   }
@@ -6590,6 +6641,7 @@ class ClaudeAgentSession implements AgentSession {
       ) {
         this.toolUseIndexToId.set(event.index, block.id);
         this.toolUseInputBuffers.delete(block.id);
+        this.toolUseInputEmitState.delete(block.id);
       }
       return false;
     }
@@ -6605,6 +6657,7 @@ class ClaudeAgentSession implements AgentSession {
     if (event.type === "content_block_stop" && typeof event.index === "number") {
       const toolId = this.toolUseIndexToId.get(event.index);
       if (toolId) {
+        this.flushRunningToolInput(toolId);
         this.toolUseIndexToId.delete(event.index);
         this.toolUseInputBuffers.delete(toolId);
       }
@@ -6684,6 +6737,14 @@ class ClaudeAgentSession implements AgentSession {
     }
     const buffer = (this.toolUseInputBuffers.get(toolId) ?? "") + partialJson;
     this.toolUseInputBuffers.set(toolId, buffer);
+    if (!this.claimRunningToolInputRead(toolId, buffer.length)) {
+      return;
+    }
+    this.readRunningToolInput(toolId, buffer);
+  }
+
+  /** Re-reads one streamed tool input and pushes a running tool_call if it changed. */
+  private readRunningToolInput(toolId: string, buffer: string): void {
     const entry = this.toolUseCache.get(toolId);
     const parsed = parsePartialJsonObject(buffer);
     if (!entry || !parsed) {
@@ -6709,6 +6770,44 @@ class ClaudeAgentSession implements AgentSession {
         output: null,
       }),
     );
+  }
+
+  /**
+   * Rate-limits how often one streamed tool input is re-read: buffers under the
+   * floor pass straight through, larger ones at most once per interval or per
+   * growth step. Skipped deltas are marked pending so {@link flushRunningToolInput}
+   * still sends the tail.
+   */
+  private claimRunningToolInputRead(toolId: string, bufferLength: number): boolean {
+    if (bufferLength < RUNNING_TOOL_INPUT_THROTTLE_FLOOR_CHARS) {
+      return true;
+    }
+    const state = this.toolUseInputEmitState.get(toolId);
+    if (
+      state &&
+      Date.now() - state.lastEmitAt < RUNNING_TOOL_INPUT_EMIT_INTERVAL_MS &&
+      bufferLength - state.lastEmitLength < RUNNING_TOOL_INPUT_EMIT_GROWTH_CHARS
+    ) {
+      state.pending = true;
+      return false;
+    }
+    this.toolUseInputEmitState.set(toolId, {
+      lastEmitAt: Date.now(),
+      lastEmitLength: bufferLength,
+      pending: false,
+    });
+    return true;
+  }
+
+  /** Reads the buffer one last time when the input block ends, so no tail is dropped. */
+  private flushRunningToolInput(toolId: string): void {
+    const state = this.toolUseInputEmitState.get(toolId);
+    this.toolUseInputEmitState.delete(toolId);
+    const buffer = this.toolUseInputBuffers.get(toolId);
+    if (!state?.pending || buffer === undefined) {
+      return;
+    }
+    this.readRunningToolInput(toolId, buffer);
   }
 
   private normalizeToolInput(input: unknown): AgentMetadata | null {

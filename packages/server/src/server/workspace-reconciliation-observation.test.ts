@@ -193,7 +193,7 @@ class ObservedPlacements {
     this.service = new WorkspaceReconciliationService({
       projectRegistry: this.projects,
       workspaceRegistry: this.workspaces,
-      workspaceGitService: { getCheckout: async (cwd) => this.readCheckout(cwd) },
+      workspaceGitService: { getCheckoutLite: async (cwd) => this.readCheckout(cwd) },
       logger,
       watchProjectRoot,
       clock: this.clock,

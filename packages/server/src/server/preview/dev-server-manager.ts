@@ -39,6 +39,30 @@ const PORT_PROBE_TIMEOUT_MS = 1_000;
 const ERROR_LINE_PATTERN = /error|exception|failed|fatal/i;
 /** serverId prefix for running servers observed by port probe, not by in-memory record. */
 const EXTERNAL_SERVER_ID_PREFIX = EXTERNAL_PREVIEW_SERVER_ID_PREFIX;
+/**
+ * Well-known local service ports an `ext:` stop must never tree-kill, no matter
+ * what launch.json claims or who asks. Adoption is a bare TCP probe, so a
+ * launch.json entry declaring port 5432 happily adopts a running Postgres;
+ * nothing on these ports is plausibly a dev server, and killing the real
+ * occupant (a database, sshd, the user's remote desktop) is exactly the
+ * "primitive for killing arbitrary local services" the other guards exist to
+ * prevent. Cheap defence in depth under the not-started-by-Otto refusal in
+ * `stopExternal`; adoption itself stays permissive so the misdeclared entry
+ * still surfaces in the UI instead of erroring.
+ */
+const NEVER_STOPPABLE_SERVICE_PORTS = new Map<number, string>([
+  [22, "SSH"],
+  [1433, "Microsoft SQL Server"],
+  [3306, "MySQL"],
+  [3389, "Remote Desktop"],
+  [5432, "PostgreSQL"],
+  [5672, "RabbitMQ"],
+  [6379, "Redis"],
+  [9092, "Kafka"],
+  [9200, "Elasticsearch"],
+  [11211, "memcached"],
+  [27017, "MongoDB"],
+]);
 
 export type PreviewServerStatus = "starting" | "running" | "exited";
 
@@ -118,6 +142,10 @@ export class DevServerManager {
    * Membership is also the authorization list for external stops: `ext:` stops
    * tree-kill whatever listens on the port, so only observed ports are
    * stoppable — never an arbitrary number an agent passes to preview_stop.
+   * Observation is still only a TCP probe, though, so even an observed port
+   * may be a database or another service, not a dev server; that is why
+   * `stopExternal` additionally refuses agent-initiated stops entirely and
+   * denylists well-known service ports.
    */
   private readonly externalServers = new Map<number, ExternalServerRecord>();
 
@@ -169,8 +197,8 @@ export class DevServerManager {
         logTail: [],
         note:
           `Port ${entry.port} was already serving, so this is that existing server rather than a ` +
-          `new one. Otto did not spawn it: it captured no logs, and preview_stop would tree-kill ` +
-          `whatever process owns the port. Verify against it normally.`,
+          `new one. Otto did not spawn it: it captured no logs, and preview_stop will refuse to ` +
+          `stop it (only the user may stop a process Otto did not start). Verify against it normally.`,
       };
     }
 
@@ -194,7 +222,10 @@ export class DevServerManager {
   /**
    * `requireCwd` scopes the stop to one workspace: agent-facing tools pass
    * their caller's cwd so an agent can only stop servers of its own workspace,
-   * while user-initiated UI stops omit it.
+   * while user-initiated UI stops omit it. Its presence doubles as the
+   * initiator marker: `stopExternal` refuses every agent-initiated (`requireCwd`
+   * present) stop of an `ext:` server, because those are processes Otto did
+   * not start.
    */
   async stop(serverId: string, options?: { requireCwd?: string }): Promise<PreviewServerSummary> {
     // Externally-observed servers (see reconcileRunning) carry no in-memory
@@ -330,6 +361,17 @@ export class DevServerManager {
           `(the daemon or a dev server hosting a connected Otto client).`,
       );
     }
+    // Checked before the observation lookup on purpose: these ports are
+    // unstoppable even when a launch.json declared them and a probe adopted
+    // whatever was listening.
+    const serviceName = NEVER_STOPPABLE_SERVICE_PORTS.get(port);
+    if (serviceName !== undefined) {
+      throw new Error(
+        `Refusing to stop "${serverId}": port ${port} is the well-known ${serviceName} port. ` +
+          `Whatever is listening there is a local service, not a preview dev server, and Otto ` +
+          `never tree-kills it. If ${serviceName} really must be stopped, use its own service tooling.`,
+      );
+    }
     // Only ports we ourselves observed as configured preview servers are
     // stoppable, and the launch config must still list the port at stop time —
     // otherwise this would be a primitive for killing arbitrary local services.
@@ -342,6 +384,21 @@ export class DevServerManager {
     }
     if (requireCwd !== undefined && cwd !== requireCwd) {
       throw new Error(`Server "${serverId}" belongs to a different workspace.`);
+    }
+    if (requireCwd !== undefined) {
+      // Every ext: record is by definition a process this daemon did not spawn:
+      // adoption is a port observation, not supervision, and a bare TCP probe
+      // cannot tell a dev server from a database that happens to hold a
+      // declared port. Killing a process Otto did not start is a decision for
+      // a person, so agent-initiated stops (the ones that carry a caller cwd)
+      // are refused outright. The UI's "Stop server" button (the unscoped RPC
+      // path) remains the deliberate user action docs/preview.md requires.
+      throw new Error(
+        `Refusing to stop "${serverId}": the process listening on port ${port} was not started ` +
+          `by Otto, it was only observed on a port ${LAUNCH_CONFIG_RELATIVE_PATH} declares, and ` +
+          `stopping it would tree-kill a process the user may depend on. Ask the user to stop it ` +
+          `themselves (the preview tab's "Stop server" button, or wherever they started it).`,
+      );
     }
     const config = await readLaunchConfig(cwd).catch(() => null);
     if (!config?.configurations.some((entry) => entry.port === port)) {

@@ -1834,6 +1834,45 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
     }
   });
 
+  // The active workspace is sticky on purpose — focus goes null whenever the user moves to a
+  // non-chat tab, and treating that as "nobody is here" would stop observing the workspace they
+  // are sitting in. But nothing used to clear it either, so after the last client disconnected
+  // the self-heal and the background fetch kept running against a daemon with zero attached
+  // clients, all night. Releasing it is what turns them off.
+  test("releasing the active workspace stops the periodic refresh entirely", async () => {
+    const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
+    let clockMs = Date.parse("2026-04-12T00:00:00.000Z");
+    const advance = async (ms: number): Promise<void> => {
+      clockMs += ms;
+      await vi.advanceTimersByTimeAsync(ms);
+      await flushPromises();
+    };
+
+    const service = createService({
+      getCheckoutStatus: getCheckoutStatus as never,
+      now: () => new Date(clockMs),
+    });
+
+    try {
+      service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
+      service.setActiveWorkspace(REPO_CWD);
+      await advance(WORKSPACE_GIT_SELF_HEAL_INTERVAL_MS + 5_000);
+      expect(callsForCwd(getCheckoutStatus, REPO_CWD)).toBeGreaterThan(0);
+
+      service.setActiveWorkspace(null);
+      const afterRelease = callsForCwd(getCheckoutStatus, REPO_CWD);
+      await advance(WORKSPACE_GIT_SELF_HEAL_INTERVAL_MS * 3 + 5_000);
+      expect(callsForCwd(getCheckoutStatus, REPO_CWD)).toBe(afterRelease);
+
+      // And the next focus signal brings it back, so this is a pause, not a loss.
+      service.setActiveWorkspace(REPO_CWD);
+      await advance(5_000);
+      expect(callsForCwd(getCheckoutStatus, REPO_CWD)).toBeGreaterThan(afterRelease);
+    } finally {
+      service.dispose();
+    }
+  });
+
   // Regression: `.git/HEAD` used to be watched as a file. Git never edits HEAD in place —
   // `git checkout` writes `HEAD.lock` and renames it over HEAD — and a file watch binds to
   // the inode, so after the first checkout the watcher held an unlinked file and went deaf.

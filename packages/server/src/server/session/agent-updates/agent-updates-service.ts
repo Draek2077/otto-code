@@ -14,6 +14,20 @@ type AgentUpdatesFilter = NonNullable<
   Extract<SessionInboundMessage, { type: "fetch_agents_request" }>["filter"]
 >;
 
+/**
+ * Coalescing window for the workspace-update tail of a forwarded agent change.
+ *
+ * A running agent fires lifecycle/permission/mode/steer events several times a
+ * second, and each one used to trigger a full workspace descriptor rebuild per
+ * connected session — the deep-equal dedupe downstream suppresses the wire send,
+ * not the rebuild. Batching per workspaceId turns a burst into one rebuild while
+ * bounding staleness at this window: the first event in a burst arms the timer,
+ * every event inside it folds in, and the timer reads whatever state is current
+ * when it fires. Deliberately NOT a resetting debounce, which would starve a
+ * continuously active workspace of updates entirely.
+ */
+const WORKSPACE_UPDATE_COALESCE_MS = 150;
+
 interface AgentUpdatesSubscriptionState {
   subscriptionId: string;
   filter?: AgentUpdatesFilter;
@@ -53,6 +67,12 @@ export interface AgentUpdatesService {
   forwardLiveAgentPayload(payload: AgentSnapshotPayload): Promise<void>;
   emitStoredRecord(record: StoredAgentRecord): Promise<AgentSnapshotPayload>;
   removeAgent(agentId: string): void;
+  /**
+   * Run every workspace update still waiting inside its coalescing window, now.
+   * `dispose` calls this so a session teardown never strands the tail of a burst;
+   * tests call it to observe the emit without waiting on wall-clock time.
+   */
+  flushPendingWorkspaceUpdates(): Promise<void>;
   dispose(): void;
 }
 
@@ -156,6 +176,37 @@ function agentUpdateTargetId(update: AgentUpdatePayload): string {
 
 export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentUpdatesService {
   let subscription: AgentUpdatesSubscriptionState | null = null;
+  const pendingWorkspaceUpdateTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  async function runWorkspaceUpdate(workspaceId: string): Promise<void> {
+    try {
+      await deps.emitWorkspaceUpdateForWorkspaceId(workspaceId);
+    } catch (error) {
+      deps.logger.error({ err: error, workspaceId }, "Failed to emit workspace update");
+    }
+  }
+
+  function scheduleWorkspaceUpdate(workspaceId: string): void {
+    if (pendingWorkspaceUpdateTimers.has(workspaceId)) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      pendingWorkspaceUpdateTimers.delete(workspaceId);
+      void runWorkspaceUpdate(workspaceId);
+    }, WORKSPACE_UPDATE_COALESCE_MS);
+    // Never a reason to hold the process open for a coalesced status refresh.
+    (timer as unknown as { unref?: () => void }).unref?.();
+    pendingWorkspaceUpdateTimers.set(workspaceId, timer);
+  }
+
+  async function flushPendingWorkspaceUpdates(): Promise<void> {
+    const workspaceIds = Array.from(pendingWorkspaceUpdateTimers.keys());
+    for (const timer of pendingWorkspaceUpdateTimers.values()) {
+      clearTimeout(timer);
+    }
+    pendingWorkspaceUpdateTimers.clear();
+    await Promise.all(workspaceIds.map((workspaceId) => runWorkspaceUpdate(workspaceId)));
+  }
 
   function bufferOrEmit(sub: AgentUpdatesSubscriptionState, payload: AgentUpdatePayload): void {
     if (payload.kind === "upsert" && !deps.isProviderVisibleToClient(payload.agent.provider)) {
@@ -305,8 +356,9 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
 
     // A lifecycle change updates exactly the agent's owning workspace, never
     // every workspace sharing its cwd. Ownership is the agent's workspaceId.
+    // Coalesced, not awaited: see WORKSPACE_UPDATE_COALESCE_MS.
     if (payload.workspaceId) {
-      await deps.emitWorkspaceUpdateForWorkspaceId(payload.workspaceId);
+      scheduleWorkspaceUpdate(payload.workspaceId);
     }
   }
 
@@ -329,6 +381,7 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
 
   function dispose(): void {
     subscription = null;
+    void flushPendingWorkspaceUpdates();
   }
 
   return {
@@ -340,6 +393,7 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
     forwardLiveAgentPayload,
     emitStoredRecord,
     removeAgent,
+    flushPendingWorkspaceUpdates,
     dispose,
   };
 }

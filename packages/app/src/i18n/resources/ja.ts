@@ -2832,6 +2832,7 @@ export const ja: TranslationResources = {
       directoryMissing: "ワークスペースディレクトリが見つかりません。",
       loading: "ファイルを読み込み中...",
       noPreview: "プレビューが利用できません",
+      largeFileHighlightDisabled: "大きなファイルのため、シンタックスハイライトは無効です。",
       binaryPreviewUnavailable: "バイナリプレビューが利用できません",
       binaryPreviewHint: "バイナリファイルのため、テキストとして表示できるものはありません。",
       binaryPreviewKind: "バイナリ",

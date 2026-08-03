@@ -967,6 +967,7 @@ function normalizeListCommandsOptions(
   return { agentId: input, ...legacyOptions };
 }
 export interface AgentForkContextOptions {
+  boundaryCursor?: FetchAgentTimelineCursor;
   boundaryMessageId?: string;
   requestId?: string;
 }
@@ -3931,6 +3932,7 @@ export class DaemonClient {
       type: "agent.fork_context.request",
       agentId,
       requestId: resolvedRequestId,
+      ...(options.boundaryCursor ? { boundaryCursor: options.boundaryCursor } : {}),
       ...(options.boundaryMessageId ? { boundaryMessageId: options.boundaryMessageId } : {}),
     });
 
@@ -4162,6 +4164,13 @@ export class DaemonClient {
         return msg.payload;
       },
     });
+    // A refused cancellation comes back as an error payload, not a rejected
+    // frame. Dropping it reported Stop as successful while the provider was
+    // still running and still spending tokens — the exact outcome the daemon
+    // refuses the cancel to avoid.
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
     // Absent ⇒ old daemon that doesn't report whether a run was interrupted.
     return payload.cancelled !== undefined ? { cancelled: payload.cancelled } : {};
   }

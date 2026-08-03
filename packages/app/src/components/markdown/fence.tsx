@@ -1,5 +1,6 @@
 import type { TextStyle } from "react-native";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
+import { useSettledFenceCode } from "./fence-highlight-debounce";
 import { isMermaidFenceLanguage } from "./mermaid/mermaid-contract";
 import { MermaidBlock } from "./mermaid/mermaid-block";
 
@@ -11,6 +12,12 @@ import { MermaidBlock } from "./mermaid/mermaid-block";
  * `markdown/renderer.tsx` and the assistant-message copy in `message.tsx` —
  * route through here, so a new fence language lights up chat, the file viewer,
  * and the pull-request panel at once.
+ *
+ * It is also where a streaming fence is throttled: `useSettledFenceCode` is what
+ * stops a fence that is still being typed from re-tokenizing itself on every
+ * reveal tick. Mermaid keeps the raw code — it runs its own debounce
+ * (`MERMAID_RENDER_DEBOUNCE_MS`) and stacking a second one would only make a
+ * diagram settle later.
  */
 export function MarkdownFence({
   code,
@@ -25,13 +32,15 @@ export function MarkdownFence({
   textStyle: TextStyle;
   detectUntagged?: boolean;
 }) {
+  const settledCode = useSettledFenceCode(code);
+
   if (isMermaidFenceLanguage(language)) {
     return <MermaidBlock code={code} inheritedStyles={inheritedStyles} textStyle={textStyle} />;
   }
 
   return (
     <HighlightedCodeBlock
-      code={code}
+      code={settledCode}
       language={language}
       inheritedStyles={inheritedStyles}
       textStyle={textStyle}

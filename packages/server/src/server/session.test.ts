@@ -3620,8 +3620,8 @@ describe("session branch validation", () => {
 
     try {
       execSync(`git init -b main ${repoDir}`);
-      execSync("git config user.email 'test@test.com'", { cwd: repoDir });
-      execSync("git config user.name 'Test'", { cwd: repoDir });
+      execSync('git config user.email "test@test.com"', { cwd: repoDir });
+      execSync('git config user.name "Test"', { cwd: repoDir });
       writeFileSync(join(repoDir, "README.md"), "hello\n");
       execSync("git add README.md", { cwd: repoDir });
       execSync("git -c commit.gpgsign=false commit -m init", { cwd: repoDir });

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createTestLogger } from "../../../../test-utils/test-logger.js";
 import * as spawnUtils from "../../../../utils/spawn.js";
+import type { McpServerConfig } from "../../agent-sdk-types.js";
 import { ClaudeAgentClient } from "./agent.js";
 import type { ClaudeQueryInput } from "./query.js";
 
@@ -55,6 +56,7 @@ function createQueryMock(): Query {
 async function captureOptions(config: {
   workspaceAccess?: string;
   modeId?: string;
+  mcpServers?: Record<string, McpServerConfig>;
 }): Promise<Options> {
   let captured: Options | undefined;
   const queryFactory = vi.fn(({ options }: ClaudeQueryInput) => {
@@ -117,6 +119,41 @@ describe("Claude workspace access", () => {
     expect(denied).toContain("Bash");
   });
 
+  test('"read" withholds the Otto terminal shell in its namespaced form too', async () => {
+    // The daemon's MCP server already withholds these at catalog registration;
+    // this asserts the second layer, which rides the session's own config.
+    const options = await captureOptions({
+      workspaceAccess: "read",
+      mcpServers: { otto: { type: "http", url: "http://127.0.0.1:6788/mcp" } },
+    });
+    const denied = options.disallowedTools ?? [];
+    expect(denied).toContain("mcp__otto__create_terminal");
+    expect(denied).toContain("mcp__otto__send_terminal_keys");
+    expect(denied).toContain("mcp__otto__browser_upload");
+    // read bounds the shell surface only; the below-none catalog stays.
+    expect(denied).not.toContain("mcp__otto__create_worktree");
+    expect(denied).not.toContain("mcp__otto__create_artifact");
+  });
+
+  test('"none" withholds the Otto workspace mutators for every otto-ish server', async () => {
+    const options = await captureOptions({
+      workspaceAccess: "none",
+      mcpServers: {
+        otto: { type: "http", url: "http://127.0.0.1:6788/mcp" },
+        otto_agent: { type: "http", url: "http://127.0.0.1:6788/mcp" },
+      },
+    });
+    const denied = options.disallowedTools ?? [];
+    for (const server of ["otto", "otto_agent"]) {
+      expect(denied).toContain(`mcp__${server}__create_terminal`);
+      expect(denied).toContain(`mcp__${server}__create_worktree`);
+      expect(denied).toContain(`mcp__${server}__update_artifact`);
+    }
+    // Observation of daemon state survives even at none.
+    expect(denied).not.toContain("mcp__otto__list_artifacts");
+    expect(denied).not.toContain("mcp__otto__preview_logs");
+  });
+
   test("the dontAsk allowlist cannot hand back a tool the level denied", async () => {
     // dontAsk pre-approves Edit/Write so unattended coding schedules can work.
     // A node that declared "read" must not get them back through that door —
@@ -125,5 +162,17 @@ describe("Claude workspace access", () => {
     expect(options.disallowedTools ?? []).toContain("Edit");
     expect(options.allowedTools ?? []).not.toContain("Edit");
     expect(options.allowedTools ?? []).not.toContain("Write");
+  });
+
+  test('capabilities advertise "none" enforcement, so the spawn gate admits none-nodes here', () => {
+    // Pinned because the gate reads these flags: dropping one would make
+    // orchestration refuse levels the tests above prove are enforced.
+    const client = new ClaudeAgentClient({
+      logger: createTestLogger(),
+      queryFactory: () => createQueryMock(),
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    expect(client.capabilities.supportsWorkspaceAccess).toBe(true);
+    expect(client.capabilities.supportsWorkspaceAccessNone).toBe(true);
   });
 });

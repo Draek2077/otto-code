@@ -2877,6 +2877,8 @@ export const fr: TranslationResources = {
       directoryMissing: "Répertoire Workspace introuvable.",
       loading: "Chargement du fichier...",
       noPreview: "Aucun aperçu disponible",
+      largeFileHighlightDisabled:
+        "Fichier volumineux, la coloration syntaxique est donc désactivée.",
       binaryPreviewUnavailable: "Aperçu binaire indisponible",
       binaryPreviewHint: "C'est un fichier binaire, il n'y a donc rien à afficher en texte.",
       binaryPreviewKind: "Binaire",

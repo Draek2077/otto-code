@@ -2,7 +2,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { describe, expect, test } from "vitest";
 import { experimental_createMCPClient } from "ai";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -12,6 +12,8 @@ import { withTimeout } from "../../utils/promise-timeout.js";
 import { hashDaemonPassword } from "../auth.js";
 import { createOttoDaemon, type OttoDaemonConfig } from "../bootstrap.js";
 import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
+import { removeTempDirAsync } from "../../test-utils/remove-temp-dir.js";
+import { isPlatform } from "../../test-utils/platform.js";
 import type {
   AgentClient,
   AgentPersistenceHandle,
@@ -229,9 +231,9 @@ describe("agent MCP end-to-end (offline)", () => {
       }
       await client.close();
       await daemon.stop();
-      await rm(ottoHome, { recursive: true, force: true });
-      await rm(staticDir, { recursive: true, force: true });
-      await rm(agentCwd, { recursive: true, force: true });
+      await removeTempDirAsync(ottoHome);
+      await removeTempDirAsync(staticDir);
+      await removeTempDirAsync(agentCwd);
     }
   }, 30_000);
 
@@ -299,9 +301,9 @@ describe("agent MCP end-to-end (offline)", () => {
       }
       await client?.close();
       await daemon.stop();
-      await rm(ottoHome, { recursive: true, force: true });
-      await rm(staticDir, { recursive: true, force: true });
-      await rm(agentCwd, { recursive: true, force: true });
+      await removeTempDirAsync(ottoHome);
+      await removeTempDirAsync(staticDir);
+      await removeTempDirAsync(agentCwd);
     }
   }, 30_000);
 
@@ -406,14 +408,14 @@ describe("agent MCP end-to-end (offline)", () => {
       }
       await disabledClient.close();
       await disabledDaemon.stop();
-      await rm(disabledOttoHome, { recursive: true, force: true });
-      await rm(disabledStaticDir, { recursive: true, force: true });
-      await rm(disabledAgentCwd, { recursive: true, force: true });
+      await removeTempDirAsync(disabledOttoHome);
+      await removeTempDirAsync(disabledStaticDir);
+      await removeTempDirAsync(disabledAgentCwd);
       await client.close();
       await daemon.stop();
-      await rm(ottoHome, { recursive: true, force: true });
-      await rm(staticDir, { recursive: true, force: true });
-      await rm(agentCwd, { recursive: true, force: true });
+      await removeTempDirAsync(ottoHome);
+      await removeTempDirAsync(staticDir);
+      await removeTempDirAsync(agentCwd);
     }
   }, 30_000);
 
@@ -472,9 +474,9 @@ describe("agent MCP end-to-end (offline)", () => {
       }
       await client.close();
       await daemon.stop();
-      await rm(ottoHome, { recursive: true, force: true });
-      await rm(staticDir, { recursive: true, force: true });
-      await rm(agentCwd, { recursive: true, force: true });
+      await removeTempDirAsync(ottoHome);
+      await removeTempDirAsync(staticDir);
+      await removeTempDirAsync(agentCwd);
     }
   }, 30_000);
 
@@ -532,9 +534,9 @@ describe("agent MCP end-to-end (offline)", () => {
       }
       await client.close();
       await daemon.stop();
-      await rm(ottoHome, { recursive: true, force: true });
-      await rm(staticDir, { recursive: true, force: true });
-      await rm(agentCwd, { recursive: true, force: true });
+      await removeTempDirAsync(ottoHome);
+      await removeTempDirAsync(staticDir);
+      await removeTempDirAsync(agentCwd);
     }
   }, 30_000);
 
@@ -717,113 +719,123 @@ describe("agent MCP end-to-end (offline)", () => {
       }
       await client.close();
       await daemon.stop();
-      await rm(ottoHome, { recursive: true, force: true });
-      await rm(staticDir, { recursive: true, force: true });
-      await rm(agentCwd, { recursive: true, force: true });
+      await removeTempDirAsync(ottoHome);
+      await removeTempDirAsync(staticDir);
+      await removeTempDirAsync(agentCwd);
     }
   }, 30_000);
 
-  test("create_agent with worktree is async and boots terminals only after setup success", async () => {
-    const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-"));
-    const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
-    const repoRoot = await mkdtemp(path.join(os.tmpdir(), "otto-worktree-repo-"));
-    const port = await getAvailablePort();
+  // The otto.json fixture below is a POSIX shell script (`while [ ! -f ]`,
+  // `tail -f /dev/null`); the setup runner uses the platform shell, so cmd.exe
+  // cannot execute it.
+  test.skipIf(isPlatform("win32"))(
+    "create_agent with worktree is async and boots terminals only after setup success",
+    async () => {
+      const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-"));
+      const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
+      const repoRoot = await mkdtemp(path.join(os.tmpdir(), "otto-worktree-repo-"));
+      const port = await getAvailablePort();
 
-    const daemonConfig: OttoDaemonConfig = {
-      listen: `127.0.0.1:${port}`,
-      ottoHome,
-      corsAllowedOrigins: [],
-      hostnames: true,
-      mcpEnabled: true,
-      staticDir,
-      mcpDebug: false,
-      agentClients: createTestAgentClients(),
-      agentStoragePath: path.join(ottoHome, "agents"),
-    };
+      const daemonConfig: OttoDaemonConfig = {
+        listen: `127.0.0.1:${port}`,
+        ottoHome,
+        corsAllowedOrigins: [],
+        hostnames: true,
+        mcpEnabled: true,
+        staticDir,
+        mcpDebug: false,
+        agentClients: createTestAgentClients(),
+        agentStoragePath: path.join(ottoHome, "agents"),
+      };
 
-    const daemon = await createOttoDaemon(daemonConfig, pino({ level: "silent" }));
-    await daemon.start();
+      const daemon = await createOttoDaemon(daemonConfig, pino({ level: "silent" }));
+      await daemon.start();
 
-    const client = await createMcpClient(`http://127.0.0.1:${port}/mcp/agents`);
+      const client = await createMcpClient(`http://127.0.0.1:${port}/mcp/agents`);
 
-    let agentId: string | null = null;
-    try {
-      const { execSync } = await import("node:child_process");
-      execSync("git init -b main", { cwd: repoRoot, stdio: "pipe" });
-      execSync("git config user.email 'test@test.com'", { cwd: repoRoot, stdio: "pipe" });
-      execSync("git config user.name 'Test'", { cwd: repoRoot, stdio: "pipe" });
-      await writeFile(path.join(repoRoot, "file.txt"), "hello\n", "utf8");
-      execSync("git add .", { cwd: repoRoot, stdio: "pipe" });
-      execSync("git -c commit.gpgsign=false commit -m 'initial'", { cwd: repoRoot, stdio: "pipe" });
+      let agentId: string | null = null;
+      try {
+        const { execSync } = await import("node:child_process");
+        execSync("git init -b main", { cwd: repoRoot, stdio: "pipe" });
+        execSync('git config user.email "test@test.com"', { cwd: repoRoot, stdio: "pipe" });
+        execSync('git config user.name "Test"', { cwd: repoRoot, stdio: "pipe" });
+        await writeFile(path.join(repoRoot, "file.txt"), "hello\n", "utf8");
+        execSync("git add .", { cwd: repoRoot, stdio: "pipe" });
+        execSync('git -c commit.gpgsign=false commit -m "initial"', {
+          cwd: repoRoot,
+          stdio: "pipe",
+        });
 
-      const setupCommand =
-        'while [ ! -f "$OTTO_WORKTREE_PATH/allow-setup" ]; do sleep 0.05; done; echo "done" > "$OTTO_WORKTREE_PATH/setup-done.txt"';
-      await writeFile(
-        path.join(repoRoot, "otto.json"),
-        JSON.stringify({
-          worktree: {
-            setup: [setupCommand],
-            terminals: [
-              {
-                name: "Dev Server",
-                command: 'echo "dev-server" > dev-terminal.txt; tail -f /dev/null',
-              },
-            ],
-          },
-        }),
-        "utf8",
-      );
-      execSync("git add otto.json", { cwd: repoRoot, stdio: "pipe" });
-      execSync("git -c commit.gpgsign=false commit -m 'add worktree config'", {
-        cwd: repoRoot,
-        stdio: "pipe",
-      });
+        const setupCommand =
+          'while [ ! -f "$OTTO_WORKTREE_PATH/allow-setup" ]; do sleep 0.05; done; echo "done" > "$OTTO_WORKTREE_PATH/setup-done.txt"';
+        await writeFile(
+          path.join(repoRoot, "otto.json"),
+          JSON.stringify({
+            worktree: {
+              setup: [setupCommand],
+              terminals: [
+                {
+                  name: "Dev Server",
+                  command: 'echo "dev-server" > dev-terminal.txt; tail -f /dev/null',
+                },
+              ],
+            },
+          }),
+          "utf8",
+        );
+        execSync("git add otto.json", { cwd: repoRoot, stdio: "pipe" });
+        execSync('git -c commit.gpgsign=false commit -m "add worktree config"', {
+          cwd: repoRoot,
+          stdio: "pipe",
+        });
 
-      const result = await withTimeout({
-        promise: client.callTool({
-          name: "create_agent",
-          args: {
-            cwd: repoRoot,
-            title: "MCP worktree setup terminals",
-            provider: "claude/claude-test-model",
-            mode: "bypassPermissions",
-            initialPrompt: "say done and stop",
-            worktreeName: "mcp-worktree-setup-test",
-            baseBranch: "main",
-            background: true,
-          },
-        }),
-        timeoutMs: 2500,
-        label: "create_agent should not block on setup",
-      });
+        const result = await withTimeout({
+          promise: client.callTool({
+            name: "create_agent",
+            args: {
+              cwd: repoRoot,
+              title: "MCP worktree setup terminals",
+              provider: "claude/claude-test-model",
+              mode: "bypassPermissions",
+              initialPrompt: "say done and stop",
+              worktreeName: "mcp-worktree-setup-test",
+              baseBranch: "main",
+              background: true,
+            },
+          }),
+          timeoutMs: 2500,
+          label: "create_agent should not block on setup",
+        });
 
-      const payload = getStructuredContent(result);
-      agentId = typeof payload?.agentId === "string" ? payload.agentId : null;
-      expect(agentId).toBeTruthy();
-      const worktreePath = typeof payload?.cwd === "string" ? payload.cwd : "";
-      expect(worktreePath).toContain(`${path.sep}worktrees${path.sep}`);
-      expect(existsSync(path.join(worktreePath, "setup-done.txt"))).toBe(false);
-      expect(existsSync(path.join(worktreePath, "dev-terminal.txt"))).toBe(false);
+        const payload = getStructuredContent(result);
+        agentId = typeof payload?.agentId === "string" ? payload.agentId : null;
+        expect(agentId).toBeTruthy();
+        const worktreePath = typeof payload?.cwd === "string" ? payload.cwd : "";
+        expect(worktreePath).toContain(`${path.sep}worktrees${path.sep}`);
+        expect(existsSync(path.join(worktreePath, "setup-done.txt"))).toBe(false);
+        expect(existsSync(path.join(worktreePath, "dev-terminal.txt"))).toBe(false);
 
-      await writeFile(path.join(worktreePath, "allow-setup"), "ok\n", "utf8");
+        await writeFile(path.join(worktreePath, "allow-setup"), "ok\n", "utf8");
 
-      await waitForPathExists({
-        targetPath: path.join(worktreePath, "setup-done.txt"),
-        timeoutMs: 15000,
-      });
-      await waitForPathExists({
-        targetPath: path.join(worktreePath, "dev-terminal.txt"),
-        timeoutMs: 30000,
-      });
-    } finally {
-      if (agentId) {
-        await client.callTool({ name: "kill_agent", args: { agentId } });
+        await waitForPathExists({
+          targetPath: path.join(worktreePath, "setup-done.txt"),
+          timeoutMs: 15000,
+        });
+        await waitForPathExists({
+          targetPath: path.join(worktreePath, "dev-terminal.txt"),
+          timeoutMs: 30000,
+        });
+      } finally {
+        if (agentId) {
+          await client.callTool({ name: "kill_agent", args: { agentId } });
+        }
+        await client.close();
+        await daemon.stop();
+        await removeTempDirAsync(ottoHome);
+        await removeTempDirAsync(staticDir);
+        await removeTempDirAsync(repoRoot);
       }
-      await client.close();
-      await daemon.stop();
-      await rm(ottoHome, { recursive: true, force: true });
-      await rm(staticDir, { recursive: true, force: true });
-      await rm(repoRoot, { recursive: true, force: true });
-    }
-  }, 60_000);
+    },
+    60_000,
+  );
 });

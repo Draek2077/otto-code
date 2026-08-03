@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { removeTempDirAsync } from "../../test-utils/remove-temp-dir.js";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, test } from "vitest";
@@ -23,9 +24,7 @@ afterEach(async () => {
   cleanupClients.clear();
   await Promise.all(Array.from(cleanupDaemons, (daemon) => daemon.close().catch(() => undefined)));
   cleanupDaemons.clear();
-  await Promise.all(
-    Array.from(cleanupPaths, (target) => rm(target, { recursive: true, force: true })),
-  );
+  await Promise.all(Array.from(cleanupPaths, (target) => removeTempDirAsync(target)));
   cleanupPaths.clear();
 });
 
@@ -45,11 +44,11 @@ test("openProject preserves a worktree's exact-root project without rehoming it"
     cleanupPaths.add(ottoHomeRoot);
 
     execSync("git init -b main", { cwd: repoRoot, stdio: "pipe" });
-    execSync("git config user.email 'test@otto-code.dev'", { cwd: repoRoot, stdio: "pipe" });
-    execSync("git config user.name 'Otto Test'", { cwd: repoRoot, stdio: "pipe" });
+    execSync('git config user.email "test@otto-code.dev"', { cwd: repoRoot, stdio: "pipe" });
+    execSync('git config user.name "Otto Test"', { cwd: repoRoot, stdio: "pipe" });
     writeFileSync(path.join(repoRoot, "README.md"), "# repo\n", "utf8");
     execSync("git add README.md", { cwd: repoRoot, stdio: "pipe" });
-    execSync("git -c commit.gpgSign=false commit -m 'initial'", { cwd: repoRoot, stdio: "pipe" });
+    execSync('git -c commit.gpgSign=false commit -m "initial"', { cwd: repoRoot, stdio: "pipe" });
     execSync("git branch feature/desktop-daemon-settings", { cwd: repoRoot, stdio: "pipe" });
     execSync(`git worktree add ${JSON.stringify(worktreeRoot)} feature/desktop-daemon-settings`, {
       cwd: repoRoot,

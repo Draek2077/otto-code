@@ -12,10 +12,13 @@ const originalOttoHome = process.env.OTTO_HOME;
 try {
   {
     console.log("Test 1: resolves explicit OTTO_HOME when set");
-    process.env.OTTO_HOME = "/tmp/otto-explicit-home";
+    const explicitHome = join("/tmp", "otto-explicit-home");
+    process.env.OTTO_HOME = explicitHome;
 
-    assert.strictEqual(resolveOttoHomePath(), "/tmp/otto-explicit-home");
-    assert.strictEqual(resolveOttoWorktreesDir(), "/tmp/otto-explicit-home/worktrees");
+    assert.strictEqual(resolveOttoHomePath(), explicitHome);
+    // join(), not a literal: the resolver joins, so the expectation has to use
+    // the host separator or this only ever passes on POSIX.
+    assert.strictEqual(resolveOttoWorktreesDir(), join(explicitHome, "worktrees"));
     console.log("\u2713 explicit OTTO_HOME is respected\n");
   }
 

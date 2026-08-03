@@ -2848,6 +2848,7 @@ export const ptBR: TranslationResources = {
       directoryMissing: "Diretório do workspace não encontrado.",
       loading: "Carregando arquivo...",
       noPreview: "Nenhuma prévia disponível",
+      largeFileHighlightDisabled: "Arquivo grande, então o realce de sintaxe está desativado.",
       binaryPreviewUnavailable: "Prévia binária indisponível",
       binaryPreviewHint: "É um arquivo binário, então não há nada para mostrar como texto.",
       binaryPreviewKind: "Binário",

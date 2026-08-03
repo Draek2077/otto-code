@@ -1,6 +1,7 @@
 import { test, expect, beforeEach, afterEach } from "vitest";
 import { execSync } from "child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { mkdtempSync, mkdirSync, writeFileSync } from "fs";
+import { removeTempDir } from "../../test-utils/remove-temp-dir.js";
 import { tmpdir } from "os";
 import path from "path";
 import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
@@ -17,15 +18,15 @@ function tmpCwd(): string {
 
 function initGitRepo(cwd: string): void {
   execSync("git init -b main", { cwd, stdio: "pipe" });
-  execSync("git config user.email 'test@test.com'", { cwd, stdio: "pipe" });
-  execSync("git config user.name 'Test'", { cwd, stdio: "pipe" });
+  execSync('git config user.email "test@test.com"', { cwd, stdio: "pipe" });
+  execSync('git config user.name "Test"', { cwd, stdio: "pipe" });
 }
 
 function commitFile(cwd: string, fileName: string, content: string): void {
   const filePath = path.join(cwd, fileName);
   writeFileSync(filePath, content);
   execSync(`git add "${fileName}"`, { cwd, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'Initial commit'", {
+  execSync('git -c commit.gpgsign=false commit -m "Initial commit"', {
     cwd,
     stdio: "pipe",
   });
@@ -100,7 +101,7 @@ test("pushes file-level checkout diff updates with deterministic path order", as
 
     ctx.client.unsubscribeCheckoutDiff(subscriptionId);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 }, 60000);
 
@@ -135,7 +136,7 @@ test("pushes updates when subscribed from a subdirectory and files change outsid
 
     ctx.client.unsubscribeCheckoutDiff(subscriptionId);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 }, 60000);
 
@@ -144,11 +145,19 @@ test("keeps the socket usable after rejecting an oversized structured diff", asy
 
   try {
     initGitRepo(cwd);
-    commitFile(cwd, "large-a.js", "const value = 0;\n");
-    commitFile(cwd, "large-b.js", "const value = 0;\n");
+    // The rejection is keyed off TOTAL_DIFF_MAX_BYTES (2MB) with a separate 1MB
+    // per-file cap, so the fixture has to clear 2MB in aggregate while keeping
+    // every file under 1MB. Two ~900KB files totalled ~1.8MB and sat UNDER the
+    // limit, so this asserted the too-large branch while never reaching it.
+    // Four files leaves the margin on the correct side of both caps.
+    const largeFiles = ["large-a.js", "large-b.js", "large-c.js", "large-d.js"];
+    for (const file of largeFiles) {
+      commitFile(cwd, file, "const value = 0;\n");
+    }
     const denseExpression = `const value = ${"a+".repeat(450_000)}a;\n`;
-    writeFileSync(path.join(cwd, "large-a.js"), denseExpression);
-    writeFileSync(path.join(cwd, "large-b.js"), denseExpression);
+    for (const file of largeFiles) {
+      writeFileSync(path.join(cwd, file), denseExpression);
+    }
 
     const initial = await ctx.client.subscribeCheckoutDiff(
       cwd,
@@ -166,6 +175,6 @@ test("keeps the socket usable after rejecting an oversized structured diff", asy
     const status = await ctx.client.getCheckoutStatus(cwd);
     expect(status).toMatchObject({ cwd, isGit: true });
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 }, 120000);

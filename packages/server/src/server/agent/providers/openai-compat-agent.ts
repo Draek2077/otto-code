@@ -67,6 +67,7 @@ import {
   type McpToolBinding,
 } from "./openai-compat-mcp.js";
 import { ottoToolPermissionKind } from "./openai-compat-otto-tool-permissions.js";
+import { PreviewStartGate, type PreviewStartCheck } from "./openai-compat-preview-start-gate.js";
 import type { McpServerConfig } from "../agent-sdk-types.js";
 import type { ManagedProcessRegistry } from "../../managed-processes/managed-processes.js";
 import { stripInternalOttoMcpServer } from "../runtime-mcp-config.js";
@@ -298,6 +299,8 @@ const CAPABILITIES: AgentCapabilityFlags = {
   // Total enforcement: availableToolSpecs withholds the specs a level forbids,
   // and the daemon owns the loop, so an unoffered tool cannot be called.
   supportsWorkspaceAccess: true,
+  // Including "none": the read and execute specs are withheld there too.
+  supportsWorkspaceAccessNone: true,
 };
 
 // Icons/colorTiers live here (not in AGENT_PROVIDER_DEFINITIONS) because
@@ -327,6 +330,22 @@ export const OPENAI_COMPAT_MODES: AgentMode[] = [
     colorTier: "planning",
   },
   {
+    id: "dontAsk",
+    label: "Don't Ask",
+    // Guardrail-bearing description, mirroring the Claude provider's dontAsk
+    // (docs/safe-unattended.md): the mode never prompts, but a call that would
+    // have prompted is DENIED with a tool error instead of run. Listed before
+    // bypassPermissions so resolveDefaultAgentCreateConfig picks it — not
+    // bypass — as the coercion target for unattended runs (schedules, loops,
+    // artifacts, unattended-parent spawns). An explicitly requested bypass is
+    // still honored: both modes are isUnattended, and the resolver keeps an
+    // already-unattended request instead of coercing it.
+    description: "Runs without prompting; actions that would ask for permission are denied",
+    icon: "ShieldCheck",
+    colorTier: "moderate",
+    isUnattended: true,
+  },
+  {
     id: "bypassPermissions",
     label: "Bypass",
     description: "Skip all permission prompts (use with caution)",
@@ -345,6 +364,23 @@ const COMPAT_TOOL_PROMPT_DESCRIPTIONS: Record<CompatToolSpec["kind"], string> = 
   execute: "Wants to run a shell command",
   network: "Wants to fetch content from the web",
 };
+
+/** Timeline error note for a tool call denied by dontAsk instead of prompted. */
+const DONT_ASK_DENIAL_NOTE = "Denied by Don't Ask mode";
+
+/**
+ * Tool error fed back to the model when dontAsk denies a call. Guardrail-
+ * bearing like the mode description: it says what happened and what the model
+ * can do about it, so the run adapts or reports instead of retrying blindly.
+ */
+function dontAskDenialText(name: string): string {
+  return (
+    `${name} requires permission approval, and this session runs in Don't Ask mode, ` +
+    "which denies instead of prompting. The call was not executed. Continue without " +
+    "it if you can; otherwise report that this action needs an attended session or a " +
+    "different permission mode."
+  );
+}
 
 interface ToolCallPayload {
   id: string;
@@ -1372,6 +1408,26 @@ function ottoToolParameters(tool: OttoToolDefinition): Record<string, unknown> {
 }
 
 /** Flatten an Otto tool result into the text fed back to the model. */
+/**
+ * Prompt copy for a gated Otto tool. For preview_start with a resolved launch
+ * entry, name the command that will actually run — the user approving a server
+ * start could not previously see what launch.json would execute.
+ */
+function ottoToolPermissionDescription(
+  name: string,
+  previewCheck: PreviewStartCheck | null,
+): string {
+  if (previewCheck?.command) {
+    return previewCheck.changed
+      ? "Wants to start a preview server whose launch.json command was changed during this " +
+          `session. It will run: ${previewCheck.command}`
+      : `Wants to start a preview server. It will run: ${previewCheck.command}`;
+  }
+  return ottoToolPermissionKind(name) === "execute"
+    ? "Wants to run an Otto tool that can execute code or manage agents"
+    : "Wants to interact with the Otto browser or preview servers";
+}
+
 function ottoResultToText(result: OttoToolResult): string {
   const texts = result.content
     .filter((part) => part.type === "text" && typeof part.text === "string")
@@ -1432,6 +1488,12 @@ export class OpenAICompatAgentSession implements AgentSession {
   private readonly ottoTools: OttoToolCatalog | null;
   /** Which Otto tool groups to expose; null/undefined = all groups. */
   private readonly ottoToolGroups?: readonly OttoToolGroup[] | null;
+  /**
+   * Gates preview_start's acceptEdits auto-approval on the launch.json entry
+   * still matching its session-start snapshot. Null when the catalog doesn't
+   * expose preview_start.
+   */
+  private readonly previewStartGate: PreviewStartGate | null;
   /** Daemon-hosted MCP client for the configured servers; null when none are configured. */
   private readonly mcpManager: OpenAICompatMcpManager | null;
   private readonly mcpToolPermissions: McpToolPermissionMode;
@@ -1508,6 +1570,9 @@ export class OpenAICompatAgentSession implements AgentSession {
     this.config = options.config;
     this.ottoTools = options.ottoTools ?? null;
     this.ottoToolGroups = options.ottoToolGroups ?? null;
+    this.previewStartGate = this.ottoTools?.getTool("preview_start")
+      ? new PreviewStartGate(this.cwd)
+      : null;
     this.mcpToolPermissions = options.mcpToolPermissions ?? "always-ask";
 
     // Server precedence, lowest to highest: enabled connectors (daemon registry)
@@ -2830,6 +2895,16 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     }
 
     if (this.toolNeedsApproval(spec, args)) {
+      // dontAsk mirrors the Claude provider's mode of the same name
+      // (docs/safe-unattended.md): a call that would have prompted is denied
+      // with a tool error the model can react to — never approved (that is
+      // bypassPermissions) and never parked on a prompt (an unattended run has
+      // nobody to answer, and would stall). No permission_requested is
+      // emitted, so the daemon's unattended deny-responder stays the backstop.
+      if (this.modeId === "dontAsk") {
+        this.emitToolItem(turn, call, "failed", previewDetail, DONT_ASK_DENIAL_NOTE);
+        return { text: dontAskDenialText(spec.name) };
+      }
       const response = await this.requestPermission(turn, {
         name: spec.name,
         title: spec.name,
@@ -2878,7 +2953,9 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
    * "trust-read-only" AND the server self-declares readOnlyHint (that
    * annotation is untrusted, so it never skips prompts in default mode);
    * bypassPermissions auto-approves like everything else. Plan mode never
-   * reaches here — MCP tools are excluded from the payload entirely.
+   * reaches here — MCP tools are excluded from the payload entirely. In
+   * dontAsk, "needs approval" means denied: the call site returns a tool
+   * error instead of prompting.
    */
   private mcpToolNeedsApproval(binding: McpToolBinding): boolean {
     if (this.modeId === "bypassPermissions") return false;
@@ -2900,6 +2977,11 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
     }
     const detail: ToolCallDetail = { type: "unknown", input: args, output: null };
     if (this.mcpToolNeedsApproval(binding)) {
+      // See executeToolCall: dontAsk denies instead of prompting.
+      if (this.modeId === "dontAsk") {
+        this.emitToolItem(turn, call, "failed", detail, DONT_ASK_DENIAL_NOTE);
+        return dontAskDenialText(call.name);
+      }
       const response = await this.requestPermission(turn, {
         name: binding.modelName,
         title: `${binding.serverName}: ${binding.toolName}`,
@@ -2938,9 +3020,10 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
   /**
    * Otto tools skip prompts only when classified read-only; "interact" tools
    * are auto-approved in acceptEdits like file edits, and "execute" tools
-   * always prompt outside bypassPermissions. CLI providers get this gating
-   * from their own permission system in front of the MCP client — here the
-   * daemon is the runtime, so it prompts itself.
+   * always prompt outside bypassPermissions (in dontAsk the call site denies
+   * instead of prompting). CLI providers get this gating from their own
+   * permission system in front of the MCP client — here the daemon is the
+   * runtime, so it prompts itself.
    * See openai-compat-otto-tool-permissions.ts.
    */
   private ottoToolNeedsApproval(name: string): boolean {
@@ -2962,14 +3045,25 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
       return { text: `Error: tool ${call.name} is not available` };
     }
     const detail: ToolCallDetail = { type: "unknown", input: args, output: null };
-    if (this.ottoToolNeedsApproval(tool.name)) {
+    // preview_start keeps its "interact" auto-approval in acceptEdits only
+    // while the launch.json entry matches the session-start snapshot; a
+    // command written during the session prompts (see PreviewStartGate). The
+    // check also runs when the mode prompts anyway, so the prompt can show
+    // the resolved command instead of just the server name.
+    const previewCheck =
+      tool.name === "preview_start" && this.previewStartGate && this.modeId !== "bypassPermissions"
+        ? await this.previewStartGate.check(typeof args["name"] === "string" ? args["name"] : "")
+        : null;
+    if (this.ottoToolNeedsApproval(tool.name) || previewCheck?.changed) {
+      // See executeToolCall: dontAsk denies instead of prompting.
+      if (this.modeId === "dontAsk") {
+        this.emitToolItem(turn, call, "failed", detail, DONT_ASK_DENIAL_NOTE);
+        return { text: dontAskDenialText(tool.name) };
+      }
       const response = await this.requestPermission(turn, {
         name: tool.name,
         title: tool.name,
-        description:
-          ottoToolPermissionKind(tool.name) === "execute"
-            ? "Wants to run an Otto tool that can execute code or manage agents"
-            : "Wants to interact with the Otto browser or preview servers",
+        description: ottoToolPermissionDescription(tool.name, previewCheck),
         args,
         detail,
       });
@@ -2985,6 +3079,9 @@ Keep the same section format as the previous summary (## Goal, ## Constraints & 
             : "The user declined this tool call.",
         };
       }
+      // The user saw the resolved command and allowed it — stop prompting for
+      // this exact command on later starts.
+      previewCheck?.approve();
     }
     this.emitToolItem(turn, call, "running", { type: "unknown", input: args, output: null }, null);
     try {

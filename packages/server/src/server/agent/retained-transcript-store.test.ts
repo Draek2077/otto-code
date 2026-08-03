@@ -10,6 +10,7 @@ import {
   type RetainedTranscriptOwner,
   type RetainedTranscriptRecord,
 } from "./retained-transcript-store.js";
+import { RETAINED_TRANSCRIPT_RESIDENCY_LIMIT } from "./retained-timeline-residency.js";
 
 const logger = pino({ level: "silent" });
 
@@ -89,6 +90,28 @@ describe("RetainedTranscriptStore", () => {
     // Same id but different kind, and a different artifact id, are untouched.
     expect(await store.get("s1")).not.toBeNull();
     expect(await store.get("a3")).not.toBeNull();
+  });
+
+  // A cached record carries the full row set, so an uncapped cache would keep
+  // every transcript ever opened resident no matter what the timeline store
+  // evicted. Observed by deleting the file out from under the store: a cached
+  // record is still served, an evicted one has to go back to disk and finds
+  // nothing.
+  test("caps the in-memory record cache at the residency limit", async () => {
+    const ids = Array.from(
+      { length: RETAINED_TRANSCRIPT_RESIDENCY_LIMIT + 1 },
+      (_unused, index) => `agent-${index}`,
+    );
+    for (const id of ids) {
+      await store.save(buildRecord(id, { kind: "artifact", id: "art-1" }));
+    }
+
+    const newestId = ids[ids.length - 1];
+    await rm(join(dir, "retained-transcripts", `${ids[0]}.json`), { force: true });
+    await rm(join(dir, "retained-transcripts", `${newestId}.json`), { force: true });
+
+    expect(await store.get(ids[0])).toBeNull();
+    expect((await store.get(newestId))?.agentId).toBe(newestId);
   });
 
   test("rejects a path-traversing agent id on save", async () => {

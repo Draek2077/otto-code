@@ -107,10 +107,15 @@ they do and must survive future changes:
   can bootstrap a project themselves. Treat description text as prompt
   engineering — review it like code.
 - **Descriptions steer, the daemon enforces.** Where a failure mode matters,
-  there is a hard server-side check behind the guardrail text — the designated
-  preview tab enforcement below (`findPreviewServerForUrl`) and the `ext:`
-  stop restrictions are the two live examples. Never rely on description text
-  alone for correctness or safety.
+  there is a hard server-side check behind the guardrail text. Three live
+  examples: the designated preview tab enforcement below
+  (`findPreviewServerForUrl`); the `ext:` stop refusal (agents can never stop
+  a server Otto did not start, see
+  [External servers](#external-ext-servers-and-the-bulk-stop-rule)); and the
+  navigation screen on `browser_navigate` / `browser_new_tab`
+  (`screenBrowserUrl` in `packages/server/src/server/agent/url-screen.ts`,
+  described below). Never rely on description text alone for correctness or
+  safety.
 - **Console/network events are push; tool calls are pull.** Both hosts buffer
   events into bounded ring buffers read (and filtered) at call time. Network
   capture in the Electron host is a per-tab CDP recorder
@@ -160,6 +165,27 @@ What this buys you, concretely:
   an agent opens a second, detached tab pointed at the same dev server instead
   of reusing the bound one — tool descriptions alone can't guarantee that, so
   the daemon enforces it.
+- **Navigation destinations are screened before the browser host sees them.**
+  Right behind the designated-tab check, the same `browser_navigate` /
+  `browser_new_tab` handlers run `screenBrowserUrl`
+  (`packages/server/src/server/agent/url-screen.ts`). The hostname is resolved
+  and every returned address is checked, so a DNS name pointing at
+  169.254.169.254 is caught, not just the literal IP. The screen is
+  deliberately narrower than `web_fetch`'s: both policies live in the same
+  module, and they differ on purpose. `web_fetch` is a headless daemon-side
+  fetch nobody watches, so it blocks everything internal. The browser pane is
+  a user-visible surface whose whole purpose is loopback previews, and
+  reaching a LAN device or a Tailscale host from it is a legitimate thing to
+  do; so loopback, RFC 1918, IPv6 ULA and CGNAT stay reachable, and only
+  ranges with no browsing use at all are blocked: link-local v4 and v6 (cloud
+  instance metadata lives at 169.254.169.254), the Alibaba/OpenStack metadata
+  IP 100.100.100.200 inside CGNAT, and the unroutable special-use ranges. Do
+  not "unify" the two policies; the asymmetry is the design, and the module
+  comment in `url-screen.ts` carries the full rationale. Known limitation:
+  unlike `web_fetch`, the daemon cannot pin the webview's sockets to the
+  validated addresses (Chromium resolves independently), so a low-TTL DNS
+  rebind between the check and the page load remains possible. Closing that
+  fully would require proxying all webview traffic.
 - **A tab that exists is always listed, even when it isn't drivable.**
   `browser_list_tabs` reports every registered tab and carries a `status`:
   `ready` (webview attached), `starting` (registered, attaching), `detached`
@@ -369,6 +395,27 @@ closes the hole where an agent could pass an arbitrary `ext:<port>` id to
 `preview_stop` and tree-kill an unrelated local service (a database, sshd,
 another project's server).
 
+Observation alone is still too weak to authorize a kill, because adoption is a
+bare TCP probe: a launch.json entry declaring port 5432 will happily adopt a
+running Postgres, and every guard above would then pass. Two further rules
+close that gap:
+
+- **Agents can never stop an `ext:` server.** Every `ext:` record is a process
+  this daemon did not spawn, and killing a process Otto did not start is a
+  decision for a person. `stopExternal` refuses any stop carrying a caller cwd
+  (the agent tool path) with an error saying exactly that: the process was not
+  started by Otto, and the user must stop it themselves. The user's "Stop
+  server" button (the unscoped `preview.stop.request` RPC) remains the one
+  deliberate action that may tree-kill an adopted server.
+- **Well-known service ports are never stoppable via `ext:`, on either path.**
+  `NEVER_STOPPABLE_SERVICE_PORTS` in `dev-server-manager.ts` denylists SSH,
+  Remote Desktop, and the common local databases and brokers (PostgreSQL,
+  MySQL, SQL Server, Redis, MongoDB, RabbitMQ, Kafka, Elasticsearch,
+  memcached). Nothing on those ports is plausibly a dev server, so the refusal
+  fires before the observation lookup, as cheap defence in depth even against a
+  hostile launch.json. Adoption itself stays permissive so a misdeclared entry
+  still shows up in the UI instead of erroring.
+
 Agent-initiated stops and log reads are additionally workspace-scoped: the
 `preview_stop` / `preview_logs` tools pass the caller agent's cwd, and the
 manager rejects servers belonging to a different workspace
@@ -401,7 +448,7 @@ What adoption does and does not buy:
 | `preview_list`            | Lists it — `list()` returns managed records **plus** adopted externals                            |
 | `preview.list_config` RPC | Lists it (calls `reconcileRunning`, which is also what prunes adoptions once the port goes quiet) |
 | `preview_logs`            | **Throws, on purpose** — Otto captured no output from a process it did not spawn, and says so     |
-| `preview_stop`            | Tree-kills whatever owns the port, under the restrictions below                                   |
+| `preview_stop`            | **Refuses for agents** (Otto did not start it); the user's Stop button may tree-kill it           |
 
 Adoption records are a probe's worth of truth, so they are only as fresh as the
 last probe: `reconcileRunning` re-probes each configured port on the UI's poll
@@ -489,6 +536,37 @@ fallback path or alternate filename.
 
 This is deliberately the same format used by other preview harnesses, so a
 project only needs one config file regardless of which agent is driving it.
+
+### launch.json is a shell-execution surface
+
+`DevServerManager.spawnServer` runs `runtimeExecutable` with `runtimeArgs`
+under `shell: true`, and there is no allowlist of permitted commands. Writing
+the file is therefore equivalent to writing a shell script that Otto will run
+on the next `preview_start`. That is fine while the file is pre-authored and
+edits to it are gated, which is what "Always Ask" gives you: the write prompts,
+so the command was seen before it could run.
+
+acceptEdits breaks that assumption, because it auto-approves the write too. The
+openai-compat provider is the runtime for its own tools (no CLI permission
+system in front of it), so it carries the compensating check:
+`PreviewStartGate`
+(`packages/server/src/server/agent/providers/openai-compat-preview-start-gate.ts`)
+snapshots every entry's executable, args and env when the session is
+constructed, and `preview_start` keeps its auto-approval only while the entry
+it names still matches that snapshot. An entry added or rewritten during the
+session prompts once, and approving it re-baselines that exact command so a
+normal edit-then-preview loop does not prompt again. The alternative,
+classifying `preview_start` as `execute` so it always prompts, was rejected:
+starting a preview is one of the most common agent actions, and a prompt every
+time pushes users to bypassPermissions, which is strictly worse.
+
+Either way the prompt now names the resolved command
+(`npm run dev`, not just the server name), because a user approving a server
+start could not previously see what launch.json would execute.
+
+The gate is per session object, so a daemon restart between the write and the
+`preview_start` re-baselines the changed config. A restart is a user action
+rather than something the tool chain can trigger, so that residual is accepted.
 
 ### Capability detection
 

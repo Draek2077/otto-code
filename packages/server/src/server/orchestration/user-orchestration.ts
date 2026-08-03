@@ -36,6 +36,7 @@ import type { GraphEngineSpawnInput } from "./graph-engine.js";
 import type { GraphStore } from "./graph-store.js";
 import {
   type WorkspaceAccess,
+  capabilitiesEnforceAccess,
   describeUnsupportedAccess,
   resolveWorkspaceAccess,
 } from "../agent/workspace-access.js";
@@ -314,7 +315,9 @@ function assertProviderEnforcesAccess(
   // `provider` may be "provider" or "provider/model"; capabilities are per provider.
   const providerId = input.provider.split("/")[0] ?? input.provider;
   const capabilities = deps.agentManager.getProviderCapabilities(providerId as AgentProvider);
-  if (capabilities?.supportsWorkspaceAccess) {
+  // Per level, not one flag: Codex enforces "read" natively but has nothing
+  // below read-only, so a "none" node on a Codex seat is refused here too.
+  if (capabilitiesEnforceAccess(capabilities, input.access)) {
     return;
   }
   throw new Error(
@@ -322,6 +325,9 @@ function assertProviderEnforcesAccess(
       nodeTitle: input.nodeTitle,
       access: input.access,
       provider: providerId,
+      ...(capabilitiesEnforceAccess(capabilities, "read")
+        ? { enforceableFloor: "read" as const }
+        : {}),
     }),
   );
 }

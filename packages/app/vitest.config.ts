@@ -2,6 +2,7 @@ import { defineConfig, configDefaults } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 import path from "path";
 import fs from "fs";
+import os from "os";
 
 const appNodeModules = path.resolve(__dirname, "node_modules");
 const rootNodeModules = path.resolve(__dirname, "../../node_modules");
@@ -11,6 +12,124 @@ const resolvePackageEntry = (packageName: string) => {
     ? appPackagePath
     : path.resolve(rootNodeModules, packageName);
 };
+
+/**
+ * Where Playwright keeps downloaded browsers, per its own platform rules.
+ * `PLAYWRIGHT_BROWSERS_PATH=0` means "next to the package", which we do not
+ * try to second-guess: returning null there leaves the provider's default.
+ */
+function playwrightCacheRoot(): string | null {
+  const configured = process.env.PLAYWRIGHT_BROWSERS_PATH?.trim();
+  if (configured) {
+    return configured === "0" ? null : configured;
+  }
+  if (process.platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA;
+    return localAppData ? path.join(localAppData, "ms-playwright") : null;
+  }
+  if (process.platform === "darwin") {
+    return path.join(os.homedir(), "Library", "Caches", "ms-playwright");
+  }
+  return path.join(os.homedir(), ".cache", "ms-playwright");
+}
+
+// The launcher binary inside one `<cache>/<browser>-<revision>` directory, whatever
+// the platform names it. Scanned rather than hardcoded because the inner folder is
+// arch-suffixed (`chrome-headless-shell-win64`, `-linux64`, `-mac-arm64`, ...) and a
+// partially downloaded revision can leave the folder present but the binary missing.
+function findBrowserBinary(browserDir: string): string | null {
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(browserDir);
+  } catch {
+    return null;
+  }
+  const names =
+    process.platform === "win32"
+      ? ["chrome-headless-shell.exe", "chrome.exe"]
+      : ["chrome-headless-shell", "chrome"];
+  for (const entry of entries) {
+    const candidates = names.map((name) => path.join(browserDir, entry, name));
+    // macOS ships the full browser inside an app bundle.
+    candidates.push(path.join(browserDir, entry, "Chromium.app", "Contents", "MacOS", "Chromium"));
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * The Chromium the browser project should launch, or null to let Playwright pick.
+ *
+ * `@vitest/browser-playwright` resolves the executable from the revision pinned in
+ * `playwright-core/browsers.json` and demands exactly that build. CI installs it, so
+ * this returns null there and nothing changes. A developer machine whose
+ * `ms-playwright` cache was filled by the e2e harness holds other revisions instead,
+ * and the run dies with "Executable doesn't exist ... chromium_headless_shell-<rev>"
+ * only after every other project has already passed, which reads as a late
+ * regression when it is a missing download. Installing the pinned revision is a
+ * large fetch for a build nothing else here uses, so fall back to the newest cached
+ * one instead. `VITEST_BROWSER_EXECUTABLE` overrides both.
+ */
+function resolveBrowserExecutablePath(): string | null {
+  const override = process.env.VITEST_BROWSER_EXECUTABLE?.trim();
+  if (override) {
+    return override;
+  }
+
+  const cacheRoot = playwrightCacheRoot();
+  if (!cacheRoot) {
+    return null;
+  }
+
+  let pinnedRevision: string | null = null;
+  try {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(resolvePackageEntry("playwright-core"), "browsers.json"), "utf8"),
+    ) as { browsers?: Array<{ name?: string; revision?: string }> };
+    pinnedRevision =
+      manifest.browsers?.find((browser) => browser.name === "chromium-headless-shell")?.revision ??
+      null;
+  } catch {
+    pinnedRevision = null;
+  }
+
+  // The pinned build is present (the CI case). Leave the provider alone so the
+  // version it was tested against is the version that runs.
+  if (
+    pinnedRevision &&
+    findBrowserBinary(path.join(cacheRoot, `chromium_headless_shell-${pinnedRevision}`))
+  ) {
+    return null;
+  }
+
+  let cached: string[];
+  try {
+    cached = fs.readdirSync(cacheRoot);
+  } catch {
+    return null;
+  }
+  const revisionOf = (dir: string) => Number(dir.slice(dir.lastIndexOf("-") + 1)) || 0;
+  // Headless shell first: it is what this project asks for. Full Chromium is the
+  // fallback, and newest revision wins within each.
+  for (const prefix of ["chromium_headless_shell-", "chromium-"]) {
+    const matches = cached
+      .filter((dir) => dir.startsWith(prefix) && /-\d+$/.test(dir))
+      .sort((a, b) => revisionOf(b) - revisionOf(a));
+    for (const dir of matches) {
+      const binary = findBrowserBinary(path.join(cacheRoot, dir));
+      if (binary) {
+        return binary;
+      }
+    }
+  }
+  return null;
+}
+
+const browserExecutablePath = resolveBrowserExecutablePath();
 
 export default defineConfig({
   test: {
@@ -51,7 +170,13 @@ export default defineConfig({
           include: ["src/**/*.browser.{test,spec}.{ts,tsx}"],
           browser: {
             enabled: true,
-            provider: playwright(),
+            // The override must ride on the provider's `launchOptions`; a
+            // per-instance `launch:` key is ignored by this provider.
+            provider: playwright(
+              browserExecutablePath
+                ? { launchOptions: { executablePath: browserExecutablePath } }
+                : undefined,
+            ),
             headless: true,
             connectTimeout: 180_000,
             instances: [{ browser: "chromium" }],

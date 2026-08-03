@@ -2461,6 +2461,99 @@ export async function getCheckoutStatus(
   };
 }
 
+/**
+ * The identity half of {@link CheckoutStatusResult}: who this checkout is, with
+ * nothing about how far it has drifted.
+ */
+export type CheckoutIdentityResult =
+  | { isGit: false }
+  | {
+      isGit: true;
+      repoRoot: string;
+      mainRepoRoot: string | null;
+      currentBranch: string | null;
+      remoteUrl: string | null;
+      isOttoOwnedWorktree: boolean;
+    };
+
+/**
+ * Identity-only checkout read: repo root, branch, remote and worktree ownership.
+ *
+ * `getCheckoutStatus` answers the same questions but pays for the whole drift
+ * picture on the way — the base-ref ladder, `status --porcelain`, and three
+ * `rev-list --count` walks — around 17 git spawns. Callers that keep only the
+ * identity fields (periodic reconciliation is the big one) can use this instead
+ * and pay for `inspectCheckoutContext` plus the common-dir resolve, roughly a
+ * third of that. On Windows, where every spawn costs ~30-80 ms plus Defender
+ * scanning, that difference is what keeps a reconciliation tick off the global
+ * git limiter.
+ */
+export async function getCheckoutIdentity(
+  cwd: string,
+  context?: CheckoutContext,
+): Promise<CheckoutIdentityResult> {
+  // A caller that already resolved the full facts has paid for everything this
+  // function would spawn; read from them rather than re-running git.
+  const facts = context?.facts;
+  if (facts) {
+    if (!facts.isGit) {
+      return { isGit: false };
+    }
+    return buildCheckoutIdentity({
+      worktreeRoot: facts.worktreeRoot,
+      currentBranch: facts.currentBranch,
+      remoteUrl: facts.remoteUrl,
+      mainRepoRoot: facts.mainRepoRoot,
+      isOttoOwnedWorktree: facts.ottoWorktree.isOttoOwnedWorktree,
+    });
+  }
+
+  const inspected = await inspectCheckoutContext(cwd, context);
+  if (!inspected) {
+    return { isGit: false };
+  }
+  const mainRepoRoot = await getMainRepoRootFromCommonDir(
+    cwd,
+    inspected.gitCommonDir,
+    context,
+  ).catch(() => null);
+
+  return buildCheckoutIdentity({
+    worktreeRoot: inspected.worktreeRoot,
+    currentBranch: inspected.currentBranch,
+    remoteUrl: inspected.remoteUrl,
+    mainRepoRoot,
+    isOttoOwnedWorktree: inspected.ottoWorktree.isOttoOwnedWorktree,
+  });
+}
+
+function buildCheckoutIdentity(input: {
+  worktreeRoot: string;
+  currentBranch: string | null;
+  remoteUrl: string | null;
+  mainRepoRoot: string | null;
+  isOttoOwnedWorktree: boolean;
+}): CheckoutIdentityResult {
+  // Same main-repo-root rule as getCheckoutStatus: an Otto worktree always
+  // reports one (falling back to its own root), and a plain checkout reports one
+  // only when it actually differs from where we are.
+  let mainRepoRoot: string | null = null;
+  if (input.isOttoOwnedWorktree) {
+    mainRepoRoot = input.mainRepoRoot ?? input.worktreeRoot;
+  } else if (input.mainRepoRoot && resolve(input.mainRepoRoot) !== resolve(input.worktreeRoot)) {
+    mainRepoRoot = input.mainRepoRoot;
+  }
+
+  return {
+    isGit: true,
+    repoRoot: input.worktreeRoot,
+    mainRepoRoot,
+    currentBranch: input.currentBranch,
+    remoteUrl: input.remoteUrl,
+    isOttoOwnedWorktree: input.isOttoOwnedWorktree,
+  };
+}
+
 export interface CheckoutShortstat {
   additions: number;
   deletions: number;

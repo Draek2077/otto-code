@@ -142,6 +142,7 @@ interface ArchiveTestDependencies extends ArchiveDependencies {
   archivedAgentIds: string[];
   archivedSnapshotIds: string[];
   stoppedLanguageServerRoots: string[];
+  droppedGitLogCwds: string[];
 }
 
 function createArchiveDeps(input: ArchiveDepsInput): ArchiveTestDependencies {
@@ -150,6 +151,7 @@ function createArchiveDeps(input: ArchiveDepsInput): ArchiveTestDependencies {
   const archivedAgentIds: string[] = [];
   const archivedSnapshotIds: string[] = [];
   const stoppedLanguageServerRoots: string[] = [];
+  const droppedGitLogCwds: string[] = [];
 
   return {
     ottoHome: input.ottoHome,
@@ -189,11 +191,15 @@ function createArchiveDeps(input: ArchiveDepsInput): ArchiveTestDependencies {
     stopLanguageServers: async (rootPath: string) => {
       stoppedLanguageServerRoots.push(rootPath);
     },
+    deleteGitOperationLogs: (cwd: string) => {
+      droppedGitLogCwds.push(cwd);
+    },
     sessionLogger: createLogger(),
     activeWorkspaces: active,
     archivedAgentIds,
     archivedSnapshotIds,
     stoppedLanguageServerRoots,
+    droppedGitLogCwds,
   };
 }
 
@@ -238,6 +244,53 @@ describe("archiveByScope", () => {
       removedDirectory: true,
     });
     expect(existsSync(worktree.worktreePath)).toBe(false);
+  });
+
+  // The git operation log buffers are keyed by cwd and never shed keys on their
+  // own, so an archived record has to take them with it or they stay resident
+  // for the daemon's lifetime.
+  test("workspace scope drops the archived record's git operation log buffers", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const ottoHome = path.join(tempDir, ".otto");
+    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "git-log-drop");
+    const workspaceId = "ws-git-log-drop";
+    const dependencies = createArchiveDeps({
+      ottoHome,
+      activeWorkspaces: [{ workspaceId, cwd: worktree.worktreePath, kind: "worktree" }],
+    });
+
+    await archiveByScope(dependencies, {
+      scope: { kind: "workspace", workspaceId },
+      repoRoot: repoDir,
+      requestId: "req-git-log-drop",
+    });
+
+    expect(dependencies.droppedGitLogCwds).toEqual([worktree.worktreePath]);
+  });
+
+  // Two records can sit on one cwd, and they SHARE the buffers under that key.
+  // Archiving one must not blank the survivor's log pane.
+  test("workspace scope keeps git operation log buffers a sibling at the same cwd still uses", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const ottoHome = path.join(tempDir, ".otto");
+    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "git-log-shared");
+    const workspaceA = "ws-git-log-a";
+    const workspaceB = "ws-git-log-b";
+    const dependencies = createArchiveDeps({
+      ottoHome,
+      activeWorkspaces: [
+        { workspaceId: workspaceA, cwd: worktree.worktreePath, kind: "worktree" },
+        { workspaceId: workspaceB, cwd: worktree.worktreePath, kind: "local_checkout" },
+      ],
+    });
+
+    await archiveByScope(dependencies, {
+      scope: { kind: "workspace", workspaceId: workspaceA },
+      repoRoot: repoDir,
+      requestId: "req-git-log-shared",
+    });
+
+    expect(dependencies.droppedGitLogCwds).toEqual([]);
   });
 
   // The workspace is going away whether or not its directory survives, so its

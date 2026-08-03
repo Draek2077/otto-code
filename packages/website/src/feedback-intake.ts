@@ -20,7 +20,12 @@ const MAX_SOURCE = 60;
 const MAX_BODY_BYTES = 16_000;
 
 // Accidents, not adversaries: a stuck client or a double-tap shouldn't be able
-// to flood the channel. KV is eventually consistent, so this is a soft ceiling.
+// to flood the channel. KV reads are cached and eventually consistent, so
+// concurrent requests undercount and this is a soft ceiling by design. A hard
+// limit would need Durable Objects (the Rate Limiting binding caps its window
+// at 60s and cannot express 5/hour); for a feedback form whose worst case is
+// spam in a Discord channel that Discord itself rate-limits, that is not worth
+// the extra infrastructure.
 const RATE_LIMIT_MAX = 5;
 const RATE_LIMIT_WINDOW_SECONDS = 60 * 60;
 
@@ -176,14 +181,50 @@ async function isRateLimited(request: Request): Promise<boolean> {
   const ip = request.headers.get("cf-connecting-ip");
   if (!cache || !ip) return false;
 
-  const key = `feedback-rate:${ip}`;
-  const raw = await cache.get(key);
-  const count = raw === null ? 0 : Number.parseInt(raw, 10);
-  const current = Number.isFinite(count) ? count : 0;
-  if (current >= RATE_LIMIT_MAX) return true;
+  // Fail open: the limiter guards against accidents, and a KV outage must not
+  // block feedback delivery or leak an uncaught error to the reporter.
+  try {
+    const key = `feedback-rate:${ip}`;
+    const raw = await cache.get(key);
+    const count = raw === null ? 0 : Number.parseInt(raw, 10);
+    const current = Number.isFinite(count) ? count : 0;
+    if (current >= RATE_LIMIT_MAX) return true;
 
-  await cache.put(key, String(current + 1), { expirationTtl: RATE_LIMIT_WINDOW_SECONDS });
+    await cache.put(key, String(current + 1), { expirationTtl: RATE_LIMIT_WINDOW_SECONDS });
+  } catch {
+    return false;
+  }
   return false;
+}
+
+// Count the bytes actually received instead of trusting content-length, which
+// a client can understate. Returns null once the stream exceeds maxBytes.
+async function readBodyCapped(request: Request, maxBytes: number): Promise<string | null> {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      try {
+        await reader.cancel();
+      } catch {
+        // Best effort; the caller rejects the request either way.
+      }
+      return null;
+    }
+    chunks.push(value);
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(merged);
 }
 
 export async function handleFeedbackRequest(request: Request): Promise<Response> {
@@ -194,14 +235,36 @@ export async function handleFeedbackRequest(request: Request): Promise<Response>
     return jsonResponse({ ok: false, error: "method not allowed" }, 405);
   }
 
+  // KV or webhook failures must come back as a controlled JSON error with the
+  // CORS headers of the success path, never as the platform's uncaught-exception
+  // page (which cross-origin app builds cannot even read).
+  try {
+    return await handleFeedbackPost(request);
+  } catch {
+    return jsonResponse({ ok: false, error: "feedback could not be processed" }, 500);
+  }
+}
+
+async function handleFeedbackPost(request: Request): Promise<Response> {
+  // A missing or unparseable content-length is a rejection, not a pass: chunked
+  // uploads carry no length, and letting them through would hand request.json()
+  // an unbounded body to buffer inside the isolate.
   const declaredLength = Number.parseInt(request.headers.get("content-length") ?? "", 10);
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
+  if (!Number.isFinite(declaredLength)) {
+    return jsonResponse({ ok: false, error: "content-length required" }, 411);
+  }
+  if (declaredLength > MAX_BODY_BYTES) {
+    return jsonResponse({ ok: false, error: "payload too large" }, 413);
+  }
+
+  const bodyText = await readBodyCapped(request, MAX_BODY_BYTES);
+  if (bodyText === null) {
     return jsonResponse({ ok: false, error: "payload too large" }, 413);
   }
 
   let input: FeedbackInput;
   try {
-    input = validateFeedback(await request.json());
+    input = validateFeedback(JSON.parse(bodyText));
   } catch (error) {
     const message = error instanceof FeedbackValidationError ? error.message : "invalid input";
     return jsonResponse({ ok: false, error: message }, 400);
@@ -224,11 +287,16 @@ export async function handleFeedbackRequest(request: Request): Promise<Response>
     return jsonResponse({ ok: false, error: "feedback is not configured on the server" }, 503);
   }
 
-  const delivery = await fetch(webhookUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ embeds: buildFeedbackEmbeds(input) }),
-  });
+  let delivery: Response;
+  try {
+    delivery = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ embeds: buildFeedbackEmbeds(input) }),
+    });
+  } catch {
+    return jsonResponse({ ok: false, error: "could not deliver feedback" }, 502);
+  }
 
   if (!delivery.ok) {
     return jsonResponse({ ok: false, error: "could not deliver feedback" }, 502);

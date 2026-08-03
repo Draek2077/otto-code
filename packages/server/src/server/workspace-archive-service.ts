@@ -14,6 +14,7 @@ import {
 } from "../utils/worktree.js";
 import { createRealpathAwarePathMatcher } from "../utils/path.js";
 import { deleteLocalBranch as deleteLocalBranchImpl } from "./workspace-archive-branch.js";
+import { gitOperationLog } from "./git-operation-log.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
 import type { PersistedWorkspaceRecord, WorkspaceRegistry } from "./workspace-registry.js";
 
@@ -85,6 +86,9 @@ export interface ArchiveDependencies {
   // any more. Optional so the test harnesses and the CLI paths need not wire an
   // LspService; when absent, servers are left to the daemon's idle reaper.
   stopLanguageServers?: (rootPath: string) => Promise<void>;
+  // Drops the in-memory git operation log buffers a directory owns. Injectable
+  // for tests; defaults to the daemon-global service.
+  deleteGitOperationLogs?: (cwd: string) => void;
   // Deletes a local branch from the shared repo. Injectable for tests; defaults
   // to the real git-backed implementation.
   deleteLocalBranch?: (input: {
@@ -198,6 +202,8 @@ export async function archiveByScope(
       targetWorkspaceIds,
       request.requestId,
     );
+
+    await dropGitOperationLogsForArchivedRecords(dependencies, target, archivedWorkspaceIds);
 
     if (target.backing !== null && archivedWorkspaceIds.length > 0) {
       // A language server is rooted at the directory a session opened, so the
@@ -507,6 +513,52 @@ async function maybeRemoveDirectory(
     }
     throw error;
   }
+}
+
+// The git operation log is an unpersisted buffer per (cwd, operation), capped
+// per key but never shedding keys, so an archived record's logs would sit in the
+// daemon forever. Same last-reference shape as the language servers, but keyed
+// on the record's own CWD rather than its backing directory, because that is
+// what the buffer key is: two records at one cwd share buffers, and the survivor
+// keeps them.
+export function dropGitOperationLogs(
+  dependencies: Pick<ArchiveDependencies, "deleteGitOperationLogs">,
+  cwds: Iterable<string>,
+): void {
+  const drop =
+    dependencies.deleteGitOperationLogs ?? ((cwd: string) => gitOperationLog.deleteForCwd(cwd));
+  for (const cwd of cwds) {
+    drop(cwd);
+  }
+}
+
+// Never throws: losing an operational log buffer must not fail an archive that
+// has already happened.
+async function dropGitOperationLogsForArchivedRecords(
+  dependencies: ArchiveDependencies,
+  target: ArchiveTarget,
+  archivedWorkspaceIds: string[],
+): Promise<void> {
+  const archived = new Set(archivedWorkspaceIds);
+  const candidates = uniqueFilesystemPaths(
+    target.teardownTargets
+      .filter((entry) => entry.workspaceId === null || archived.has(entry.workspaceId))
+      .map((entry) => entry.cwd),
+  );
+  if (candidates.length === 0) {
+    return;
+  }
+  const remainingActive = await dependencies.listActiveWorkspaces().catch(() => null);
+  if (remainingActive === null) {
+    return;
+  }
+  const unreferenced = candidates.filter((cwd) => {
+    const matchesCwd = createRealpathAwarePathMatcher(cwd);
+    return !remainingActive.some(
+      (workspace) => !archived.has(workspace.workspaceId) && matchesCwd(workspace.cwd),
+    );
+  });
+  dropGitOperationLogs(dependencies, unreferenced);
 }
 
 async function maybeDeleteLeftoverBranch(

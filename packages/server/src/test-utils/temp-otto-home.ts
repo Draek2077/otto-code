@@ -1,7 +1,9 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll } from "vitest";
+
+import { removeTempDir } from "./remove-temp-dir.js";
 
 /**
  * Points `$OTTO_HOME` at a throwaway directory for the calling suite.
@@ -30,7 +32,7 @@ export function withTemporaryOttoHome(label = "otto-home-test"): () => string {
       process.env.OTTO_HOME = previous;
     }
     if (ottoHome) {
-      rmSync(ottoHome, { recursive: true, force: true });
+      removeTempDir(ottoHome);
     }
   });
 

@@ -15,6 +15,14 @@ npm run build:dotnet-probe
 Output lands in `dist/` (5 files, ~257 KB) and is copied into `packages/server/dist/dotnet-probe`
 when that directory already exists, which is the layout a published server tarball uses.
 
+**That destination is written down once,** in
+[`scripts/dotnet-probe-paths.mjs`](../../scripts/dotnet-probe-paths.mjs), and both the build script
+and the daemon's `solution-model/dotnet/bootstrap.ts` are pinned to it by `bootstrap.test.ts`. They
+were hand-written separately once and drifted a directory apart, and a repo checkout's fallback to
+this package's own `dist/` hid that from everyone who was not running a published build. One
+further thing has to stay true, and it fails silently and green: the server package's `files` array
+has to cover `dist/dotnet-probe`, because `npm pack` ships an allowlist.
+
 **You should not need to run it by hand.** A server build wipes `packages/server/dist` and takes
 the payload with it, so `build:server` and `build:server:clean` each end by running this script.
 That is the only thing enforcing the ordering — do not re-document it as a manual step somewhere

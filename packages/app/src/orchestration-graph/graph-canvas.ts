@@ -1169,7 +1169,7 @@ function buildAgentNodeHtml(
     `<option value="read"${info.access === "read" ? " selected" : ""}>Read only</option>` +
     `<option value="none"${info.access === "none" ? " selected" : ""}>No workspace access</option>` +
     `</select>` +
-    `<div class="og-inputs-hint">Enforced by withholding tools at spawn, not by asking the model. A seat whose provider can't enforce it refuses the run.</div>` +
+    `<div class="og-inputs-hint">Enforced by withholding tools at spawn, not by asking the model. A seat whose provider can't enforce the level refuses the run. Codex's floor is read-only, so "No workspace access" needs a non-Codex seat.</div>` +
     `<label class="og-label">Output fields <span class="og-hint">(one per line: name : type : description)</span></label>` +
     `<textarea class="og-prompt" data-og-field="outputFields" rows="3" placeholder="complexity : string : simple or complex">${escapeHtml(info.outputFields)}</textarea>` +
     `<div class="og-inputs-hint">Declaring fields gives this node a submit_output tool and lets edges from it carry conditions. Add ? after a name to make it optional.</div>` +

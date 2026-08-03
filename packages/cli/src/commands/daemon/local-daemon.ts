@@ -30,7 +30,21 @@ export interface LocalDaemonPidInfo {
 
 export interface LocalDaemonState {
   home: string;
+  /**
+   * Where a daemon for this home *would* listen: the pid file's address when one
+   * exists, otherwise the configured default. Safe for display and for deciding
+   * where to start, but NOT for deciding what to shut down -- on a home that owns
+   * no daemon this falls back to the global default (127.0.0.1:6868), which
+   * belongs to whatever daemon happens to be running there.
+   */
   listen: string;
+  /**
+   * Where the daemon *this home actually owns* is listening, or null when this
+   * home owns no daemon. Lifecycle operations that stop a daemon must use this:
+   * a home with no pid file has nothing to stop, and must never inherit the
+   * default port and reach into another home's daemon.
+   */
+  ownedListen: string | null;
   relayEnabled: boolean;
   relayEndpoint: string;
   relayUseTls: boolean;
@@ -430,7 +444,7 @@ async function waitForDaemonUnreachable(
   state: LocalDaemonState,
   timeoutMs: number,
 ): Promise<boolean> {
-  const host = resolveTcpHostFromListen(state.listen);
+  const host = resolveTcpHostFromListen(state.ownedListen);
   if (!host) {
     return true;
   }
@@ -495,7 +509,7 @@ function createStopTimeoutError(
   timeoutMs: number,
 ): Error {
   if (!state.running) {
-    const host = resolveTcpHostFromListen(state.listen);
+    const host = resolveTcpHostFromListen(state.ownedListen);
     return new Error(
       `Timed out waiting for daemon${host ? ` at ${host}` : ""} to stop after ${Math.ceil(
         timeoutMs / 1000,
@@ -555,8 +569,8 @@ export function resolveLocalOttoHome(home?: string): string {
   return resolveOttoHome(envWithHome(home));
 }
 
-export function resolveTcpHostFromListen(listen: string): string | null {
-  const normalized = listen.trim();
+export function resolveTcpHostFromListen(listen: string | null | undefined): string | null {
+  const normalized = listen?.trim() ?? "";
   if (!normalized) {
     return null;
   }
@@ -603,10 +617,15 @@ export function resolveLocalDaemonState(options: { home?: string } = {}): LocalD
   const pidInfo = existsSync(pidPath) ? readPidFile(pidPath) : null;
   const running = pidInfo ? isProcessRunning(pidInfo.pid) : false;
   const listen = pidInfo?.listen ?? config.listen;
+  // Only a home that owns a pid file owns a daemon. Older pid files predate the
+  // `listen` field, so fall back to the configured address -- but only when a pid
+  // file proves this home owns something to talk to.
+  const ownedListen = pidInfo ? (pidInfo.listen ?? config.listen) : null;
 
   return {
     home,
     listen,
+    ownedListen,
     relayEnabled: config.relayEnabled ?? true,
     relayEndpoint: config.relayPublicEndpoint ?? config.relayEndpoint ?? "relay.otto-code.me:443",
     relayUseTls: config.relayUseTls ?? false,
@@ -725,11 +744,13 @@ async function requestLifecycleShutdown(
   state: LocalDaemonState,
   timeoutMs: number,
 ): Promise<LifecycleShutdownAttempt> {
-  const host = resolveTcpHostFromListen(state.listen);
+  const host = resolveTcpHostFromListen(state.ownedListen);
   if (!host) {
     return {
       requested: false,
-      reason: "daemon listen target is not TCP, falling back to owner PID signal",
+      reason: state.pidInfo
+        ? "daemon listen target is not TCP, falling back to owner PID signal"
+        : "this home owns no daemon, skipping lifecycle shutdown",
     };
   }
 

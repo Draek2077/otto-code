@@ -18,8 +18,8 @@ function tmpRepo(): string {
 
 function initGitRepo(cwd: string): void {
   execSync("git init -b main", { cwd, stdio: "pipe" });
-  execSync("git config user.email 'test@test.com'", { cwd, stdio: "pipe" });
-  execSync("git config user.name 'Test'", { cwd, stdio: "pipe" });
+  execSync('git config user.email "test@test.com"', { cwd, stdio: "pipe" });
+  execSync('git config user.name "Test"', { cwd, stdio: "pipe" });
 }
 
 function seedLargeDirtyRepo(cwd: string, fileCount: number): void {
@@ -28,7 +28,7 @@ function seedLargeDirtyRepo(cwd: string, fileCount: number): void {
     writeFileSync(path.join(cwd, "files", `f-${i}.txt`), `line ${i}\n`);
   }
   execSync("git add .", { cwd, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'init'", {
+  execSync('git -c commit.gpgsign=false commit -m "init"', {
     cwd,
     stdio: "pipe",
   });

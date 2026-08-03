@@ -610,11 +610,9 @@ interface AssistantTurnFooterProps {
   completedAt?: Date;
   durationMs?: number;
   usage?: AgentUsage;
-  forkBoundaryMessageId?: string;
-  onFork?: (input: {
-    target: AssistantForkTarget;
-    boundaryMessageId?: string;
-  }) => Promise<void> | void;
+  // Already bound to this turn's fork boundary by the caller; absent when the
+  // turn has no forkable boundary at all.
+  onFork?: (target: AssistantForkTarget) => Promise<void> | void;
 }
 // Playback deliberately does NOT live here. A turn's footer only knows the turn,
 // and `collectAssistantTurnContent` joins every assistant message in it — so a
@@ -675,7 +673,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   completedAt,
   durationMs,
   usage,
-  forkBoundaryMessageId,
   onFork,
 }: AssistantTurnFooterProps) {
   const timestampLabel = useChatTimestampLabel(completedAt?.getTime());
@@ -687,11 +684,11 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   }, [durationMs, timestampLabel, usage]);
   const handleFork = useCallback(
     (target: AssistantForkTarget) => {
-      return onFork?.({ target, boundaryMessageId: forkBoundaryMessageId });
+      return onFork?.(target);
     },
-    [forkBoundaryMessageId, onFork],
+    [onFork],
   );
-  const canFork = Boolean(onFork && forkBoundaryMessageId);
+  const canFork = Boolean(onFork);
   // Speak-this-message is available whenever the host can stream speech on
   // demand (the ttsSpeak capability); no live voice session required.
   return (
@@ -1619,7 +1616,7 @@ function AssistantMessageBlockContainer({ block, children }: AssistantMessageBlo
 interface MemoizedMarkdownBlockProps {
   text: string;
   rules: RenderRules;
-  parser: MarkdownIt;
+  parser: ReturnType<typeof MarkdownIt>;
   onLinkPress: (url: string) => boolean;
 }
 

@@ -101,7 +101,7 @@ export class PersonalityMemoryStore {
    */
   record(input: RecordLessonInput): Promise<RecordLessonResult> {
     return this.mutate<RecordLessonResult>(input.personalityId, (entries) => {
-      const lesson = truncateLesson(input.lesson);
+      const lesson = normalizeLesson(input.lesson);
       // Only same-scope entries are dedup candidates: "always true here" and
       // "always true everywhere" are different claims even in identical words,
       // and merging them would silently widen or narrow a lesson's reach.
@@ -166,7 +166,7 @@ export class PersonalityMemoryStore {
       const scope = input.scope ?? existing.scope;
       const next: PersonalityMemoryEntry = {
         ...existing,
-        ...(input.text !== undefined ? { text: truncateLesson(input.text) } : {}),
+        ...(input.text !== undefined ? { text: normalizeLesson(input.text) } : {}),
         scope,
         updatedAt: new Date().toISOString(),
       };
@@ -331,9 +331,27 @@ export class PersonalityMemoryStore {
   }
 }
 
-function truncateLesson(text: string): string {
-  const trimmed = text.trim();
-  return trimmed.length > MAX_LESSON_CHARS ? `${trimmed.slice(0, MAX_LESSON_CHARS)}…` : trimmed;
+/**
+ * Normalize a lesson to the shape the tool contract promises: one paragraph,
+ * capped in length. Lessons are model-authored and are later interpolated into
+ * a system-prompt list item, so newlines and control characters collapse to
+ * spaces here — a multi-line entry could smuggle its own markdown headings into
+ * the injected brief as top-level structure. The brief composer flattens again
+ * at render time; this keeps the store from accumulating entries that only the
+ * renderer saves you from.
+ */
+function normalizeLesson(text: string): string {
+  // Written as a code-point test rather than a regex character class: C0
+  // controls and C1/DEL become spaces, and the whitespace collapse then folds
+  // them — with every newline and Unicode line separator — into single spaces.
+  const flat = Array.from(text, (char) => {
+    const code = char.codePointAt(0) ?? 0;
+    return code < 32 || (code >= 127 && code <= 159) ? " " : char;
+  })
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+  return flat.length > MAX_LESSON_CHARS ? `${flat.slice(0, MAX_LESSON_CHARS)}…` : flat;
 }
 
 /**

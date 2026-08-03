@@ -60,6 +60,15 @@ function applyKey(config: BrainConfig, key: string, value: boolean | number | st
       config.runtime.source = value as BrainConfig["runtime"]["source"];
       return;
     case "auth.mode":
+      // mode=token without a stored token would serve ungated (withAuth has no
+      // key to check), so refuse to persist that state. Set auth.token first.
+      if (value === "token" && !config.auth.token) {
+        throw new CommandError({
+          code: "TOKEN_REQUIRED",
+          message: "auth.mode=token requires auth.token to be set first",
+          details: "run `otto brain config set auth.token <token>` before enabling token auth",
+        });
+      }
       config.auth.mode = value as BrainConfig["auth"]["mode"];
       return;
     case "auth.token":

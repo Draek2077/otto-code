@@ -302,7 +302,9 @@ export function registerPreviewTools(options: RegisterPreviewToolsOptions): void
     "preview_stop",
     {
       title: "Stop preview dev server",
-      description: "Stop a dev server started with preview_start, killing its whole process tree.",
+      description:
+        "Stop a dev server started with preview_start, killing its whole process tree. " +
+        "Servers with an ext:<port> id were not started by Otto (they were adopted from an already-listening port) and this tool refuses to stop them; ask the user to stop those themselves.",
       inputSchema: {
         serverId: z.string().min(1).describe("Server ID to stop"),
       },

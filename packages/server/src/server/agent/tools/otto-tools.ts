@@ -61,6 +61,11 @@ import {
   type CreateAgentFromMcpInput,
 } from "../create-agent/create.js";
 import { RunPlanSchema } from "@otto-code/protocol/orchestration";
+import {
+  type WorkspaceAccess,
+  isOttoToolAllowedForAccess,
+  resolveWorkspaceAccess,
+} from "../workspace-access.js";
 import { summarizeRunOutput } from "../../orchestration/run-engine.js";
 import {
   type NodeOutputStore,
@@ -121,6 +126,7 @@ import {
   type CreateOttoWorktreeCommandInput,
   listOttoWorktreesCommand,
 } from "../../worktree/commands.js";
+import { truncateHeadTail } from "../../../utils/truncate-head-tail.js";
 import { registerBrowserTools } from "../../browser-tools/tools.js";
 import type { BrowserToolsBroker } from "../../browser-tools/broker.js";
 import { registerPreviewTools } from "../../preview/preview-tools.js";
@@ -753,6 +759,60 @@ const DEFAULT_BARE_AGENT_TITLE = "New chat";
  */
 const GET_AGENT_ACTIVITY_DEFAULT_LIMIT = 50;
 
+/**
+ * Ceiling on the same arg. The default bounded the no-arg call, but `limit`
+ * itself was unbounded, so "pass `limit` for more" was an open invitation to
+ * ask for the whole child transcript in one result. Paging with repeated calls
+ * is the supported way past this.
+ */
+const GET_AGENT_ACTIVITY_MAX_LIMIT = 500;
+
+/**
+ * Per-agent cap on the final message `wait_for_agents` returns. A 32-way gather
+ * returned every child's last message verbatim, so one barrier could carry tens
+ * of thousands of tokens into the conductor's context.
+ */
+const WAIT_FOR_AGENTS_MESSAGE_HEAD_CHARS = 3_200;
+const WAIT_FOR_AGENTS_MESSAGE_TAIL_CHARS = 800;
+
+/**
+ * Default window for `capture_terminal` with `scrollback: true`. That flag used
+ * to mean `start: 0` — the entire xterm buffer, up to 1000 lines of wide build
+ * output in one result. An explicit `start`/`end` still selects any range,
+ * including the whole buffer.
+ */
+const CAPTURE_TERMINAL_SCROLLBACK_DEFAULT_LINES = 300;
+
+export function capWaitForAgentsMessage(message: string): string {
+  return truncateHeadTail({
+    text: message,
+    headChars: WAIT_FOR_AGENTS_MESSAGE_HEAD_CHARS,
+    tailChars: WAIT_FOR_AGENTS_MESSAGE_TAIL_CHARS,
+    note: "call get_agent_activity for the rest",
+  });
+}
+
+// Negative `start` is resolved against the line count by `captureTerminalLines`,
+// so the tail window needs no knowledge of how much scrollback exists.
+export function resolveCaptureTerminalStart(input: {
+  start: number | undefined;
+  end: number | undefined;
+  scrollback: boolean | undefined;
+}): number | undefined {
+  if (!input.scrollback) {
+    return input.start;
+  }
+  if (input.start !== undefined) {
+    return input.start;
+  }
+  if (input.end !== undefined) {
+    // An explicit end means the caller is selecting a range; anchor at the
+    // start of the buffer as `scrollback: true` always did.
+    return 0;
+  }
+  return -CAPTURE_TERMINAL_SCROLLBACK_DEFAULT_LINES;
+}
+
 // Fill the generic defaults for a bare "just open a new chat" spawn. A real
 // prompt with no title keeps deriving its title from the prompt (undefined here
 // → derived downstream); only a title-less AND prompt-less spawn gets the
@@ -1039,6 +1099,19 @@ async function resolveArtifactProjectId(params: {
   throw new Error("projectId is required because it could not be derived from your workspace");
 }
 
+// The caller's workspace-access ceiling (agent/workspace-access.ts), read from
+// its stored config the same way the orchestration policy is read from its
+// labels. No caller — the daemon/user-level catalog, not an agent session —
+// resolves to "write", the pre-feature behaviour.
+function resolveCallerWorkspaceAccess(
+  agentManager: AgentManager,
+  callerAgentId: string | undefined,
+): WorkspaceAccess {
+  return resolveWorkspaceAccess(
+    callerAgentId ? agentManager.getAgent(callerAgentId)?.config.workspaceAccess : undefined,
+  );
+}
+
 // Read the caller agent's orchestration policy label, if it carries one.
 function resolveOrchestrationPolicy(
   agentManager: AgentManager,
@@ -1154,6 +1227,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
   const isToolAllowedByOrchestrationPolicy = buildOrchestrationPolicyGate(
     resolveOrchestrationPolicy(agentManager, callerAgentId),
   );
+  const callerWorkspaceAccess = resolveCallerWorkspaceAccess(agentManager, callerAgentId);
   const registerTool = (
     name: string,
     config: OttoToolConfig,
@@ -1166,6 +1240,14 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       return;
     }
     if (!isToolAllowedByOrchestrationPolicy(name)) {
+      return;
+    }
+    // Workspace-access ceiling: enforced here at registration, like the two
+    // gates above, so every catalog consumer — the MCP server serving CLI
+    // providers and openai-compat's daemon-owned tool loop — withholds the
+    // same tools. A tool that was never registered cannot be argued into
+    // running (agent/workspace-access.ts).
+    if (!isOttoToolAllowedForAccess(name, callerWorkspaceAccess)) {
       return;
     }
     tools.set(name, {
@@ -3755,7 +3837,9 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
     "capture_terminal",
     {
       title: "Capture terminal",
-      description: "Capture plain-text terminal output lines from a terminal session.",
+      description:
+        "Capture plain-text terminal output lines from a terminal session. " +
+        `With scrollback and no start/end, returns the last ${CAPTURE_TERMINAL_SCROLLBACK_DEFAULT_LINES} lines; pass start/end for any other range.`,
       inputSchema: {
         terminalId: z.string(),
         start: z.number().optional(),
@@ -3779,7 +3863,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
       }
 
       const capture = await terminalManager.captureTerminal(terminalId, {
-        start: scrollback ? 0 : start,
+        start: resolveCaptureTerminalStart({ start, end, scrollback }),
         end,
         stripAnsi,
       });
@@ -4805,6 +4889,7 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
         agentId: z.string(),
         limit: z
           .number()
+          .max(GET_AGENT_ACTIVITY_MAX_LIMIT)
           .optional()
           .describe("Optional limit for number of activities to include (most recent first)."),
       },
@@ -4991,7 +5076,11 @@ export function createOttoToolCatalog(options: OttoToolHostDependencies): OttoTo
               });
               const lastMessage =
                 result.lastMessage ?? (await agentManager.getLastAssistantMessage(id));
-              return { agentId: id, status: result.status, lastMessage: lastMessage ?? null };
+              return {
+                agentId: id,
+                status: result.status,
+                lastMessage: lastMessage == null ? null : capWaitForAgentsMessage(lastMessage),
+              };
             } catch {
               const snapshot = agentManager.getAgent(id);
               return { agentId: id, status: snapshot?.lifecycle ?? "idle", lastMessage: null };

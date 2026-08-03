@@ -80,9 +80,18 @@ export function extractToken(req: http.IncomingMessage): string | null {
   return typeof header === "string" ? header : null;
 }
 
+/**
+ * The one derivation of the effective auth token. `mode: "token"` with a null or
+ * empty token is NO auth — the bind guard and withAuth both read this, so they
+ * cannot disagree (a mode-only guard once let mode=token + token=null bind
+ * non-loopback and then serve every route ungated).
+ */
+export function effectiveAuthToken(config: BrainConfig): string | null {
+  return config.auth.mode === "token" && config.auth.token ? config.auth.token : null;
+}
+
 /** Gate the router with a bearer token when configured; /health stays open. */
-function withAuth(inner: http.RequestListener, config: BrainConfig): http.RequestListener {
-  const token = config.auth.mode === "token" ? config.auth.token : null;
+function withAuth(inner: http.RequestListener, token: string | null): http.RequestListener {
   if (!token) return inner;
   return (req, res) => {
     if (req.url !== "/health" && extractToken(req) !== token) {
@@ -143,10 +152,12 @@ export async function startService({
   const displayHost = tlsOptions?.hostname ?? bindHost;
 
   // Auth is orthogonal to transport: TLS encrypts the pipe, a token authorizes the
-  // caller. A non-loopback bind still needs a token even over HTTPS.
+  // caller. A non-loopback bind still needs an actual token even over HTTPS —
+  // gate on the token itself, not auth.mode, or mode=token with no token binds open.
+  const authToken = effectiveAuthToken(config);
   if (
     !isLoopback(bindHost) &&
-    config.auth.mode !== "token" &&
+    !authToken &&
     !config.allowInsecureBind &&
     env.OTTO_BRAIN_ALLOW_INSECURE !== "1"
   ) {
@@ -154,12 +165,12 @@ export async function startService({
       code: "INSECURE_BIND",
       message: `refusing to bind ${bindHost} without auth`,
       details:
-        "set auth.mode=token, or allowInsecureBind=true for an open trusted-network share " +
-        "(or OTTO_BRAIN_ALLOW_INSECURE=1 to override)",
+        "set auth.mode=token with a non-empty auth.token, or allowInsecureBind=true for an " +
+        "open trusted-network share (or OTTO_BRAIN_ALLOW_INSECURE=1 to override)",
     });
   }
 
-  const store = loadProfilesStore();
+  const store = loadProfilesStore(paths);
   const catalog = scanModels(config, env);
   const needle = modelNeedle ?? config.defaultModel ?? store.lastModelId ?? undefined;
   const model = pickModel(catalog, needle);
@@ -210,7 +221,7 @@ export async function startService({
     }
     await supervisor.start(target, fitProfile);
     store.lastModelId = target.id;
-    saveProfilesStore(store);
+    saveProfilesStore(store, paths);
   };
   const loadModel = (target: Model): Promise<void> => {
     const run = modelSwitchChain.then(() => loadModelUnsafe(target));
@@ -267,7 +278,7 @@ export async function startService({
       applyConfigPatch,
       getAllowConfigWrite: () => config.allowRemoteConfig,
     }),
-    config,
+    authToken,
   );
 
   // TLS terminates in-process when configured; otherwise plain HTTP. The cert
@@ -298,7 +309,7 @@ export async function startService({
 
   await supervisor.start(model, profile);
   store.lastModelId = model.id;
-  saveProfilesStore(store);
+  saveProfilesStore(store, paths);
   writePidFile(
     {
       pid: process.pid,

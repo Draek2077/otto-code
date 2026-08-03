@@ -11,27 +11,28 @@
  */
 
 import assert from "node:assert";
-import { $ } from "zx";
+import { $ } from "./helpers/zx-shell.ts";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 
 $.verbose = false;
 
 console.log("=== Delete Command Tests ===\n");
 
-const cliRoot = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(cliRoot, "..", "..", "..");
 const port = 10000 + Math.floor(Math.random() * 50000);
 const ottoHome = await mkdtemp(join(tmpdir(), "otto-delete-test-home-"));
 
+// `npx otto`, not the root `npm run cli` script: that one goes through
+// scripts/dev-home.sh, which is bash-only (so it dies under cmd.exe) and
+// points at the dev daemon home rather than this test's isolated OTTO_HOME.
+// Every other test file in this suite drives the built CLI the same way.
 async function runCli(args: string[]) {
-  return $`npm --prefix ${repoRoot} run cli -- ${args}`.nothrow();
+  return $`npx otto ${args}`.nothrow();
 }
 
 async function runDelete(args: string[]) {
-  return $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npm --prefix ${repoRoot} run cli -- delete ${args}`.nothrow();
+  return $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto delete ${args}`.nothrow();
 }
 
 try {
@@ -111,7 +112,7 @@ try {
   {
     console.log("Test 8: -q (quiet) flag is accepted with delete");
     const result =
-      await $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npm --prefix ${repoRoot} run cli -- -q delete abc123`.nothrow();
+      await $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto -q delete abc123`.nothrow();
     const output = result.stdout + result.stderr;
     assert(!output.includes("unknown option"), "should accept -q flag");
     assert(!output.includes("error: option"), "should not have option parsing error");

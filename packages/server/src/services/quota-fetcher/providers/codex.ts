@@ -8,6 +8,7 @@ import type {
   ProviderUsageBalance,
   ProviderUsageWindow,
 } from "../../../server/messages.js";
+import { writeFileAtomic } from "../../../server/atomic-file.js";
 import type { ProviderApiFetch, ProviderUsageFetcher } from "../provider.js";
 import {
   ApiNumberSchema,
@@ -70,6 +71,8 @@ type CodexTokenRefresh = z.infer<typeof CodexTokenRefreshSchema>;
 
 interface CodexAuthRecord {
   auth: CodexAuth;
+  /** The file's full JSON, kept because the schema models only the fields we read. */
+  raw: Record<string, unknown>;
   path: string;
 }
 
@@ -121,7 +124,7 @@ export class CodexQuotaProvider implements ProviderUsageFetcher {
         return unavailableUsage(this);
       }
 
-      await this.saveCodexAuth(authRecord.path, auth, refreshed);
+      await this.saveCodexAuth(authRecord.path, authRecord.raw, refreshed);
       resp = await this.callCodexApi(refreshed.access_token, account_id);
       if (resp === "NEEDS_AUTH") {
         return unavailableUsage(this);
@@ -203,8 +206,9 @@ export class CodexQuotaProvider implements ProviderUsageFetcher {
     for (const path of candidates) {
       if (!existsSync(path)) continue;
       try {
-        const auth = CodexAuthSchema.parse(JSON.parse(await fs.readFile(path, "utf8")));
-        if (auth.tokens?.access_token) return { auth, path };
+        const raw = JSON.parse(await fs.readFile(path, "utf8")) as Record<string, unknown>;
+        const auth = CodexAuthSchema.parse(raw);
+        if (auth.tokens?.access_token) return { auth, raw, path };
       } catch {
         continue;
       }
@@ -254,19 +258,21 @@ export class CodexQuotaProvider implements ProviderUsageFetcher {
 
   private async saveCodexAuth(
     authPath: string,
-    original: CodexAuth,
+    raw: Record<string, unknown>,
     refreshed: CodexTokenRefresh,
   ): Promise<void> {
     try {
-      const updated: CodexAuth = {
-        ...original,
-        tokens: {
-          ...original.tokens,
-          access_token: refreshed.access_token ?? original.tokens?.access_token,
-          refresh_token: refreshed.refresh_token ?? original.tokens?.refresh_token,
-        },
-      };
-      await fs.writeFile(authPath, JSON.stringify(updated, null, 2), { mode: 0o600 });
+      // Merge into the raw JSON, never the schema-parsed view: the file belongs to the
+      // Codex CLI and carries fields the schema does not model (OPENAI_API_KEY,
+      // tokens.id_token, last_refresh); a schema round-trip would silently drop them.
+      const rawTokens = raw["tokens"];
+      const tokens =
+        rawTokens && typeof rawTokens === "object"
+          ? { ...(rawTokens as Record<string, unknown>) }
+          : {};
+      if (refreshed.access_token) tokens["access_token"] = refreshed.access_token;
+      if (refreshed.refresh_token) tokens["refresh_token"] = refreshed.refresh_token;
+      await writeFileAtomic(authPath, JSON.stringify({ ...raw, tokens }, null, 2), { mode: 0o600 });
     } catch {
       // Non-fatal; the next call can refresh again.
     }

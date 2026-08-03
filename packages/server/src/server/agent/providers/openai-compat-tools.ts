@@ -7,126 +7,16 @@ import * as net from "node:net";
 import { Agent, fetch as undiciFetch, type Response as UndiciResponse } from "undici";
 
 import type { ToolCallDetail } from "../agent-sdk-types.js";
+import { isBlockedIp } from "../url-screen.js";
 
 // ---------------------------------------------------------------------------
 // SSRF Protection — prevent web_fetch from reaching internal networks
 // ---------------------------------------------------------------------------
-
-/**
- * IP ranges that must never be reachable from web_fetch.
- * Covers: loopback, link-local, private (RFC 1918), carrier-grade,
- * unique-local, multicast, reserved, and cloud metadata endpoints.
- */
-const BLOCKED_IP_RANGES: Array<[string, string]> = [
-  // Loopback: 127.0.0.0/8
-  ["127.0.0.0", "127.255.255.255"],
-  // Link-local: 169.254.0.0/16
-  ["169.254.0.0", "169.254.255.255"],
-  // Private: 10.0.0.0/8
-  ["10.0.0.0", "10.255.255.255"],
-  // Private: 172.16.0.0/12
-  ["172.16.0.0", "172.31.255.255"],
-  // Private: 192.168.0.0/16
-  ["192.168.0.0", "192.168.255.255"],
-  // Carrier-grade NAT: 100.64.0.0/10
-  ["100.64.0.0", "100.127.255.255"],
-  // Documentation: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
-  // (not strictly needed but defensive)
-  ["192.0.2.0", "192.0.2.255"],
-  ["198.51.100.0", "198.51.100.255"],
-  ["203.0.113.0", "203.0.113.255"],
-  // Benchmarking: 198.18.0.0/15
-  ["198.18.0.0", "198.19.255.255"],
-  // Multicast: 224.0.0.0/4
-  ["224.0.0.0", "239.255.255.255"],
-  // Reserved + broadcast: 240.0.0.0/4
-  ["240.0.0.0", "255.255.255.255"],
-  // Any local: 0.0.0.0/8
-  ["0.0.0.0", "0.255.255.255"],
-];
+// The blocked-range table and IP checks live in ../url-screen.ts, shared with
+// the browser tools' navigation screen (which allows loopback/LAN — see there).
 
 /** Hostnames that are always allowed (DuckDuckGo API endpoints). */
 const ALLOWED_HOSTS = new Set(["api.duckduckgo.com", "html.duckduckgo.com"]);
-
-/**
- * Convert an IPv4 address string to an unsigned 32-bit integer for range
- * comparison. Throws on anything that is not a dotted quad.
- */
-function ipv4ToNumber(ip: string): number {
-  const parts = ip.split(".");
-  if (parts.length !== 4) {
-    throw new Error(`Not an IPv4 address: ${ip}`);
-  }
-  let value = 0;
-  for (const part of parts) {
-    const octet = Number.parseInt(part, 10);
-    if (!Number.isInteger(octet) || octet < 0 || octet > 255) {
-      throw new Error(`Not an IPv4 address: ${ip}`);
-    }
-    value = (value * 256 + octet) >>> 0;
-  }
-  return value;
-}
-
-/**
- * Extract the IPv4 address embedded in an IPv4-mapped IPv6 address
- * (::ffff:a.b.c.d, including the hex form ::ffff:aabb:ccdd). Returns null for
- * anything else. Mapped addresses must be screened with the IPv4 rules — a
- * socket to ::ffff:127.0.0.1 reaches loopback.
- */
-function extractMappedIpv4(lowerIp: string): string | null {
-  const dotted = lowerIp.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/u);
-  if (dotted) {
-    return dotted[1];
-  }
-  const hex = lowerIp.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/u);
-  if (hex) {
-    const high = Number.parseInt(hex[1], 16);
-    const low = Number.parseInt(hex[2], 16);
-    return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
-  }
-  return null;
-}
-
-/**
- * Check whether an IP address falls within any blocked range.
- * Returns true if the IP is dangerous and should be blocked.
- */
-export function isBlockedIp(ip: string): boolean {
-  // IPv6: block loopback (::1), unique-local (fc00::/7), multicast (ff00::/8),
-  // link-local (fe80::/10, over-broadly as fe*), and IPv4-mapped addresses
-  // whose embedded IPv4 is blocked.
-  if (ip.includes(":")) {
-    const lower = ip.toLowerCase();
-    const mapped = extractMappedIpv4(lower);
-    if (mapped !== null) {
-      return isBlockedIp(mapped);
-    }
-    return (
-      lower === "::1" ||
-      lower === "::" ||
-      lower.startsWith("fc") ||
-      lower.startsWith("fd") ||
-      lower.startsWith("fe") ||
-      lower.startsWith("ff")
-    );
-  }
-
-  // IPv4: check against blocked ranges
-  try {
-    const num = ipv4ToNumber(ip);
-    for (const [start, end] of BLOCKED_IP_RANGES) {
-      if (num >= ipv4ToNumber(start) && num <= ipv4ToNumber(end)) {
-        return true;
-      }
-    }
-  } catch {
-    // Unparseable IP — block it defensively
-    return true;
-  }
-
-  return false;
-}
 
 interface ResolvedAddress {
   address: string;

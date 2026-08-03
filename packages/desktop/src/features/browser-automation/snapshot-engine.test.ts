@@ -115,7 +115,7 @@ describe("BrowserSnapshotEngine", () => {
     page.snapshotNodes = [
       {
         kind: "text",
-        text: "A".repeat(81_000),
+        text: "A".repeat(31_000),
       },
     ];
     const engine = new BrowserSnapshotEngine();
@@ -124,7 +124,7 @@ describe("BrowserSnapshotEngine", () => {
 
     expect(snapshot.truncated).toBe(true);
     expect(snapshot.snapshot.endsWith('- text: "Snapshot truncated."')).toBe(true);
-    expect(snapshot.stats.textLength).toBeLessThanOrEqual(80_000);
+    expect(snapshot.stats.textLength).toBeLessThanOrEqual(30_000);
   });
 
   it("keeps the last rendered node when a short snapshot was capped by node count", async () => {

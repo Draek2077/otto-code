@@ -565,4 +565,65 @@ index 1111111..2222222 100644
       rmSync(cwd, { recursive: true, force: true });
     }
   });
+
+  const COMMENT_CONTEXT_DIFF = `diff --git a/example.ts b/example.ts
+index 1111111..2222222 100644
+--- a/example.ts
++++ b/example.ts
+@@ -5,7 +5,7 @@
+ comment line 4
+ comment line 5
+ comment line 6
+-old comment line
++new comment line
+ comment line 8
+ */
+ const x = 1;
+`;
+
+  function buildCommentContextFile(marker: string, padLines: number): string {
+    const padding = Array.from({ length: padLines }, (_, i) => `const pad${i} = ${i};`).join("\n");
+    return `/*
+comment line 1
+comment line 2
+comment line 3
+comment line 4
+comment line 5
+comment line 6
+${marker}
+comment line 8
+*/
+const x = 1;
+${padding}
+`;
+  }
+
+  it("uses full-file context while the file stays under the highlight size gate", async () => {
+    const file = parseDiff(COMMENT_CONTEXT_DIFF)[0];
+
+    const highlighted = await highlightDiffWithFileContent(file, "/tmp/unused", {
+      oldFileContent: buildCommentContextFile("old comment line", 0),
+      newFileContent: buildCommentContextFile("new comment line", 0),
+    });
+
+    const removedLine = highlighted.hunks[0].lines.find((line) => line.type === "remove");
+    expect(removedLine?.tokens).toEqual([{ text: "old comment line", style: "comment" }]);
+    expect(highlighted).not.toEqual(highlightDiffFromHunks(file));
+  });
+
+  it("falls back to the hunk-based path once file content exceeds the size gate", async () => {
+    // ~20K padding lines puts each side well past the 256 KB cap while the hunk itself
+    // stays tiny, which is exactly the lockfile shape the gate exists for.
+    const oldFileContent = buildCommentContextFile("old comment line", 20_000);
+    const newFileContent = buildCommentContextFile("new comment line", 20_000);
+    expect(oldFileContent.length).toBeGreaterThan(256 * 1024);
+
+    const file = parseDiff(COMMENT_CONTEXT_DIFF)[0];
+    const highlighted = await highlightDiffWithFileContent(file, "/tmp/unused", {
+      oldFileContent,
+      newFileContent,
+    });
+
+    expect(highlighted).toEqual(highlightDiffFromHunks(file));
+  });
 });

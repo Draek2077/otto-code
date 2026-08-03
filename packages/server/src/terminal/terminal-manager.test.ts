@@ -1,8 +1,9 @@
 import { it, expect, afterEach } from "vitest";
 import { isPlatform } from "../test-utils/platform.js";
+import { removeTempDir } from "../test-utils/remove-temp-dir.js";
 import { createTerminalManager, type TerminalManager } from "./terminal-manager.js";
 import type { TerminalWorkspaceContributionChangedEvent } from "./terminal-manager.js";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -42,13 +43,9 @@ afterEach(async () => {
   while (temporaryDirs.length > 0) {
     const dir = temporaryDirs.pop();
     if (dir) {
-      try {
-        rmSync(dir, { recursive: true, force: true });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EBUSY") {
-          throw error;
-        }
-      }
+      // The killed PTYs can still hold their cwd open for a moment, which
+      // Windows reports as EPERM rather than the EBUSY this used to expect.
+      removeTempDir(dir);
     }
   }
 });

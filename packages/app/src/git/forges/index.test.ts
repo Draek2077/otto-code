@@ -1,5 +1,6 @@
 import { readdirSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { CLIENT_FORGE_LOGIC_MODULES } from "./index";
 import { CLIENT_FORGE_VIEW_MODULES } from "./view";
@@ -13,7 +14,9 @@ import { CLIENT_FORGE_VIEW_MODULES } from "./view";
  * builders, merge-capability, native checks, and the Node e2e harness) free of
  * the client rendering stack.
  */
-const forgesDir = path.dirname(new URL(import.meta.url).pathname);
+// fileURLToPath, not URL.pathname: on Windows the pathname is "/C:/Users/..." and
+// the leading slash makes readdirSync resolve it against the cwd as "C:\C:\Users\...".
+const forgesDir = path.dirname(fileURLToPath(import.meta.url));
 const dirEntries = readdirSync(forgesDir);
 
 const logicModuleIds = dirEntries

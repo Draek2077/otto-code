@@ -2844,6 +2844,7 @@ export const en = {
       directoryMissing: "Workspace directory not found.",
       loading: "Loading file...",
       noPreview: "No preview available",
+      largeFileHighlightDisabled: "Large file, so syntax highlighting is off.",
       binaryPreviewUnavailable: "This file can't be previewed here",
       binaryPreviewHint: "It's a binary file, so there's nothing to show as text.",
       binaryPreviewKind: "Binary",

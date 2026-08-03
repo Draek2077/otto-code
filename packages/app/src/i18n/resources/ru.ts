@@ -2842,6 +2842,7 @@ export const ru: TranslationResources = {
       directoryMissing: "Каталог Workspace не найден.",
       loading: "Загрузка файла...",
       noPreview: "Предварительный просмотр недоступен",
+      largeFileHighlightDisabled: "Большой файл, поэтому подсветка синтаксиса отключена.",
       binaryPreviewUnavailable: "Предварительный просмотр двоичного файла недоступен.",
       binaryPreviewHint: "Это двоичный файл, поэтому показывать как текст нечего.",
       binaryPreviewKind: "Двоичный",

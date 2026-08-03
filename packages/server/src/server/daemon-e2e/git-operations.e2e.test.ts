@@ -1,5 +1,5 @@
 import { test, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, existsSync, rmSync, readFileSync, realpathSync } from "fs";
+import { mkdtempSync, writeFileSync, existsSync, readFileSync, realpathSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
@@ -7,6 +7,7 @@ import { createMessageCollector, type MessageCollector } from "../test-utils/mes
 import { withTimeout } from "../../utils/promise-timeout.js";
 import { deriveWorktreeProjectHash } from "../../utils/worktree.js";
 import { isPlatform } from "../../test-utils/platform.js";
+import { removeTempDir } from "../../test-utils/remove-temp-dir.js";
 import type { AgentTimelineItem } from "../agent/agent-sdk-types.js";
 import type { SessionOutboundMessage } from "../messages.js";
 
@@ -158,14 +159,14 @@ test("returns diff for modified file in git repo", async () => {
   // Initialize git repo
   const { execSync } = await import("child_process");
   execSync("git init -b main", { cwd, stdio: "pipe" });
-  execSync("git config user.email 'test@test.com'", { cwd, stdio: "pipe" });
-  execSync("git config user.name 'Test'", { cwd, stdio: "pipe" });
+  execSync('git config user.email "test@test.com"', { cwd, stdio: "pipe" });
+  execSync('git config user.name "Test"', { cwd, stdio: "pipe" });
 
   // Create and commit a file
   const testFile = path.join(cwd, "test.txt");
   writeFileSync(testFile, "original content\n");
   execSync("git add test.txt", { cwd, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'Initial commit'", {
+  execSync('git -c commit.gpgsign=false commit -m "Initial commit"', {
     cwd,
     stdio: "pipe",
   });
@@ -179,7 +180,7 @@ test("returns diff for modified file in git repo", async () => {
   const file = result.files.find((entry) => entry.path === "test.txt");
   expect(file).toBeTruthy();
   expect(file?.hunks.length).toBeGreaterThan(0);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTempDir(cwd);
 }, 60000); // 1 minute timeout
 
 test("returns empty diff when no changes", async () => {
@@ -188,14 +189,14 @@ test("returns empty diff when no changes", async () => {
   // Initialize git repo with clean state
   const { execSync } = await import("child_process");
   execSync("git init -b main", { cwd, stdio: "pipe" });
-  execSync("git config user.email 'test@test.com'", { cwd, stdio: "pipe" });
-  execSync("git config user.name 'Test'", { cwd, stdio: "pipe" });
+  execSync('git config user.email "test@test.com"', { cwd, stdio: "pipe" });
+  execSync('git config user.name "Test"', { cwd, stdio: "pipe" });
 
   // Create and commit a file
   const testFile = path.join(cwd, "test.txt");
   writeFileSync(testFile, "content\n");
   execSync("git add test.txt", { cwd, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'Initial commit'", {
+  execSync('git -c commit.gpgsign=false commit -m "Initial commit"', {
     cwd,
     stdio: "pipe",
   });
@@ -205,7 +206,7 @@ test("returns empty diff when no changes", async () => {
   expect(result.error).toBeNull();
   expect(result.files).toEqual([]);
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTempDir(cwd);
 }, 60000); // 1 minute timeout
 
 test("returns error for non-git directory", async () => {
@@ -218,7 +219,7 @@ test("returns error for non-git directory", async () => {
   expect(result.error).toBeTruthy();
   expect(result.error?.code).toBe("NOT_GIT_REPO");
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTempDir(cwd);
 }, 60000); // 1 minute timeout
 
 // POSIX-only: asserts repo-root containment across macOS /var symlink normalization.
@@ -230,14 +231,14 @@ test.skipIf(isPlatform("win32"))(
     // Initialize git repo
     const { execSync } = await import("child_process");
     execSync("git init -b main", { cwd, stdio: "pipe" });
-    execSync("git config user.email 'test@test.com'", { cwd, stdio: "pipe" });
-    execSync("git config user.name 'Test'", { cwd, stdio: "pipe" });
+    execSync('git config user.email "test@test.com"', { cwd, stdio: "pipe" });
+    execSync('git config user.name "Test"', { cwd, stdio: "pipe" });
 
     // Create and commit a file
     const testFile = path.join(cwd, "test.txt");
     writeFileSync(testFile, "original content\n");
     execSync("git add test.txt", { cwd, stdio: "pipe" });
-    execSync("git -c commit.gpgsign=false commit -m 'Initial commit'", {
+    execSync('git -c commit.gpgsign=false commit -m "Initial commit"', {
       cwd,
       stdio: "pipe",
     });
@@ -270,7 +271,7 @@ test.skipIf(isPlatform("win32"))(
 
     // Cleanup
     await ctx.client.deleteAgent(agent.id);
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   },
   60000,
 ); // 1 minute timeout
@@ -281,14 +282,14 @@ test("returns clean state when no uncommitted changes", async () => {
   // Initialize git repo with clean state
   const { execSync } = await import("child_process");
   execSync("git init -b main", { cwd, stdio: "pipe" });
-  execSync("git config user.email 'test@test.com'", { cwd, stdio: "pipe" });
-  execSync("git config user.name 'Test'", { cwd, stdio: "pipe" });
+  execSync('git config user.email "test@test.com"', { cwd, stdio: "pipe" });
+  execSync('git config user.name "Test"', { cwd, stdio: "pipe" });
 
   // Create and commit a file (no uncommitted changes)
   const testFile = path.join(cwd, "test.txt");
   writeFileSync(testFile, "content\n");
   execSync("git add test.txt", { cwd, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'Initial commit'", {
+  execSync('git -c commit.gpgsign=false commit -m "Initial commit"', {
     cwd,
     stdio: "pipe",
   });
@@ -314,7 +315,7 @@ test("returns clean state when no uncommitted changes", async () => {
 
   // Cleanup
   await ctx.client.deleteAgent(agent.id);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTempDir(cwd);
 }, 60000); // 1 minute timeout
 
 test("returns isGit false for non-git directory", async () => {
@@ -339,124 +340,41 @@ test("returns isGit false for non-git directory", async () => {
 
   // Cleanup
   await ctx.client.deleteAgent(agent.id);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTempDir(cwd);
 }, 60000); // 1 minute timeout
 
-test("runs otto.json setup asynchronously and reports status via timeline tool_call", async () => {
-  const repoRoot = tmpCwd();
-
-  const { execSync } = await import("child_process");
-  execSync("git init -b main", { cwd: repoRoot, stdio: "pipe" });
-  execSync("git config user.email 'test@test.com'", {
-    cwd: repoRoot,
-    stdio: "pipe",
-  });
-  execSync("git config user.name 'Test'", { cwd: repoRoot, stdio: "pipe" });
-
-  writeFileSync(path.join(repoRoot, "file.txt"), "hello\n");
-  execSync("git add .", { cwd: repoRoot, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'initial'", {
-    cwd: repoRoot,
-    stdio: "pipe",
-  });
-  execSync("git branch -M main", { cwd: repoRoot, stdio: "pipe" });
-
-  const setupCommand =
-    'while [ ! -f "$OTTO_WORKTREE_PATH/allow-setup" ]; do sleep 0.05; done; echo "done" > "$OTTO_WORKTREE_PATH/setup-done.txt"';
-  writeFileSync(
-    path.join(repoRoot, "otto.json"),
-    JSON.stringify({ worktree: { setup: [setupCommand] } }),
-  );
-  execSync("git add otto.json", { cwd: repoRoot, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'add otto.json'", {
-    cwd: repoRoot,
-    stdio: "pipe",
-  });
-
-  const agent = await withTimeout({
-    promise: ctx.client.createAgent({
-      provider: "codex",
-      model: CODEX_TEST_MODEL,
-      thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
-      cwd: repoRoot,
-      title: "Async Worktree Setup Test",
-      git: {
-        createWorktree: true,
-        createNewBranch: true,
-        baseBranch: "main",
-        newBranchName: "async-setup-test",
-        worktreeSlug: "async-setup-test",
-      },
-    }),
-    timeoutMs: 2500,
-    label: "createAgent should not block on setup",
-  });
-
-  expect(agent.cwd).toContain(path.join(".otto", "worktrees"));
-  expect(existsSync(path.join(agent.cwd, "setup-done.txt"))).toBe(false);
-
-  writeFileSync(path.join(agent.cwd, "allow-setup"), "ok\n");
-
-  const completed = await waitForTimelineToolCall(
-    collector.messages,
-    agent.id,
-    (item) => item.name === "otto_worktree_setup" && item.status === "completed",
-    20000,
-  );
-
-  expect(completed.callId).toBeTruthy();
-  expect(completed.detail.type).toBe("worktree_setup");
-  if (completed.detail.type === "worktree_setup") {
-    expect(completed.detail.commands.length).toBeGreaterThan(0);
-    expect(completed.detail.log.length).toBeGreaterThan(0);
-  }
-  expect(existsSync(path.join(agent.cwd, "setup-done.txt"))).toBe(true);
-
-  await ctx.client.deleteAgent(agent.id);
-  rmSync(repoRoot, { recursive: true, force: true });
-}, 60000);
-
-test("bootstraps configured worktree terminals after setup succeeds", async () => {
-  await withShell("/bin/sh", async () => {
+// The otto.json fixture below is a POSIX shell script (`while [ ! -f ]`,
+// `tail -f /dev/null`); the setup runner uses the platform shell, so cmd.exe
+// cannot execute it.
+test.skipIf(isPlatform("win32"))(
+  "runs otto.json setup asynchronously and reports status via timeline tool_call",
+  async () => {
     const repoRoot = tmpCwd();
 
     const { execSync } = await import("child_process");
     execSync("git init -b main", { cwd: repoRoot, stdio: "pipe" });
-    execSync("git config user.email 'test@test.com'", {
+    execSync('git config user.email "test@test.com"', {
       cwd: repoRoot,
       stdio: "pipe",
     });
-    execSync("git config user.name 'Test'", { cwd: repoRoot, stdio: "pipe" });
+    execSync('git config user.name "Test"', { cwd: repoRoot, stdio: "pipe" });
 
     writeFileSync(path.join(repoRoot, "file.txt"), "hello\n");
     execSync("git add .", { cwd: repoRoot, stdio: "pipe" });
-    execSync("git -c commit.gpgsign=false commit -m 'initial'", {
+    execSync('git -c commit.gpgsign=false commit -m "initial"', {
       cwd: repoRoot,
       stdio: "pipe",
     });
     execSync("git branch -M main", { cwd: repoRoot, stdio: "pipe" });
 
     const setupCommand =
-      'while [ ! -f "$OTTO_WORKTREE_PATH/allow-setup" ]; do sleep 0.05; done; echo "done" > "$OTTO_WORKTREE_PATH/setup-done.txt"; echo "$OTTO_WORKTREE_PORT" > "$OTTO_WORKTREE_PATH/setup-port.txt"';
+      'while [ ! -f "$OTTO_WORKTREE_PATH/allow-setup" ]; do sleep 0.05; done; echo "done" > "$OTTO_WORKTREE_PATH/setup-done.txt"';
     writeFileSync(
       path.join(repoRoot, "otto.json"),
-      JSON.stringify({
-        worktree: {
-          setup: [setupCommand],
-          terminals: [
-            {
-              name: "Dev Server",
-              command: "tail -f /dev/null",
-            },
-            {
-              command: "tail -f /dev/null",
-            },
-          ],
-        },
-      }),
+      JSON.stringify({ worktree: { setup: [setupCommand] } }),
     );
     execSync("git add otto.json", { cwd: repoRoot, stdio: "pipe" });
-    execSync("git -c commit.gpgsign=false commit -m 'add setup and terminals'", {
+    execSync('git -c commit.gpgsign=false commit -m "add otto.json"', {
       cwd: repoRoot,
       stdio: "pipe",
     });
@@ -467,13 +385,13 @@ test("bootstraps configured worktree terminals after setup succeeds", async () =
         model: CODEX_TEST_MODEL,
         thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
         cwd: repoRoot,
-        title: "Async Worktree Setup + Terminals Test",
+        title: "Async Worktree Setup Test",
         git: {
           createWorktree: true,
           createNewBranch: true,
           baseBranch: "main",
-          newBranchName: "async-setup-terminals-test",
-          worktreeSlug: "async-setup-terminals-test",
+          newBranchName: "async-setup-test",
+          worktreeSlug: "async-setup-test",
         },
       }),
       timeoutMs: 2500,
@@ -482,175 +400,281 @@ test("bootstraps configured worktree terminals after setup succeeds", async () =
 
     expect(agent.cwd).toContain(path.join(".otto", "worktrees"));
     expect(existsSync(path.join(agent.cwd, "setup-done.txt"))).toBe(false);
-    expect(existsSync(path.join(agent.cwd, "dev-terminal.txt"))).toBe(false);
-    expect(existsSync(path.join(agent.cwd, "lint-terminal.txt"))).toBe(false);
 
     writeFileSync(path.join(agent.cwd, "allow-setup"), "ok\n");
 
-    await waitForTimelineToolCall(
+    const completed = await waitForTimelineToolCall(
       collector.messages,
       agent.id,
       (item) => item.name === "otto_worktree_setup" && item.status === "completed",
       20000,
     );
-    const terminalsBootstrapToolCall = await waitForTimelineToolCall(
-      collector.messages,
-      agent.id,
-      (item) => item.name === "otto_worktree_terminals" && item.status === "completed",
-      30000,
-    );
-    const bootstrappedTerminals = getWorktreeTerminalBootstrapEntries(terminalsBootstrapToolCall);
-    expect(bootstrappedTerminals).toBeTruthy();
-    expect(bootstrappedTerminals?.length ?? 0).toBeGreaterThanOrEqual(2);
-    const failedBootstraps =
-      bootstrappedTerminals?.filter((terminal) => terminal.status === "failed") ?? [];
-    expect(failedBootstraps).toEqual([]);
 
-    const list = await ctx.client.listTerminals(agent.cwd);
-    expect(list.error).toBeUndefined();
-    expect(list.terminals.some((terminal) => terminal.name === "Dev Server")).toBe(true);
-    expect(list.terminals.length).toBeGreaterThanOrEqual(2);
-    await waitForPathExists({
-      targetPath: path.join(agent.cwd, "setup-port.txt"),
-      timeoutMs: 30000,
-      label: "setup runtime port marker",
-    });
-
-    const setupPort = readFileSync(path.join(agent.cwd, "setup-port.txt"), "utf8").trim();
-    expect(setupPort.length).toBeGreaterThan(0);
-
-    const openedWorktree = await ctx.client.openProject(agent.cwd);
-    if (!openedWorktree.workspace) {
-      throw new Error(openedWorktree.error ?? `Failed to open worktree workspace for ${agent.cwd}`);
+    expect(completed.callId).toBeTruthy();
+    expect(completed.detail.type).toBe("worktree_setup");
+    if (completed.detail.type === "worktree_setup") {
+      expect(completed.detail.commands.length).toBeGreaterThan(0);
+      expect(completed.detail.log.length).toBeGreaterThan(0);
     }
-    const createdTerminal = await ctx.client.createTerminal(
-      agent.cwd,
-      "Manual Port Check",
-      undefined,
-      {
-        workspaceId: openedWorktree.workspace.id,
-      },
-    );
-    expect(createdTerminal.error).toBeNull();
-    expect(createdTerminal.terminal).toBeTruthy();
-    const manualTerminalId = createdTerminal.terminal?.id;
-    expect(manualTerminalId).toBeTruthy();
-    if (!manualTerminalId) {
-      throw new Error("Expected manual terminal id");
-    }
-    ctx.client.sendTerminalInput(manualTerminalId, {
-      type: "input",
-      data: 'echo "$OTTO_WORKTREE_PORT" > "$OTTO_WORKTREE_PATH/manual-terminal-port.txt"\r',
-    });
-    await waitForPathExists({
-      targetPath: path.join(agent.cwd, "manual-terminal-port.txt"),
-      timeoutMs: 30000,
-      label: "manual terminal runtime port marker",
-    });
-    const manualTerminalPort = readFileSync(
-      path.join(agent.cwd, "manual-terminal-port.txt"),
-      "utf8",
-    ).trim();
-    expect(manualTerminalPort).toBe(setupPort);
+    expect(existsSync(path.join(agent.cwd, "setup-done.txt"))).toBe(true);
 
     await ctx.client.deleteAgent(agent.id);
-    rmSync(repoRoot, { recursive: true, force: true });
-  });
-}, 60000);
+    removeTempDir(repoRoot);
+  },
+  60000,
+);
 
-test("reports failures via timeline tool_call without deleting the created worktree", async () => {
-  const repoRoot = tmpCwd();
+// The otto.json fixture below is a POSIX shell script (`while [ ! -f ]`,
+// `tail -f /dev/null`); the setup runner uses the platform shell, so cmd.exe
+// cannot execute it.
+test.skipIf(isPlatform("win32"))(
+  "bootstraps configured worktree terminals after setup succeeds",
+  async () => {
+    await withShell("/bin/sh", async () => {
+      const repoRoot = tmpCwd();
 
-  const { execSync } = await import("child_process");
-  execSync("git init -b main", { cwd: repoRoot, stdio: "pipe" });
-  execSync("git config user.email 'test@test.com'", {
-    cwd: repoRoot,
-    stdio: "pipe",
-  });
-  execSync("git config user.name 'Test'", { cwd: repoRoot, stdio: "pipe" });
+      const { execSync } = await import("child_process");
+      execSync("git init -b main", { cwd: repoRoot, stdio: "pipe" });
+      execSync('git config user.email "test@test.com"', {
+        cwd: repoRoot,
+        stdio: "pipe",
+      });
+      execSync('git config user.name "Test"', { cwd: repoRoot, stdio: "pipe" });
 
-  writeFileSync(path.join(repoRoot, "file.txt"), "hello\n");
-  execSync("git add .", { cwd: repoRoot, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'initial'", {
-    cwd: repoRoot,
-    stdio: "pipe",
-  });
-  execSync("git branch -M main", { cwd: repoRoot, stdio: "pipe" });
+      writeFileSync(path.join(repoRoot, "file.txt"), "hello\n");
+      execSync("git add .", { cwd: repoRoot, stdio: "pipe" });
+      execSync('git -c commit.gpgsign=false commit -m "initial"', {
+        cwd: repoRoot,
+        stdio: "pipe",
+      });
+      execSync("git branch -M main", { cwd: repoRoot, stdio: "pipe" });
 
-  const setupCommand =
-    'echo "started" > "$OTTO_WORKTREE_PATH/setup-start.txt"; sleep 0.1; echo "boom" 1>&2; exit 7';
-  writeFileSync(
-    path.join(repoRoot, "otto.json"),
-    JSON.stringify({
-      worktree: {
-        setup: [setupCommand],
-        terminals: [
-          {
-            name: "Should Not Start",
-            command: 'echo "should-not-run" > should-not-run.txt; tail -f /dev/null',
+      const setupCommand =
+        'while [ ! -f "$OTTO_WORKTREE_PATH/allow-setup" ]; do sleep 0.05; done; echo "done" > "$OTTO_WORKTREE_PATH/setup-done.txt"; echo "$OTTO_WORKTREE_PORT" > "$OTTO_WORKTREE_PATH/setup-port.txt"';
+      writeFileSync(
+        path.join(repoRoot, "otto.json"),
+        JSON.stringify({
+          worktree: {
+            setup: [setupCommand],
+            terminals: [
+              {
+                name: "Dev Server",
+                command: "tail -f /dev/null",
+              },
+              {
+                command: "tail -f /dev/null",
+              },
+            ],
           },
-        ],
-      },
-    }),
-  );
-  execSync("git add otto.json", { cwd: repoRoot, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'add failing setup'", {
-    cwd: repoRoot,
-    stdio: "pipe",
-  });
+        }),
+      );
+      execSync("git add otto.json", { cwd: repoRoot, stdio: "pipe" });
+      execSync('git -c commit.gpgsign=false commit -m "add setup and terminals"', {
+        cwd: repoRoot,
+        stdio: "pipe",
+      });
 
-  const agent = await withTimeout({
-    promise: ctx.client.createAgent({
-      provider: "codex",
-      model: CODEX_TEST_MODEL,
-      thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
+      const agent = await withTimeout({
+        promise: ctx.client.createAgent({
+          provider: "codex",
+          model: CODEX_TEST_MODEL,
+          thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
+          cwd: repoRoot,
+          title: "Async Worktree Setup + Terminals Test",
+          git: {
+            createWorktree: true,
+            createNewBranch: true,
+            baseBranch: "main",
+            newBranchName: "async-setup-terminals-test",
+            worktreeSlug: "async-setup-terminals-test",
+          },
+        }),
+        timeoutMs: 2500,
+        label: "createAgent should not block on setup",
+      });
+
+      expect(agent.cwd).toContain(path.join(".otto", "worktrees"));
+      expect(existsSync(path.join(agent.cwd, "setup-done.txt"))).toBe(false);
+      expect(existsSync(path.join(agent.cwd, "dev-terminal.txt"))).toBe(false);
+      expect(existsSync(path.join(agent.cwd, "lint-terminal.txt"))).toBe(false);
+
+      writeFileSync(path.join(agent.cwd, "allow-setup"), "ok\n");
+
+      await waitForTimelineToolCall(
+        collector.messages,
+        agent.id,
+        (item) => item.name === "otto_worktree_setup" && item.status === "completed",
+        20000,
+      );
+      const terminalsBootstrapToolCall = await waitForTimelineToolCall(
+        collector.messages,
+        agent.id,
+        (item) => item.name === "otto_worktree_terminals" && item.status === "completed",
+        30000,
+      );
+      const bootstrappedTerminals = getWorktreeTerminalBootstrapEntries(terminalsBootstrapToolCall);
+      expect(bootstrappedTerminals).toBeTruthy();
+      expect(bootstrappedTerminals?.length ?? 0).toBeGreaterThanOrEqual(2);
+      const failedBootstraps =
+        bootstrappedTerminals?.filter((terminal) => terminal.status === "failed") ?? [];
+      expect(failedBootstraps).toEqual([]);
+
+      const list = await ctx.client.listTerminals(agent.cwd);
+      expect(list.error).toBeUndefined();
+      expect(list.terminals.some((terminal) => terminal.name === "Dev Server")).toBe(true);
+      expect(list.terminals.length).toBeGreaterThanOrEqual(2);
+      await waitForPathExists({
+        targetPath: path.join(agent.cwd, "setup-port.txt"),
+        timeoutMs: 30000,
+        label: "setup runtime port marker",
+      });
+
+      const setupPort = readFileSync(path.join(agent.cwd, "setup-port.txt"), "utf8").trim();
+      expect(setupPort.length).toBeGreaterThan(0);
+
+      const openedWorktree = await ctx.client.openProject(agent.cwd);
+      if (!openedWorktree.workspace) {
+        throw new Error(
+          openedWorktree.error ?? `Failed to open worktree workspace for ${agent.cwd}`,
+        );
+      }
+      const createdTerminal = await ctx.client.createTerminal(
+        agent.cwd,
+        "Manual Port Check",
+        undefined,
+        {
+          workspaceId: openedWorktree.workspace.id,
+        },
+      );
+      expect(createdTerminal.error).toBeNull();
+      expect(createdTerminal.terminal).toBeTruthy();
+      const manualTerminalId = createdTerminal.terminal?.id;
+      expect(manualTerminalId).toBeTruthy();
+      if (!manualTerminalId) {
+        throw new Error("Expected manual terminal id");
+      }
+      ctx.client.sendTerminalInput(manualTerminalId, {
+        type: "input",
+        data: 'echo "$OTTO_WORKTREE_PORT" > "$OTTO_WORKTREE_PATH/manual-terminal-port.txt"\r',
+      });
+      await waitForPathExists({
+        targetPath: path.join(agent.cwd, "manual-terminal-port.txt"),
+        timeoutMs: 30000,
+        label: "manual terminal runtime port marker",
+      });
+      const manualTerminalPort = readFileSync(
+        path.join(agent.cwd, "manual-terminal-port.txt"),
+        "utf8",
+      ).trim();
+      expect(manualTerminalPort).toBe(setupPort);
+
+      await ctx.client.deleteAgent(agent.id);
+      removeTempDir(repoRoot);
+    });
+  },
+  60000,
+);
+
+// The otto.json fixture below is a POSIX shell script (`while [ ! -f ]`,
+// `tail -f /dev/null`); the setup runner uses the platform shell, so cmd.exe
+// cannot execute it.
+test.skipIf(isPlatform("win32"))(
+  "reports failures via timeline tool_call without deleting the created worktree",
+  async () => {
+    const repoRoot = tmpCwd();
+
+    const { execSync } = await import("child_process");
+    execSync("git init -b main", { cwd: repoRoot, stdio: "pipe" });
+    execSync('git config user.email "test@test.com"', {
       cwd: repoRoot,
-      title: "Async Worktree Setup Failure Test",
-      git: {
-        createWorktree: true,
-        createNewBranch: true,
-        baseBranch: "main",
-        newBranchName: "async-setup-failure-test",
-        worktreeSlug: "async-setup-failure-test",
-      },
-    }),
-    timeoutMs: 2500,
-    label: "createAgent should not block on failing setup",
-  });
+      stdio: "pipe",
+    });
+    execSync('git config user.name "Test"', { cwd: repoRoot, stdio: "pipe" });
 
-  expect(agent.cwd).toContain(path.join(".otto", "worktrees"));
-  expect(existsSync(agent.cwd)).toBe(true);
+    writeFileSync(path.join(repoRoot, "file.txt"), "hello\n");
+    execSync("git add .", { cwd: repoRoot, stdio: "pipe" });
+    execSync('git -c commit.gpgsign=false commit -m "initial"', {
+      cwd: repoRoot,
+      stdio: "pipe",
+    });
+    execSync("git branch -M main", { cwd: repoRoot, stdio: "pipe" });
 
-  const started = await waitForTimelineToolCall(
-    collector.messages,
-    agent.id,
-    (item) => item.name === "otto_worktree_setup" && item.status === "running",
-    10000,
-  );
+    const setupCommand =
+      'echo "started" > "$OTTO_WORKTREE_PATH/setup-start.txt"; sleep 0.1; echo "boom" 1>&2; exit 7';
+    writeFileSync(
+      path.join(repoRoot, "otto.json"),
+      JSON.stringify({
+        worktree: {
+          setup: [setupCommand],
+          terminals: [
+            {
+              name: "Should Not Start",
+              command: 'echo "should-not-run" > should-not-run.txt; tail -f /dev/null',
+            },
+          ],
+        },
+      }),
+    );
+    execSync("git add otto.json", { cwd: repoRoot, stdio: "pipe" });
+    execSync('git -c commit.gpgsign=false commit -m "add failing setup"', {
+      cwd: repoRoot,
+      stdio: "pipe",
+    });
 
-  const failed = await waitForTimelineToolCall(
-    collector.messages,
-    agent.id,
-    (item) =>
-      item.name === "otto_worktree_setup" &&
-      item.callId === started.callId &&
-      item.status === "failed",
-    20000,
-  );
+    const agent = await withTimeout({
+      promise: ctx.client.createAgent({
+        provider: "codex",
+        model: CODEX_TEST_MODEL,
+        thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
+        cwd: repoRoot,
+        title: "Async Worktree Setup Failure Test",
+        git: {
+          createWorktree: true,
+          createNewBranch: true,
+          baseBranch: "main",
+          newBranchName: "async-setup-failure-test",
+          worktreeSlug: "async-setup-failure-test",
+        },
+      }),
+      timeoutMs: 2500,
+      label: "createAgent should not block on failing setup",
+    });
 
-  expect(existsSync(path.join(agent.cwd, "setup-start.txt"))).toBe(true);
-  expect(existsSync(path.join(agent.cwd, "should-not-run.txt"))).toBe(false);
+    expect(agent.cwd).toContain(path.join(".otto", "worktrees"));
+    expect(existsSync(agent.cwd)).toBe(true);
 
-  expect(failed.detail.type).toBe("worktree_setup");
-  if (failed.detail.type === "worktree_setup") {
-    expect(Array.isArray(failed.detail.commands)).toBe(true);
-    expect(failed.detail.commands[0]?.exitCode).toBe(7);
-    expect(failed.detail.log).toContain("Exit 7");
-  }
+    const started = await waitForTimelineToolCall(
+      collector.messages,
+      agent.id,
+      (item) => item.name === "otto_worktree_setup" && item.status === "running",
+      10000,
+    );
 
-  await ctx.client.deleteAgent(agent.id);
-  rmSync(repoRoot, { recursive: true, force: true });
-}, 60000);
+    const failed = await waitForTimelineToolCall(
+      collector.messages,
+      agent.id,
+      (item) =>
+        item.name === "otto_worktree_setup" &&
+        item.callId === started.callId &&
+        item.status === "failed",
+      20000,
+    );
+
+    expect(existsSync(path.join(agent.cwd, "setup-start.txt"))).toBe(true);
+    expect(existsSync(path.join(agent.cwd, "should-not-run.txt"))).toBe(false);
+
+    expect(failed.detail.type).toBe("worktree_setup");
+    if (failed.detail.type === "worktree_setup") {
+      expect(Array.isArray(failed.detail.commands)).toBe(true);
+      expect(failed.detail.commands[0]?.exitCode).toBe(7);
+      expect(failed.detail.log).toContain("Exit 7");
+    }
+
+    await ctx.client.deleteAgent(agent.id);
+    removeTempDir(repoRoot);
+  },
+  60000,
+);
 
 test("creates agent in ~/.otto/worktrees/{hash} when worktree is requested", async () => {
   const cwd = tmpCwd();
@@ -658,13 +682,13 @@ test("creates agent in ~/.otto/worktrees/{hash} when worktree is requested", asy
 
   const { execSync } = await import("child_process");
   execSync("git init -b main", { cwd, stdio: "pipe" });
-  execSync("git config user.email 'test@test.com'", { cwd, stdio: "pipe" });
-  execSync("git config user.name 'Test'", { cwd, stdio: "pipe" });
+  execSync('git config user.email "test@test.com"', { cwd, stdio: "pipe" });
+  execSync('git config user.name "Test"', { cwd, stdio: "pipe" });
 
   const testFile = path.join(cwd, "test.txt");
   writeFileSync(testFile, "content\n");
   execSync("git add test.txt", { cwd, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'Initial commit'", {
+  execSync('git -c commit.gpgsign=false commit -m "Initial commit"', {
     cwd,
     stdio: "pipe",
   });
@@ -692,99 +716,106 @@ test("creates agent in ~/.otto/worktrees/{hash} when worktree is requested", asy
   expect(existsSync(agent.cwd)).toBe(true);
 
   await ctx.client.deleteAgent(agent.id);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTempDir(cwd);
 }, 60000);
 
-test("archiving a worktree shuts down its terminals but leaves the worktree on disk", async () => {
-  const repoRoot = tmpCwd();
+// The otto.json fixture below is a POSIX shell script (`while [ ! -f ]`,
+// `tail -f /dev/null`); the setup runner uses the platform shell, so cmd.exe
+// cannot execute it.
+test.skipIf(isPlatform("win32"))(
+  "archiving a worktree shuts down its terminals but leaves the worktree on disk",
+  async () => {
+    const repoRoot = tmpCwd();
 
-  const { execSync } = await import("child_process");
-  execSync("git init -b main", { cwd: repoRoot, stdio: "pipe" });
-  execSync("git config user.email 'test@test.com'", {
-    cwd: repoRoot,
-    stdio: "pipe",
-  });
-  execSync("git config user.name 'Test'", { cwd: repoRoot, stdio: "pipe" });
-
-  writeFileSync(path.join(repoRoot, "file.txt"), "hello\n");
-  execSync("git add .", { cwd: repoRoot, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'initial'", {
-    cwd: repoRoot,
-    stdio: "pipe",
-  });
-  execSync("git branch -M main", { cwd: repoRoot, stdio: "pipe" });
-
-  const teardownMarkerPath = path.join(repoRoot, "teardown-marker.txt");
-  writeFileSync(
-    path.join(repoRoot, "otto.json"),
-    JSON.stringify({
-      worktree: {
-        terminals: [
-          {
-            name: "Dev Server",
-            command: 'echo "dev-server" > dev-terminal.txt; tail -f /dev/null',
-          },
-        ],
-        teardown: [`echo "$OTTO_WORKTREE_PATH" > "${teardownMarkerPath}"`],
-      },
-    }),
-  );
-  execSync("git add otto.json", { cwd: repoRoot, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'add worktree terminal + teardown'", {
-    cwd: repoRoot,
-    stdio: "pipe",
-  });
-
-  const agent = await withTimeout({
-    promise: ctx.client.createAgent({
-      provider: "codex",
-      model: CODEX_TEST_MODEL,
-      thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
+    const { execSync } = await import("child_process");
+    execSync("git init -b main", { cwd: repoRoot, stdio: "pipe" });
+    execSync('git config user.email "test@test.com"', {
       cwd: repoRoot,
-      title: "Worktree Archive Cleanup Test",
-      git: {
-        createWorktree: true,
-        createNewBranch: true,
-        baseBranch: "main",
-        newBranchName: "archive-cleanup-test",
-        worktreeSlug: "archive-cleanup-test",
+      stdio: "pipe",
+    });
+    execSync('git config user.name "Test"', { cwd: repoRoot, stdio: "pipe" });
+
+    writeFileSync(path.join(repoRoot, "file.txt"), "hello\n");
+    execSync("git add .", { cwd: repoRoot, stdio: "pipe" });
+    execSync('git -c commit.gpgsign=false commit -m "initial"', {
+      cwd: repoRoot,
+      stdio: "pipe",
+    });
+    execSync("git branch -M main", { cwd: repoRoot, stdio: "pipe" });
+
+    const teardownMarkerPath = path.join(repoRoot, "teardown-marker.txt");
+    writeFileSync(
+      path.join(repoRoot, "otto.json"),
+      JSON.stringify({
+        worktree: {
+          terminals: [
+            {
+              name: "Dev Server",
+              command: 'echo "dev-server" > dev-terminal.txt; tail -f /dev/null',
+            },
+          ],
+          teardown: [`echo "$OTTO_WORKTREE_PATH" > "${teardownMarkerPath}"`],
+        },
+      }),
+    );
+    execSync("git add otto.json", { cwd: repoRoot, stdio: "pipe" });
+    execSync('git -c commit.gpgsign=false commit -m "add worktree terminal + teardown"', {
+      cwd: repoRoot,
+      stdio: "pipe",
+    });
+
+    const agent = await withTimeout({
+      promise: ctx.client.createAgent({
+        provider: "codex",
+        model: CODEX_TEST_MODEL,
+        thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
+        cwd: repoRoot,
+        title: "Worktree Archive Cleanup Test",
+        git: {
+          createWorktree: true,
+          createNewBranch: true,
+          baseBranch: "main",
+          newBranchName: "archive-cleanup-test",
+          worktreeSlug: "archive-cleanup-test",
+        },
+      }),
+      timeoutMs: 2500,
+      label: "createAgent should not block on setup",
+    });
+
+    await waitForCondition({
+      timeoutMs: 30000,
+      label: `worktree terminal bootstrap for ${agent.cwd}`,
+      predicate: async () => {
+        const directories = ctx.daemon.daemon.terminalManager.listDirectories();
+        if (!directories.includes(agent.cwd)) {
+          return false;
+        }
+        const terminals = await ctx.client.listTerminals(agent.cwd);
+        return terminals.terminals.some((terminal) => terminal.name === "Dev Server");
       },
-    }),
-    timeoutMs: 2500,
-    label: "createAgent should not block on setup",
-  });
+    });
 
-  await waitForCondition({
-    timeoutMs: 30000,
-    label: `worktree terminal bootstrap for ${agent.cwd}`,
-    predicate: async () => {
-      const directories = ctx.daemon.daemon.terminalManager.listDirectories();
-      if (!directories.includes(agent.cwd)) {
-        return false;
-      }
-      const terminals = await ctx.client.listTerminals(agent.cwd);
-      return terminals.terminals.some((terminal) => terminal.name === "Dev Server");
-    },
-  });
+    const beforeArchiveDirectories = ctx.daemon.daemon.terminalManager.listDirectories();
+    expect(beforeArchiveDirectories).toContain(agent.cwd);
 
-  const beforeArchiveDirectories = ctx.daemon.daemon.terminalManager.listDirectories();
-  expect(beforeArchiveDirectories).toContain(agent.cwd);
+    const archive = await ctx.client.archiveOttoWorktree({
+      worktreePath: agent.cwd,
+    });
+    expect(archive.error).toBeNull();
+    expect(archive.success).toBe(true);
+    expect(archive.removedAgents).toContain(agent.id);
 
-  const archive = await ctx.client.archiveOttoWorktree({
-    worktreePath: agent.cwd,
-  });
-  expect(archive.error).toBeNull();
-  expect(archive.success).toBe(true);
-  expect(archive.removedAgents).toContain(agent.id);
+    // Archiving tears down the workspace's terminals but never deletes the
+    // worktree from disk and never runs teardown commands — on-disk removal is a
+    // separate, explicit step.
+    expect(existsSync(agent.cwd)).toBe(true);
+    expect(existsSync(teardownMarkerPath)).toBe(false);
 
-  // Archiving tears down the workspace's terminals but never deletes the
-  // worktree from disk and never runs teardown commands — on-disk removal is a
-  // separate, explicit step.
-  expect(existsSync(agent.cwd)).toBe(true);
-  expect(existsSync(teardownMarkerPath)).toBe(false);
+    const afterArchiveDirectories = ctx.daemon.daemon.terminalManager.listDirectories();
+    expect(afterArchiveDirectories).not.toContain(agent.cwd);
 
-  const afterArchiveDirectories = ctx.daemon.daemon.terminalManager.listDirectories();
-  expect(afterArchiveDirectories).not.toContain(agent.cwd);
-
-  rmSync(repoRoot, { recursive: true, force: true });
-}, 60000);
+    removeTempDir(repoRoot);
+  },
+  60000,
+);

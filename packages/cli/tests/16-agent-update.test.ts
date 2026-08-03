@@ -11,7 +11,7 @@
  */
 
 import assert from "node:assert";
-import { $ } from "zx";
+import { $ } from "./helpers/zx-shell.ts";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";

@@ -8,7 +8,7 @@
  * - otto --help shows commands
  */
 
-import { $ } from "zx";
+import { $ } from "./helpers/zx-shell.ts";
 
 $.verbose = false;
 

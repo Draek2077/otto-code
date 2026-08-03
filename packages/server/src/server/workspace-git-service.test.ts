@@ -5,6 +5,7 @@ import type { FSWatcher } from "node:fs";
 import type pino from "pino";
 import type { ForgeService } from "../services/forge-service.js";
 import type {
+  CheckoutIdentityResult,
   CheckoutSnapshotFacts,
   CheckoutStatusGit,
   PullRequestStatusResult,
@@ -147,6 +148,21 @@ function createCheckoutStatus(
   };
 }
 
+function createCheckoutIdentity(
+  cwd: string,
+  overrides?: Partial<Extract<CheckoutIdentityResult, { isGit: true }>>,
+): CheckoutIdentityResult {
+  return {
+    isGit: true,
+    repoRoot: cwd,
+    mainRepoRoot: null,
+    currentBranch: "main",
+    remoteUrl: "https://github.com/acme/repo.git",
+    isOttoOwnedWorktree: false,
+    ...overrides,
+  };
+}
+
 function createCheckoutSnapshotFacts(cwd: string): CheckoutSnapshotFacts {
   return {
     isGit: true,
@@ -259,6 +275,7 @@ function createGitHubServiceStub(): ForgeService {
 
 interface CreateServiceTestOptions {
   getCheckoutStatus?: ReturnType<typeof vi.fn>;
+  getCheckoutIdentity?: ReturnType<typeof vi.fn>;
   getCheckoutSnapshotFacts?: ReturnType<typeof vi.fn>;
   getCheckoutShortstat?: ReturnType<typeof vi.fn>;
   getPullRequestStatus?: ReturnType<typeof vi.fn>;
@@ -278,6 +295,7 @@ function buildDefaultTestServiceDeps() {
     readdir: vi.fn(async () => []),
     getCheckoutSnapshotFacts: vi.fn(async (cwd: string) => createCheckoutSnapshotFacts(cwd)),
     getCheckoutStatus: vi.fn(async (cwd: string) => createCheckoutStatus(cwd)),
+    getCheckoutIdentity: vi.fn(async (cwd: string) => createCheckoutIdentity(cwd)),
     getCheckoutShortstat: vi.fn(async () => ({
       additions: 1,
       deletions: 0,
@@ -322,6 +340,78 @@ describe("WorkspaceGitServiceImpl", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  // Reconciliation calls this for every project root and every workspace cwd on a
+  // 5-minute tick and keeps only the identity fields. Paying getCheckoutStatus's
+  // dirty check and three rev-list walks for each one is what turned that tick into
+  // a multi-second spawn burst on Windows.
+  test("getCheckoutLite reads identity only and never pays for the drift half", async () => {
+    const getCheckoutIdentity = vi.fn(async (cwd: string) =>
+      createCheckoutIdentity(cwd, { currentBranch: "feature/lite" }),
+    );
+    const getCheckoutStatus = vi.fn(async (cwd: string) => createCheckoutStatus(cwd));
+    const getCheckoutSnapshotFacts = vi.fn(async (cwd: string) => createCheckoutSnapshotFacts(cwd));
+    const service = createService({
+      getCheckoutIdentity,
+      getCheckoutStatus,
+      getCheckoutSnapshotFacts,
+    });
+
+    const checkout = await service.getCheckoutLite(REPO_CWD);
+
+    expect(checkout).toEqual({
+      cwd: REPO_CWD,
+      isGit: true,
+      currentBranch: "feature/lite",
+      remoteUrl: "https://github.com/acme/repo.git",
+      worktreeRoot: REPO_CWD,
+      isOttoOwnedWorktree: false,
+      mainRepoRoot: null,
+    });
+    expect(getCheckoutIdentity).toHaveBeenCalledTimes(1);
+    expect(getCheckoutStatus).not.toHaveBeenCalled();
+    expect(getCheckoutSnapshotFacts).not.toHaveBeenCalled();
+
+    service.dispose();
+  });
+
+  test("getCheckoutLite reports an Otto worktree with its main repo root", async () => {
+    const mainRepoRoot = path.resolve("/tmp/main-repo");
+    const getCheckoutIdentity = vi.fn(async (cwd: string) =>
+      createCheckoutIdentity(cwd, { mainRepoRoot, isOttoOwnedWorktree: true }),
+    );
+    const service = createService({ getCheckoutIdentity });
+
+    const checkout = await service.getCheckoutLite(REPO_CWD);
+
+    expect(checkout).toMatchObject({
+      isGit: true,
+      isOttoOwnedWorktree: true,
+      worktreeRoot: REPO_CWD,
+      mainRepoRoot,
+    });
+
+    service.dispose();
+  });
+
+  test("getCheckoutLite reports a non-git directory as the empty checkout", async () => {
+    const getCheckoutIdentity = vi.fn(async () => ({ isGit: false as const }));
+    const service = createService({ getCheckoutIdentity });
+
+    const checkout = await service.getCheckoutLite(REPO_CWD);
+
+    expect(checkout).toEqual({
+      cwd: REPO_CWD,
+      isGit: false,
+      currentBranch: null,
+      remoteUrl: null,
+      worktreeRoot: null,
+      isOttoOwnedWorktree: false,
+      mainRepoRoot: null,
+    });
+
+    service.dispose();
   });
 
   test("registerWorkspace returns a subscription without an initial snapshot contract", async () => {
@@ -997,6 +1087,73 @@ describe("WorkspaceGitServiceImpl", () => {
 
     subscription.unsubscribe();
     service.dispose();
+  });
+
+  test("the recursive working tree watch drops ignored and .git churn", async () => {
+    // The recursive watch is the non-Linux shape; Linux watches each directory instead.
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, "platform", { configurable: true, value: "win32" });
+
+    try {
+      const watchCallbacks: Array<{
+        path: string;
+        options: { recursive: boolean };
+        callback: (event: string, filename: string | null) => void;
+      }> = [];
+      const watch = vi.fn(
+        (
+          watchPath: string,
+          options: { recursive: boolean },
+          callback: (event: string, filename: string | null) => void,
+        ) => {
+          watchCallbacks.push({ path: watchPath, options, callback });
+          return createWatcher();
+        },
+      );
+      const runGitCommand = vi.fn(async (args: string[]) => ({
+        stdout:
+          args[0] === "ls-files"
+            ? "node_modules/\npackages/app/dist/\nnot-a-directory\n"
+            : `${REPO_CWD}\n`,
+        stderr: "",
+        truncated: false,
+        exitCode: 0,
+        signal: null,
+      }));
+
+      const service = createService({ watch, runGitCommand });
+      const listener = vi.fn();
+      const subscription = await service.requestWorkingTreeWatch(REPO_CWD, listener);
+      await flushPromises();
+
+      const recursiveWatch = watchCallbacks.find(
+        (entry) => entry.path === REPO_CWD && entry.options.recursive,
+      );
+      expect(recursiveWatch).toBeDefined();
+
+      // Ignored build output can never move the diff, so it never wakes a subscriber; the
+      // deep churn under .git is covered by the git-dir watcher registered alongside this one.
+      recursiveWatch?.callback("change", path.join("node_modules", ".package-lock.json"));
+      recursiveWatch?.callback("change", path.join("packages", "app", "dist", "index.js"));
+      recursiveWatch?.callback("change", path.join(".git", "index.lock"));
+      recursiveWatch?.callback("change", path.join(".git", "objects", "ab", "cdef"));
+      expect(listener).not.toHaveBeenCalled();
+
+      // A branch switch, a tracked edit, and an event that named no file all still land.
+      recursiveWatch?.callback("rename", path.join(".git", "HEAD"));
+      recursiveWatch?.callback("change", path.join(".git", "refs", "heads", "main"));
+      recursiveWatch?.callback("change", path.join("packages", "app", "src", "index.ts"));
+      recursiveWatch?.callback("change", null);
+      expect(listener).toHaveBeenCalledTimes(4);
+
+      subscription.unsubscribe();
+      service.dispose();
+    } finally {
+      Object.defineProperty(process, "platform", {
+        configurable: true,
+        value: originalPlatform,
+      });
+    }
   });
 
   test("working tree changes force a fresh diff stat for workspace subscribers", async () => {

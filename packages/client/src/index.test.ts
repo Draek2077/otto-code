@@ -722,7 +722,7 @@ const DAEMON_CONFIG_SCHEMA_DEFAULTS = {
     authMode: "none",
     authToken: null,
     listen: { host: "127.0.0.1", port: 1234 },
-    remote: { authToken: null, host: "", port: 1234, secure: false },
+    remote: { authToken: null, certFingerprint: null, host: "", port: 1234, secure: false },
     tls: {
       certDir: null,
       certFile: null,

@@ -9,7 +9,8 @@
  * 5. Cleanup: Kill daemon and remove temp dirs after each test
  */
 
-import { $, ProcessPromise, sleep } from "zx";
+import { ProcessPromise, sleep } from "zx";
+import { $ } from "./helpers/zx-shell.ts";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";

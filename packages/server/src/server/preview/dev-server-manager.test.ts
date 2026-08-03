@@ -317,6 +317,51 @@ describe("DevServerManager", () => {
     }
   });
 
+  test("refuses agent-initiated stops of an adopted server Otto did not start", async () => {
+    const manager = createManager();
+    // An unrelated listener (stand-in for a database, sshd, another project's
+    // server) that a launch.json entry happens to declare. Adoption is only a
+    // TCP probe, so start() adopts it without knowing what it is.
+    const listener = net.createServer();
+    const port = await new Promise<number>((resolve, reject) => {
+      listener.once("error", reject);
+      listener.listen(0, "127.0.0.1", () => {
+        resolve((listener.address() as net.AddressInfo).port);
+      });
+    });
+    try {
+      const cwd = await createExternalProject(port);
+      const started = await manager.start({ cwd, name: "external" });
+      expect(started.server.serverId).toBe(`ext:${port}`);
+
+      // The agent path (requireCwd present) is refused outright, even for the
+      // matching workspace, and the process keeps running.
+      await expect(manager.stop(`ext:${port}`, { requireCwd: cwd })).rejects.toThrow(
+        /not started by Otto/,
+      );
+      expect(listener.listening).toBe(true);
+      expect(manager.list(cwd)).toHaveLength(1);
+
+      // The user path (no requireCwd) is the deliberate action that may stop
+      // it. The listener is owned by this test process, so the self-pid guard
+      // skips the actual kill, but the stop is authorized and completes.
+      const stopped = await manager.stop(`ext:${port}`);
+      expect(stopped.status).toBe("exited");
+    } finally {
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
+  });
+
+  test("never stops well-known service ports, before even checking observations", async () => {
+    const manager = createManager();
+    // No listener and no adoption needed: the denylist is checked before the
+    // observation lookup, so a hostile launch.json plus a running service
+    // never even reaches the pid resolution.
+    await expect(manager.stop("ext:5432")).rejects.toThrow(/PostgreSQL/);
+    await expect(manager.stop("ext:6379", { requireCwd: "C:\\anywhere" })).rejects.toThrow(/Redis/);
+    await expect(manager.stop("ext:22")).rejects.toThrow(/SSH/);
+  });
+
   test("refuses external stop when launch.json no longer lists the port", async () => {
     const manager = createManager();
     const listener = net.createServer();

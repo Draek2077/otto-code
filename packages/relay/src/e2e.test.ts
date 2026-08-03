@@ -20,7 +20,14 @@ const shouldRunRelayE2e = process.env.FORCE_RELAY_E2E === "1" || nodeMajor < 25;
 const wranglerCliPath = createRequire(import.meta.url).resolve("wrangler/bin/wrangler.js");
 const relayPackageRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
 const STARTUP_HOOK_TIMEOUT_MS = 90_000;
+// SIGTERM grace, then a shorter SIGKILL grace. On Windows SIGTERM does not reach
+// the wrangler child, so the full SIGTERM grace is spent on every run.
 const SHUTDOWN_TIMEOUT_MS = 10_000;
+const SHUTDOWN_KILL_TIMEOUT_MS = 2_000;
+// The hook has to outlast the whole escalation it performs. Budgeting it at
+// SHUTDOWN_TIMEOUT_MS alone made the hook time out before its own SIGKILL leg
+// could run, failing the suite after every test in it had passed.
+const SHUTDOWN_HOOK_TIMEOUT_MS = SHUTDOWN_TIMEOUT_MS + SHUTDOWN_KILL_TIMEOUT_MS + 5_000;
 
 async function getAvailablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -73,9 +80,9 @@ function spawnRelayDevServer(port: number): ChildProcess {
 }
 
 function assertRelayStillRunning(relayProcess: ChildProcess): void {
-  if (relayProcess.exitCode !== null) {
+  if (hasProcessExited(relayProcess)) {
     throw new Error(
-      `relay process exited before startup completed (code: ${relayProcess.exitCode})`,
+      `relay process exited before startup completed (code: ${relayProcess.exitCode}, signal: ${relayProcess.signalCode})`,
     );
   }
 }
@@ -158,29 +165,38 @@ async function waitForRelayWebSocketReady(
   return poll();
 }
 
+// A child terminated by a signal reports exitCode === null and names the signal
+// in signalCode. Windows maps kill() onto TerminateProcess, which libuv surfaces
+// as signal-termination, so exitCode stays null for the whole escalation:
+// checking it alone can never observe the kill, and teardown reports a process
+// that already exited.
+function hasProcessExited(relayProcess: ChildProcess): boolean {
+  return relayProcess.exitCode !== null || relayProcess.signalCode !== null;
+}
+
 async function waitForProcessExit(relayProcess: ChildProcess, deadline: number): Promise<void> {
-  if (relayProcess.exitCode !== null) return;
+  if (hasProcessExited(relayProcess)) return;
   if (Date.now() >= deadline) return;
   await sleep(50);
   return waitForProcessExit(relayProcess, deadline);
 }
 
 async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
-  if (relayProcess.exitCode !== null) {
+  if (hasProcessExited(relayProcess)) {
     return;
   }
 
   relayProcess.kill("SIGTERM");
   await waitForProcessExit(relayProcess, Date.now() + SHUTDOWN_TIMEOUT_MS);
 
-  if (relayProcess.exitCode !== null) {
+  if (hasProcessExited(relayProcess)) {
     return;
   }
 
   relayProcess.kill("SIGKILL");
-  await waitForProcessExit(relayProcess, Date.now() + 2000);
+  await waitForProcessExit(relayProcess, Date.now() + SHUTDOWN_KILL_TIMEOUT_MS);
 
-  if (relayProcess.exitCode === null) {
+  if (!hasProcessExited(relayProcess)) {
     throw new Error("relay process did not exit after SIGTERM/SIGKILL");
   }
 }
@@ -224,7 +240,7 @@ async function stopRelayProcess(relayProcess: ChildProcess): Promise<void> {
       await stopRelayProcess(relayProcess);
       relayProcess = null;
     }
-  }, SHUTDOWN_TIMEOUT_MS);
+  }, SHUTDOWN_HOOK_TIMEOUT_MS);
 
   it(
     "full flow: daemon and client exchange encrypted messages through relay",

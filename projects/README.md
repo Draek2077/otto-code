@@ -420,6 +420,69 @@ source**, and the blocker is React Native's text model rather than KaTeX; see
 
 ### Performance
 
+- ✅ **Streaming code fences no longer re-tokenize themselves ~30x/sec (audit F2).** Fixed 2026-08-02.
+  An open fence cannot leave the live tail block, so every reveal tick handed the highlighter a
+  longer string and missed a cache keyed on the whole code — a full Lezer pass per tick, quadratic in
+  the finished fence. `components/markdown/fence-highlight-debounce.ts` (`useSettledFenceCode`)
+  quantizes the code `HighlightedCodeBlock` sees to one commit per 250 ms while the fence grows;
+  settled content still highlights on its first paint, and the trailing commit lands within one
+  window of the stream ending. Fork-original call site only — `highlight-cache.ts` and
+  `highlighted-code-block.tsx` untouched. Rules written down in
+  [docs/markdown-rendering.md](../docs/markdown-rendering.md#a-streaming-fence-is-throttled-and-that-is-load-bearing);
+  finding in
+  [findings/performance-efficiency-audit/2026-08-02-static-code-audit.md](../findings/performance-efficiency-audit/2026-08-02-static-code-audit.md).
+  The audit's measurement (`performance.now()` around `tokenizeToLines` on a 20-50 KB fence) is still
+  the number that would size the win; the fix was cheap enough not to wait on it.
+- ✅ **Build churn no longer drives full git + highlight recomputes (audit F3).** Fixed 2026-08-02, all
+  three fixes in the audit's leverage order:
+  1. `checkout-diff-manager.ts` now fingerprints the **raw patch text** before structuring. A watcher
+     wakeup first does a cheap `includeStructured: false` read and hashes it; if the hash matches the
+     previous one for that subscription it bails, so a no-op wakeup costs one git read instead of a
+     full parse, a full-file re-highlight, and a `JSON.stringify` of the tokenized snapshot. A real
+     change pays the probe on top of the full read, which is the trade.
+  2. `workspace-git-service.ts` finally uses the `filename` the recursive `fs.watch` callback hands
+     it (Windows/macOS). Events under gitignored directories and under `.git/` are dropped, except
+     `.git/HEAD` and `.git/refs/`, which a branch switch needs. The ignore set is the one
+     `loadLinuxIgnoredDirs` already computed for the Linux per-directory path, now cached with a
+     relative-path twin so the sync callback can read it, warmed when the watcher is registered.
+     A null `filename` still refreshes: a missed edit costs more than a debounced extra snapshot.
+  3. `utils/diff-highlighter.ts` size-gates full-file highlighting at 256 KB per side and falls back
+     to the existing hunk-reconstructed tokens above it. The 1 MB cap in `checkout-git.ts` bounds
+     patch text, not file content, so a one-line edit to a 1.5 MB lockfile used to push ~3 MB through
+     Lezer on the daemon thread per refresh.
+
+  All three files are upstream-shared, so each change is additive and local. Finding in
+  [findings/performance-efficiency-audit/2026-08-02-static-code-audit.md](../findings/performance-efficiency-audit/2026-08-02-static-code-audit.md).
+  Still owed, and still the number that sizes this: `snapshotGitCommandRuntimeMetrics` during an
+  `npm install` in a watched workspace on Windows, which is measurement 2 in that audit.
+
+- ✅ **Client state that only ever grew now has a release path (audit Q22-Q25).** Fixed 2026-08-02.
+  Four maps that nothing ever removed from, none of them visible to the 07-25 soak census (it walks
+  only the ten stores in `collect-resource-metrics.ts`):
+  1. **Editor buffers.** `releaseCleanEditorBuffer` runs from `closeWorkspaceTabWithCleanup`, so the
+     bulk "Close all / Close others" and pane-close paths give a file's text back like the
+     interactive close already did. A dirty, conflicted, or draft-holding buffer is retained
+     deliberately — those paths have no discard prompt, and unsaved text is never dropped without
+     the confirm in `panels/file-panel.tsx`.
+  2. **`agentDetails`.** New `releaseClosedChat` action, called on chat-tab close: the by-id snapshot
+     an archived chat was opened from is the tab's to release, and a chat still in the active
+     directory keeps its entry. Deliberately NOT on pane unmount — mounted-tab retention and deck
+     eviction unmount panes whose tabs stay open, and the tab strip renders titles from this map.
+  3. **Per-agent side maps.** `releaseAgentStreams` now drops `agentHistorySyncGeneration`,
+     `agentPromptSuggestions`, `agentRateLimits`, `dismissedRateLimits` and `sentPromptHistory` with
+     the buffers, and `removeAgentDirectoryReplica` routes through it instead of clearing maps
+     one at a time (which is how they got missed). `fileExplorer` is workspace-keyed, so it is
+     released in `removeWorkspace` instead, under every spelling of its key.
+  4. **Orchestration bookkeeping.** `resetForParent` finally has production callers (closed chat,
+     removed agent), and `context-management` `queryReports` keeps `MAX_QUERY_REPORTS_PER_SERVER`
+     (20) answers per server, most-recently-written first — the reopen-paints-instantly behavior in
+     [docs/context-management.md](../docs/context-management.md) survives for recent keys.
+
+  Finding in
+  [findings/performance-efficiency-audit/2026-08-02-static-code-audit.md](../findings/performance-efficiency-audit/2026-08-02-static-code-audit.md).
+  Unsized on purpose: the census cannot see any of these four, so the honest measurement is a heap
+  snapshot after a long History browse, not a store count.
+
 - ✅ **Resource reporting.** Built 2026-07-25 — `packages/app/src/diagnostics/resource-report/`:
   frame timing, a retained-state census over every store, react-query cache and DOM counts, live
   timer counts, and daemon-traffic accounting (including main-thread handler time). Surfaced live
@@ -715,6 +778,46 @@ source**, and the blocker is React Native's text model rather than KaTeX; see
 
 ### Testing & tooling
 
+- 🔴 **`linkify-it@2.2.0` ReDoS is reachable from chat text, via the abandoned
+  `react-native-markdown-display@7.0.2`.** GHSA-v245-v573-v5vm is a quadratic-complexity hang in the
+  `mailto:` validator scan loop, triggered by attacker-supplied text. Every chat message renders
+  through that package (`markdown/renderer.tsx`, `message.tsx`, `plan-card.tsx`), which pins
+  `markdown-it@10.0.0` and through it `linkify-it@2.2.0`, on web and Electron alike. The app already
+  has a current `markdown-it@^15.0.0` as a direct dependency, so the fix is to stop routing through
+  the 2022-era renderer: either an `overrides` entry forcing `markdown-it@15` under it (cheap, needs a
+  render smoke test because v10 to v15 changes the token stream), or replacing the renderer outright
+  (its own project). This is the **only** alert in the whole Dependabot set where vulnerable code,
+  untrusted input and a shipped surface line up. Inherited from upstream, worth reporting there.
+  Evidence:
+  [findings/dependency-vulnerabilities/2026-08-02-dependabot-alert-triage.md](../findings/dependency-vulnerabilities/2026-08-02-dependabot-alert-triage.md)
+
+- 🟡 **Delete `packages/expo-two-way-audio/package-lock.json`; it closes 85 Dependabot alerts,
+  including all 3 criticals, and changes nothing that installs.** The vendored module declares no
+  runtime dependencies, is a root workspace member (so `npm ci` resolves it through the root
+  lockfile), and the nested file is stale even against its own manifest (records `0.1.97-beta.2`
+  against a `package.json` on `0.7.5`). The only workflow that would consume it,
+  `packages/expo-two-way-audio/.github/workflows/ci.yml`, is inert because Actions only reads the
+  repository-root `.github/workflows/`. Delete the nested `.github/` in the same change. Inherited
+  from upstream (the diff against `upstream/main` is 2 rename lines), so this belongs upstream too.
+
+- 🟡 **Refresh the lockfile for `packages/website` and the dev toolchain, in two attributable
+  batches.** Neither ships to a user, so these are hygiene, not exposure, and each batch is small
+  enough that CI can attribute a failure. Batch A, website: `undici` (7 alerts), `ws` (2), `esbuild`,
+  `sharp`. `packages/server` already declares patched ranges (`undici@^7.28.0`, `ws@^8.21.0`) and
+  resolves clean at 7.29.0 / 8.21.1, so this is a lockfile refresh rather than a manifest change.
+  Batch B, dev tooling: bump `wait-on` in `packages/desktop` to clear 19 `axios` alerts (the single
+  largest cluster in the report), plus `app-builder-lib`, `lodash`, `follow-redirects`. Do **not**
+  fold these together with the app or daemon batches.
+
+- 🟢 **The daemon's 25 Dependabot alerts are hygiene-only; do not prioritise them.** 22 are
+  affirmatively unreachable: all 13 `hono`/`@hono/node-server` advisories are in middlewares the
+  daemon never imports (it arrives under `@modelcontextprotocol/sdk`, which uses only
+  `getRequestListener`), the 6 `minimatch`/`brace-expansion` ones come via `ejs → jake → filelist`
+  which EJS's runtime never loads, and `uuid`/`body-parser`/`qs` each need an API Otto does not call.
+  Three are unresolved and low impact: `fast-uri` ×2 under `ajv` (ruling them out means reading ajv's
+  `uri` format handling against the schemas in `agent-response-loop.ts`), and
+  `@ai-sdk/provider-utils`, which has **no upstream fix**. Bump these when the MCP SDK moves anyway.
+
 - 🟡 **42 files read a Unistyles style proxy at module scope, and the guard that catches it is
   ratcheted rather than clean.** `docs/unistyles.md` forbids module-level style reads: the value is
   materialized while the app may still be on the temporary system theme, and a view mounting after
@@ -784,6 +887,21 @@ source**, and the blocker is React Native's text model rather than KaTeX; see
   **Workaround:** `E2E_OUTPUT_DIR=<path outside packages/app>`. **Real fix:** default `outputRoot`
   outside the Metro root, or add `test-results` to a Metro `blockList` — `packages/app` currently has
   no `metro.config.js`.
+- ✅ **One leaked daemon project cascaded through a whole E2E shard.** _(Closed 2026-08-02.)_
+  Measured in
+  [findings/e2e-shard-cascades/2026-08-02-leaked-daemon-projects.md](../findings/e2e-shard-cascades/2026-08-02-leaked-daemon-projects.md).
+  A spec registered a temp directory as a daemon project and deleted the directory without removing
+  the record; the shard's shared daemon kept serving a project rooted at a dead path, the New
+  Workspace composer preselected it as the last active project, and `listDraftFeatures` →
+  `normalizeConfig` failed on the missing cwd — 35 times over the **13 minutes after** the owning
+  test finished, each retried at 1s/2s/4s, plus 36 file-explorer realpath failures. `fixtures.ts`
+  now sweeps projects whose root directory is gone after every test and annotates the offender, and
+  `new-workspace-codex-mode-preferences` / `new-workspace-isolation-memory` tear their own records
+  down first. **Left open:** the wider class is netted rather than individually fixed —
+  `new-workspace.spec.ts` still tracks only 2 of ~14 tests in `localProjectIds` and removes its repos
+  in the test body ahead of its own `afterEach`; and the daemon's half, where a read-only draft
+  feature/command listing inherits a cwd `stat` it does not need, which gives a user on an unmounted
+  drive the same self-retrying composer.
 - 🟡 **E2E build-out.** Tiers 1 and 2 are green (all T1 batches, T2 local-AI 6/6); the coverage
   matrix and its drift guard (`scripts/e2e-coverage-check.mjs`) track the rest. Three known items
   remain: the scoped `personality-autosubmit-regression` rework, the Windows-only

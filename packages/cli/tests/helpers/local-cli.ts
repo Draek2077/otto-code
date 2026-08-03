@@ -1,4 +1,5 @@
-import { $, ProcessPromise } from "zx";
+import { ProcessPromise } from "zx";
+import { $ } from "./zx-shell.ts";
 import { join } from "node:path";
 
 const CLI_ENTRY = join(import.meta.dirname, "..", "..", "dist", "index.js");

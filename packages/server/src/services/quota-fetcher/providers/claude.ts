@@ -10,6 +10,7 @@ import type {
   ProviderUsageDetail,
   ProviderUsageWindow,
 } from "../../../server/messages.js";
+import { writeFileAtomic } from "../../../server/atomic-file.js";
 import type { ProviderApiFetch, ProviderUsageFetcher } from "../provider.js";
 import {
   ApiNumberSchema,
@@ -352,7 +353,6 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
       }
 
       await this.saveClaudeCredentials(filePath, {
-        ...oauth,
         accessToken: refreshed.access_token,
         refreshToken: refreshed.refresh_token ?? oauth.refreshToken,
       });
@@ -488,14 +488,22 @@ export class ClaudeQuotaProvider implements ProviderUsageFetcher {
 
   private async saveClaudeCredentials(
     credPath: string,
-    oauth: ClaudeCredentials["claudeAiOauth"],
+    tokens: { accessToken: string; refreshToken: string },
   ): Promise<void> {
     try {
-      const existing = ClaudeCredentialsSchema.parse(
-        JSON.parse(await fs.readFile(credPath, "utf8")),
-      );
-      existing.claudeAiOauth = oauth;
-      await fs.writeFile(credPath, JSON.stringify(existing, null, 2), { mode: 0o600 });
+      // Merge into the raw JSON, never the schema-parsed view: the file belongs to
+      // Claude Code and carries fields the schema does not model (expiresAt, scopes,
+      // and any top-level siblings); a schema round-trip would silently drop them.
+      const raw = JSON.parse(await fs.readFile(credPath, "utf8")) as Record<string, unknown>;
+      const rawOauth = raw["claudeAiOauth"];
+      const oauth =
+        rawOauth && typeof rawOauth === "object"
+          ? { ...(rawOauth as Record<string, unknown>) }
+          : {};
+      oauth["accessToken"] = tokens.accessToken;
+      oauth["refreshToken"] = tokens.refreshToken;
+      raw["claudeAiOauth"] = oauth;
+      await writeFileAtomic(credPath, JSON.stringify(raw, null, 2), { mode: 0o600 });
     } catch {
       // Non-fatal; Claude Code can refresh again on its own next time.
     }

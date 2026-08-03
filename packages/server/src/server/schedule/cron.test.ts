@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { computeNextRunAt, validateScheduleCadence } from "./cron.js";
+import { computeNextRunAt, computeNextRunAtOrNull, validateScheduleCadence } from "./cron.js";
 
 describe("schedule cron cadence", () => {
   test("computes the next every cadence from the provided timestamp", () => {
@@ -57,6 +57,23 @@ describe("schedule cron cadence", () => {
   test("rejects step fields with extra slash tokens", () => {
     expect(() => validateScheduleCadence({ type: "cron", expression: "*/5/2 * * * *" })).toThrow(
       "Invalid cron minute step",
+    );
+  });
+
+  test("rejects unsatisfiable cron expressions at validation", () => {
+    expect(() => validateScheduleCadence({ type: "cron", expression: "0 0 31 4 *" })).toThrow(
+      "Cron expression has no matching run time within the next year: 0 0 31 4 *",
+    );
+    expect(() => validateScheduleCadence({ type: "cron", expression: "0 0 30 2 *" })).toThrow(
+      "Cron expression has no matching run time within the next year: 0 0 30 2 *",
+    );
+  });
+
+  test("computeNextRunAtOrNull returns null where computeNextRunAt throws", () => {
+    const after = new Date("2026-01-01T00:00:00.000Z");
+    expect(computeNextRunAtOrNull({ type: "cron", expression: "0 0 31 4 *" }, after)).toBeNull();
+    expect(() => computeNextRunAt({ type: "cron", expression: "0 0 31 4 *" }, after)).toThrow(
+      "Unable to compute next run time for cron expression: 0 0 31 4 *",
     );
   });
 

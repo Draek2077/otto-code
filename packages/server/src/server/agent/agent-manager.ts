@@ -77,6 +77,7 @@ import type {
   RetainedTranscriptOwner,
   RetainedTranscriptStore,
 } from "./retained-transcript-store.js";
+import { RetainedTimelineResidency } from "./retained-timeline-residency.js";
 import { buildArchivedAgentRecord, type ArchivedStoredAgentRecord } from "./agent-archive.js";
 import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
 import type {
@@ -1282,8 +1283,9 @@ export class AgentManager {
   private readonly retainedTranscripts?: RetainedTranscriptStore;
   // Ids whose retained rows have been seeded into the in-memory timeline store
   // so fetchTimeline can serve them like an observed subagent (no ManagedAgent,
-  // no requireAgent throw).
-  private readonly retainedTimelineIds = new Set<string>();
+  // no requireAgent throw). LRU-capped: nothing signals that a viewer closed a
+  // retained transcript, so residency is bounded instead of released.
+  private readonly retainedTimelines = new RetainedTimelineResidency();
   // Paseo's provider-subagent projection, keyed by parent agent id.
   private readonly providerSubagents = new ProviderSubagentStore();
   private readonly inFlightAgentCloses = new Map<string, Promise<void>>();
@@ -1948,9 +1950,11 @@ export class AgentManager {
   fetchTimeline(id: string, options?: AgentTimelineFetchOptions): AgentTimelineFetchResult {
     if (this.observedSubagents.has(id)) {
       this.ensureObservedTimelineState(id);
-    } else if (this.retainedTimelineIds.has(id)) {
+    } else if (this.retainedTimelines.has(id)) {
       // Retained transcript already seeded into the in-memory store (via
-      // ensureRetainedTranscriptLoaded); serve it without a ManagedAgent.
+      // ensureRetainedTranscriptLoaded); serve it without a ManagedAgent, and
+      // count the read as use so an open viewer is not the one evicted.
+      this.retainTimeline(id);
     } else {
       this.requireAgent(id);
     }
@@ -2016,8 +2020,17 @@ export class AgentManager {
     if (!this.timelineStore.has(agentId)) {
       this.timelineStore.initialize(agentId, { rows: record.rows });
     }
-    this.retainedTimelineIds.add(agentId);
+    this.retainTimeline(agentId);
     return true;
+  }
+
+  // Residency bookkeeping for retained transcripts: mark this one in use and
+  // drop the rows of whatever fell out of the LRU. Evicted ids reload from disk
+  // on the next fetch, so this costs a re-read, never the transcript.
+  private retainTimeline(agentId: string): void {
+    for (const evictedId of this.retainedTimelines.retain(agentId)) {
+      this.timelineStore.delete(evictedId);
+    }
   }
 
   /** Drop every retained transcript produced by one artifact/schedule. */

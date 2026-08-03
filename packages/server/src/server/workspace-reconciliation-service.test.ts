@@ -136,7 +136,7 @@ function createWorkspaceGitServiceStub(
   >,
 ) {
   return {
-    getCheckout: async (cwd: string) => {
+    getCheckoutLite: async (cwd: string) => {
       const metadata = metadataByCwd[cwd];
       if (!metadata) {
         return {
@@ -180,14 +180,26 @@ function createCheckout(
 
 class TestCheckouts {
   readonly reads: string[] = [];
+  /**
+   * Reads that went through the full checkout chain instead. Reconciliation keeps
+   * only the identity fields, so every one of these would be paying for a dirty
+   * check and three `rev-list --count` walks it then throws away — around 17 git
+   * spawns per cwd, on every root and every workspace, every tick.
+   */
+  readonly fullReads: string[] = [];
   private readonly checkouts = new Map<string, ProjectCheckoutLitePayload>();
 
   set(cwd: string, checkout: ProjectCheckoutLitePayload): void {
     this.checkouts.set(cwd, checkout);
   }
 
-  async getCheckout(cwd: string): Promise<ProjectCheckoutLitePayload> {
+  async getCheckoutLite(cwd: string): Promise<ProjectCheckoutLitePayload> {
     this.reads.push(cwd);
+    return this.checkouts.get(cwd) ?? createCheckout(cwd);
+  }
+
+  async getCheckout(cwd: string): Promise<ProjectCheckoutLitePayload> {
+    this.fullReads.push(cwd);
     return this.checkouts.get(cwd) ?? createCheckout(cwd);
   }
 }
@@ -1099,7 +1111,7 @@ describe("WorkspaceReconciliationService", () => {
       workspaceRegistry,
       logger: createTestLogger(),
       workspaceGitService: {
-        getCheckout: async (cwd) => {
+        getCheckoutLite: async (cwd) => {
           if (cwd === workspaceRoot) throw new Error("Git read failed");
           return createCheckout(cwd, { isGit: true, currentBranch: "main", worktreeRoot: cwd });
         },
@@ -1163,7 +1175,7 @@ describe("WorkspaceReconciliationService", () => {
       workspaceRegistry,
       logger: createTestLogger(),
       workspaceGitService: {
-        getCheckout: async (cwd) => {
+        getCheckoutLite: async (cwd) => {
           if (cwd === replacedWorkspace) {
             throw new Error("Git cannot use a regular file as cwd");
           }
@@ -1495,5 +1507,56 @@ describe("WorkspaceReconciliationService", () => {
       isOttoOwnedWorktree: true,
       mainRepoRoot: "/tmp/main-repo",
     });
+    expect(checkouts.fullReads).toEqual([]);
+  });
+
+  // The 5-minute tick reads every project root and every workspace cwd. With ten projects
+  // and fifteen worktrees the full checkout chain put that at roughly 425 git spawns in one
+  // burst, enough to saturate the global 8-slot limiter; on Windows each spawn is ~30-80 ms
+  // plus Defender. Reconciliation only ever compares identity, so it takes the lite read.
+  test("reads identity only, never the full checkout, for every root and workspace", async () => {
+    const rootPath = realpathSync(mkdtempSync(path.join(tmpdir(), "reconcile-lite-read-")));
+    tempDirs.push(rootPath);
+    const worktreePath = realpathSync(mkdtempSync(path.join(tmpdir(), "reconcile-lite-wt-")));
+    tempDirs.push(worktreePath);
+    const { projects, workspaces, projectRegistry, workspaceRegistry } = createTestRegistries();
+    const checkouts = new TestCheckouts();
+    for (const cwd of [rootPath, worktreePath]) {
+      checkouts.set(cwd, createCheckout(cwd, { isGit: true, worktreeRoot: cwd }));
+    }
+    projects.set(
+      "p1",
+      createPersistedProjectRecord({
+        projectId: "p1",
+        rootPath,
+        kind: "git",
+        displayName: "project",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    );
+    workspaces.set(
+      "w1",
+      createPersistedWorkspaceRecord({
+        workspaceId: "w1",
+        projectId: "p1",
+        cwd: worktreePath,
+        kind: "worktree",
+        displayName: "worktree",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+    );
+    const service = new WorkspaceReconciliationService({
+      projectRegistry,
+      workspaceRegistry,
+      workspaceGitService: checkouts,
+      logger: createTestLogger(),
+    });
+
+    await service.reconcileGitMetadata();
+
+    expect(checkouts.reads).toEqual(expect.arrayContaining([rootPath, worktreePath]));
+    expect(checkouts.fullReads).toEqual([]);
   });
 });

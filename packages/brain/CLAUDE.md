@@ -129,6 +129,18 @@ regardless of TLS, and `auth` accepts `Authorization: Bearer`, `x-api-key`, or
 `x-otto-brain-token`. Config keys: `tls.mode`, `tls.certFile`/`keyFile`,
 `tls.hostname`, `tls.certDir`, `tls.renewBeforeDays`, `tls.tailscaleExe`.
 
+**Daemon-side trust (brain.mode=remote).** The daemon's `BrainManager` authenticates a
+remote brain's certificate before sending it anything, because the auth token rides in
+the request headers. By default the certificate must validate against the system trust
+store (fits `files` and `tailscale` modes). For a `self-signed` brain, set
+`brain.remote.certFingerprint` to the certificate's SHA-256 fingerprint (openssl's
+colon form or bare hex); the daemon then pins the connection to exactly that
+certificate and hands the socket to the request only after the fingerprint matches.
+Never reintroduce a blanket `rejectUnauthorized: false` on the remote path: it lets
+any on-path peer answer the handshake and read the token. Only the daemon's loopback
+probe of its own local child keeps the relaxed check, since that traffic never leaves
+the machine.
+
 **Ops (`src/ops/`)** — `calibrate.ts`, `sweep.ts`, `results.ts`, `report.ts`,
 `archive.ts`. **Bench (`src/bench/`)** — the agentic-coding benchmark suite.
 

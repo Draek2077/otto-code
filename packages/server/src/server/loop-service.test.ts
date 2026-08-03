@@ -528,7 +528,7 @@ describe("LoopService", () => {
       service.runLoop({
         prompt: "Use a file as cwd",
         cwd: filePath,
-        verifyChecks: ["true"],
+        verifyChecks: ["exit 0"],
       }),
     ).rejects.toThrow("is not a directory");
     expect(ensureCalls).toBe(0);
@@ -562,7 +562,10 @@ describe("LoopService", () => {
     const loop = await service.runLoop({
       prompt: "Use provider default model",
       cwd: workspaceDir,
-      verifyChecks: ["true"],
+      // `exit 0` rather than `true`: verify checks run through cmd.exe on
+      // Windows, where `true` is not a builtin and only resolves if a POSIX
+      // toolchain happens to be on PATH. `exit 0` succeeds in cmd and sh alike.
+      verifyChecks: ["exit 0"],
       maxIterations: 1,
     });
 
@@ -733,7 +736,7 @@ describe("LoopService", () => {
       prompt: "Fail before starting",
       cwd: workspaceDir,
       model: "test-model",
-      verifyChecks: ["true"],
+      verifyChecks: ["exit 0"],
       archive: true,
       maxIterations: 1,
     });

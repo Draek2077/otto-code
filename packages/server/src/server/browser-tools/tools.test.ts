@@ -67,6 +67,18 @@ class BrowserToolHarness {
       previewServers: previewServers
         ? { list: (cwd?: string) => previewServers.filter((s) => !cwd || s.cwd === cwd) }
         : null,
+      // Deterministic resolver for the SSRF screen — tests must never do real DNS.
+      lookupHost: async (host) => {
+        const table: Record<string, string> = {
+          "example.com": "93.184.216.34",
+          "rebind.example": "169.254.169.254",
+        };
+        const address = table[host];
+        if (!address) {
+          throw new Error(`unexpected DNS lookup in test: ${host}`);
+        }
+        return [{ address, family: 4 }];
+      },
     });
   }
 
@@ -413,6 +425,11 @@ const routedToolCases = [
       },
     },
     content: [{ type: "text", text: 'Browser evaluate returned:\n"Save"' }],
+    structuredResult: {
+      command: "evaluate",
+      browserId: BROWSER_ID,
+      truncated: false,
+    },
   },
   {
     name: "scroll",
@@ -520,6 +537,14 @@ const routedToolCases = [
         text: "Extracted 11 characters of page text from <article>.\nTitle: Docs\nURL: https://example.com/docs\n\nHello world",
       },
     ],
+    structuredResult: {
+      command: "page_text",
+      browserId: BROWSER_ID,
+      url: "https://example.com/docs",
+      title: "Docs",
+      source: "article",
+      truncated: false,
+    },
   },
 ] satisfies Array<{
   name: string;
@@ -833,7 +858,6 @@ describe("registerBrowserTools", () => {
         url: "https://example.com",
         title: "Example",
         format: "aria-yaml",
-        snapshot: '- document "Example"\n  - button "Save" [ref=@e1]',
         truncated: false,
         stats: { nodeCount: 2, refCount: 1, textLength: 50 },
       },
@@ -845,6 +869,68 @@ describe("registerBrowserTools", () => {
       },
     });
   });
+
+  test.each([
+    {
+      name: "snapshot",
+      toolName: "browser_snapshot",
+      input: { browserId: BROWSER_ID },
+      payload: snapshotPayload(),
+      field: "snapshot",
+      spentText: '- document "Example"\n  - button "Save" [ref=@e1]',
+    },
+    {
+      name: "page text",
+      toolName: "browser_page_text",
+      input: { browserId: BROWSER_ID },
+      payload: {
+        requestId: "req-page-text",
+        ok: true,
+        result: {
+          command: "page_text",
+          browserId: BROWSER_ID,
+          url: "https://example.com/docs",
+          title: "Docs",
+          source: "article",
+          text: "Hello world",
+          truncated: false,
+        },
+      } satisfies Extract<BrowserToolsResponsePayload, { ok: true }>,
+      field: "text",
+      spentText: "Hello world",
+    },
+    {
+      name: "evaluate",
+      toolName: "browser_evaluate",
+      input: { browserId: BROWSER_ID, function: "() => 'Save'" },
+      payload: {
+        requestId: "req-evaluate",
+        ok: true,
+        result: {
+          command: "evaluate",
+          browserId: BROWSER_ID,
+          resultJson: '"Save"',
+          truncated: false,
+        },
+      } satisfies Extract<BrowserToolsResponsePayload, { ok: true }>,
+      field: "resultJson",
+      spentText: '"Save"',
+    },
+  ])(
+    "$name spends its payload in the model-visible text only, never twice",
+    async ({ toolName, input, payload, field, spentText }) => {
+      const harness = new BrowserToolHarness();
+      harness.broker.setResponse(payload);
+
+      const response = await harness.execute(toolName, input);
+
+      expect(response.content[0]).toMatchObject({ type: "text" });
+      expect((response.content[0] as { text: string }).text).toContain(spentText);
+      expect(
+        (response.structuredContent as { result: Record<string, unknown> }).result,
+      ).not.toHaveProperty(field);
+    },
+  );
 
   test.each(routedToolCases)(
     "$name routes browser id in command args and workspace id in the envelope",
@@ -1426,6 +1512,79 @@ describe("registerBrowserTools", () => {
     });
   });
 
+  describe("navigation SSRF screen", () => {
+    test("navigate to the cloud metadata endpoint is blocked before the broker", async () => {
+      const harness = new BrowserToolHarness();
+
+      const response = await harness.execute("browser_navigate", {
+        browserId: BROWSER_ID,
+        url: "http://169.254.169.254/latest/meta-data/",
+      });
+
+      expect(harness.broker.calls).toEqual([]);
+      expect(response.structuredContent).toMatchObject({
+        ok: false,
+        error: {
+          code: "browser_denied",
+          message: expect.stringContaining("restricted network range"),
+          retryable: false,
+        },
+      });
+    });
+
+    test("new tab to a link-local URL is blocked before the broker", async () => {
+      const harness = new BrowserToolHarness();
+
+      const response = await harness.execute("browser_new_tab", {
+        url: "http://169.254.169.254/",
+      });
+
+      expect(harness.broker.calls).toEqual([]);
+      expect(response.structuredContent).toMatchObject({
+        ok: false,
+        error: { code: "browser_denied" },
+      });
+    });
+
+    test("navigate to a hostname resolving to a blocked address is blocked", async () => {
+      const harness = new BrowserToolHarness();
+
+      const response = await harness.execute("browser_navigate", {
+        browserId: BROWSER_ID,
+        url: "http://rebind.example/creds",
+      });
+
+      expect(harness.broker.calls).toEqual([]);
+      expect(response.structuredContent).toMatchObject({
+        ok: false,
+        error: {
+          code: "browser_denied",
+          message: expect.stringContaining("resolved to 169.254.169.254"),
+        },
+      });
+    });
+
+    test("loopback and private-LAN destinations still navigate", async () => {
+      const harness = new BrowserToolHarness();
+      harness.broker.setResponse({
+        requestId: "req-navigate",
+        ok: true,
+        result: { command: "navigate", browserId: BROWSER_ID, url: "http://127.0.0.1:4321/" },
+      });
+
+      await harness.execute("browser_navigate", {
+        browserId: BROWSER_ID,
+        url: "http://127.0.0.1:4321/",
+      });
+      await harness.execute("browser_navigate", {
+        browserId: BROWSER_ID,
+        url: "http://192.168.1.50:8080/",
+      });
+
+      expect(harness.broker.calls).toHaveLength(2);
+    });
+  });
+
   test("tab tools keep empty context when there is no caller agent", async () => {
     const harness = new BrowserToolHarness(null, null);
     harness.broker.setResponse(snapshotPayload());
@@ -1435,9 +1594,13 @@ describe("registerBrowserTools", () => {
     expect(harness.broker.calls).toEqual([
       { command: { command: "snapshot", args: { browserId: BROWSER_ID } } },
     ]);
+    const { snapshot: _snapshot, ...structuredResult } = snapshotPayload().result as Extract<
+      Extract<BrowserToolsResponsePayload, { ok: true }>["result"],
+      { command: "snapshot" }
+    >;
     expect(response.structuredContent).toEqual({
       ok: true,
-      result: snapshotPayload().result,
+      result: structuredResult,
       context: { browserId: BROWSER_ID },
     });
   });

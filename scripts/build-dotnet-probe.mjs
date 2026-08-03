@@ -17,19 +17,28 @@
  */
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const projectPath = join(repoRoot, "packages", "dotnet-probe", "OttoDotnetProbe.csproj");
-const outputDir = join(repoRoot, "packages", "dotnet-probe", "dist");
+import {
+  PROBE_BUILD_DIR,
+  PROBE_ENTRY_FILE,
+  PROBE_PROJECT_PATH,
+  SERVER_DIST_DIR,
+  SERVER_PAYLOAD_DIR,
+} from "./dotnet-probe-paths.mjs";
+
+const projectPath = PROBE_PROJECT_PATH;
+const outputDir = PROBE_BUILD_DIR;
 /**
  * The published-package location. `bootstrap.ts` looks here first when the daemon runs from an
- * installed tarball rather than from the repo. A server build wipes `dist`, which is why the
- * `build:server*` scripts chain this one after themselves rather than leaving the ordering to
- * whoever remembers it.
+ * installed tarball rather than from the repo.
+ *
+ * Both this and the daemon's side of it come from `dotnet-probe-paths.mjs` rather than being
+ * written out here. They were two hand-written literals once and they drifted, so the daemon
+ * spent its life probing a directory nothing had ever written. `bootstrap.test.ts` imports the
+ * same constants and pins the two together.
  */
-const serverCopyDir = join(repoRoot, "packages", "server", "dist", "dotnet-probe");
+const serverCopyDir = SERVER_PAYLOAD_DIR;
 
 const required = process.argv.includes("--required");
 
@@ -60,7 +69,7 @@ if (publish.status !== 0) {
   process.exit(1);
 }
 
-const entry = join(outputDir, "OttoDotnetProbe.dll");
+const entry = join(outputDir, PROBE_ENTRY_FILE);
 if (!existsSync(entry)) {
   console.error(`build:dotnet-probe: publish produced no ${entry}`);
   process.exit(1);
@@ -72,7 +81,7 @@ console.log(
   `build:dotnet-probe: ${files.length} files, ${Math.round(bytes / 1024)} KB -> ${outputDir}`,
 );
 
-if (existsSync(join(repoRoot, "packages", "server", "dist"))) {
+if (existsSync(SERVER_DIST_DIR)) {
   rmSync(serverCopyDir, { recursive: true, force: true });
   cpSync(outputDir, serverCopyDir, { recursive: true });
   console.log(`build:dotnet-probe: copied into ${serverCopyDir}`);

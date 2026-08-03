@@ -210,7 +210,10 @@ const CODEX_APP_SERVER_CAPABILITIES: AgentCapabilityFlags = {
   supportsRewindFiles: false,
   supportsRewindBoth: false,
   // Codex models sandbox tiers natively; resolveSandboxPolicyType narrows the
-  // seat's tier to the session's access ceiling on every turn.
+  // seat's tier to the session's access ceiling on every turn. read-only is
+  // its floor — there is no "no filesystem" tier and no tool-deny list — so
+  // supportsWorkspaceAccessNone stays unset and "none" nodes are refused at
+  // spawn rather than run with native reads live.
   supportsWorkspaceAccess: true,
 };
 

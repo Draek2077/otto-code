@@ -44,11 +44,11 @@ test("project.add creates a project without creating a workspace", async () => {
     cleanupPaths.add(ottoHomeRoot);
 
     execSync("git init -b main", { cwd: repoRoot, stdio: "pipe" });
-    execSync("git config user.email 'test@otto-code.dev'", { cwd: repoRoot, stdio: "pipe" });
-    execSync("git config user.name 'Otto Test'", { cwd: repoRoot, stdio: "pipe" });
+    execSync('git config user.email "test@otto-code.dev"', { cwd: repoRoot, stdio: "pipe" });
+    execSync('git config user.name "Otto Test"', { cwd: repoRoot, stdio: "pipe" });
     writeFileSync(path.join(repoRoot, "README.md"), "# repo\n", "utf8");
     execSync("git add README.md", { cwd: repoRoot, stdio: "pipe" });
-    execSync("git -c commit.gpgSign=false commit -m 'initial'", { cwd: repoRoot, stdio: "pipe" });
+    execSync('git -c commit.gpgSign=false commit -m "initial"', { cwd: repoRoot, stdio: "pipe" });
 
     const daemon = await createTestOttoDaemon({ ottoHomeRoot, cleanup: false });
     cleanupDaemons.add(daemon);
@@ -94,11 +94,11 @@ test("archiving the last workspace leaves the project parent with no workspaces"
     cleanupPaths.add(ottoHomeRoot);
 
     execSync("git init -b main", { cwd: repoRoot, stdio: "pipe" });
-    execSync("git config user.email 'test@otto-code.dev'", { cwd: repoRoot, stdio: "pipe" });
-    execSync("git config user.name 'Otto Test'", { cwd: repoRoot, stdio: "pipe" });
+    execSync('git config user.email "test@otto-code.dev"', { cwd: repoRoot, stdio: "pipe" });
+    execSync('git config user.name "Otto Test"', { cwd: repoRoot, stdio: "pipe" });
     writeFileSync(path.join(repoRoot, "README.md"), "# repo\n", "utf8");
     execSync("git add README.md", { cwd: repoRoot, stdio: "pipe" });
-    execSync("git -c commit.gpgSign=false commit -m 'initial'", { cwd: repoRoot, stdio: "pipe" });
+    execSync('git -c commit.gpgSign=false commit -m "initial"', { cwd: repoRoot, stdio: "pipe" });
 
     const ottoHome = path.join(ottoHomeRoot, ".otto");
     const projectsPath = path.join(ottoHome, "projects", "projects.json");

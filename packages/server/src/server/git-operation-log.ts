@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { resolve } from "node:path";
 import type { GitOperationLogEntry } from "@otto-code/protocol/messages";
 
 // Known watchable operations. The wire carries an open string so this list can
@@ -64,6 +65,23 @@ export class GitOperationLogService {
 
   getEntries(cwd: string, operation: string): GitOperationLogEntry[] {
     return [...(this.buffers.get(bufferKey(cwd, operation)) ?? [])];
+  }
+
+  /**
+   * Drop every buffer this directory owns, across all operations. Called from
+   * workspace archive/removal teardown: the buffers are capped per key but the
+   * Maps themselves never shed keys, so without this an archived workspace
+   * leaves its logs resident for the daemon's lifetime. Keyed by directory, so
+   * a sibling workspace at a different cwd under the same worktree is untouched.
+   */
+  deleteForCwd(cwd: string): void {
+    const target = resolve(cwd);
+    for (const key of this.buffers.keys()) {
+      if (resolve(cwdOfBufferKey(key)) === target) {
+        this.buffers.delete(key);
+        this.seqCounters.delete(key);
+      }
+    }
   }
 
   append(input: {
@@ -135,6 +153,13 @@ export class GitOperationLogService {
 
 function bufferKey(cwd: string, operation: string): string {
   return `${cwd}::${operation}`;
+}
+
+// The operation id is a fixed identifier that never contains "::", so the last
+// separator is the one the key was built with — a Windows cwd may well contain
+// colons of its own.
+function cwdOfBufferKey(key: string): string {
+  return key.slice(0, key.lastIndexOf("::"));
 }
 
 function truncateOutput(text: string): string {

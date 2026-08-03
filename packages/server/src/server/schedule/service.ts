@@ -28,7 +28,7 @@ import { type BoundCreateAgentCommand, formatProviderModel } from "../agent/crea
 import type { PersistedWorkspaceRecord } from "../workspace-registry.js";
 import type { CreateOttoWorktreeWorkflowResult } from "../worktree-session.js";
 import { ScheduleStore } from "./store.js";
-import { computeNextRunAt, validateScheduleCadence } from "./cron.js";
+import { computeNextRunAt, computeNextRunAtOrNull, validateScheduleCadence } from "./cron.js";
 import type {
   CreateScheduleInput,
   ScheduleExecutionResult,
@@ -39,8 +39,33 @@ import type {
   UpdateScheduleNewAgentConfig,
 } from "@otto-code/protocol/schedule/types";
 import type { AgentPersonality, FirstAgentContext } from "@otto-code/protocol/messages";
+import { truncateHeadTail } from "../../utils/truncate-head-tail.js";
 
 const SCHEDULE_TICK_INTERVAL_MS = 1000;
+
+// Ticks overlap while runs are in flight (each tick awaits its runs but new
+// ticks keep firing every second), so an unbounded due backlog could start one
+// new run per second. Cap the in-flight fan-out; due schedules over the cap
+// simply wait for a later tick.
+const MAX_CONCURRENT_SCHEDULE_RUNS = 5;
+
+// Run history is persisted whole and returned whole by `schedule_logs`, so an
+// open-ended schedule (a daily cron with no maxRuns) grew one output-bearing
+// record per fire, forever: a 90-day daily schedule was tens of thousands of
+// tokens in a single tool result. Keep a recent window instead.
+//
+// The floor is `maxRuns` when one is set, because `countCompletedRuns` decides
+// completion by counting the retained array — pruning below `maxRuns` would
+// make such a schedule never complete. A schedule with `maxRuns` is already
+// bounded by the user's own cap, so nothing is unbounded either way.
+const MAX_RETAINED_SCHEDULE_RUNS = 50;
+
+// A run's output is model-written text (a final message or a curated timeline),
+// replayed in full on every `schedule_logs` call and every run-history render.
+// Head-heavy so the "what did it do" opening survives, with a tail so a closing
+// verdict is not lost.
+const RUN_OUTPUT_HEAD_CHARS = 1_600;
+const RUN_OUTPUT_TAIL_CHARS = 400;
 
 // A run failed because its target no longer exists: the agent was deleted or
 // archived, or a new-agent cwd was removed. These are permanent, so the schedule
@@ -173,6 +198,24 @@ function requireSchedule(schedule: StoredSchedule | null, id: string): StoredSch
   return schedule;
 }
 
+// A persisted cadence that can no longer produce a future run (an unsatisfiable
+// cron stored before creation-time validation existed). Pause the schedule
+// instead of throwing so run records still close and the tick stops re-firing.
+function pauseUnsatisfiableSchedule(schedule: StoredSchedule, now: Date): StoredSchedule {
+  const expression =
+    schedule.cadence.type === "cron"
+      ? schedule.cadence.expression
+      : `${schedule.cadence.everyMs}ms`;
+  return {
+    ...schedule,
+    status: "paused",
+    nextRunAt: null,
+    pausedAt: now.toISOString(),
+    lastRunError: `Schedule paused: cron expression has no matching run time within the next year: ${expression}`,
+    updatedAt: now.toISOString(),
+  };
+}
+
 function completeSchedule(schedule: StoredSchedule, now: Date): StoredSchedule {
   return {
     ...schedule,
@@ -201,6 +244,20 @@ function mergeScheduleCadenceTimezone(
   return next;
 }
 
+// Every source below is unbounded model text (a final message, a curated
+// timeline). The cap lands in `finishRun`, the one place a run's output is
+// written, so an injected runner is bounded the same way this one is.
+function truncateRunOutput(output: string | null): string | null {
+  return output === null
+    ? null
+    : truncateHeadTail({
+        text: output,
+        headChars: RUN_OUTPUT_HEAD_CHARS,
+        tailChars: RUN_OUTPUT_TAIL_CHARS,
+        note: "open the run's chat for the full transcript",
+      });
+}
+
 function buildRunOutput(params: {
   output: string | null;
   timelineText: string;
@@ -216,6 +273,30 @@ function buildRunOutput(params: {
     return params.timelineText.trim();
   }
   return null;
+}
+
+/**
+ * Drop the oldest finished runs once the history exceeds the retention window.
+ * Still-running runs are always kept: dropping one would orphan the `finishRun`
+ * update that closes it.
+ */
+export function pruneScheduleRuns(schedule: StoredSchedule): StoredSchedule {
+  const retention = Math.max(MAX_RETAINED_SCHEDULE_RUNS, schedule.maxRuns ?? 0);
+  if (schedule.runs.length <= retention) {
+    return schedule;
+  }
+  const runningIds = new Set(
+    schedule.runs.filter((run) => run.status === "running").map((run) => run.id),
+  );
+  const finished = schedule.runs.filter((run) => run.status !== "running");
+  // `slice(-0)` returns the whole array, so an empty budget is its own case.
+  const keepFinished = Math.max(0, retention - runningIds.size);
+  const keptFinished = keepFinished > 0 ? finished.slice(-keepFinished) : [];
+  const keptIds = new Set([...runningIds, ...keptFinished.map((run) => run.id)]);
+  return {
+    ...schedule,
+    runs: schedule.runs.filter((run) => keptIds.has(run.id)),
+  };
 }
 
 type ScheduleAgentManager = Pick<
@@ -620,7 +701,24 @@ export class ScheduleService {
       if (new Date(schedule.nextRunAt).getTime() > now.getTime()) {
         continue;
       }
-      await this.runSchedule(schedule, now);
+      if (this.runningScheduleIds.size >= MAX_CONCURRENT_SCHEDULE_RUNS) {
+        continue;
+      }
+      // The snapshot goes stale while earlier entries' runs are awaited: an
+      // overlapping tick may have already run this schedule and advanced its
+      // nextRunAt. Re-read before claiming; re-checking the claim set after the
+      // read's await is sound because runSchedule claims synchronously.
+      const fresh = await this.store.get(schedule.id);
+      if (
+        !fresh ||
+        fresh.status !== "active" ||
+        !fresh.nextRunAt ||
+        new Date(fresh.nextRunAt).getTime() > now.getTime() ||
+        this.runningScheduleIds.has(fresh.id)
+      ) {
+        continue;
+      }
+      await this.runSchedule(fresh, now);
     }
   }
 
@@ -698,11 +796,16 @@ export class ScheduleService {
         updated.nextRunAt &&
         new Date(updated.nextRunAt).getTime() <= now.getTime()
       ) {
-        let nextRunAt = computeNextRunAt(updated.cadence, new Date(updated.nextRunAt));
-        while (nextRunAt.getTime() <= now.getTime()) {
-          nextRunAt = computeNextRunAt(updated.cadence, nextRunAt);
+        let nextRunAt = computeNextRunAtOrNull(updated.cadence, new Date(updated.nextRunAt));
+        while (nextRunAt !== null && nextRunAt.getTime() <= now.getTime()) {
+          nextRunAt = computeNextRunAtOrNull(updated.cadence, nextRunAt);
         }
-        updated = { ...updated, nextRunAt: nextRunAt.toISOString() };
+        // A null next run means the cadence is unsatisfiable: pause instead of
+        // throwing, or daemon startup would fail on the poisoned schedule.
+        updated =
+          nextRunAt === null
+            ? pauseUnsatisfiableSchedule(updated, now)
+            : { ...updated, nextRunAt: nextRunAt.toISOString() };
         dirty = true;
       }
 
@@ -843,7 +946,7 @@ export class ScheduleService {
               status: params.status,
               endedAt: now.toISOString(),
               agentId: params.agentId ?? run.agentId,
-              output: params.output,
+              output: truncateRunOutput(params.output),
               error: params.error,
             }
           : run,
@@ -875,17 +978,23 @@ export class ScheduleService {
         };
       } else {
         const after = new Date(schedule.nextRunAt ?? now.toISOString());
-        let nextRunAt = computeNextRunAt(updated.cadence, after);
-        while (nextRunAt.getTime() <= now.getTime()) {
-          nextRunAt = computeNextRunAt(updated.cadence, nextRunAt);
+        let nextRunAt = computeNextRunAtOrNull(updated.cadence, after);
+        while (nextRunAt !== null && nextRunAt.getTime() <= now.getTime()) {
+          nextRunAt = computeNextRunAtOrNull(updated.cadence, nextRunAt);
         }
-        updated = {
-          ...updated,
-          nextRunAt: nextRunAt.toISOString(),
-        };
+        // A null next run means the cadence is unsatisfiable. Pausing (instead
+        // of throwing) still closes the run record above; a throw here would
+        // abort the store update, leave the run open and nextRunAt unadvanced,
+        // and re-fire the schedule on every following tick.
+        updated =
+          nextRunAt === null
+            ? pauseUnsatisfiableSchedule(updated, now)
+            : { ...updated, nextRunAt: nextRunAt.toISOString() };
       }
 
-      return updated;
+      // Last, so every decision above (maxRuns completion in particular) still
+      // sees the full run history for this fire.
+      return pruneScheduleRuns(updated);
     });
     requireSchedule(updatedSchedule, params.scheduleId);
   }

@@ -5,7 +5,7 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { promises as fs } from "node:fs";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
-import { AgentStorage } from "./agent-storage.js";
+import { AgentStorage, type StoredAgentRecord } from "./agent-storage.js";
 import { buildConfigOverrides, buildSessionConfig } from "../persistence-hooks.js";
 import type { ManagedAgent } from "./agent-manager.js";
 import type {
@@ -566,4 +566,102 @@ describe("AgentStorage", () => {
     const after = await afterReload.list();
     expect(after.some((r) => r.id === agentId)).toBe(false);
   });
+
+  // The workspace half of the owner index. The descriptor rebuild that runs on
+  // every agent lifecycle event asks for one workspace's records; a seeded home
+  // carries thousands, so this has to answer without walking the cache.
+  async function seedOwnedRecords(
+    records: Array<{ id: string; workspaceId?: string }>,
+  ): Promise<void> {
+    for (const input of records) {
+      await storage.upsert(ownedRecord(input));
+    }
+  }
+
+  test("list(scope) returns only the records owned by the requested workspaces", async () => {
+    await seedOwnedRecords([
+      { id: "a-1", workspaceId: "ws-a" },
+      { id: "a-2", workspaceId: "ws-a" },
+      { id: "b-1", workspaceId: "ws-b" },
+      { id: "unowned" },
+    ]);
+
+    const scoped = await storage.list({ workspaceIds: new Set(["ws-a"]) });
+
+    expect(scopedIds(scoped)).toEqual(["a-1", "a-2"]);
+  });
+
+  test("list(scope) adds records named by id, deduped against the workspace hits", async () => {
+    await seedOwnedRecords([
+      { id: "a-1", workspaceId: "ws-a" },
+      { id: "b-1", workspaceId: "ws-b" },
+      { id: "unowned" },
+    ]);
+
+    const scoped = await storage.list({
+      workspaceIds: new Set(["ws-a"]),
+      agentIds: new Set(["a-1", "b-1", "unowned", "never-existed"]),
+    });
+
+    expect(scopedIds(scoped)).toEqual(["a-1", "b-1", "unowned"]);
+  });
+
+  test("a record that moves workspace leaves its old workspace's scope", async () => {
+    await seedOwnedRecords([{ id: "mover", workspaceId: "ws-a" }]);
+
+    await storage.upsert(ownedRecord({ id: "mover", workspaceId: "ws-b" }));
+
+    const inOldWorkspace = await storage.list({ workspaceIds: new Set(["ws-a"]) });
+    const inNewWorkspace = await storage.list({ workspaceIds: new Set(["ws-b"]) });
+    expect(scopedIds(inOldWorkspace)).toEqual([]);
+    expect(scopedIds(inNewWorkspace)).toEqual(["mover"]);
+  });
+
+  test("a removed record leaves its workspace's scope", async () => {
+    await seedOwnedRecords([
+      { id: "a-1", workspaceId: "ws-a" },
+      { id: "a-2", workspaceId: "ws-a" },
+    ]);
+
+    await storage.remove("a-1");
+
+    const scoped = await storage.list({ workspaceIds: new Set(["ws-a"]) });
+    expect(scopedIds(scoped)).toEqual(["a-2"]);
+  });
+
+  test("the workspace owner index survives a cold reload from disk", async () => {
+    await seedOwnedRecords([
+      { id: "a-1", workspaceId: "ws-a" },
+      { id: "b-1", workspaceId: "ws-b" },
+    ]);
+
+    const reloaded = new AgentStorage(storagePath, logger);
+    const scoped = await reloaded.list({ workspaceIds: new Set(["ws-b"]) });
+
+    expect(scopedIds(scoped)).toEqual(["b-1"]);
+  });
+
+  test("an empty scope matches nothing, rather than falling back to everything", async () => {
+    await seedOwnedRecords([{ id: "a-1", workspaceId: "ws-a" }]);
+
+    const scoped = await storage.list({});
+    expect(scopedIds(scoped)).toEqual([]);
+  });
 });
+
+function ownedRecord(input: { id: string; workspaceId?: string }): StoredAgentRecord {
+  return {
+    id: input.id,
+    provider: "claude",
+    cwd: "/tmp/project",
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+    labels: {},
+    lastStatus: "idle",
+  };
+}
+
+function scopedIds(records: StoredAgentRecord[]): string[] {
+  return records.map((record) => record.id).sort();
+}

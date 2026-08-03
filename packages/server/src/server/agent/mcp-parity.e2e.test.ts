@@ -304,11 +304,11 @@ beforeAll(async () => {
   );
 
   execSync("git init -b main", { cwd: worktreeRepoCwd, stdio: "pipe" });
-  execSync("git config user.email 'test@example.com'", { cwd: worktreeRepoCwd, stdio: "pipe" });
-  execSync("git config user.name 'Test User'", { cwd: worktreeRepoCwd, stdio: "pipe" });
+  execSync('git config user.email "test@example.com"', { cwd: worktreeRepoCwd, stdio: "pipe" });
+  execSync('git config user.name "Test User"', { cwd: worktreeRepoCwd, stdio: "pipe" });
   await writeFile(path.join(worktreeRepoCwd, "README.md"), "# repo\n", "utf8");
   execSync("git add README.md", { cwd: worktreeRepoCwd, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'init'", {
+  execSync('git -c commit.gpgsign=false commit -m "init"', {
     cwd: worktreeRepoCwd,
     stdio: "pipe",
   });

@@ -54,15 +54,38 @@ function createGitRepo(): string {
   return repoDir;
 }
 
+/**
+ * A workspace on `cwd`, minted through whichever path is legal for that
+ * directory.
+ *
+ * Explicit `workspace.create` refuses to stack a second visible workspace on an
+ * occupied directory (`workspace_directory_occupied`). Agent spawns deliberately
+ * do not: `resolveOrCreateWorkspaceIdForCreateAgent` calls
+ * `createWorkspaceForDirectory` without `rejectIfOccupied`, so spawning is how a
+ * same-cwd sibling legitimately comes into existence now. These tests are about
+ * archive scoping across such siblings, so they take the seam that still makes
+ * them rather than asserting a create the guard is supposed to reject.
+ */
 async function createLocalWorkspace(cwd: string, title: string): Promise<string> {
   const result = await ctx.client.createWorkspace({
     source: { kind: "directory", path: cwd },
     title,
   });
-  if (!result.workspace) {
+  if (result.workspace) {
+    return result.workspace.id;
+  }
+  if (result.errorCode !== "workspace_directory_occupied") {
     throw new Error(result.error ?? "Failed to create local workspace");
   }
-  return result.workspace.id;
+  const seedAgent = await ctx.client.createAgent({
+    ...getFullAccessConfig("codex"),
+    cwd,
+    title,
+  });
+  if (!seedAgent.workspaceId) {
+    throw new Error("Expected the sibling spawn to mint a workspace");
+  }
+  return seedAgent.workspaceId;
 }
 
 async function activeWorkspaceIds(): Promise<Set<string>> {

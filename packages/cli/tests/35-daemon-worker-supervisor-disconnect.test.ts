@@ -10,7 +10,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { $ } from "zx";
+import { $ } from "./helpers/zx-shell.ts";
 import { getAvailablePort } from "./helpers/network.ts";
 
 $.verbose = false;
@@ -39,24 +39,61 @@ function isProcessRunning(pid: number): boolean {
   }
 }
 
+/**
+ * Lists (pid, ppid) pairs for every process on the host.
+ *
+ * `ps` is POSIX only. Git Bash ships one, but it reports MSYS pids that never
+ * match the Windows pid the daemon writes to its lock file, so Windows has to
+ * ask the OS directly. This mirrors how the daemon itself inspects processes
+ * on Windows (see packages/server/src/server/managed-processes).
+ */
+function listProcessParents(): { pid: number; ppid: number }[] {
+  if (process.platform === "win32") {
+    const result = spawnSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId | ConvertTo-Csv -NoTypeInformation",
+      ],
+      { encoding: "utf8" },
+    );
+    if (result.status !== 0 || result.error) {
+      return [];
+    }
+    // Skip the CSV header; fields are quoted integers.
+    return result.stdout
+      .split("\n")
+      .slice(1)
+      .map((line) => {
+        const [pidToken, ppidToken] = line.trim().replaceAll('"', "").split(",");
+        return {
+          pid: Number.parseInt(pidToken ?? "", 10),
+          ppid: Number.parseInt(ppidToken ?? "", 10),
+        };
+      });
+  }
+
+  const result = spawnSync("ps", ["ax", "-o", "pid=,ppid="], { encoding: "utf8" });
+  if (result.status !== 0 || result.error) {
+    return [];
+  }
+  return result.stdout.split("\n").map((line) => {
+    const [pidToken, ppidToken] = line.trim().split(/\s+/);
+    return {
+      pid: Number.parseInt(pidToken ?? "", 10),
+      ppid: Number.parseInt(ppidToken ?? "", 10),
+    };
+  });
+}
+
 function readWorkerPid(supervisorPid: number): number | null {
   if (!Number.isInteger(supervisorPid) || supervisorPid <= 0) {
     return null;
   }
 
-  const result = spawnSync("ps", ["ax", "-o", "pid=,ppid="], { encoding: "utf8" });
-  if (result.status !== 0 || result.error) {
-    return null;
-  }
-
-  for (const line of result.stdout.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-    const [pidToken, ppidToken] = trimmed.split(/\s+/);
-    const pid = Number.parseInt(pidToken ?? "", 10);
-    const ppid = Number.parseInt(ppidToken ?? "", 10);
+  for (const { pid, ppid } of listProcessParents()) {
     if (ppid === supervisorPid && pid > 0) {
       return pid;
     }

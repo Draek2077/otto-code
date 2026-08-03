@@ -24,6 +24,9 @@ function language(parser: Parser): Language {
   return new Language(defineLanguageFacet(), parser);
 }
 
+// Shared instance so the four shell fence aliases don't each build a grammar.
+const shellLanguage = StreamLanguage.define(shell);
+
 const languagesByExtension: Record<string, Language> = {
   // JavaScript/TypeScript
   js: language(jsParser),
@@ -81,9 +84,11 @@ const languagesByExtension: Record<string, Language> = {
   // "sh", so without these rows we classified a snippet as shell and then had
   // nothing to colour it with. Lost in the Paseo v0.2.5 merge when this table
   // took upstream's shape; see projects/paseo-v025-merge/audit-findings.md.
-  sh: StreamLanguage.define(shell),
-  bash: StreamLanguage.define(shell),
-  zsh: StreamLanguage.define(shell),
+  // All four fence tags (sh/bash/zsh/shell) map here.
+  sh: shellLanguage,
+  bash: shellLanguage,
+  zsh: shellLanguage,
+  shell: shellLanguage,
   // SQL. Same story: "sql" is a detect.ts verdict. `standardSQL` is the dialect
   // -neutral mode, which is the right default for snippets of unknown origin.
   sql: StreamLanguage.define(standardSQL),

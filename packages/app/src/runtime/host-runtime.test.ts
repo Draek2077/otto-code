@@ -25,6 +25,19 @@ vi.mock("@/browser-automation/handler", () => ({
   mountBrowserAutomationDaemonClientHandler: vi.fn(() => () => undefined),
 }));
 
+// AsyncStorage's web build reads `window.localStorage`, which the node test environment does not
+// have, so every store built without an explicit `storage` logged a "window is not defined" stack
+// trace from persistHosts. Returning null / no-op matches what those tests already observed (a
+// throwing getItem was caught and treated as an empty registry) without the stderr noise. Tests
+// that assert on persistence pass `createMemoryHostRuntimeStorage` instead.
+vi.mock("@react-native-async-storage/async-storage", () => ({
+  default: {
+    getItem: vi.fn(async () => null),
+    setItem: vi.fn(async () => undefined),
+    removeItem: vi.fn(async () => undefined),
+  },
+}));
+
 class FakeDaemonClient {
   private state: ConnectionState = { status: "idle" };
   private listeners = new Set<(status: ConnectionState) => void>();
@@ -1846,8 +1859,8 @@ describe("HostRuntimeStore", () => {
     });
     expect(store.getHosts().find((h) => h.serverId === "srv_rename")?.label).toBe("old name");
 
-    // persistHosts may throw in test env (no AsyncStorage/window), but the
-    // in-memory state should still be updated by setHostsAndSync.
+    // This store has no explicit storage, so persistHosts writes to the stubbed AsyncStorage and
+    // drops the value; the assertion below is about the in-memory state setHostsAndSync updates.
     await store.renameHost("srv_rename", "new name").catch(() => undefined);
 
     const renamed = store.getHosts().find((h) => h.serverId === "srv_rename");

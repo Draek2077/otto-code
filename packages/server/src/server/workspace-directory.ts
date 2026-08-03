@@ -20,6 +20,45 @@ import {
   type TerminalActivity,
 } from "@otto-code/protocol/terminal-activity";
 
+/**
+ * Rebuild cost for the workspace descriptor map, aggregated process-wide and
+ * drained by the daemon's 30 s `ws_runtime_metrics` window. `buildDescriptorMap`
+ * runs once per connected session per agent lifecycle event, so calls/window and
+ * ms/call are what say whether the scoped fetch and the emit coalescing are
+ * actually holding — see findings/performance-efficiency-audit/ (F5).
+ */
+export interface WorkspaceDescriptorMetricsSnapshot {
+  calls: number;
+  scopedCalls: number;
+  totalMs: number;
+  maxMs: number;
+  recordsScanned: number;
+}
+
+let descriptorMapMetrics: WorkspaceDescriptorMetricsSnapshot = emptyDescriptorMapMetrics();
+
+function emptyDescriptorMapMetrics(): WorkspaceDescriptorMetricsSnapshot {
+  return { calls: 0, scopedCalls: 0, totalMs: 0, maxMs: 0, recordsScanned: 0 };
+}
+
+function beginDescriptorMapTiming(): (result: { scoped: boolean; recordsScanned: number }) => void {
+  const startedAt = performance.now();
+  return ({ scoped, recordsScanned }) => {
+    const elapsedMs = performance.now() - startedAt;
+    descriptorMapMetrics.calls += 1;
+    if (scoped) descriptorMapMetrics.scopedCalls += 1;
+    descriptorMapMetrics.totalMs += elapsedMs;
+    descriptorMapMetrics.maxMs = Math.max(descriptorMapMetrics.maxMs, elapsedMs);
+    descriptorMapMetrics.recordsScanned += recordsScanned;
+  };
+}
+
+export function snapshotWorkspaceDescriptorMetrics(): WorkspaceDescriptorMetricsSnapshot {
+  const snapshot = descriptorMapMetrics;
+  descriptorMapMetrics = emptyDescriptorMapMetrics();
+  return { ...snapshot, totalMs: Math.round(snapshot.totalMs), maxMs: Math.round(snapshot.maxMs) };
+}
+
 const FETCH_WORKSPACES_SORT_KEYS = [
   "status_priority",
   "activity_at",
@@ -65,7 +104,16 @@ export interface WorkspaceDirectoryDeps {
   workspaceRegistry: {
     list(): Promise<PersistedWorkspaceRecord[]>;
   };
-  listAgentPayloads(): Promise<AgentSnapshotPayload[]>;
+  /**
+   * All visible, non-archived agents, or — when `scope` is given — only those
+   * owned by `scope.workspaceIds` plus those named by `scope.agentIds`. The
+   * scoped form exists so a per-workspace descriptor rebuild does not project
+   * every live and persisted agent in the home; see `listAgentPayloadsForScope`.
+   */
+  listAgentPayloads(scope?: {
+    workspaceIds?: ReadonlySet<string>;
+    agentIds?: ReadonlySet<string>;
+  }): Promise<AgentSnapshotPayload[]>;
   listTerminalActivityContributions(): Promise<
     Array<{ cwd: string; workspaceId?: string; activity: TerminalActivity | null }>
   >;
@@ -75,6 +123,12 @@ export interface WorkspaceDirectoryDeps {
     projectRecord?: PersistedProjectRecord | null;
     includeGitData: boolean;
   }): Promise<WorkspaceDescriptorPayload>;
+  /**
+   * Wall clock used to stamp `statusEnteredAt` when no contributor supplies a
+   * timestamp. Injectable so tests that compare two builds of the same input
+   * cannot disagree by the millisecond that elapsed between them.
+   */
+  now?(): Date;
 }
 
 export function summarizeFetchWorkspacesEntries(entries: Iterable<FetchWorkspacesResponseEntry>): {
@@ -188,13 +242,53 @@ export class WorkspaceDirectory {
     }
   }
 
+  /**
+   * The agent set a descriptor rebuild needs, fetched at the narrowest scope
+   * that still produces identical descriptors.
+   *
+   * Only an agent whose own `workspaceId` is in scope can contribute status to
+   * an in-scope descriptor: `resolveWorkspaceRootAgent` walks up only while the
+   * parent shares the child's workspace, so the resolved root always carries the
+   * child's own workspaceId. The parents themselves are still needed as *lookup
+   * targets*, though — the walk distinguishes "parent lives in another
+   * workspace" (child is a root, and contributes) from "parent is gone" (child
+   * contributes nothing) purely by whether the id resolves. So fetch the
+   * in-scope agents, then backfill only the parent ids that fetch did not
+   * already cover.
+   */
+  private async listAgentPayloadsForScope(
+    workspaceIds: ReadonlySet<string> | null,
+  ): Promise<AgentSnapshotPayload[]> {
+    if (!workspaceIds) {
+      return this.deps.listAgentPayloads();
+    }
+
+    const scoped = await this.deps.listAgentPayloads({ workspaceIds });
+    const scopedIds = new Set(scoped.map((agent) => agent.id));
+    const missingParentIds = new Set<string>();
+    for (const agent of scoped) {
+      const parentAgentId = getParentAgentIdFromLabels(agent.labels);
+      if (parentAgentId && !scopedIds.has(parentAgentId)) {
+        missingParentIds.add(parentAgentId);
+      }
+    }
+    if (missingParentIds.size === 0) {
+      return scoped;
+    }
+
+    const parents = await this.deps.listAgentPayloads({ agentIds: missingParentIds });
+    return [...scoped, ...parents.filter((agent) => !scopedIds.has(agent.id))];
+  }
+
   async buildDescriptorMap(options: {
     includeGitData: boolean;
     workspaceIds?: Iterable<string>;
   }): Promise<Map<string, WorkspaceDescriptorPayload>> {
+    const scopedWorkspaceIds = options.workspaceIds ? new Set(options.workspaceIds) : null;
+    const finishTiming = beginDescriptorMapTiming();
     const [agents, persistedWorkspaces, persistedProjects, terminalContributions] =
       await Promise.all([
-        this.deps.listAgentPayloads(),
+        this.listAgentPayloadsForScope(scopedWorkspaceIds),
         this.deps.workspaceRegistry.list(),
         this.deps.projectRegistry.list(),
         this.deps.listTerminalActivityContributions(),
@@ -218,10 +312,9 @@ export class WorkspaceDirectory {
         !workspace.archivedAt && !workspace.hidden && !archivedProjectIds.has(workspace.projectId),
     );
     const descriptorsByWorkspaceId = new Map<string, WorkspaceDescriptorPayload>();
-    const workspaceIds = options.workspaceIds ? new Set(options.workspaceIds) : null;
     const activeWorkspaceIds = new Set(activeRecords.map((workspace) => workspace.workspaceId));
     const includedWorkspaces = activeRecords.filter(
-      (workspace) => !workspaceIds || workspaceIds.has(workspace.workspaceId),
+      (workspace) => !scopedWorkspaceIds || scopedWorkspaceIds.has(workspace.workspaceId),
     );
     const activeRecordsByWorkspaceId = new Map(
       activeRecords.map((workspace) => [workspace.workspaceId, workspace] as const),
@@ -264,7 +357,7 @@ export class WorkspaceDirectory {
 
     // Resolve the workspace-level `statusEnteredAt` (see aggregate semantics
     // on `resolveStatusEnteredAt`).
-    const nowIso = new Date().toISOString();
+    const nowIso = (this.deps.now?.() ?? new Date()).toISOString();
     for (const [workspaceId, descriptor] of descriptorsByWorkspaceId) {
       const contributingAgents = contributingAgentsByWorkspaceId.get(workspaceId) ?? [];
       const terminalEntries = terminalEntriesByWorkspaceId.get(workspaceId) ?? [];
@@ -285,6 +378,10 @@ export class WorkspaceDirectory {
       }
     }
 
+    finishTiming({
+      scoped: scopedWorkspaceIds !== null,
+      recordsScanned: agents.length + persistedWorkspaces.length + terminalContributions.length,
+    });
     return descriptorsByWorkspaceId;
   }
 

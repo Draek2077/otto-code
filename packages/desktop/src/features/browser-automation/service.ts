@@ -113,8 +113,14 @@ const SCREENSHOT_MAX_PIXELS = 1_150_000;
 /** Element captures re-render through CDP at up to this scale for crisp small text. */
 const ELEMENT_CAPTURE_MAX_SCALE = 3;
 const ELEMENT_CAPTURE_PADDING_PX = 8;
-const MAX_EVALUATE_RESULT_JSON_LENGTH = 80_000;
-const MAX_EVALUATE_RESULT_PREVIEW_LENGTH = 79_000;
+/**
+ * The ~30K-char cap every other model-visible result path uses. An evaluate
+ * result is spent verbatim into the transcript and replayed on every later
+ * round, so the old 80K outlier bought a fuller dump at nearly 3x the standing
+ * token cost. The preview length keeps 1K of headroom for JSON escaping.
+ */
+const MAX_EVALUATE_RESULT_JSON_LENGTH = 30_000;
+const MAX_EVALUATE_RESULT_PREVIEW_LENGTH = 29_000;
 const MAX_EVALUATE_ERROR_MESSAGE_LENGTH = 2_000;
 let pixelCaptureQueue: Promise<void> = Promise.resolve();
 

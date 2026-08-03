@@ -7,6 +7,7 @@
     "dist/server",
     "dist/src",
     "dist/scripts",
+    "dist/dotnet-probe",
     "!dist/**/*.map",
     "README.md",
     ".env.example"

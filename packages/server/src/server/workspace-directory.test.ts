@@ -735,3 +735,233 @@ describe("WorkspaceDirectory hidden workspaces", () => {
     expect(result.emptyProjects).toEqual([]);
   });
 });
+
+// A rebuild for named workspaceIds must fetch only those workspaces' agents
+// instead of projecting every live and persisted agent in the home — while
+// producing byte-identical descriptors. The subtle half is parent resolution: a
+// subagent counts as its workspace's root only when its parent RESOLVES to a
+// different workspace, so a scoped fetch that simply dropped out-of-scope
+// parents would silently downgrade the workspace's status.
+describe("WorkspaceDirectory scoped descriptor rebuild", () => {
+  const SCOPED_PROJECT: PersistedProjectRecord = {
+    projectId: "project-1",
+    rootPath: "/workspace/project",
+    kind: "git",
+    displayName: "project",
+    customName: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    archivedAt: null,
+  };
+
+  const SCOPED_WORKSPACES: PersistedWorkspaceRecord[] = [
+    {
+      workspaceId: "ws-a",
+      projectId: SCOPED_PROJECT.projectId,
+      cwd: "/workspace/project",
+      kind: "local_checkout",
+      displayName: "main",
+      createdAt: NOW,
+      updatedAt: NOW,
+      archivedAt: null,
+    },
+    {
+      workspaceId: "ws-b",
+      projectId: SCOPED_PROJECT.projectId,
+      cwd: "/workspace/project/.otto/worktrees/feature",
+      kind: "worktree",
+      displayName: "feature",
+      createdAt: NOW,
+      updatedAt: NOW,
+      archivedAt: null,
+    },
+  ];
+
+  interface ScopeCall {
+    workspaceIds: string[];
+    agentIds: string[];
+  }
+
+  // The fake resolves a scope the same way session.listAgentPayloads does: an
+  // agent is reachable by its owning workspaceId, or by its own id.
+  function makeScopedDirectory(agents: AgentSnapshotPayload[]): {
+    directory: WorkspaceDirectory;
+    scopeCalls: Array<ScopeCall | null>;
+  } {
+    const scopeCalls: Array<ScopeCall | null> = [];
+    const directory = new WorkspaceDirectory({
+      logger: createTestLogger(),
+      // Scoped and unscoped are two separate builds. A real clock lets them
+      // straddle a millisecond boundary and disagree on `statusEnteredAt`.
+      now: () => new Date(NOW),
+      projectRegistry: { list: async () => [SCOPED_PROJECT] },
+      workspaceRegistry: { list: async () => SCOPED_WORKSPACES },
+      listAgentPayloads: async (scope) => {
+        scopeCalls.push(
+          scope
+            ? {
+                workspaceIds: [...(scope.workspaceIds ?? [])],
+                agentIds: [...(scope.agentIds ?? [])],
+              }
+            : null,
+        );
+        if (!scope) {
+          return agents;
+        }
+        return agents.filter(
+          (agent) =>
+            (agent.workspaceId !== undefined && scope.workspaceIds?.has(agent.workspaceId)) ||
+            scope.agentIds?.has(agent.id),
+        );
+      },
+      listTerminalActivityContributions: async () => [],
+      isProviderVisibleToClient: () => true,
+      buildWorkspaceDescriptor: async ({ workspace }) => ({
+        id: workspace.workspaceId,
+        projectId: workspace.projectId,
+        projectDisplayName: "project",
+        projectCustomName: null,
+        projectRootPath: SCOPED_PROJECT.rootPath,
+        workspaceDirectory: workspace.cwd,
+        projectKind: "git",
+        workspaceKind: workspace.kind,
+        name: workspace.displayName,
+        archivingAt: null,
+        status: "done",
+        activityAt: null,
+        diffStat: null,
+        scripts: [],
+        gitRuntime: null,
+        githubRuntime: null,
+      }),
+    });
+    return { directory, scopeCalls };
+  }
+
+  // Fresh instances per build so neither result can inherit the other's
+  // per-workspace bucket history.
+  async function buildScopedAndUnscoped(
+    agents: AgentSnapshotPayload[],
+    workspaceId: string,
+  ): Promise<{
+    scoped: WorkspaceDescriptorPayload | undefined;
+    unscoped: WorkspaceDescriptorPayload | undefined;
+    scopeCalls: Array<ScopeCall | null>;
+  }> {
+    const scopedRun = makeScopedDirectory(agents);
+    const scopedMap = await scopedRun.directory.buildDescriptorMap({
+      includeGitData: false,
+      workspaceIds: [workspaceId],
+    });
+    const unscopedMap = await makeScopedDirectory(agents).directory.buildDescriptorMap({
+      includeGitData: false,
+    });
+    return {
+      scoped: scopedMap.get(workspaceId),
+      unscoped: unscopedMap.get(workspaceId),
+      scopeCalls: scopedRun.scopeCalls,
+    };
+  }
+
+  test("fetches only the target workspace, and builds only its descriptor", async () => {
+    const agents = [
+      createAgent({ id: "a-1", status: "running", cwd: "/workspace/project", workspaceId: "ws-a" }),
+      createAgent({
+        id: "b-1",
+        status: "idle",
+        cwd: "/workspace/project/.otto/worktrees/feature",
+        workspaceId: "ws-b",
+      }),
+    ];
+    const { directory, scopeCalls } = makeScopedDirectory(agents);
+
+    const descriptors = await directory.buildDescriptorMap({
+      includeGitData: false,
+      workspaceIds: ["ws-b"],
+    });
+
+    expect([...descriptors.keys()]).toEqual(["ws-b"]);
+    expect(scopeCalls).toEqual([{ workspaceIds: ["ws-b"], agentIds: [] }]);
+  });
+
+  test("a same-workspace-only rebuild needs no parent backfill round trip", async () => {
+    const agents = [
+      createAgent({
+        id: "b-child",
+        status: "running",
+        cwd: "/workspace/project/.otto/worktrees/feature",
+        workspaceId: "ws-b",
+        labels: { [PARENT_AGENT_ID_LABEL]: "b-parent" },
+      }),
+      createAgent({
+        id: "b-parent",
+        status: "idle",
+        cwd: "/workspace/project/.otto/worktrees/feature",
+        workspaceId: "ws-b",
+      }),
+    ];
+    const { scoped, unscoped, scopeCalls } = await buildScopedAndUnscoped(agents, "ws-b");
+
+    expect(scopeCalls).toHaveLength(1);
+    expect(scoped).toEqual(unscoped);
+    // The descendant contributes running activity to its in-workspace ancestor.
+    expect(scoped?.status).toBe("running");
+  });
+
+  test("a subagent whose parent lives in another workspace still roots its own", async () => {
+    const agents = [
+      createAgent({ id: "a-1", status: "idle", cwd: "/workspace/project", workspaceId: "ws-a" }),
+      createAgent({
+        id: "b-child",
+        status: "running",
+        cwd: "/workspace/project/.otto/worktrees/feature",
+        workspaceId: "ws-b",
+        labels: { [PARENT_AGENT_ID_LABEL]: "a-1" },
+      }),
+    ];
+    const { scoped, unscoped, scopeCalls } = await buildScopedAndUnscoped(agents, "ws-b");
+
+    // The out-of-scope parent is backfilled by id, not by re-listing everything.
+    expect(scopeCalls).toEqual([
+      { workspaceIds: ["ws-b"], agentIds: [] },
+      { workspaceIds: [], agentIds: ["a-1"] },
+    ]);
+    expect(scoped).toEqual(unscoped);
+    expect(scoped?.status).toBe("running");
+  });
+
+  test("a subagent whose parent no longer resolves contributes nothing, scoped or not", async () => {
+    const agents = [
+      createAgent({
+        id: "b-child",
+        status: "running",
+        cwd: "/workspace/project/.otto/worktrees/feature",
+        workspaceId: "ws-b",
+        labels: { [PARENT_AGENT_ID_LABEL]: "gone" },
+      }),
+    ];
+    const { scoped, unscoped } = await buildScopedAndUnscoped(agents, "ws-b");
+
+    expect(scoped).toEqual(unscoped);
+    expect(scoped?.status).toBe("done");
+  });
+
+  test("scoped and unscoped agree on an attention-masked workspace", async () => {
+    const agents = [
+      createAgent({ id: "a-1", status: "running", cwd: "/workspace/project", workspaceId: "ws-a" }),
+      createAgent({
+        id: "b-1",
+        status: "idle",
+        cwd: "/workspace/project/.otto/worktrees/feature",
+        workspaceId: "ws-b",
+        requiresAttention: true,
+        attentionReason: "permission",
+        pendingPermissionCount: 1,
+      }),
+    ];
+    const { scoped, unscoped } = await buildScopedAndUnscoped(agents, "ws-b");
+
+    expect(scoped).toEqual(unscoped);
+    expect(scoped?.status).not.toBe("done");
+  });
+});

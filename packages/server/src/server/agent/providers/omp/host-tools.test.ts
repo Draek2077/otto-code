@@ -184,7 +184,9 @@ describe("OMP host tools", () => {
       type: "host_tool_result",
       id: "host-1",
       result: {
-        content: [{ type: "text", text: expect.stringContaining('"agentId": "child-1"') }],
+        // Compact JSON: addModelVisibleStructuredContent stopped pretty-printing
+        // so the dump isn't replayed with 2-space indentation every round.
+        content: [{ type: "text", text: expect.stringContaining('"agentId":"child-1"') }],
         details: { input: { initialPrompt: "Inspect the bug" }, agentId: "child-1" },
       },
     });

@@ -179,14 +179,14 @@ describe("cancelAgent", () => {
     // Verify no zombie sleep processes left (check for sleep 30)
     const { execSync } = await import("child_process");
     try {
-      const result = execSync("pgrep -f 'sleep 30'", {
+      const result = execSync('pgrep -f "sleep 30"', {
         encoding: "utf8",
         timeout: 2000,
       });
       // If pgrep succeeds, there are zombie processes
       if (result.trim()) {
         // Kill them and fail the test
-        execSync("pkill -f 'sleep 30'");
+        execSync('pkill -f "sleep 30"');
         expect.fail("Found zombie sleep processes after cancel");
       }
     } catch {

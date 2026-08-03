@@ -3,6 +3,7 @@ import {
   resolveExistingRunWorkspace,
   resolveRunCallerAgentId,
   runRunCommand,
+  validateRunOptions,
   type AgentRunOptions,
 } from "./run";
 
@@ -79,13 +80,19 @@ describe("runRunCommand option validation", () => {
     );
   });
 
-  it("allows explicit worktree workspace creation through validation", async () => {
-    // Explicit workspace creation with no --workspace
-    // must clear validation. It still fails later (provider resolution), which
-    // is enough to prove the new guard did not reject it.
-    await expect(
-      runRunCommand("do something", { newWorkspace: "worktree", provider: undefined }, {} as never),
-    ).rejects.not.toMatchObject({ code: "INVALID_OPTIONS" });
+  it("allows explicit worktree workspace creation through validation", () => {
+    // Explicit workspace creation with no --workspace must clear validation.
+    // This is the only case here that CLEARS the guard, so driving it through
+    // runRunCommand escaped into connectToDaemonOrThrow and its outcome hung on
+    // whether a daemon happened to be listening on the machine. Assert the
+    // guard itself, which is pure and opens no socket.
+    expect(() =>
+      validateRunOptions(
+        "do something",
+        { newWorkspace: "worktree", provider: undefined },
+        undefined,
+      ),
+    ).not.toThrow();
   });
 
   it("rejects unknown new workspace kinds", async () => {

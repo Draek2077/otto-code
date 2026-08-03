@@ -87,7 +87,7 @@ export interface WorkspaceReconciliationServiceOptions {
   workspaceRegistry: WorkspaceRegistry;
   logger: pino.Logger;
   onChanges?: (changes: ReconciliationChange[]) => void;
-  workspaceGitService?: Pick<WorkspaceGitService, "getCheckout">;
+  workspaceGitService?: Pick<WorkspaceGitService, "getCheckoutLite">;
   onProjectUpdate?: (update: ProjectUpdate) => void;
   onWorkspaceArchived?: (workspaceId: string) => void | Promise<void>;
   onWorkspacesChanged?: (workspaceIds: string[]) => Promise<void>;
@@ -118,7 +118,7 @@ export class WorkspaceReconciliationService {
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly logger: pino.Logger;
   private readonly onChanges: ((changes: ReconciliationChange[]) => void) | null;
-  private readonly workspaceGitService: Pick<WorkspaceGitService, "getCheckout"> | null;
+  private readonly workspaceGitService: Pick<WorkspaceGitService, "getCheckoutLite"> | null;
   private readonly onProjectUpdate: ((update: ProjectUpdate) => void) | null;
   private readonly onWorkspaceArchived: ((workspaceId: string) => void | Promise<void>) | null;
   private readonly onWorkspacesChanged: ((workspaceIds: string[]) => Promise<void>) | null;
@@ -514,7 +514,11 @@ export class WorkspaceReconciliationService {
         mainRepoRoot: null,
       };
     }
-    return this.workspaceGitService.getCheckout(cwd);
+    // Identity fields only. Reconciliation compares branch, remote and root
+    // identity and throws the rest away, so the full checkout read's dirty
+    // check and ahead/behind counts would be pure waste — and this runs for
+    // every project root and every workspace cwd on every tick.
+    return this.workspaceGitService.getCheckoutLite(cwd);
   }
 
   private inspectDirectory(targetPath: string): DirectoryState {

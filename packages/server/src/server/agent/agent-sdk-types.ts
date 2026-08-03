@@ -214,6 +214,14 @@ export interface AgentCapabilityFlags {
    * without the enforcement to back it.
    */
   supportsWorkspaceAccess?: boolean;
+  /**
+   * The adapter can also enforce the `none` level — no workspace at all.
+   * Separate from `supportsWorkspaceAccess` because a provider can bound
+   * writes natively and still have no way to express "no filesystem" (Codex's
+   * sandbox floor is read-only, and its shell reads inside every tier). Same
+   * contract as above: never set this true without the enforcement behind it.
+   */
+  supportsWorkspaceAccessNone?: boolean;
   supportsReasoningStream: boolean;
   supportsToolInvocations: boolean;
   supportsRewindConversation?: boolean;

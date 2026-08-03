@@ -21,6 +21,8 @@ interface TestOttoDaemonOptions {
   mcpEnabled?: boolean;
   mcpDebug?: boolean;
   isDev?: boolean;
+  /** Mirrors OTTO_DESKTOP_MANAGED=1 — the desktop app owns this daemon's lifecycle. */
+  desktopManaged?: boolean;
   relayEnabled?: boolean;
   relayEndpoint?: string;
   relayUseTls?: boolean;
@@ -163,6 +165,7 @@ async function prepareTestDaemonConfig(
     staticDir,
     mcpDebug: options.mcpDebug ?? false,
     isDev: options.isDev,
+    desktopManaged: options.desktopManaged,
     agentClients: options.agentClients ?? createTestAgentClients(),
     providerOverrides: options.providerOverrides,
     agentStoragePath: path.join(ottoHome, "agents"),

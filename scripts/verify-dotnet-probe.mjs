@@ -10,12 +10,12 @@
  */
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const entry = join(repoRoot, "packages", "dotnet-probe", "dist", "OttoDotnetProbe.dll");
-const fixtures = join(repoRoot, "packages", "dotnet-probe", "fixtures", "sample");
+import { PROBE_BUILD_DIR, PROBE_ENTRY_FILE, PROBE_FIXTURES_DIR } from "./dotnet-probe-paths.mjs";
+
+const entry = join(PROBE_BUILD_DIR, PROBE_ENTRY_FILE);
+const fixtures = PROBE_FIXTURES_DIR;
 
 if (!existsSync(entry)) {
   console.error(

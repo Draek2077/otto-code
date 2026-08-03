@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
-import { constants } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { constants, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -49,8 +49,11 @@ async function probe(): Promise<DotnetBootstrapResult> {
   if (entryPath === null) {
     return {
       status: "unavailable",
+      // The restart half is not boilerplate: this whole result is cached for the daemon's
+      // lifetime (see `cached` above), so a user who runs the build and looks again sees the
+      // same message and reasonably concludes the build did not work.
       reason:
-        "The .NET solution sidecar is not present in this build. Run `npm run build:dotnet-probe`.",
+        "The .NET solution sidecar is not present in this build. Run `npm run build:dotnet-probe`, then restart the daemon: this result is cached for the daemon's lifetime.",
     };
   }
 
@@ -69,23 +72,65 @@ async function probe(): Promise<DotnetBootstrapResult> {
   return { status: "ready", runtime: { dotnetCommand, entryPath } };
 }
 
-/**
- * Candidate locations, most specific first: an explicit override, the published-package layout,
- * then the repo layout found by walking up from this module.
- */
-async function findPayload(): Promise<string | null> {
-  const override = process.env.OTTO_DOTNET_PROBE_DIR?.trim();
-  const here = dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    ...(override === undefined || override.length === 0 ? [] : [join(override, ENTRY_FILE)]),
-    // `<server>/dist/server/solution-model/dotnet` → `<server>/dist/dotnet-probe`
-    resolve(here, "..", "..", "..", "dotnet-probe", ENTRY_FILE),
-    // Running from source in the repo: walk out of packages/server to the sibling package.
-    resolve(here, "..", "..", "..", "..", "..", "dotnet-probe", "dist", ENTRY_FILE),
-    resolve(here, "..", "..", "..", "..", "..", "..", "dotnet-probe", "dist", ENTRY_FILE),
-  ];
+/** The directory holding the nearest `package.json`, walking up from `start`. */
+function findPackageRoot(start: string): string | null {
+  let dir = start;
+  for (;;) {
+    if (existsSync(join(dir, "package.json"))) {
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      return null;
+    }
+    dir = parent;
+  }
+}
 
-  for (const candidate of candidates) {
+/**
+ * Candidate payload locations, most specific first: an explicit override, the payload as the
+ * server package ships it, then the sibling workspace package a repo checkout builds in place.
+ *
+ * **Both derived candidates hang off the server package root, the directory holding
+ * `package.json`, never off a count of `..` segments from this module.** The count was the bug.
+ * It silently encodes how deep TypeScript emits, and it emits one level deeper than anyone
+ * assumed: `outDir` is `dist/server` and `rootDir` is `src`, so this file lands at
+ * `dist/server/server/solution-model/dotnet/bootstrap.js`, with a doubled `server/`. Three `..`
+ * therefore resolved to `dist/server/dotnet-probe`, which nothing writes, rather than
+ * `dist/dotnet-probe`, which `scripts/build-dotnet-probe.mjs` does. A repo checkout hid it for
+ * good: a later fallback found the sibling `packages/dotnet-probe/dist`, which exists here and
+ * does not exist in a published tarball or the installed desktop app, so the Solution view was
+ * permanently unavailable everywhere except a checkout.
+ *
+ * The package root moves only when the package itself does, so this survives an `outDir` change
+ * and a rearranged source tree alike. `bootstrap.test.ts` pins both derived candidates against
+ * `scripts/dotnet-probe-paths.mjs`, the single constant the build script writes to.
+ *
+ * Exported for that test; production has one caller, `findPayload`.
+ */
+export function payloadCandidates(moduleDir: string, override: string | undefined): string[] {
+  const candidates: string[] = [];
+
+  const explicit = override?.trim();
+  if (explicit !== undefined && explicit.length > 0) {
+    candidates.push(join(explicit, ENTRY_FILE));
+  }
+
+  const packageRoot = findPackageRoot(moduleDir);
+  if (packageRoot !== null) {
+    // The published layout, and the only candidate a tarball or the installed app can satisfy.
+    candidates.push(join(packageRoot, "dist", "dotnet-probe", ENTRY_FILE));
+    // A repo checkout, where the sidecar is a sibling workspace package built in place.
+    candidates.push(join(dirname(packageRoot), "dotnet-probe", "dist", ENTRY_FILE));
+  }
+
+  return candidates;
+}
+
+async function findPayload(): Promise<string | null> {
+  const here = dirname(fileURLToPath(import.meta.url));
+
+  for (const candidate of payloadCandidates(here, process.env.OTTO_DOTNET_PROBE_DIR)) {
     try {
       await access(candidate, constants.R_OK);
       return candidate;

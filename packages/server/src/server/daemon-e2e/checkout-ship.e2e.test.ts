@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, test } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync, existsSync, realpathSync } from "fs";
+import { mkdtempSync, writeFileSync, existsSync, realpathSync } from "fs";
+import { removeTempDir } from "../../test-utils/remove-temp-dir.js";
 import { tmpdir } from "os";
 import path from "path";
 import { execSync } from "child_process";
@@ -64,20 +65,46 @@ const testWithGitHubCliAuth = hasGitHubCliAuth() ? test : test.skip;
 
 function initGitRepo(repoDir: string): void {
   execSync("git init -b main", { cwd: repoDir, stdio: "pipe" });
-  execSync("git config user.email 'otto-test@example.com'", {
+  execSync('git config user.email "otto-test@example.com"', {
     cwd: repoDir,
     stdio: "pipe",
   });
-  execSync("git config user.name 'Otto Test'", {
+  execSync('git config user.name "Otto Test"', {
     cwd: repoDir,
     stdio: "pipe",
   });
   writeFileSync(path.join(repoDir, "README.md"), "init\n");
   execSync("git add README.md", { cwd: repoDir, stdio: "pipe" });
-  execSync("git -c commit.gpgsign=false commit -m 'Initial commit'", {
+  execSync('git -c commit.gpgsign=false commit -m "Initial commit"', {
     cwd: repoDir,
     stdio: "pipe",
   });
+}
+
+type CheckoutStatusResponse = Awaited<ReturnType<DaemonTestContext["client"]["getCheckoutStatus"]>>;
+
+/**
+ * Poll checkout status until `predicate` holds.
+ *
+ * Checkout status is served from the cached workspace git snapshot, which a
+ * filesystem watcher invalidates. A test that mutates the repo with raw git and
+ * then reads status once is racing that invalidation rather than asserting on
+ * it. Returns the last response either way, so a timeout still fails with a
+ * useful diff instead of a bare timeout.
+ */
+async function waitForCheckoutStatus(options: {
+  client: DaemonTestContext["client"];
+  cwd: string;
+  predicate: (status: CheckoutStatusResponse) => boolean;
+  timeoutMs?: number;
+}): Promise<CheckoutStatusResponse> {
+  const deadline = Date.now() + (options.timeoutMs ?? 15_000);
+  let latest = await options.client.getCheckoutStatus(options.cwd);
+  while (!options.predicate(latest) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    latest = await options.client.getCheckoutStatus(options.cwd);
+  }
+  return latest;
 }
 
 function getGhLogin(): string {
@@ -171,7 +198,15 @@ describe("daemon checkout ship loop", () => {
           stdio: "pipe",
         });
 
-        const updatedStatus = await ctx.client.getCheckoutStatus(worktree.worktreePath);
+        // The rename happens behind the daemon's back, so checkout status keeps
+        // serving the cached workspace git snapshot until its watcher notices
+        // .git/HEAD moved. Asserting on the first read races that invalidation
+        // instead of testing it; poll until the rename lands.
+        const updatedStatus = await waitForCheckoutStatus({
+          client: ctx.client,
+          cwd: worktree.worktreePath,
+          predicate: (candidate) => candidate.currentBranch === "ship-loop-ready",
+        });
         expect(updatedStatus.currentBranch).toBe("ship-loop-ready");
 
         const readmePath = path.join(worktree.worktreePath, "README.md");
@@ -272,7 +307,7 @@ describe("daemon checkout ship loop", () => {
           await ctx.client.deleteAgent(agentId).catch(() => undefined);
         }
         deleteRepoBestEffort(repoFullName);
-        rmSync(repoDir, { recursive: true, force: true });
+        removeTempDir(repoDir);
       }
     },
     180000,
@@ -318,7 +353,7 @@ describe("daemon checkout ship loop", () => {
       execSync("git checkout main", { cwd: repoDir, stdio: "pipe" });
       writeFileSync(path.join(repoDir, "base.txt"), "base update\n");
       execSync("git add base.txt", { cwd: repoDir, stdio: "pipe" });
-      execSync("git -c commit.gpgsign=false commit -m 'base update'", {
+      execSync('git -c commit.gpgsign=false commit -m "base update"', {
         cwd: repoDir,
         stdio: "pipe",
       });
@@ -355,7 +390,7 @@ describe("daemon checkout ship loop", () => {
       if (agentId) {
         await ctx.client.deleteAgent(agentId).catch(() => undefined);
       }
-      rmSync(repoDir, { recursive: true, force: true });
+      removeTempDir(repoDir);
     }
   }, 90000);
 
@@ -390,7 +425,7 @@ describe("daemon checkout ship loop", () => {
       if (agentId) {
         await ctx.client.deleteAgent(agentId).catch(() => undefined);
       }
-      rmSync(cwd, { recursive: true, force: true });
+      removeTempDir(cwd);
     }
   }, 60000);
 });

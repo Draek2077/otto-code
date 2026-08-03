@@ -1,5 +1,6 @@
 import { test, expect, beforeAll, afterAll } from "vitest";
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { removeTempDir } from "../test-utils/remove-temp-dir.js";
+import { mkdirSync, mkdtempSync, writeFileSync, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
 import path from "node:path";
@@ -358,7 +359,33 @@ function createUninterruptibleClient(): AgentClient {
   });
 }
 
-test("DaemonClient rejects a replacement prompt when cancellation is not acknowledged", async () => {
+// sendMessage resolves once the daemon accepts the prompt, not once the
+// foreground run is registered. The replace and stop guards below only engage
+// against an *active* run, so without this wait the next RPC can land first and
+// take the "nothing is running" path, which resolves instead of rejecting.
+async function waitForRunningAgent(client: DaemonClient, agentId: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const fetched = await client.fetchAgent({ agentId });
+    if (fetched?.agent.status === "running") {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for agent ${agentId} to start running`);
+}
+
+// The AgentRunCancellationError itself is NOT observable from a client: the
+// daemon drives the replacement's iterator in a detached task (see the
+// `void (async () => ...)` in agent-prompt.ts), so sendMessage has already
+// resolved by the time the guard throws, and the catch only logs. Asserting a
+// rejection here can never pass. The error text is pinned one tier down, in
+// agent-manager.test.ts, which drives replaceAgentRun().next() directly.
+//
+// What IS observable, and what the guard exists to protect, is the invariant
+// below: a refused cancel must leave the ORIGINAL run in place rather than
+// dropping it or letting a second turn start against the same session.
+test("DaemonClient leaves the original run in place when a replacement cannot cancel it", async () => {
   const cwd = tmpCwd();
   const daemon = await createTestOttoDaemon({
     agentClients: { codex: createUninterruptibleClient() },
@@ -369,14 +396,28 @@ test("DaemonClient rejects a replacement prompt when cancellation is not acknowl
     await client.connect();
     const agent = await client.createAgent({ provider: "codex", cwd });
     await client.sendMessage(agent.id, "Keep working on the first prompt.");
+    await waitForRunningAgent(client, agent.id);
 
-    await expect(client.sendMessage(agent.id, "Replace it with this prompt.")).rejects.toThrow(
-      `Cannot replace agent ${agent.id} because its active run cancellation was not acknowledged`,
+    // delivery: "interrupt" is what replaces the active run. A bare send against
+    // a busy agent parks the prompt on the steer queue instead, so it is
+    // accepted and never reaches the replacement guard this test is about.
+    await client.sendMessage(agent.id, "Replace it with this prompt.", {
+      delivery: "interrupt",
+    });
+
+    const fetched = await client.fetchAgent({ agentId: agent.id });
+    expect(fetched?.agent.status).toBe("running");
+
+    // "running" on its own would also be true if the replacement had quietly
+    // taken over. The stop guard still refusing is what pins it to the same
+    // uninterruptible turn that was live before the replacement was attempted.
+    await expect(client.cancelAgent(agent.id)).rejects.toThrow(
+      `Cannot stop agent ${agent.id} because its active run cancellation was not acknowledged`,
     );
   } finally {
     await client.close();
     await daemon.close();
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 }, 30_000);
 
@@ -391,6 +432,7 @@ test("DaemonClient rejects Stop when cancellation is not acknowledged", async ()
     await client.connect();
     const agent = await client.createAgent({ provider: "codex", cwd });
     await client.sendMessage(agent.id, "Keep working until stopped.");
+    await waitForRunningAgent(client, agent.id);
 
     await expect(client.cancelAgent(agent.id)).rejects.toThrow(
       `Cannot stop agent ${agent.id} because its active run cancellation was not acknowledged`,
@@ -398,7 +440,7 @@ test("DaemonClient rejects Stop when cancellation is not acknowledged", async ()
   } finally {
     await client.close();
     await daemon.close();
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 }, 30_000);
 
@@ -638,23 +680,45 @@ test("handles session actions", async () => {
       cwd,
     },
   });
-
-  await expect(ctx.client.setVoiceMode(true, created.id)).resolves.toMatchObject({
-    enabled: true,
-    agentId: created.id,
-    accepted: true,
-    error: null,
-  });
-  await expect(ctx.client.setVoiceMode(false)).resolves.toMatchObject({
-    enabled: false,
-    agentId: null,
-    accepted: true,
-    error: null,
-  });
+  expect(created.id).toBeTruthy();
 
   await ctx.client.deleteAgent(randomUUID());
-  rmSync(cwd, { recursive: true, force: true });
+  removeTempDir(cwd);
 }, 30000);
+
+// setVoiceMode needs the realtime turn-detection service, which only comes up
+// on a host with speech models or an OpenAI key. This used to ride along inside
+// "handles session actions", so a host without them failed a test that is
+// otherwise about plain session RPCs — while every dedicated voice test in this
+// file correctly skipped. Same gate as those.
+speechTest(
+  "toggles voice mode on and off for an agent",
+  async () => {
+    const cwd = tmpCwd();
+    const created = await ctx.client.createAgent({
+      config: {
+        ...getFullAccessConfig("codex"),
+        cwd,
+      },
+    });
+
+    await expect(ctx.client.setVoiceMode(true, created.id)).resolves.toMatchObject({
+      enabled: true,
+      agentId: created.id,
+      accepted: true,
+      error: null,
+    });
+    await expect(ctx.client.setVoiceMode(false)).resolves.toMatchObject({
+      enabled: false,
+      agentId: null,
+      accepted: true,
+      error: null,
+    });
+
+    removeTempDir(cwd);
+  },
+  30000,
+);
 
 test("archives agents and excludes them from default listings", async () => {
   const cwd = tmpCwd();
@@ -676,7 +740,7 @@ test("archives agents and excludes them from default listings", async () => {
     });
     expect(withArchived.entries.some((entry) => entry.agent.id === created.id)).toBe(true);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 }, 30000);
 
@@ -721,7 +785,7 @@ test("interrupts a running agent before archiving", async () => {
     });
     expect(runningAgents.entries.some((entry) => entry.agent.id === created.id)).toBe(false);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 }, 60000);
 
@@ -744,7 +808,7 @@ test("send_agent_message auto-unarchives archived agents", async () => {
     expect(refreshed).not.toBeNull();
     expect(refreshed?.agent.archivedAt).toBeNull();
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 }, 180000);
 
@@ -764,7 +828,7 @@ test("refresh_agent auto-unarchives archived agents", async () => {
     expect(refreshed).not.toBeNull();
     expect(refreshed?.agent.archivedAt).toBeNull();
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 }, 120000);
 
@@ -796,7 +860,7 @@ test("refresh_agent rebuilds a live agent even when it has no persistence handle
     expect(client.closeCalls).toBe(1);
   } finally {
     await localCtx.cleanup();
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 });
 
@@ -826,7 +890,7 @@ test("refresh_agent rejects when persisted session resume fails", async () => {
     expect(client.resumeSessionCalls).toBe(1);
   } finally {
     await localCtx.cleanup();
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 });
 
@@ -856,7 +920,7 @@ test("resume_agent auto-unarchives archived agents", async () => {
       await ctx.client.deleteAgent(resumed.id);
     }
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 }, 180000);
 
@@ -892,7 +956,7 @@ test("update_agent persists unloaded title and labels across auto-unarchive", as
     expect(unarchived?.agent.title).toBe("Pinned Title");
     expect(unarchived?.agent.labels).toMatchObject({ lane: "phase-1a" });
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 }, 180000);
 
@@ -929,11 +993,14 @@ test("returns home-scoped directory suggestions", async () => {
     expect(outsideResult.error).toBeNull();
     expect(outsideResult.directories).not.toContain(outsideHomeDir);
   } finally {
-    rmSync(insideHomeDir, { recursive: true, force: true });
-    rmSync(rootBrowseDir, { recursive: true, force: true });
-    rmSync(outsideHomeDir, { recursive: true, force: true });
+    removeTempDir(insideHomeDir);
+    removeTempDir(rootBrowseDir);
+    removeTempDir(outsideHomeDir);
   }
-}, 30000);
+  // Four suggestion queries, each walking the developer's REAL home directory
+  // rather than a fixture. On a long-lived home this runs tens of seconds, so
+  // the budget is sized for a slow machine, not for the scan being fast.
+}, 120000);
 
 test("returns typed relative suggestions within a requested directory", async () => {
   const cwd = mkdtempSync(path.join(tmpdir(), "otto-workspace-suggestion-"));
@@ -955,7 +1022,7 @@ test("returns typed relative suggestions within a requested directory", async ()
     expect(result.directories).toEqual([]);
     expect(result.entries).toEqual([{ path: "src/components/message-renderer.tsx", kind: "file" }]);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 }, 30000);
 
@@ -991,7 +1058,7 @@ test("finds workspace files inside the OpenCode directory", async () => {
       },
     ]);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 }, 30000);
 
@@ -1355,7 +1422,7 @@ test("creates agent and exercises lifecycle", async () => {
     await ctx.client.deleteAgent(resumed.id);
   }
 
-  rmSync(cwd, { recursive: true, force: true });
+  removeTempDir(cwd);
 }, 300000);
 
 test("handles permission flow", async () => {
@@ -1428,7 +1495,7 @@ test("handles permission flow", async () => {
     await permissionRequestPromise.catch(() => {});
     await permissionResolvedPromise.catch(() => {});
     await ctx.client.deleteAgent(agent.id);
-    rmSync(cwd, { recursive: true, force: true });
+    removeTempDir(cwd);
   }
 }, 180000);
 
@@ -1450,7 +1517,7 @@ test("exposes raw session events for reachable screens", async () => {
   expect(timeline.entries.length).toBeGreaterThan(0);
 
   await ctx.client.deleteAgent(agent.id);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTempDir(cwd);
 }, 120000);
 
 speechTest(
@@ -1601,7 +1668,7 @@ speechTest(
     } finally {
       await Promise.allSettled([transcription, errorSignal]);
       await ctx.client.setVoiceMode(false);
-      rmSync(voiceCwd, { recursive: true, force: true });
+      removeTempDir(voiceCwd);
     }
   },
   90_000,
@@ -1685,16 +1752,18 @@ test("supports git and file operations", async () => {
   const cwd = tmpCwd();
 
   execSync("git init -b main", { cwd, stdio: "pipe" });
-  execSync("git config user.email 'test@test.com'", {
+  execSync('git config user.email "test@test.com"', {
     cwd,
     stdio: "pipe",
   });
-  execSync("git config user.name 'Test'", { cwd, stdio: "pipe" });
+  execSync('git config user.name "Test"', { cwd, stdio: "pipe" });
 
   const testFile = path.join(cwd, "test.txt");
   writeFileSync(testFile, "original content\n");
   execSync("git add test.txt", { cwd, stdio: "pipe" });
-  execSync("git -c commit.gpgSign=false commit -m 'Initial commit'", {
+  // Double quotes, not single: execSync goes through cmd.exe on Windows, which
+  // does not treat ' as a quote character, so git read the message as a pathspec.
+  execSync('git -c commit.gpgSign=false commit -m "Initial commit"', {
     cwd,
     stdio: "pipe",
   });
@@ -1715,7 +1784,10 @@ test("supports git and file operations", async () => {
   const checkoutStatus = await ctx.client.getCheckoutStatus(cwd);
   expect(checkoutStatus.error).toBeNull();
   expect(checkoutStatus.isGit).toBe(true);
-  expect(checkoutStatus.repoRoot).toContain(cwd);
+  // git reports POSIX separators even on Windows, where mkdtempSync hands back
+  // backslashes. Compare on a common separator rather than the raw strings.
+  const toPosixPath = (value: string) => value.replace(/\\/g, "/");
+  expect(toPosixPath(checkoutStatus.repoRoot ?? "")).toContain(toPosixPath(cwd));
 
   const diffResult = await ctx.client.getCheckoutDiff(cwd, { mode: "uncommitted" });
   expect(diffResult.error).toBeNull();
@@ -1812,5 +1884,5 @@ test("supports git and file operations", async () => {
   expect(body).toBe(downloadContents);
 
   await ctx.client.deleteAgent(agent.id);
-  rmSync(cwd, { recursive: true, force: true });
+  removeTempDir(cwd);
 }, 120000);

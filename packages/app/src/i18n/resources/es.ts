@@ -2863,6 +2863,8 @@ export const es: TranslationResources = {
       directoryMissing: "No se encontró el directorio de Workspace.",
       loading: "Cargando archivo...",
       noPreview: "No hay vista previa disponible",
+      largeFileHighlightDisabled:
+        "Archivo grande, así que el resaltado de sintaxis está desactivado.",
       binaryPreviewUnavailable: "Vista previa binaria no disponible",
       binaryPreviewHint: "Es un archivo binario, así que no hay nada que mostrar como texto.",
       binaryPreviewKind: "Binario",

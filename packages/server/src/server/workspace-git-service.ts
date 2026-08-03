@@ -18,6 +18,7 @@ import {
   getCheckoutSnapshotFacts,
   getCheckoutShortstat,
   getCheckoutStatus,
+  getCheckoutIdentity,
   getPullRequestStatus,
   forgeAuthStateFromError,
   hasOriginRemote,
@@ -146,6 +147,12 @@ export interface WorkspaceGitService {
   onSnapshotUpdated(listener: WorkspaceGitSnapshotUpdatedListener): WorkspaceGitSubscription;
   peekSnapshot(cwd: string): WorkspaceGitRuntimeSnapshot | null;
   getCheckout(cwd: string): Promise<ProjectCheckoutLitePayload>;
+  /**
+   * `getCheckout` without the drift half of the read — same payload, but the
+   * dirty check, the ahead/behind counts and the base-ref ladder never run.
+   * For callers that keep only the identity fields; see `getCheckoutIdentity`.
+   */
+  getCheckoutLite(cwd: string): Promise<ProjectCheckoutLitePayload>;
   getSnapshot(
     cwd: string,
     options?: WorkspaceGitSnapshotOptions,
@@ -306,6 +313,7 @@ interface WorkspaceGitServiceDependencies {
   readdir: typeof readdir;
   getCheckoutSnapshotFacts: typeof getCheckoutSnapshotFacts;
   getCheckoutStatus: typeof getCheckoutStatus;
+  getCheckoutIdentity: typeof getCheckoutIdentity;
   getCheckoutShortstat: typeof getCheckoutShortstat;
   getCheckoutDiff: typeof getCheckoutDiff;
   getPullRequestStatus: typeof getPullRequestStatus;
@@ -410,6 +418,7 @@ function buildDefaultWorkspaceGitServiceDeps(): WorkspaceGitServiceDependencies 
     readdir,
     getCheckoutSnapshotFacts,
     getCheckoutStatus,
+    getCheckoutIdentity,
     getCheckoutShortstat,
     getCheckoutDiff,
     getPullRequestStatus,
@@ -444,7 +453,11 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
   private activeWorkspaceCwd: string | null = null;
   private readonly workingTreeWatchTargets = new Map<string, WorkingTreeWatchTarget>();
   private readonly workingTreeWatchSetups = new Map<string, Promise<WorkingTreeWatchTarget>>();
-  private readonly linuxIgnoredDirsCache = new Map<string, { ignored: Set<string>; ts: number }>();
+  private readonly linuxIgnoredDirsCache = new Map<
+    string,
+    { ignored: Set<string>; ignoredRelative: Set<string>; ts: number }
+  >();
+  private readonly linuxIgnoredDirsInFlight = new Map<string, Promise<Set<string>>>();
   private readonly branchValidationCache = new LRUCache<
     string,
     WorkspaceGitAuxiliaryReadCacheEntry<WorkspaceGitBranchValidationResult>
@@ -603,6 +616,33 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       repoRoot: status.repoRoot,
       isOttoOwnedWorktree: status.isOttoOwnedWorktree,
       mainRepoRoot: status.mainRepoRoot,
+    });
+  }
+
+  async getCheckoutLite(cwd: string): Promise<ProjectCheckoutLitePayload> {
+    const normalizedCwd = resolve(cwd);
+    const identity = await this.deps.getCheckoutIdentity(normalizedCwd, {
+      ottoHome: this.ottoHome,
+      worktreesRoot: this.worktreesRoot,
+      logger: this.logger,
+    });
+    if (!identity.isGit) {
+      return checkoutLiteFromGitSnapshot(normalizedCwd, {
+        isGit: false,
+        currentBranch: null,
+        remoteUrl: null,
+        repoRoot: null,
+        isOttoOwnedWorktree: false,
+        mainRepoRoot: null,
+      });
+    }
+    return checkoutLiteFromGitSnapshot(normalizedCwd, {
+      isGit: true,
+      currentBranch: identity.currentBranch,
+      remoteUrl: identity.remoteUrl,
+      repoRoot: identity.repoRoot,
+      isOttoOwnedWorktree: identity.isOttoOwnedWorktree,
+      mainRepoRoot: identity.mainRepoRoot,
     });
   }
 
@@ -1113,6 +1153,9 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       const watcherIsRecursive = this.addWorkingTreeWatcher(target, watchPath, shouldTryRecursive);
       if (watchPath === repoWatchPath && watcherIsRecursive) {
         hasRecursiveRepoCoverage = true;
+        // Arm the recursive watcher's ignore filter now rather than on its first event, so
+        // a build that starts churning immediately is filtered from the first write.
+        void this.loadLinuxIgnoredDirs(repoWatchPath).catch(() => {});
       }
     }
 
@@ -1604,7 +1647,13 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       }
     };
     const createWatcher = (recursive: boolean): FSWatcher =>
-      this.deps.watch(watchPath, { recursive }, () => {
+      this.deps.watch(watchPath, { recursive }, (_event, filename) => {
+        // Only the recursive watcher sees the whole tree, so it is the only one that can
+        // see ignored churn. The non-recursive watchers are already scoped to directories
+        // that were chosen because they matter.
+        if (recursive && this.shouldSkipRecursiveWatchEvent(watchPath, filename)) {
+          return;
+        }
         onChange();
       });
 
@@ -1753,37 +1802,107 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     return directories;
   }
 
+  // Also feeds the recursive (Windows/macOS) watcher's event filter, which needs the same
+  // answer synchronously — hence the relative-path twin and the in-flight dedupe below.
   private async loadLinuxIgnoredDirs(rootPath: string): Promise<Set<string>> {
     const cached = this.linuxIgnoredDirsCache.get(rootPath);
     if (cached && Date.now() - cached.ts < LINUX_WATCH_IGNORE_TTL_MS) {
       return cached.ignored;
     }
 
-    const ignored = new Set<string>();
-    try {
-      const result = await this.deps.runGitCommand(
-        ["ls-files", "-o", "-i", "--directory", "--exclude-standard"],
-        { cwd: rootPath, env: READ_ONLY_GIT_ENV },
-      );
-      for (const raw of result.stdout.split("\n")) {
-        if (!raw.endsWith("/")) {
-          continue;
-        }
-        const rel = raw.replace(/\/+$/, "");
-        if (!rel) {
-          continue;
-        }
-        ignored.add(resolve(rootPath, rel));
-      }
-    } catch (error) {
-      this.logger.debug(
-        { err: error, rootPath },
-        "Failed to load gitignore directories; falling back to name-based skip only",
-      );
+    const inFlight = this.linuxIgnoredDirsInFlight.get(rootPath);
+    if (inFlight) {
+      return inFlight;
     }
 
-    this.linuxIgnoredDirsCache.set(rootPath, { ignored, ts: Date.now() });
-    return ignored;
+    const load = (async () => {
+      const ignored = new Set<string>();
+      const ignoredRelative = new Set<string>();
+      try {
+        const result = await this.deps.runGitCommand(
+          ["ls-files", "-o", "-i", "--directory", "--exclude-standard"],
+          { cwd: rootPath, env: READ_ONLY_GIT_ENV },
+        );
+        for (const raw of result.stdout.split("\n")) {
+          if (!raw.endsWith("/")) {
+            continue;
+          }
+          const rel = raw.replace(/\/+$/, "");
+          if (!rel) {
+            continue;
+          }
+          ignored.add(resolve(rootPath, rel));
+          ignoredRelative.add(rel);
+        }
+      } catch (error) {
+        this.logger.debug(
+          { err: error, rootPath },
+          "Failed to load gitignore directories; falling back to name-based skip only",
+        );
+      }
+
+      this.linuxIgnoredDirsCache.set(rootPath, { ignored, ignoredRelative, ts: Date.now() });
+      return ignored;
+    })().finally(() => {
+      this.linuxIgnoredDirsInFlight.delete(rootPath);
+    });
+
+    this.linuxIgnoredDirsInFlight.set(rootPath, load);
+    return load;
+  }
+
+  /**
+   * The recursive watcher fires from a sync callback, so it reads whatever the ignore cache
+   * already holds and warms it in the background when it is missing or stale. Until the
+   * first load lands nothing is filtered, which is the conservative direction: an extra
+   * debounced refresh costs far less than a missed edit.
+   */
+  private peekIgnoredRelativeDirs(rootPath: string): Set<string> | null {
+    const cached = this.linuxIgnoredDirsCache.get(rootPath);
+    if (!cached || Date.now() - cached.ts >= LINUX_WATCH_IGNORE_TTL_MS) {
+      void this.loadLinuxIgnoredDirs(rootPath).catch(() => {});
+    }
+    return cached?.ignoredRelative ?? null;
+  }
+
+  /**
+   * Decide whether a recursive `fs.watch` event can be dropped without missing a working
+   * tree change. Everything the repo ignores is churn the diff will never show — an
+   * `npm install` or a build writing thousands of `node_modules`/`dist` entries used to
+   * force a full snapshot refresh plus a re-highlighted diff per 150 ms quiet gap.
+   *
+   * `.git` is handled separately: the working tree target watches the git dir directly, so
+   * the deep churn under it (`objects/`, `index.lock`, `COMMIT_EDITMSG`) is pure noise here,
+   * while `HEAD` and `refs/` stay through because a branch switch has to reach subscribers.
+   */
+  private shouldSkipRecursiveWatchEvent(rootPath: string, filename: unknown): boolean {
+    // A null filename carries no information, so it always refreshes.
+    if (typeof filename !== "string" || filename.length === 0) {
+      return false;
+    }
+
+    const segments = filename.split(/[\\/]/).filter((segment) => segment.length > 0);
+    if (segments.length === 0) {
+      return false;
+    }
+
+    if (segments[0] === ".git") {
+      return segments.length > 1 && segments[1] !== "HEAD" && segments[1] !== "refs";
+    }
+
+    const ignoredRelative = this.peekIgnoredRelativeDirs(rootPath);
+    if (!ignoredRelative || ignoredRelative.size === 0) {
+      return false;
+    }
+
+    let prefix = "";
+    for (const segment of segments) {
+      prefix = prefix.length === 0 ? segment : `${prefix}/${segment}`;
+      if (ignoredRelative.has(prefix)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private async refreshWorkspaceTarget(

@@ -64,6 +64,17 @@ export const usePreviewRunningServersStore = create<PreviewRunningServersState>(
   replaceRunningForCwd: (sessionId, cwd, serverIds) =>
     set((state) => {
       const byCwd = state.runningServerIdsBySessionAndCwd[sessionId] ?? {};
+      // The tab row polls every 10s and the answer almost never changes, so bail
+      // on an identical result: a fresh Set and record would otherwise wake
+      // every subscriber six times a minute per open workspace for nothing new.
+      const current = byCwd[cwd];
+      if (
+        current &&
+        current.size === new Set(serverIds).size &&
+        serverIds.every((serverId) => current.has(serverId))
+      ) {
+        return state;
+      }
       return {
         runningServerIdsBySessionAndCwd: {
           ...state.runningServerIdsBySessionAndCwd,

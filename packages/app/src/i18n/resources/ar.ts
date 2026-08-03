@@ -2791,6 +2791,7 @@ export const ar: TranslationResources = {
       directoryMissing: "لم يتم العثور على دليل Workspace.",
       loading: "جارٍ تحميل الملف...",
       noPreview: "لا تتوفر معاينة",
+      largeFileHighlightDisabled: "ملف كبير، لذا تم إيقاف تمييز بناء الجملة.",
       binaryPreviewUnavailable: "المعاينة الثنائية غير متاحة",
       binaryPreviewHint: "إنه ملف ثنائي، لذا لا يوجد ما يمكن عرضه كنص.",
       binaryPreviewKind: "ثنائي",

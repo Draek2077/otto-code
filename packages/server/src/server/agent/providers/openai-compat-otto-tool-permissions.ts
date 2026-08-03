@@ -80,8 +80,16 @@ const INTERACT_TOOLS = new Set([
   "browser_drag",
   "browser_scroll",
   "browser_resize",
-  // Dev servers run pre-authored launch.json commands; editing that config
-  // is itself an edit-gated operation.
+  // Dev servers run launch.json commands. "They're pre-authored, and editing
+  // the config is itself edit-gated" holds in default mode but not in
+  // acceptEdits, where that edit is auto-approved too — so classification
+  // alone would let a session write a shell command into launch.json and run
+  // it promptless. preview_start therefore keeps "interact" only under an
+  // extra check (PreviewStartGate, applied in the agent's tool loop):
+  // auto-approval requires the entry's command to match the session-start
+  // snapshot, and a command changed during the session prompts, showing what
+  // will run. preview_stop is guarded inside DevServerManager instead
+  // (workspace scoping, observed-port allowlist for ext: ids).
   "preview_start",
   "preview_stop",
   "rename_workspace",

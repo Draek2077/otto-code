@@ -747,6 +747,63 @@ test("does not surface incomplete string values from input_json_delta", async ()
   }
 });
 
+test("throttles running tool-call re-emits while a tool input streams", async () => {
+  const session = await createSession();
+  const internal: {
+    mapPartialEvent: (event: Record<string, unknown>) => AgentTimelineItem[];
+  } = asInternals(session);
+
+  const toolCalls: AgentTimelineItem[] = [];
+  session.subscribe((event) => {
+    if (event.type === "timeline" && event.item.type === "tool_call") {
+      toolCalls.push(event.item);
+    }
+  });
+
+  const toolUseId = "tool-input-throttle";
+  const index = 11;
+  const sendDelta = (partialJson: string) => {
+    internal.mapPartialEvent({
+      type: "content_block_delta",
+      index,
+      delta: { type: "input_json_delta", partial_json: partialJson },
+    });
+  };
+  const chunk = "a".repeat(1000);
+
+  try {
+    internal.mapPartialEvent({
+      type: "content_block_start",
+      index,
+      content_block: { type: "tool_use", id: toolUseId, name: "Write" },
+    });
+
+    // The first read lands the completed file_path and arms the throttle.
+    sendDelta(`{"file_path":"src/big.ts","content":"${chunk.repeat(5)}`);
+    expect(toolCalls).toHaveLength(1);
+
+    // Deltas inside the interval and under the growth step are not re-read at all.
+    sendDelta(chunk);
+    sendDelta(chunk);
+    sendDelta(chunk);
+    sendDelta('"}');
+    expect(toolCalls).toHaveLength(1);
+
+    // Ending the input block flushes the suppressed tail, so the final snapshot
+    // still carries the whole streamed body.
+    internal.mapPartialEvent({ type: "content_block_stop", index });
+    expect(toolCalls).toHaveLength(2);
+
+    const final = toolCalls.at(-1);
+    expect(final?.type === "tool_call" && final.callId).toBe(toolUseId);
+    const detail = final?.type === "tool_call" ? final.detail : null;
+    expect(detail?.type).toBe("write");
+    expect(detail?.type === "write" ? detail.content?.length : null).toBe(8000);
+  } finally {
+    await session.close();
+  }
+});
+
 test("maps tool_result content shapes into deterministic string output", async () => {
   const session = await createSession();
   const internal: {

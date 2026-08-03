@@ -4,10 +4,23 @@ import type { AgentTimelineRow } from "./agent-timeline-store-types.js";
 import { isLikelyExternalToolName } from "@otto-code/protocol/tool-name-normalization";
 import { buildToolCallDisplayModel } from "@otto-code/protocol/tool-call-display";
 import { projectTimelineRows } from "./timeline-projection.js";
+import { truncateHeadTail } from "../../utils/truncate-head-tail.js";
 
 const DEFAULT_MAX_ITEMS = 0;
 const MAX_TOOL_INPUT_CHARS = 400;
 const MAX_TOOL_SUMMARY_CHARS = 200;
+
+/**
+ * Per-message size cap. Tool inputs and summaries were already capped, but
+ * message text went in verbatim, so one long child answer (or one pasted file)
+ * turned `get_agent_activity` into a full-transcript dump in the parent's
+ * context. Head-heavy, with a tail so the message's conclusion survives.
+ *
+ * The fork-context path opts out (`maxMessageChars: 0`): it is a chat history
+ * the user asked to carry forward, and it has its own outer body cap below.
+ */
+const DEFAULT_MAX_MESSAGE_CHARS = 2_000;
+const MESSAGE_HEAD_SHARE = 0.8;
 
 /**
  * Size cap for a fork-context attachment. `buildAgentForkContextAttachment`
@@ -25,6 +38,8 @@ interface ActivityCuratorOptions {
   labelAssistantMessages?: boolean;
   includeKinds?: readonly AgentTimelineItem["type"][];
   includeExternalToolInput?: boolean;
+  /** Per-message head/tail cap in characters. 0 disables it. */
+  maxMessageChars?: number;
 }
 
 interface ActivityEntry {
@@ -48,17 +63,31 @@ function activityEntry(text: string): ActivityEntry {
   return { text };
 }
 
+function capMessageText(text: string, options?: ActivityCuratorOptions): string {
+  const maxChars = options?.maxMessageChars ?? DEFAULT_MAX_MESSAGE_CHARS;
+  if (maxChars <= 0) {
+    return text;
+  }
+  const headChars = Math.ceil(maxChars * MESSAGE_HEAD_SHARE);
+  return truncateHeadTail({
+    text,
+    headChars,
+    tailChars: maxChars - headChars,
+    note: "open the agent's chat for the full message",
+  });
+}
+
 function flushBuffers(
   entries: ActivityEntry[],
   buffers: { message: string; thought: string },
   options?: ActivityCuratorOptions,
 ) {
   if (buffers.message.trim()) {
-    const text = buffers.message.trim();
+    const text = capMessageText(buffers.message.trim(), options);
     entries.push(activityEntry(options?.labelAssistantMessages ? `[Assistant] ${text}` : text));
   }
   if (buffers.thought.trim()) {
-    const text = buffers.thought.trim();
+    const text = capMessageText(buffers.thought.trim(), options);
     entries.push(activityEntry(`[Thought] ${text}`));
   }
   buffers.message = "";
@@ -165,7 +194,7 @@ function curateProjectedActivityEntries(
     switch (item.type) {
       case "user_message":
         flushBuffers(entries, buffers, options);
-        entries.push(activityEntry(`[User] ${item.text.trim()}`));
+        entries.push(activityEntry(`[User] ${capMessageText(item.text.trim(), options)}`));
         break;
       case "assistant_message":
         buffers.message = appendText(buffers.message, item.text);
@@ -336,6 +365,9 @@ export function buildAgentForkContextAttachment(input: {
     labelAssistantMessages: true,
     includeKinds: ["user_message", "assistant_message", "tool_call"],
     includeExternalToolInput: false,
+    // A fork carries the conversation forward, so individual messages stay
+    // whole; `capForkContextBody` below is the bound that applies here.
+    maxMessageChars: 0,
   });
   const body =
     entries.length > 0

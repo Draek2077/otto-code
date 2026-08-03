@@ -219,20 +219,40 @@ describe("CheckoutDiffManager", () => {
     );
   });
 
+  interface DiffState {
+    diff: string;
+    files: Array<Record<string, unknown>>;
+  }
+
+  /**
+   * Stands in for the real service: the structured read is the raw read plus the parsed and
+   * highlighted half, so both must answer from the same underlying working tree.
+   */
+  function createDiffSource(initial: DiffState) {
+    let current = initial;
+    const getCheckoutDiff = vi.fn(async (_cwd: string, options: { includeStructured?: boolean }) =>
+      options.includeStructured === true
+        ? { diff: current.diff, structured: current.files }
+        : { diff: current.diff },
+    );
+    return {
+      getCheckoutDiff,
+      setDiff(next: DiffState) {
+        current = next;
+      },
+      structuredCallCount: () =>
+        getCheckoutDiff.mock.calls.filter((call) => call[1].includeStructured === true).length,
+    };
+  }
+
   test("diff refresh is triggered when the working tree watch callback fires", async () => {
-    const getCheckoutDiff = vi
-      .fn()
-      .mockResolvedValueOnce({
-        diff: "",
-        structured: [{ path: "a.ts", additions: 1, deletions: 0, status: "modified" }],
-      })
-      .mockResolvedValueOnce({
-        diff: "",
-        structured: [{ path: "b.ts", additions: 2, deletions: 0, status: "modified" }],
-      });
+    const source = createDiffSource({
+      diff: "raw-a",
+      files: [{ path: "a.ts", additions: 1, deletions: 0, status: "modified" }],
+    });
 
     const { manager, getOnChange } = createManager({
-      getCheckoutDiffImplementation: getCheckoutDiff,
+      getCheckoutDiffImplementation: source.getCheckoutDiff,
     });
     const listener = vi.fn();
 
@@ -247,6 +267,10 @@ describe("CheckoutDiffManager", () => {
     const onChange = getOnChange();
     expect(onChange).toBeTypeOf("function");
 
+    source.setDiff({
+      diff: "raw-b",
+      files: [{ path: "b.ts", additions: 2, deletions: 0, status: "modified" }],
+    });
     onChange?.();
     await vi.advanceTimersByTimeAsync(150);
 
@@ -259,19 +283,13 @@ describe("CheckoutDiffManager", () => {
   });
 
   test("watch-triggered refresh forces a cache bypass on getCheckoutDiff", async () => {
-    const getCheckoutDiff = vi
-      .fn()
-      .mockResolvedValueOnce({
-        diff: "",
-        structured: [{ path: "a.ts", additions: 1, deletions: 0, status: "modified" }],
-      })
-      .mockResolvedValueOnce({
-        diff: "",
-        structured: [{ path: "b.ts", additions: 2, deletions: 0, status: "modified" }],
-      });
+    const source = createDiffSource({
+      diff: "raw-a",
+      files: [{ path: "a.ts", additions: 1, deletions: 0, status: "modified" }],
+    });
 
     const { manager, getOnChange } = createManager({
-      getCheckoutDiffImplementation: getCheckoutDiff,
+      getCheckoutDiffImplementation: source.getCheckoutDiff,
     });
 
     await manager.subscribe(
@@ -282,23 +300,125 @@ describe("CheckoutDiffManager", () => {
       vi.fn(),
     );
 
-    expect(getCheckoutDiff).toHaveBeenNthCalledWith(
+    expect(source.getCheckoutDiff).toHaveBeenNthCalledWith(
       1,
       "/tmp/repo",
       expect.objectContaining({ mode: "uncommitted" }),
       undefined,
     );
 
+    source.setDiff({
+      diff: "raw-b",
+      files: [{ path: "b.ts", additions: 2, deletions: 0, status: "modified" }],
+    });
     const onChange = getOnChange();
     onChange?.();
     await vi.advanceTimersByTimeAsync(150);
 
-    expect(getCheckoutDiff).toHaveBeenCalledTimes(2);
-    const watchFiredCall = getCheckoutDiff.mock.calls[1];
-    expect(watchFiredCall[2]).toEqual({
-      force: true,
-      reason: expect.stringContaining("working-tree"),
+    for (const watchFiredCall of source.getCheckoutDiff.mock.calls.slice(1)) {
+      expect(watchFiredCall[2]).toEqual({
+        force: true,
+        reason: expect.stringContaining("working-tree"),
+      });
+    }
+    expect(source.structuredCallCount()).toBe(2);
+  });
+
+  test("an unchanged raw diff skips structuring, highlighting and the listener fan-out", async () => {
+    const source = createDiffSource({
+      diff: "raw-a",
+      files: [{ path: "a.ts", additions: 1, deletions: 0, status: "modified" }],
     });
+
+    const { manager, getOnChange } = createManager({
+      getCheckoutDiffImplementation: source.getCheckoutDiff,
+    });
+    const listener = vi.fn();
+
+    await manager.subscribe(
+      { cwd: "/tmp/repo/packages/server", compare: { mode: "uncommitted" } },
+      listener,
+    );
+    expect(source.structuredCallCount()).toBe(1);
+
+    getOnChange()?.();
+    await vi.advanceTimersByTimeAsync(150);
+
+    // The wakeup cost one raw read and nothing else.
+    expect(source.getCheckoutDiff).toHaveBeenCalledTimes(2);
+    expect(source.getCheckoutDiff.mock.calls[1][1]).toMatchObject({ includeStructured: false });
+    expect(source.structuredCallCount()).toBe(1);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  test("a changed raw diff falls through to the structured read on the next wakeup", async () => {
+    const source = createDiffSource({
+      diff: "raw-a",
+      files: [{ path: "a.ts", additions: 1, deletions: 0, status: "modified" }],
+    });
+
+    const { manager, getOnChange } = createManager({
+      getCheckoutDiffImplementation: source.getCheckoutDiff,
+    });
+    const listener = vi.fn();
+
+    await manager.subscribe(
+      { cwd: "/tmp/repo/packages/server", compare: { mode: "uncommitted" } },
+      listener,
+    );
+
+    getOnChange()?.();
+    await vi.advanceTimersByTimeAsync(150);
+    expect(listener).not.toHaveBeenCalled();
+
+    source.setDiff({
+      diff: "raw-b",
+      files: [{ path: "b.ts", additions: 2, deletions: 0, status: "modified" }],
+    });
+    getOnChange()?.();
+    await vi.advanceTimersByTimeAsync(150);
+
+    expect(source.structuredCallCount()).toBe(2);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith({
+      cwd: "/tmp/repo/packages/server",
+      files: [{ path: "b.ts", additions: 2, deletions: 0, status: "modified" }],
+      error: null,
+    });
+  });
+
+  test("a failed raw probe still runs the full read so subscribers see the error", async () => {
+    let failProbe = false;
+    const getCheckoutDiff = vi.fn(
+      async (_cwd: string, options: { includeStructured?: boolean }) => {
+        if (options.includeStructured !== true) {
+          if (failProbe) {
+            throw new Error("probe exploded");
+          }
+          return { diff: "raw-a" };
+        }
+        return { diff: "raw-a", structured: [{ path: "a.ts" }] };
+      },
+    );
+
+    const { manager, getOnChange } = createManager({
+      getCheckoutDiffImplementation: getCheckoutDiff,
+    });
+    const listener = vi.fn();
+
+    await manager.subscribe(
+      { cwd: "/tmp/repo/packages/server", compare: { mode: "uncommitted" } },
+      listener,
+    );
+
+    failProbe = true;
+    getOnChange()?.();
+    await vi.advanceTimersByTimeAsync(150);
+
+    const structuredCalls = getCheckoutDiff.mock.calls.filter(
+      (call) => call[1].includeStructured === true,
+    );
+    expect(structuredCalls).toHaveLength(2);
   });
 
   test("falls back to cwd when the working tree watch returns no repo root", async () => {

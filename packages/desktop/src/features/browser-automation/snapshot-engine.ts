@@ -65,7 +65,12 @@ type BrowserRefFailure = Extract<BrowserRefActionResult, { ok: false }>;
 type BrowserRefResolveResult = { ok: true; metadata: BrowserRefMetadata } | BrowserRefFailure;
 
 const TRUNCATION_MARKER = '- text: "Snapshot truncated."';
-const MAX_RENDERED_TEXT_LENGTH = 80_000;
+/**
+ * The ~30K-char cap every other model-visible result path uses. A snapshot is
+ * spent verbatim into the transcript and replayed on every later round, so the
+ * old 80K outlier bought a fuller tree at nearly 3x the standing token cost.
+ */
+const MAX_RENDERED_TEXT_LENGTH = 30_000;
 
 export class BrowserSnapshotEngine {
   private readonly statesByBrowserId = new Map<string, BrowserRefState>();

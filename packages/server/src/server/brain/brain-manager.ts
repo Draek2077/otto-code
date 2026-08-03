@@ -5,6 +5,8 @@ import https from "node:https";
 import { createRequire } from "node:module";
 import { networkInterfaces } from "node:os";
 import path from "node:path";
+import type stream from "node:stream";
+import tls from "node:tls";
 import type { Logger } from "pino";
 
 import type {
@@ -59,12 +61,34 @@ export interface BrainManagerOptions {
   ottoHome: string;
 }
 
+/**
+ * How an HTTPS brain's identity is established before anything is written to
+ * the connection. The auth token rides in the request headers, so this is a
+ * security boundary: a peer that is not authenticated must never see a byte.
+ *
+ *  - "loopback-child": the daemon-spawned child probed over 127.0.0.1. Its
+ *    certificate can never validate for a loopback address (self-signed, or a
+ *    tailscale cert issued for the MagicDNS name) and the traffic never leaves
+ *    this machine, so certificate checks are skipped.
+ *  - "system": a remote brain with a chain-of-trust certificate (tls.mode
+ *    files/tailscale). Normal verification against the system trust store.
+ *  - "pinned": a remote brain with a self-signed certificate. The handshake
+ *    completes with chain checks off, then the peer certificate's SHA-256
+ *    fingerprint is compared to the configured pin before the socket is
+ *    released to the request (see connectPinned).
+ */
+type BrainTlsTrust =
+  | { kind: "loopback-child" }
+  | { kind: "system" }
+  | { kind: "pinned"; fingerprint: string };
+
 /** Where and how to reach the running brain, derived from the applied config. */
 interface BrainEndpoint {
   probeHost: string;
   port: number;
   secure: boolean;
   token: string | null;
+  trust: BrainTlsTrust;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -102,6 +126,7 @@ export class BrainManager {
     port: DEFAULT_BRAIN_PORT,
     secure: false,
     token: null,
+    trust: { kind: "loopback-child" },
   };
   private readonly log: string[] = [];
   private restartCount = 0;
@@ -134,6 +159,7 @@ export class BrainManager {
         port: brain.remote.port,
         secure: brain.remote.secure,
         token: brain.remote.authToken,
+        trust: this.resolveRemoteTrust(brain.remote.certFingerprint),
       };
       // A prior local child must not outlive the switch to remote.
       await this.stop();
@@ -145,6 +171,7 @@ export class BrainManager {
       port: brain.listen.port,
       secure: brain.tls.mode !== "off",
       token: brain.authMode === "token" ? brain.authToken : null,
+      trust: { kind: "loopback-child" },
     };
     this.writeThroughConfig(brain);
 
@@ -692,21 +719,83 @@ export class BrainManager {
     });
   }
 
+  /**
+   * The remote fingerprint pin, canonicalized, as an endpoint trust. An unset
+   * pin means the certificate must validate against the system trust store; a
+   * set-but-unparseable pin also falls back to strict validation (failing
+   * closed) with a warning, never to an unauthenticated connection.
+   */
+  private resolveRemoteTrust(certFingerprint: string | null | undefined): BrainTlsTrust {
+    const pin = normalizeFingerprint(certFingerprint);
+    if (certFingerprint && !pin) {
+      this.logger.warn(
+        { certFingerprint },
+        "brain.remote.certFingerprint is not a SHA-256 fingerprint; requiring a system-trusted certificate instead",
+      );
+    }
+    return pin ? { kind: "pinned", fingerprint: pin } : { kind: "system" };
+  }
+
+  /**
+   * Open the HTTP(S) request for the current endpoint. Every brain request
+   * funnels through here so the GET and POST paths cannot drift on TLS
+   * handling. See BrainTlsTrust for how each trust kind authenticates the
+   * peer; the invariant is that the headers (which carry the auth token) are
+   * never written to a network peer that has not been authenticated.
+   */
+  private dispatchRequest(
+    options: http.RequestOptions,
+    onResponse: (res: http.IncomingMessage) => void,
+  ): http.ClientRequest {
+    if (!this.endpoint.secure) {
+      return http.request(options, onResponse);
+    }
+    const trust = this.endpoint.trust;
+    switch (trust.kind) {
+      case "loopback-child":
+        return https.request({ ...options, rejectUnauthorized: false }, onResponse);
+      case "system":
+        // Node's default rejectUnauthorized: true — full chain + hostname checks.
+        return https.request(options, onResponse);
+      case "pinned":
+        // http.request (not https): the createConnection hook hands over an
+        // already-negotiated, fingerprint-verified TLS socket, so the client
+        // just writes HTTP into it.
+        return http.request(
+          {
+            ...options,
+            createConnection: (_connectOptions, oncreate) =>
+              connectPinned(
+                {
+                  host: this.endpoint.probeHost,
+                  port: this.endpoint.port,
+                  fingerprint: trust.fingerprint,
+                  timeoutMs:
+                    typeof options.timeout === "number" ? options.timeout : HTTP_PROBE_TIMEOUT_MS,
+                },
+                oncreate,
+              ),
+          },
+          onResponse,
+        );
+    }
+  }
+
   private buildRequest(
     pathname: string,
     onResponse: (res: http.IncomingMessage) => void,
   ): http.ClientRequest {
-    const options: https.RequestOptions = {
-      host: this.endpoint.probeHost,
-      port: this.endpoint.port,
-      path: pathname,
-      method: "GET",
-      timeout: HTTP_PROBE_TIMEOUT_MS,
-      headers: this.endpoint.token ? { "x-otto-brain-token": this.endpoint.token } : {},
-    };
-    const request = this.endpoint.secure
-      ? https.request({ ...options, rejectUnauthorized: false }, onResponse)
-      : http.request(options, onResponse);
+    const request = this.dispatchRequest(
+      {
+        host: this.endpoint.probeHost,
+        port: this.endpoint.port,
+        path: pathname,
+        method: "GET",
+        timeout: HTTP_PROBE_TIMEOUT_MS,
+        headers: this.endpoint.token ? { "x-otto-brain-token": this.endpoint.token } : {},
+      },
+      onResponse,
+    );
     request.on("timeout", () => request.destroy());
     return request;
   }
@@ -722,7 +811,7 @@ export class BrainManager {
         }
       };
       const payload = Buffer.from(JSON.stringify(body), "utf8");
-      const options: https.RequestOptions = {
+      const options: http.RequestOptions = {
         host: this.endpoint.probeHost,
         port: this.endpoint.port,
         path: pathname,
@@ -753,9 +842,7 @@ export class BrainManager {
           }
         });
       };
-      const request = this.endpoint.secure
-        ? https.request({ ...options, rejectUnauthorized: false }, onResponse)
-        : http.request(options, onResponse);
+      const request = this.dispatchRequest(options, onResponse);
       request.on("timeout", () => request.destroy(new Error("the remote brain timed out")));
       request.on("error", (err: Error) => settle(() => reject(err)));
       request.write(payload);
@@ -820,6 +907,84 @@ function sleep(ms: number): Promise<void> {
  * the child when this changes so edits take effect without a manual restart.
  * Deliberately excludes enabled/autoStart, which are lifecycle, not launch args.
  */
+/**
+ * Canonical form of a SHA-256 certificate fingerprint: uppercase hex with the
+ * separators stripped. Accepts the common presentations (openssl/Node's
+ * "AB:CD:..." and bare hex) and returns null for anything that is not 32 bytes
+ * of hex, so a malformed pin can never accidentally match.
+ */
+function normalizeFingerprint(raw: string | null | undefined): string | null {
+  if (!raw) {
+    return null;
+  }
+  const hex = raw.replace(/[:\s]/gu, "").toUpperCase();
+  return /^[0-9A-F]{64}$/u.test(hex) ? hex : null;
+}
+
+interface PinnedConnectOptions {
+  host: string;
+  port: number;
+  /** Expected SHA-256 fingerprint, already normalized (see normalizeFingerprint). */
+  fingerprint: string;
+  timeoutMs: number;
+}
+
+/**
+ * Establish a TLS connection whose peer is authenticated by certificate
+ * fingerprint instead of a chain of trust, for remote brains serving a
+ * self-signed certificate. The socket is handed to the HTTP request via
+ * `oncreate` only AFTER the handshake completed and the peer certificate's
+ * SHA-256 fingerprint matched the pin, so the request cannot write anything
+ * (headers, the auth token) to an unauthenticated peer. On a mismatch the
+ * socket is destroyed with nothing sent beyond the TLS handshake itself.
+ *
+ * The pre-handoff timeout exists because the request's own `timeout` option
+ * only arms once a socket is assigned; without it a black-holed handshake
+ * would hang the request forever.
+ */
+function connectPinned(
+  options: PinnedConnectOptions,
+  oncreate: (err: Error | null, socket: stream.Duplex) => void,
+): undefined {
+  const socket = tls.connect({
+    host: options.host,
+    port: options.port,
+    // Chain verification cannot succeed for a self-signed certificate; the
+    // peer's identity is established by the fingerprint comparison below,
+    // before the socket is released to the request.
+    rejectUnauthorized: false,
+  });
+  // On failure the (destroyed) socket still rides along: Node's oncreate
+  // contract always takes one and ignores it when err is set.
+  let settled = false;
+  const settle = (err: Error | null) => {
+    if (!settled) {
+      settled = true;
+      oncreate(err, socket);
+    }
+  };
+  socket.setTimeout(options.timeoutMs, () => {
+    socket.destroy();
+    settle(new Error("the remote brain timed out during the TLS handshake"));
+  });
+  socket.once("error", (err: Error) => settle(err));
+  socket.once("secureConnect", () => {
+    socket.setTimeout(0);
+    const presented = normalizeFingerprint(socket.getPeerCertificate()?.fingerprint256);
+    if (presented && presented === options.fingerprint) {
+      settle(null);
+      return;
+    }
+    socket.destroy();
+    settle(
+      new Error(
+        "the remote brain presented a TLS certificate that does not match the pinned fingerprint",
+      ),
+    );
+  });
+  return undefined;
+}
+
 /** Pull a useful message out of a non-200 remote-brain response body. */
 function remoteErrorDetail(data: string, status: number): string {
   try {

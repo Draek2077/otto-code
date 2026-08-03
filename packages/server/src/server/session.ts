@@ -239,6 +239,7 @@ import { readLaunchConfig, LaunchConfigError } from "./preview/launch-config.js"
 import {
   archivePersistedWorkspaceRecord,
   archiveWorkspaceContents,
+  dropGitOperationLogs,
   stopLanguageServersForArchivedDirectories,
   requireActiveWorkspaceForArchive,
 } from "./workspace-archive-service.js";
@@ -1366,7 +1367,7 @@ export class Session {
       logger: this.sessionLogger,
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
-      listAgentPayloads: () => this.listAgentPayloads(),
+      listAgentPayloads: (scope) => this.listAgentPayloads(scope),
       listTerminalActivityContributions: () => this.listTerminalActivityContributions(),
       isProviderVisibleToClient: (provider) => this.isProviderVisibleToClient(provider),
       buildWorkspaceDescriptor: (input) => this.buildWorkspaceDescriptor(input),
@@ -2268,13 +2269,18 @@ export class Session {
       this.peakInflightRequests = this.inflightRequests;
     }
     try {
-      this.sessionLogger.trace(
-        {
-          messageType: msg.type,
-          payloadBytes: JSON.stringify(msg).length,
-        },
-        "agent.session.inbound",
-      );
+      // Guarded like emit(): JSON.stringify(msg) would otherwise run for every
+      // inbound message (a 2 MB file save stringifies 2 MB) with trace disabled.
+      // Optional-chained because test logger stubs don't implement isLevelEnabled.
+      if (this.sessionLogger.isLevelEnabled?.("trace")) {
+        this.sessionLogger.trace(
+          {
+            messageType: msg.type,
+            payloadBytes: JSON.stringify(msg).length,
+          },
+          "agent.session.inbound",
+        );
+      }
       if (!isSessionRpcAllowed(this.scopes, msg.type)) {
         const requestId = sessionRequestId(msg);
         if (requestId) {
@@ -5624,8 +5630,15 @@ export class Session {
         await this.projectRegistry.remove(resolvedProjectId);
         // Cascade: a removed project's links disappear (gated-multi-root).
         await this.projectLinkStore.removeAllForProject(projectId);
-        // Same teardown archiveByScope does for a single workspace: the language
-        // servers rooted at these directories have nothing left to serve.
+        // Same teardown archiveByScope does for a single workspace: the git
+        // operation log buffers and the language servers rooted at these
+        // directories have nothing left to serve.
+        dropGitOperationLogs(
+          {},
+          projectWorkspaces
+            .filter((workspace) => removedWorkspaceIds.includes(workspace.workspaceId))
+            .map((workspace) => workspace.cwd),
+        );
         await stopLanguageServersForArchivedDirectories(
           {
             // Same roots archiveByScope resolves ownership against, so the
@@ -7315,25 +7328,47 @@ export class Session {
 
   /**
    * Build the current agent list payload (live + persisted), optionally filtered by labels.
+   *
+   * `workspaceIds`/`agentIds` narrow which agents get PROJECTED, not which
+   * exist: the live-id set below is still built from every live agent, so a
+   * record whose live counterpart sits outside the scope is still recognised as
+   * live rather than resurfacing as a stale stored projection. Scoping exists
+   * because the per-workspace descriptor rebuild runs on every agent lifecycle
+   * event and would otherwise clone every live agent and project every persisted
+   * record in the home. See WorkspaceDirectory.listAgentPayloadsForScope.
    */
   private async listAgentPayloads(filter?: {
     labels?: Record<string, string>;
     includeArchived?: boolean;
     includeUnavailablePersisted?: boolean;
+    workspaceIds?: ReadonlySet<string>;
+    agentIds?: ReadonlySet<string>;
   }): Promise<AgentSnapshotPayload[]> {
     const includeArchived = filter?.includeArchived === true;
     const labelEntries = filter?.labels ? Object.entries(filter.labels) : [];
+    const scope =
+      filter?.workspaceIds || filter?.agentIds
+        ? {
+            workspaceIds: filter.workspaceIds ?? new Set<string>(),
+            agentIds: filter.agentIds ?? new Set<string>(),
+          }
+        : null;
+    const isInScope = (candidate: { id: string; workspaceId?: string }): boolean =>
+      !scope ||
+      scope.agentIds.has(candidate.id) ||
+      (candidate.workspaceId !== undefined && scope.workspaceIds.has(candidate.workspaceId));
 
     // Get live agents with session modes
-    const agentSnapshots = this.agentManager.listAgents();
+    const liveManagedAgents = this.agentManager.listAgents();
+    const liveIds = new Set(liveManagedAgents.map((a) => a.id));
+    const agentSnapshots = scope ? liveManagedAgents.filter(isInScope) : liveManagedAgents;
     const liveAgents = await Promise.all(
       agentSnapshots.map((agent) => this.buildAgentPayload(agent)),
     );
 
     // Add persisted agents that have not been lazily initialized yet
     // (excluding internal agents which are for ephemeral system tasks)
-    const registryRecords = await this.agentStorage.list();
-    const liveIds = new Set(agentSnapshots.map((a) => a.id));
+    const registryRecords = await this.agentStorage.list(scope ?? undefined);
     const registeredProviderIds = new Set(this.providerSnapshotManager.listRegisteredProviderIds());
     const persistedAgents = registryRecords
       .filter((record) => !liveIds.has(record.id) && !record.internal)
@@ -7353,7 +7388,8 @@ export class Session {
     // learns about in-flight children instead of waiting for the provider's
     // next task event. The shared archived/label filters below apply to them
     // like any other agent.
-    const observedAgents = this.agentManager.listObservedSubagentPayloads();
+    const allObservedAgents = this.agentManager.listObservedSubagentPayloads();
+    const observedAgents = scope ? allObservedAgents.filter(isInScope) : allObservedAgents;
 
     let agents = [...liveAgents, ...persistedAgents, ...observedAgents];
 

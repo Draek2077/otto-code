@@ -178,6 +178,39 @@ which maintains its own `RenderRules` object for iOS text-hoisting reasons. Addi
 means editing `MarkdownFence`, not the rules; forget the `message.tsx` rule and the feature works
 everywhere except chat, which is the surface most people see first.
 
+### A streaming fence is throttled, and that is load-bearing
+
+An open fence cannot be promoted out of the live tail block (`utils/split-markdown-blocks.ts`), so
+while a model is typing one, the tail block **is** the whole fence-so-far and every ~32 ms reveal
+tick produces a longer string. Tokenization is cached on the entire code
+(`utils/highlight-cache.ts`), so each tick used to miss: a full synchronous Lezer pass over the
+fence-so-far, plus `detectLanguage` again for untagged fences, plus the eviction of the prefix it
+just replaced. Work per streamed fence was quadratic in its finished length, on the UI thread,
+during the workload the product exists for.
+
+`fence-highlight-debounce.ts` (`useSettledFenceCode`) quantizes the code `HighlightedCodeBlock` sees
+to one commit per `FENCE_HIGHLIGHT_DEBOUNCE_MS` (250 ms, the same number and the same reasoning as
+`MERMAID_RENDER_DEBOUNCE_MS`). Three properties it must keep:
+
+- **It is a throttle with a trailing commit, not a debounce.** A debounce restarts its timer on
+  every delta, which would leave a fence that streams for thirty seconds showing nothing but its
+  first paint for thirty seconds. The first delta after a quiet window schedules one commit and
+  later deltas ride along with it, so the block keeps growing — in 250 ms steps rather than 32 ms
+  ones — and the last delta lands within one window of the stream ending.
+- **Settled content never waits.** The first value is returned on mount, so history, the file viewer
+  and the pull-request panel are fully highlighted on their first paint.
+- **Only growth is coalesced.** Anything that is not an append (a rewind, a different message, a
+  file the viewer just opened) replaces the current value immediately.
+
+Mermaid fences deliberately keep the raw code: `MermaidDiagram` runs its own debounce, and stacking
+a second one in front of it would only make a diagram settle later.
+
+This is about what the fence renders and nothing else. It writes no scroll position and does not go
+near the follow/detach state machine ([chat-scrolling.md](chat-scrolling.md)). Note also that
+`patches/react-native-markdown-display+7.0.2.patch` is what makes the throttle possible at all:
+position-stable node keys are why the fence component survives a re-parse instead of remounting (and
+losing its window) on every flush.
+
 ## Mermaid diagrams
 
 ` ```mermaid ` (and ` ```mmd `) fences render as diagrams on all four platforms, and `.mmd` /

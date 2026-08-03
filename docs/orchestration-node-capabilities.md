@@ -153,12 +153,12 @@ narrows its own tool surface. The meaning of each level lives in one place
 by prose. An agent that was never given a write tool cannot be argued into writing, and a
 prompt injection in a file it reads cannot reach for a tool that does not exist.
 
-| Provider                                   | How it is imposed                                                                                                                                                           |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **openai-compat** (including local models) | Total: the daemon owns the tool loop, so `availableToolSpecs` withholds the forbidden specs and the model is never told they exist.                                         |
-| **Claude**                                 | `applyWorkspaceAccess` adds the level's denied tools to `disallowedTools` and strips them from `allowedTools`, applied _after_ the dontAsk allowlist so a deny always wins. |
-| **Codex**                                  | Maps onto its native sandbox tiers as a **ceiling**: `resolveSandboxPolicyType` narrows the seat's tier and can never widen it.                                             |
-| **Everything else**                        | Not supported. The node is refused at spawn (below).                                                                                                                        |
+| Provider                                   | How it is imposed                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **openai-compat** (including local models) | Total: the daemon owns the tool loop, so `availableToolSpecs` withholds the forbidden specs and the model is never told they exist.                                                                                                                                                                                                                           |
+| **Claude**                                 | `applyWorkspaceAccess` adds the level's denied tools to `disallowedTools` and strips them from `allowedTools`, applied _after_ the dontAsk allowlist so a deny always wins.                                                                                                                                                                                   |
+| **Codex**                                  | `read` and `write` only. Maps onto its native sandbox tiers as a **ceiling**: `resolveSandboxPolicyType` narrows the seat's tier and can never widen it. Read-only is Codex's floor: its shell reads inside every tier and the app-server protocol has no tool-deny list, so `none` cannot be enforced and a `none` node on a Codex seat is refused at spawn. |
+| **Everything else**                        | Not supported. The node is refused at spawn (below).                                                                                                                                                                                                                                                                                                          |
 
 **Where the shell sits is the one judgement call.** `Bash` is denied at `none` but allowed
 at `read`, because `read` exists for reviewer nodes that run tests, linters and git
@@ -167,10 +167,12 @@ trade is explicit: `read` bounds _tools_, and a shell can still write. A node th
 not touch the workspace at all is `none`.
 
 > **A seat that cannot enforce it refuses the run.** Before spawning, the daemon checks the
-> resolved provider's `supportsWorkspaceAccess` capability and throws, naming the node, the
-> level and the provider. Silently running a node that asked for `read` with full access is
-> precisely the failure this feature exists to prevent, so **never set that capability flag
-> without the enforcement behind it.**
+> resolved provider's capabilities per level (`capabilitiesEnforceAccess`:
+> `supportsWorkspaceAccess` for `read`, plus `supportsWorkspaceAccessNone` for `none`) and
+> throws, naming the node, the level, the provider and the provider's floor when it has
+> one. Silently running a node that asked for `read` with full access, or one that asked
+> for `none` with reads live, is precisely the failure this feature exists to prevent, so
+> **never set either capability flag without the enforcement behind it.**
 
 ## Retry and time limit
 
@@ -281,9 +283,10 @@ its first use.
 6. A condition that cannot be evaluated fails its node; it is never a quiet false.
 7. A node's tool allowlist intersects the daemon's; it can only narrow.
 8. Workspace access is enforced by withholding tools, never by prompting.
-9. A provider advertises `supportsWorkspaceAccess` only if it actually withholds; a node
-   asking for restricted access on a seat that can't enforce it is refused, never
-   silently run with full access.
+9. A provider advertises an access capability only if it actually withholds at that
+   level (`supportsWorkspaceAccess` for `read`, `supportsWorkspaceAccessNone` for
+   `none`); a node asking for a level its seat can't enforce is refused, never silently
+   run with a weaker boundary.
 10. Query-tool safety is structural (no shell, no headers, resolved-path check), not
     validated.
 11. Retry is one bounded loop, never re-entered from the failure path, always charged to

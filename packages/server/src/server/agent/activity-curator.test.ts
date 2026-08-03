@@ -441,4 +441,63 @@ second line'`,
       }),
     ).toThrow("Selected assistant message is no longer available.");
   });
+
+  it("keeps long messages whole — a fork carries the conversation forward", () => {
+    const longAnswer = "L".repeat(20_000);
+    const result = buildAgentForkContextAttachment({
+      rows: [
+        row(1, { type: "user_message", text: "Explain it all", messageId: "user-1" }),
+        row(2, { type: "assistant_message", text: longAnswer, messageId: "assistant-1" }),
+      ],
+    });
+
+    expect(result.attachment.text).toContain(longAnswer);
+    expect(result.attachment.text).not.toContain("characters truncated");
+  });
+});
+
+// Tool inputs and summaries were already capped; message text was not, so one
+// long child answer turned get_agent_activity into a full-transcript dump.
+describe("curateAgentActivity message caps", () => {
+  it("caps a long assistant message head/tail with a marker", () => {
+    const text = `${"H".repeat(1_600)}${"M".repeat(30_000)}${"T".repeat(400)}`;
+
+    const result = curateAgentActivity([{ type: "assistant_message", text }]);
+
+    expect(result.length).toBeLessThan(2_200);
+    expect(result.startsWith("H".repeat(1_600))).toBe(true);
+    expect(result.endsWith("T".repeat(400))).toBe(true);
+    expect(result).toContain("characters truncated");
+    expect(result).toContain("open the agent's chat for the full message");
+  });
+
+  it("caps a long user message", () => {
+    const result = curateAgentActivity([{ type: "user_message", text: "U".repeat(30_000) }]);
+
+    expect(result.startsWith("[User] ")).toBe(true);
+    expect(result.length).toBeLessThan(2_200);
+    expect(result).toContain("characters truncated");
+  });
+
+  it("caps a long reasoning block", () => {
+    const result = curateAgentActivity([{ type: "reasoning", text: "R".repeat(30_000) }]);
+
+    expect(result.startsWith("[Thought] ")).toBe(true);
+    expect(result.length).toBeLessThan(2_200);
+  });
+
+  it("caps each message independently rather than the joined result", () => {
+    const result = curateAgentActivity([
+      { type: "user_message", text: "A".repeat(30_000) },
+      { type: "assistant_message", text: "B".repeat(30_000) },
+    ]);
+
+    expect(result.split("characters truncated")).toHaveLength(3);
+  });
+
+  it("leaves a short message untouched", () => {
+    const result = curateAgentActivity([{ type: "assistant_message", text: "Done." }]);
+
+    expect(result).toBe("Done.");
+  });
 });

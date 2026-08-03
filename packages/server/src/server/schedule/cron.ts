@@ -82,10 +82,32 @@ export function validateScheduleCadence(cadence: ScheduleCadence): void {
     if (cadence.timezone !== undefined) {
       assertValidTimeZone(cadence.timezone);
     }
+    // Satisfiability probe: reject expressions that can never fire (April 31,
+    // February 30) at creation instead of at every later evaluation. Probed
+    // without the timezone: date existence is timezone-independent, and the
+    // UTC reader keeps the failure path from making half a million Intl calls.
+    const probe = { type: "cron" as const, expression: cadence.expression };
+    if (computeNextRunAtOrNull(probe, new Date()) === null) {
+      throw new Error(
+        `Cron expression has no matching run time within the next year: ${cadence.expression}`,
+      );
+    }
   }
 }
 
 export function computeNextRunAt(cadence: ScheduleCadence, after: Date): Date {
+  const next = computeNextRunAtOrNull(cadence, after);
+  if (next === null) {
+    const expression = cadence.type === "cron" ? cadence.expression : `${cadence.everyMs}ms`;
+    throw new Error(`Unable to compute next run time for cron expression: ${expression}`);
+  }
+  return next;
+}
+
+// Non-throwing sibling of computeNextRunAt: null means the cadence has no match
+// within the next year (e.g. "0 0 31 4 *"). Persisted-data paths (tick, boot
+// recovery) use this to deactivate a schedule instead of throwing mid-update.
+export function computeNextRunAtOrNull(cadence: ScheduleCadence, after: Date): Date | null {
   if (cadence.type === "every") {
     // COMPAT(scheduleEveryMs): execute legacy persisted rolling intervals until the
     // compatibility floor reaches v0.2.0. Added in v0.2.0; remove after 2027-01-17.
@@ -113,5 +135,5 @@ export function computeNextRunAt(cadence: ScheduleCadence, after: Date): Date {
     cursor = new Date(cursor.getTime() + 60_000);
   }
 
-  throw new Error(`Unable to compute next run time for cron expression: ${cadence.expression}`);
+  return null;
 }

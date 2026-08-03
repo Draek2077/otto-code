@@ -880,7 +880,7 @@ describe("browser MCP tools", () => {
         agents: [],
       });
       expectSingleTextContent(browserResult);
-      expect(expectSingleTextContent(listAgentsResult)).toContain('"agents": []');
+      expect(expectSingleTextContent(listAgentsResult)).toContain('{"agents":[]}');
 
       const listedTools = await client.listTools();
       expect(listedTools.tools.map((tool) => tool.name)).toEqual(
@@ -972,11 +972,13 @@ describe("browser MCP tools", () => {
 
   it("does not register browser tools when browser tools are disabled", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    spies.agentManager.getAgent.mockReturnValue({
-      id: "agent-1",
-      cwd: REPO_CWD,
-      workspaceId: BROWSER_WORKSPACE_ID,
-    });
+    spies.agentManager.getAgent.mockReturnValue(
+      createManagedAgent({
+        id: "agent-1",
+        cwd: REPO_CWD,
+        workspaceId: BROWSER_WORKSPACE_ID,
+      }),
+    );
     const server = await createAgentMcpServer({
       agentManager,
       agentStorage,
@@ -992,11 +994,13 @@ describe("browser MCP tools", () => {
 
   it("wires browser tools through the browser tools broker", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    spies.agentManager.getAgent.mockReturnValue({
-      id: "agent-1",
-      cwd: REPO_CWD,
-      workspaceId: BROWSER_WORKSPACE_ID,
-    });
+    spies.agentManager.getAgent.mockReturnValue(
+      createManagedAgent({
+        id: "agent-1",
+        cwd: REPO_CWD,
+        workspaceId: BROWSER_WORKSPACE_ID,
+      }),
+    );
     const execute = vi.fn().mockResolvedValue({
       requestId: "req-browser-tabs",
       ok: true,
@@ -1036,7 +1040,9 @@ describe("browser MCP tools", () => {
 
   it("tells browser callers without a workspace how to proceed before broker execution", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    spies.agentManager.getAgent.mockReturnValue({ id: "agent-1", cwd: REPO_CWD });
+    spies.agentManager.getAgent.mockReturnValue(
+      createManagedAgent({ id: "agent-1", cwd: REPO_CWD }),
+    );
     const execute = vi.fn().mockResolvedValue({
       requestId: "req-browser-tabs",
       ok: true,
@@ -1110,8 +1116,10 @@ describe("terminal MCP tools", () => {
       end: -1,
     });
 
+    // An explicit start survives `scrollback: true`, which used to force 0 and
+    // hand back the whole buffer; see resolveCaptureTerminalStart.
     expect(captureTerminal).toHaveBeenCalledWith("term-1", {
-      start: 0,
+      start: -10,
       end: -1,
       stripAnsi: false,
     });
@@ -1321,12 +1329,14 @@ describe("create_agent MCP tool", () => {
 
   it("requires a caller workspace for current workspace intent", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    spies.agentManager.getAgent.mockReturnValue({
-      id: "parent-agent",
-      cwd: existingCwd,
-      provider: "codex",
-      currentModeId: "full-access",
-    } as ManagedAgent);
+    spies.agentManager.getAgent.mockReturnValue(
+      createManagedAgent({
+        id: "parent-agent",
+        cwd: existingCwd,
+        provider: "codex",
+        currentModeId: "full-access",
+      }),
+    );
     const server = await createAgentMcpServer({
       agentManager,
       agentStorage,
@@ -3050,13 +3060,15 @@ describe("create_agent MCP tool", () => {
     const baseDir = await mkdtemp(join(tmpdir(), "otto-mcp-test-"));
     const subdir = join(baseDir, "subdir");
     await mkdir(subdir, { recursive: true });
-    spies.agentManager.getAgent.mockReturnValue({
-      id: "voice-agent",
-      cwd: baseDir,
-      workspaceId: "wks_voice",
-      provider: "codex",
-      currentModeId: "full-access",
-    } as ManagedAgent);
+    spies.agentManager.getAgent.mockReturnValue(
+      createManagedAgent({
+        id: "voice-agent",
+        cwd: baseDir,
+        workspaceId: "wks_voice",
+        provider: "codex",
+        currentModeId: "full-access",
+      }),
+    );
     spies.agentManager.createAgent.mockResolvedValue({
       id: "child-agent",
       cwd: subdir,
@@ -3104,13 +3116,15 @@ describe("create_agent MCP tool", () => {
 
   it("rejects background from caller agents and defaults notify-on-finish on", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    spies.agentManager.getAgent.mockReturnValue({
-      id: "parent-agent",
-      cwd: existingCwd,
-      workspaceId: "wks_parent",
-      provider: "codex",
-      currentModeId: "full-access",
-    } as ManagedAgent);
+    spies.agentManager.getAgent.mockReturnValue(
+      createManagedAgent({
+        id: "parent-agent",
+        cwd: existingCwd,
+        workspaceId: "wks_parent",
+        provider: "codex",
+        currentModeId: "full-access",
+      }),
+    );
 
     const server = await createAgentMcpServer({
       agentManager,
@@ -3154,13 +3168,13 @@ describe("create_agent MCP tool", () => {
 
   it("returns notify-on-finish guidance for caller-created agents", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    const parentAgent = {
+    const parentAgent = createManagedAgent({
       id: "parent-agent",
       cwd: existingCwd,
       workspaceId: "wks_parent",
       provider: "codex",
       currentModeId: "full-access",
-    } as ManagedAgent;
+    });
     const childAgent = {
       id: "child-agent",
       cwd: existingCwd,
@@ -3199,13 +3213,15 @@ describe("create_agent MCP tool", () => {
 
   it("creates detached caller agents without a parent label", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    spies.agentManager.getAgent.mockReturnValue({
-      id: "parent-agent",
-      cwd: existingCwd,
-      workspaceId: "wks_parent",
-      provider: "codex",
-      currentModeId: "full-access",
-    } as ManagedAgent);
+    spies.agentManager.getAgent.mockReturnValue(
+      createManagedAgent({
+        id: "parent-agent",
+        cwd: existingCwd,
+        workspaceId: "wks_parent",
+        provider: "codex",
+        currentModeId: "full-access",
+      }),
+    );
     spies.agentManager.createAgent.mockResolvedValue({
       id: "detached-agent",
       cwd: existingCwd,
@@ -3251,13 +3267,15 @@ describe("create_agent MCP tool", () => {
 
   it("accepts provider features from caller agents and passes them through createAgent", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    spies.agentManager.getAgent.mockReturnValue({
-      id: "parent-agent",
-      cwd: existingCwd,
-      workspaceId: "wks_parent",
-      provider: "claude",
-      currentModeId: "bypassPermissions",
-    } as ManagedAgent);
+    spies.agentManager.getAgent.mockReturnValue(
+      createManagedAgent({
+        id: "parent-agent",
+        cwd: existingCwd,
+        workspaceId: "wks_parent",
+        provider: "claude",
+        currentModeId: "bypassPermissions",
+      }),
+    );
     spies.agentManager.createAgent.mockResolvedValue({
       id: "child-agent",
       cwd: existingCwd,
@@ -3507,13 +3525,13 @@ describe("create_agent MCP tool", () => {
 
   it("passes the real parent agent and explicit unattended intent to the resolver", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    const parentAgent = {
+    const parentAgent = createManagedAgent({
       id: "parent-agent",
       cwd: existingCwd,
       workspaceId: "wks_parent",
       provider: "claude",
       currentModeId: "bypassPermissions",
-    } as ManagedAgent;
+    });
     spies.agentManager.getAgent.mockReturnValue(parentAgent);
     spies.agentManager.createAgent.mockResolvedValue({
       id: "child-agent",
@@ -3559,13 +3577,15 @@ describe("create_agent MCP tool", () => {
 
   it("accepts an explicit valid mode across providers", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    spies.agentManager.getAgent.mockReturnValue({
-      id: "parent-agent",
-      cwd: existingCwd,
-      workspaceId: "wks_parent",
-      provider: "claude",
-      currentModeId: "bypassPermissions",
-    } as ManagedAgent);
+    spies.agentManager.getAgent.mockReturnValue(
+      createManagedAgent({
+        id: "parent-agent",
+        cwd: existingCwd,
+        workspaceId: "wks_parent",
+        provider: "claude",
+        currentModeId: "bypassPermissions",
+      }),
+    );
     spies.agentManager.createAgent.mockResolvedValue({
       id: "child-agent",
       cwd: existingCwd,
@@ -3605,13 +3625,13 @@ describe("send_agent_prompt MCP tool", () => {
 
   it("defaults agent-scoped prompts to background finish notifications", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    const parentAgent = {
+    const parentAgent = createManagedAgent({
       id: "parent-agent",
       cwd: existingCwd,
       workspaceId: "wks_parent",
       provider: "codex",
       currentModeId: "full-access",
-    } as ManagedAgent;
+    });
     const childAgent = {
       id: "child-agent",
       cwd: existingCwd,
@@ -3663,14 +3683,16 @@ describe("send_agent_prompt MCP tool", () => {
 
   it("keeps top-level prompts blocking by default", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    spies.agentManager.getAgent.mockReturnValue({
-      id: "child-agent",
-      cwd: existingCwd,
-      lifecycle: "idle",
-      currentModeId: null,
-      availableModes: [],
-      config: { title: "Child" },
-    } as ManagedAgent);
+    spies.agentManager.getAgent.mockReturnValue(
+      createManagedAgent({
+        id: "child-agent",
+        cwd: existingCwd,
+        lifecycle: "idle",
+        currentModeId: null,
+        availableModes: [],
+        config: { title: "Child" },
+      }),
+    );
 
     const server = await createAgentMcpServer({
       agentManager,
@@ -3704,13 +3726,13 @@ describe("send_agent_prompt MCP tool", () => {
 
   it("does not arm a finish notification for blocking agent-scoped prompts", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    const parentAgent = {
+    const parentAgent = createManagedAgent({
       id: "parent-agent",
       cwd: existingCwd,
       workspaceId: "wks_parent",
       provider: "codex",
       currentModeId: "full-access",
-    } as ManagedAgent;
+    });
     const childAgent = {
       id: "child-agent",
       cwd: existingCwd,
@@ -4130,19 +4152,21 @@ describe("create_schedule MCP tool", () => {
 
   it("inherits the caller provider, model, and features when provider is omitted", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    spies.agentManager.getAgent.mockReturnValue({
-      id: "parent-agent",
-      provider: "opencode",
-      cwd: REPO_CWD,
-      lifecycle: "idle",
-      currentModeId: "build",
-      availableModes: [],
-      config: {
-        title: "Parent agent",
-        model: "openai/gpt-5.5",
-        featureValues: { auto_accept: true },
-      },
-    } as ManagedAgent);
+    spies.agentManager.getAgent.mockReturnValue(
+      createManagedAgent({
+        id: "parent-agent",
+        provider: "opencode",
+        cwd: REPO_CWD,
+        lifecycle: "idle",
+        currentModeId: "build",
+        availableModes: [],
+        config: {
+          title: "Parent agent",
+          model: "openai/gpt-5.5",
+          featureValues: { auto_accept: true },
+        },
+      }),
+    );
     const createOrReplace = vi.fn(async (input: CreateScheduleInput) =>
       createStoredSchedule(input),
     );
@@ -4279,15 +4303,17 @@ describe("create_heartbeat MCP tool", () => {
 
   it("creates a self-targeted cron heartbeat", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
-    spies.agentManager.getAgent.mockReturnValue({
-      id: "parent-agent",
-      provider: "codex",
-      cwd: REPO_CWD,
-      lifecycle: "idle",
-      currentModeId: "build",
-      availableModes: [],
-      config: { title: "Parent agent" },
-    } as ManagedAgent);
+    spies.agentManager.getAgent.mockReturnValue(
+      createManagedAgent({
+        id: "parent-agent",
+        provider: "codex",
+        cwd: REPO_CWD,
+        lifecycle: "idle",
+        currentModeId: "build",
+        availableModes: [],
+        config: { title: "Parent agent" },
+      }),
+    );
     const createOrReplace = vi.fn(async (input: CreateScheduleInput) =>
       createStoredSchedule(input),
     );

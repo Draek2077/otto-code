@@ -450,7 +450,11 @@ function validateRunWorkspaceOptions(options: AgentRunOptions): void {
   }
 }
 
-function validateRunOptions(prompt: string, options: AgentRunOptions, outputSchema: unknown): void {
+export function validateRunOptions(
+  prompt: string,
+  options: AgentRunOptions,
+  outputSchema: unknown,
+): void {
   // Before anything opens a socket: a contradictory command line should say so, not report that
   // the daemon is unreachable. Full provider/model resolution still happens after connecting,
   // because it needs the host.

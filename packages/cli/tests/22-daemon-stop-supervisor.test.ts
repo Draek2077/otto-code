@@ -10,7 +10,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { $ } from "zx";
+import { $ } from "./helpers/zx-shell.ts";
 import { getAvailablePort } from "./helpers/network.ts";
 
 $.verbose = false;

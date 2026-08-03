@@ -14,13 +14,8 @@ export type AgentMcpServerOptions = OttoToolHostDependencies;
 
 type McpToolContext = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
-/**
- * Hard cap on the model-visible text of an Otto tool result. Previously
- * uncapped, so a large structuredContent dump entered the transcript verbatim
- * and was replayed on every round. Matches the MCP builtin cap (~30K) with a
- * head-heavy head/tail window and a clear truncation marker.
- */
-
+// The model-visible text is capped and compacted inside
+// addModelVisibleStructuredContent; see otto-tool-serialization.ts.
 function toMcpToolResult(result: OttoToolResult): CallToolResult {
   const modelVisibleResult = addModelVisibleStructuredContent(result);
   return {

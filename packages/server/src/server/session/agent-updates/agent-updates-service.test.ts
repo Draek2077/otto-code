@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type pino from "pino";
 import { createAgentUpdatesService, matchesAgentUpdatesFilter } from "./agent-updates-service.js";
 import type {
@@ -90,6 +90,7 @@ function buildHarness() {
   const projectByWorkspaceId = new Map<string, ProjectPlacementPayload | null>();
   let providerVisible: (provider: string) => boolean = () => true;
   let buildAgentPayloadError: Error | null = null;
+  let workspaceUpdateError: Error | null = null;
 
   const service = createAgentUpdatesService({
     emit: (message) => emitted.push(message),
@@ -114,6 +115,9 @@ function buildHarness() {
     buildProjectPlacementForWorkspaceId: async (workspaceId) =>
       projectByWorkspaceId.get(workspaceId) ?? null,
     emitWorkspaceUpdateForWorkspaceId: async (workspaceId) => {
+      if (workspaceUpdateError) {
+        throw workspaceUpdateError;
+      }
       workspaceUpdates.push(workspaceId);
     },
     logger: { error: (...args: unknown[]) => loggedErrors.push(args) } as unknown as pino.Logger,
@@ -141,6 +145,9 @@ function buildHarness() {
     },
     failBuildAgentPayload(error: Error) {
       buildAgentPayloadError = error;
+    },
+    failWorkspaceUpdate(error: Error) {
+      workspaceUpdateError = error;
     },
     agentUpdates(): AgentUpdatePayload[] {
       return emitted
@@ -249,6 +256,9 @@ describe("forwardLiveAgent", () => {
     expect(h.agentUpdates()).toEqual([
       { kind: "upsert", agent: expect.objectContaining({ id: "a" }), project: makeProject() },
     ]);
+    // The workspace tail is coalesced, so it lands on the window, not inline.
+    expect(h.workspaceUpdates).toEqual([]);
+    await h.service.flushPendingWorkspaceUpdates();
     expect(h.workspaceUpdates).toEqual(["ws-1"]);
   });
 
@@ -279,6 +289,7 @@ describe("forwardLiveAgent", () => {
     h.register(makeAgentPayload({ id: "a", workspaceId: "ws-1" }));
 
     await h.service.forwardLiveAgent(h.managed("a"));
+    await h.service.flushPendingWorkspaceUpdates();
 
     expect(h.agentUpdates()).toEqual([]);
     expect(h.workspaceUpdates).toEqual(["ws-1"]);
@@ -292,6 +303,7 @@ describe("forwardLiveAgent", () => {
     h.register(makeAgentPayload({ id: "a", workspaceId: "ws-1", provider: "pi" }));
 
     await h.service.forwardLiveAgent(h.managed("a"));
+    await h.service.flushPendingWorkspaceUpdates();
 
     expect(h.agentUpdates()).toEqual([]);
     // The workspace-update tail still fires regardless of visibility.
@@ -442,6 +454,97 @@ describe("bootstrap buffering", () => {
     h.service.flushBootstrapped("sub");
 
     expect(h.agentUpdates()).toEqual([]);
+  });
+});
+
+// The workspace-update tail is the expensive half of a forwarded agent change:
+// it rebuilds the workspace descriptor map once per connected session. A running
+// agent fires several lifecycle events a second, so these cover that a burst
+// collapses to one rebuild per workspace and that nothing is stranded.
+describe("workspace-update coalescing", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("a burst of forwards for one workspace produces a single workspace update", async () => {
+    vi.useFakeTimers();
+    const h = buildHarness();
+    h.service.beginSubscription({ subscriptionId: "sub", filter: {} });
+    h.service.flushBootstrapped("sub");
+    h.register(makeAgentPayload({ id: "a", workspaceId: "ws-1" }));
+    h.register(makeAgentPayload({ id: "b", workspaceId: "ws-1" }));
+
+    for (let i = 0; i < 5; i += 1) {
+      await h.service.forwardLiveAgent(h.managed("a"));
+      await h.service.forwardLiveAgent(h.managed("b"));
+    }
+    expect(h.workspaceUpdates).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(h.workspaceUpdates).toEqual(["ws-1"]);
+    // Every agent_update still went out: only the workspace rebuild coalesces.
+    expect(h.agentUpdates()).toHaveLength(10);
+  });
+
+  test("each workspace coalesces independently", async () => {
+    vi.useFakeTimers();
+    const h = buildHarness();
+    h.service.beginSubscription({ subscriptionId: "sub", filter: {} });
+    h.service.flushBootstrapped("sub");
+    h.register(makeAgentPayload({ id: "a", workspaceId: "ws-1" }));
+    h.register(makeAgentPayload({ id: "b", workspaceId: "ws-2" }));
+
+    await h.service.forwardLiveAgent(h.managed("a"));
+    await h.service.forwardLiveAgent(h.managed("b"));
+    await h.service.forwardLiveAgent(h.managed("a"));
+
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect([...h.workspaceUpdates].sort()).toEqual(["ws-1", "ws-2"]);
+  });
+
+  test("a later burst opens a new window instead of being swallowed", async () => {
+    vi.useFakeTimers();
+    const h = buildHarness();
+    h.service.beginSubscription({ subscriptionId: "sub", filter: {} });
+    h.service.flushBootstrapped("sub");
+    h.register(makeAgentPayload({ id: "a", workspaceId: "ws-1" }));
+
+    await h.service.forwardLiveAgent(h.managed("a"));
+    await vi.advanceTimersByTimeAsync(200);
+    await h.service.forwardLiveAgent(h.managed("a"));
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(h.workspaceUpdates).toEqual(["ws-1", "ws-1"]);
+  });
+
+  test("dispose flushes a pending workspace update rather than dropping it", async () => {
+    const h = buildHarness();
+    h.register(makeAgentPayload({ id: "a", workspaceId: "ws-1" }));
+
+    await h.service.forwardLiveAgent(h.managed("a"));
+    expect(h.workspaceUpdates).toEqual([]);
+
+    h.service.dispose();
+    await h.service.flushPendingWorkspaceUpdates();
+
+    expect(h.workspaceUpdates).toEqual(["ws-1"]);
+  });
+
+  test("a failing workspace update is logged, not thrown, and clears the window", async () => {
+    const h = buildHarness();
+    h.failWorkspaceUpdate(new Error("descriptor rebuild failed"));
+    h.register(makeAgentPayload({ id: "a", workspaceId: "ws-1" }));
+
+    await h.service.forwardLiveAgent(h.managed("a"));
+    await expect(h.service.flushPendingWorkspaceUpdates()).resolves.toBeUndefined();
+
+    expect(h.loggedErrors).toHaveLength(1);
+    // The window is clear, so the next event schedules a fresh attempt.
+    await h.service.forwardLiveAgent(h.managed("a"));
+    await h.service.flushPendingWorkspaceUpdates();
+    expect(h.loggedErrors).toHaveLength(2);
   });
 });
 

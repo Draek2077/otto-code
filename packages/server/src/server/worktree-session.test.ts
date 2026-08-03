@@ -5,13 +5,14 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import pino, { type Logger } from "pino";
+
+import { removeTempDir } from "../test-utils/remove-temp-dir.js";
 
 import type { SessionOutboundMessage, WorkspaceDescriptorPayload } from "./messages.js";
 import {
@@ -451,7 +452,7 @@ describe("resolveGitCreateBaseBranch", () => {
       expect(workspaceGitService.resolveDefaultBranch).toHaveBeenCalledWith(cwd);
       expect(workspaceGitService.getSnapshot).not.toHaveBeenCalled();
     } finally {
-      rmSync(tempDir, { recursive: true, force: true });
+      removeTempDir(tempDir);
     }
   });
 });
@@ -527,7 +528,7 @@ describe("create-agent worktree setup boundary", () => {
       });
       expect(liveItems).toEqual([]);
     } finally {
-      rmSync(tempDir, { recursive: true, force: true });
+      removeTempDir(tempDir);
     }
   });
 });
@@ -608,7 +609,7 @@ describe("runWorktreeSetupInBackground", () => {
 
   afterEach(() => {
     for (const target of cleanupPaths.splice(0)) {
-      rmSync(target, { recursive: true, force: true });
+      removeTempDir(target);
     }
   });
 
@@ -1287,7 +1288,7 @@ describe("handleCreateOttoWorktreeRequest", () => {
 
   afterEach(() => {
     for (const target of cleanupPaths.splice(0)) {
-      rmSync(target, { recursive: true, force: true });
+      removeTempDir(target);
     }
   });
 
@@ -1648,7 +1649,7 @@ describe("handleCreateOttoWorktreeRequest", () => {
       );
       expect(response?.payload.error).toBeNull();
     } finally {
-      rmSync(tempDir, { recursive: true, force: true });
+      removeTempDir(tempDir);
     }
   });
 
@@ -1733,7 +1734,7 @@ describe("handleCreateOttoWorktreeRequest", () => {
         realpathSync.native(repoDir),
       );
     } finally {
-      rmSync(tempDir, { recursive: true, force: true });
+      removeTempDir(tempDir);
     }
   });
 
@@ -1771,7 +1772,7 @@ describe("handleCreateOttoWorktreeRequest", () => {
       expect(response?.payload.error).toBe('action "checkout" requires refName or checkoutSource');
       expect(response?.payload.errorCode).toBe("missing_checkout_target");
     } finally {
-      rmSync(tempDir, { recursive: true, force: true });
+      removeTempDir(tempDir);
     }
   });
 
@@ -1810,7 +1811,7 @@ describe("handleCreateOttoWorktreeRequest", () => {
       expect(response?.payload.error).toBe("Unknown branch: missing-branch");
       expect(response?.payload.errorCode).toBe("unknown_branch");
     } finally {
-      rmSync(tempDir, { recursive: true, force: true });
+      removeTempDir(tempDir);
     }
   });
 });
@@ -1820,7 +1821,7 @@ describe("handleOttoWorktreeArchiveRequest worktree scope", () => {
 
   afterEach(() => {
     for (const target of cleanupPaths.splice(0)) {
-      rmSync(target, { recursive: true, force: true });
+      removeTempDir(target);
     }
   });
 

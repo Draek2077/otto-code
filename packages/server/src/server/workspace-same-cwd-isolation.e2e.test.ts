@@ -446,7 +446,11 @@ test("local workspace auto-title does not broadcast provider snapshot warm-up to
 
 test("create_agent_request with workspaceId does not retitle an existing workspace", async () => {
   const cwd = mkdtempSync(path.join(tmpdir(), "otto-agent-submit-title-"));
+  // isDev, because "mock" only exists in DEV_AGENT_PROVIDER_DEFINITIONS and
+  // buildRegistry drops an injected agentClient that has no definition to
+  // attach to — so without this the spawn below fails provider resolution.
   const daemon = await createTestOttoDaemon({
+    isDev: true,
     agentClients: { mock: new MockLoadTestAgentClient() },
   });
   const client = new DaemonClient({
@@ -495,7 +499,10 @@ test("create_agent_request with workspaceId does not retitle an existing workspa
 // tests below, which is the state that legitimately still exists on disk.)
 test("refuses a second same-cwd local workspace without disturbing the occupant", async () => {
   const cwd = mkdtempSync(path.join(tmpdir(), "otto-running-same-cwd-create-"));
+  // isDev for the same reason as the retitle test above: "mock" is a dev-only
+  // provider definition, and an injected client alone does not register it.
   const daemon = await createTestOttoDaemon({
+    isDev: true,
     agentClients: { mock: new MockLoadTestAgentClient() },
   });
   const client = new DaemonClient({
