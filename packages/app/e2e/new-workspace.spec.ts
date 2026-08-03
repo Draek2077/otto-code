@@ -40,9 +40,6 @@ import {
   type LocalGhPrFixture,
 } from "./helpers/github-fixtures";
 import { getServerId } from "./helpers/server-id";
-import { getE2EDaemonPort } from "./helpers/daemon-port";
-import { chooseAddProjectMethod, expectAddProjectPage } from "./helpers/add-project-flow";
-import { seedSavedSettingsHosts } from "./helpers/settings";
 import {
   expectSidebarWorkspaceSelected,
   expectWorkspaceHeader,
@@ -230,53 +227,11 @@ test.describe("New workspace flow", () => {
     localGithubFixtures.clear();
   });
 
-  test("adds a project from the selected empty host", async ({ page }) => {
-    const repo = await createTempGitRepo("new-workspace-project-picker-");
-    const primaryServerId = getServerId();
-    const emptyServerId = "empty-new-workspace-host";
-
-    try {
-      const openedProject = await openProjectViaDaemon(client, repo.path);
-      localWorkspaceIds.add(openedProject.workspaceId);
-      await seedSavedSettingsHosts(page, [
-        {
-          serverId: primaryServerId,
-          label: "Primary host",
-          endpoint: `127.0.0.1:${getE2EDaemonPort()}`,
-        },
-        {
-          serverId: emptyServerId,
-          label: "Empty host",
-          endpoint: "127.0.0.1:9",
-        },
-      ]);
-
-      await gotoAppShell(page);
-      await waitForSidebarHydration(page);
-      await openGlobalNewWorkspaceComposer(page);
-
-      const projectTrigger = page.getByTestId("new-workspace-project-picker-trigger");
-      await projectTrigger.click();
-      await page.getByPlaceholder("Search projects").fill("no matching project");
-      await expect(page.getByTestId("new-workspace-project-picker-add-project")).toBeVisible();
-      await page.keyboard.press("Escape");
-
-      await page.getByTestId("host-picker-trigger").click();
-      await page.getByTestId(`new-workspace-host-picker-option-${emptyServerId}`).click();
-      await expect(projectTrigger).toContainText("Choose project");
-      await projectTrigger.click();
-
-      const addProject = page.getByTestId("new-workspace-project-picker-add-project");
-      await expect(addProject).toContainText("Add project");
-      await expect(addProject).toContainText(/(?:⌘|Ctrl\+)O/);
-      await addProject.click();
-
-      await expectAddProjectPage(page, "method");
-      await chooseAddProjectMethod(page, "directory-search");
-    } finally {
-      await repo.cleanup();
-    }
-  });
+  // Removed with the Paseo add-project overlay: this drove an "Add project" row
+  // inside the new-workspace project picker that Otto's rebuild does not render,
+  // then handed off to the retired overlay. Adding a project from an empty host
+  // now starts at the New project page, covered by `project-picker-desktop.spec.ts`
+  // and `open-project-home-regression.spec.ts`.
 
   test("sidebar workspace navigation updates URL and header", async ({ page }) => {
     const serverId = getServerId();

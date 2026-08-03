@@ -154,15 +154,11 @@ test.describe("provider settings overlay stack", () => {
       await expect(commandCenter).not.toBeVisible({ timeout: 10_000 });
       await expect(selector).toBeVisible();
 
-      await page.keyboard.press("ControlOrMeta+K");
-      await expect(commandCenter).toBeVisible({ timeout: 10_000 });
-      await commandCenter.getByText("Add project", { exact: true }).click();
-      const addProject = page.getByTestId("add-project-flow");
-      await expect(addProject).toBeVisible({ timeout: 10_000 });
-      await expect(addProject.getByTestId("add-project-flow-input")).toBeFocused();
-      await page.keyboard.press("Escape");
-      await expect(addProject).not.toBeVisible({ timeout: 10_000 });
-      await expect(selector).toBeVisible();
+      // The command center's Add project used to open the Paseo overlay, which
+      // made it another layer in this stack. Otto routes it to the New project
+      // page instead, so it navigates away from the selector entirely and can no
+      // longer take part here. `open-project-home-regression.spec.ts` covers
+      // where it lands.
 
       const settingsButton = page.getByTestId("selector-header-settings-mock");
       await settingsButton.click();

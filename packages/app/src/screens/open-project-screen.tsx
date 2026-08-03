@@ -8,7 +8,7 @@ import { FolderOpen, Inbox, Plug, Smartphone } from "@/components/icons/material
 import { OttoLogoWink } from "@/components/icons/otto-logo";
 import { CommunityLinks } from "@/components/community-links";
 import { MenuHeader } from "@/components/headers/menu-header";
-import { useOpenAddProject } from "@/hooks/use-open-add-project";
+import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
 import { useHostChooser } from "@/hosts/host-chooser";
 import { usePanelStore } from "@/stores/panel-store";
 import {
@@ -47,7 +47,7 @@ export function OpenProjectScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const openDesktopAgentList = usePanelStore((s) => s.openDesktopAgentList);
-  const openProjectPicker = useOpenAddProject();
+  const openProjectPicker = useOpenProjectPicker();
   const chooseHost = useHostChooser();
   const localServerId = useLocalDaemonServerId();
   const [importServerId, setImportServerId] = useState<string | null>(null);
@@ -67,10 +67,6 @@ export function OpenProjectScreen() {
       openDesktopAgentList();
     }
   }, [isCompactLayout, openDesktopAgentList]);
-
-  const handleOpenPicker = useCallback(() => {
-    void openProjectPicker();
-  }, [openProjectPicker]);
 
   const handleOpenPairDevice = useCallback(() => setIsPairDeviceOpen(true), []);
   const handleClosePairDevice = useCallback(() => setIsPairDeviceOpen(false), []);
@@ -143,7 +139,7 @@ export function OpenProjectScreen() {
                 icon={FolderOpen}
                 title={t("openProject.tiles.addProject.title")}
                 description={t("openProject.tiles.addProject.description")}
-                onPress={handleOpenPicker}
+                onPress={openProjectPicker}
                 testID="open-project-submit"
                 anchorRef={addProjectAnchorRef}
                 accent

@@ -69,8 +69,9 @@ someone to run it by hand.
 | Workspace setup runtime + streaming                                                             | ✅     | `workspace-setup-runtime.spec.ts`, `workspace-setup-streaming.spec.ts` | T1   | —   |
 | Gated multi-root: preview any file, edit gates (unlinked / linked-lifts-live / outside-project) | ✅     | `multi-root-edit-gate.spec.ts`                                         | T1   | —   |
 | Per-worktree diff base configuration                                                            | ❌     | pending diff-base project ship                                         | T1   | P2  |
-| Add-project flow (form, validation, appears in sidebar)                                         | 🟡     | `add-project-flow.spec.ts`                                             | T1   | —   |
-| Add project from GitHub (clone + register)                                                      | 🟡     | `add-project-github.real.spec.ts`                                      | T3   | —   |
+| Add-project flow (form, validation, appears in sidebar)                                         | 🟡     | `project-picker-desktop.spec.ts`, `empty-project-persists.spec.ts`     | T1   | —   |
+| Every "New project" entry point reaches the New project page                                    | 🟡     | `open-project-home-regression.spec.ts`                                 | T1   | —   |
+| Add project from GitHub (clone + register)                                                      | ❌     | retarget at the New project page's clone path                          | T3   | P2  |
 | Directory bootstrap on first project add                                                        | 🟡     | `directory-bootstrap.spec.ts`                                          | T1   | —   |
 | New-workspace composer draft survives the create flow                                           | 🟡     | `new-workspace-composer-draft.spec.ts`                                 | T1   | —   |
 | New-workspace mode cycling stays safe across providers                                          | 🟡     | `new-workspace-mode-cycle-safety.spec.ts`                              | T1   | —   |
