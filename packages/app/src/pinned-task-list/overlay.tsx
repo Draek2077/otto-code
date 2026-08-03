@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactElement } from "react";
+import { useEffect, type ReactElement } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import Animated, { FadeInDown, FadeOutDown } from "react-native-reanimated";
@@ -10,10 +10,10 @@ import {
   COMPOSER_TRACK_FLY_IN_DURATION_MS,
   COMPOSER_TRACK_FLY_OUT_DURATION_MS,
 } from "@/constants/animation";
-import { CHAT_PANE_OVERLAY_Z } from "@/constants/layout";
-import { useVisualizerPipInset } from "@/visualizer/use-visualizer-pip-inset";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { TodoTaskList, useTodoCounts } from "@/components/todo-task-list";
 import type { Theme } from "@/styles/theme";
+import { CompactPinnedTaskListCard } from "./compact-card";
 import type { TodoListStreamItem } from "./select";
 
 const ThemedCheckSquare = withUnistyles(CheckSquare);
@@ -54,16 +54,10 @@ export function PinnedTaskListOverlay({
 }: PinnedTaskListOverlayProps): ReactElement {
   const { t } = useTranslation();
   const animate = useAnimationsEnabled();
-  const pipInset = useVisualizerPipInset();
+  // On a phone the full card is too tall to float over a transcript, so the
+  // checklist collapses to a single summary row the user opens on demand.
+  const isCompact = useIsCompactFormFactor();
   const { completedCount, total } = useTodoCounts(item.items);
-
-  const overlayWrapStyle = useMemo(
-    () =>
-      pipInset.left > 0 || pipInset.right > 0
-        ? [styles.overlayWrap, { paddingLeft: pipInset.left, paddingRight: pipInset.right }]
-        : styles.overlayWrap,
-    [pipInset],
-  );
 
   const allComplete = total > 0 && completedCount === total;
   useEffect(() => {
@@ -75,74 +69,100 @@ export function PinnedTaskListOverlay({
   }, [autoDismiss, allComplete, onDismiss]);
 
   return (
-    <View style={overlayWrapStyle} pointerEvents="box-none">
-      <Animated.View
-        entering={animate ? flyIn : undefined}
-        exiting={animate ? flyOut : undefined}
-        style={styles.card}
-        testID="pinned-task-list-overlay"
-      >
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <ThemedCheckSquare size={14} uniProps={foregroundColorMapping} />
-            <Text style={styles.headerLabel} numberOfLines={1}>
-              {t("message.todo.title")}
-            </Text>
-            {total > 0 ? (
-              <Text style={styles.headerCount}>
-                {t("message.todo.progress", { completed: completedCount, total })}
-              </Text>
-            ) : null}
-          </View>
-          <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-            <TooltipTrigger asChild>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={t("message.todo.dismiss")}
-                testID="pinned-task-list-overlay-dismiss"
-                onPress={onDismiss}
-                style={styles.headerDismiss}
-                hitSlop={8}
-              >
-                {({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => (
-                  <ThemedX
-                    size={16}
-                    uniProps={
-                      hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping
-                    }
-                  />
-                )}
-              </Pressable>
-            </TooltipTrigger>
-            <TooltipContent side="top" align="center" offset={8}>
-              <Text style={styles.tooltipText}>{t("message.todo.dismiss")}</Text>
-            </TooltipContent>
-          </Tooltip>
+    <Animated.View
+      entering={animate ? flyIn : undefined}
+      exiting={animate ? flyOut : undefined}
+      style={styles.card}
+      testID="pinned-task-list-overlay"
+    >
+      {isCompact ? (
+        <CompactPinnedTaskListCard item={item} animationsEnabled={animate} onDismiss={onDismiss} />
+      ) : (
+        <FullPinnedTaskListBody
+          item={item}
+          animationsEnabled={animate}
+          onDismiss={onDismiss}
+          total={total}
+          title={t("message.todo.title")}
+          dismissLabel={t("message.todo.dismiss")}
+          progressLabel={t("message.todo.progress", { completed: completedCount, total })}
+        />
+      )}
+    </Animated.View>
+  );
+}
+
+interface FullPinnedTaskListBodyProps {
+  item: TodoListStreamItem;
+  animationsEnabled: boolean;
+  onDismiss: () => void;
+  total: number;
+  title: string;
+  dismissLabel: string;
+  progressLabel: string;
+}
+
+// The roomy desktop/tablet body: a titled header with a running done/total and a
+// close button, over the always-open checklist.
+function FullPinnedTaskListBody({
+  item,
+  animationsEnabled,
+  onDismiss,
+  total,
+  title,
+  dismissLabel,
+  progressLabel,
+}: FullPinnedTaskListBodyProps): ReactElement {
+  return (
+    <>
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <ThemedCheckSquare size={14} uniProps={foregroundColorMapping} />
+          <Text style={styles.headerLabel} numberOfLines={1}>
+            {title}
+          </Text>
+          {total > 0 ? <Text style={styles.headerCount}>{progressLabel}</Text> : null}
         </View>
-        <ScrollView
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          nestedScrollEnabled
-        >
-          <TodoTaskList items={item.items} animationsEnabled={animate} emptyLabel="" />
-        </ScrollView>
-      </Animated.View>
-    </View>
+        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger asChild>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={dismissLabel}
+              testID="pinned-task-list-overlay-dismiss"
+              onPress={onDismiss}
+              style={styles.headerDismiss}
+              hitSlop={8}
+            >
+              {({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => (
+                <ThemedX
+                  size={16}
+                  uniProps={
+                    hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping
+                  }
+                />
+              )}
+            </Pressable>
+          </TooltipTrigger>
+          <TooltipContent side="top" align="center" offset={8}>
+            <Text style={styles.tooltipText}>{dismissLabel}</Text>
+          </TooltipContent>
+        </Tooltip>
+      </View>
+      <ScrollView
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+      >
+        <TodoTaskList items={item.items} animationsEnabled={animationsEnabled} emptyLabel="" />
+      </ScrollView>
+    </>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
-  overlayWrap: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    alignItems: "center",
-    paddingHorizontal: theme.spacing[4],
-    paddingTop: theme.spacing[3],
-    zIndex: CHAT_PANE_OVERLAY_Z.pinnedTaskList,
-  },
+  // Positioning, the PIP inset and the stacking slot all belong to the shared
+  // column this card is rendered into (panels/chat-top-overlay-stack.tsx).
   card: {
     width: "100%",
     maxWidth: 460,

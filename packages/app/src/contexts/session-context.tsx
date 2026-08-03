@@ -438,6 +438,10 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const setWorkspaces = useSessionStore((state) => state.setWorkspaces);
   const flushAgentLastActivity = useSessionStore((state) => state.flushAgentLastActivity);
   const setPendingPermissions = useSessionStore((state) => state.setPendingPermissions);
+  const setSuggestedTasksForParent = useSessionStore((state) => state.setSuggestedTasksForParent);
+  const setBackgroundShellTasksForParent = useSessionStore(
+    (state) => state.setBackgroundShellTasksForParent,
+  );
   const updateSessionServerInfo = useSessionStore((state) => state.updateSessionServerInfo);
   const setViewedTimelineSync = useSessionStore((state) => state.setViewedTimelineSync);
   const upsertWorkspaceSetupProgress = useWorkspaceSetupStore((state) => state.upsertProgress);
@@ -1133,6 +1137,33 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       voiceRuntime?.onServerSpeechStateChanged(serverId, message.payload.isSpeaking);
     });
 
+    // Both of these are full-list reconciliations, not deltas: the daemon owns
+    // the pending set per parent agent and re-sends the whole list on every
+    // change, so the store replaces rather than merges. Without these
+    // subscriptions the store's maps stay at the empty Map `initializeSession`
+    // creates and the surfaces that read them can never render anything — which
+    // is exactly how the suggested-task card went silently dead through the
+    // Paseo v0.2.5 merge (5e3cc1def) while the store, selectors, overlay and
+    // panel wiring all survived and kept compiling.
+    const unsubSuggestedTasksChanged = client.on("suggested_tasks_changed", (message) => {
+      if (message.type !== "suggested_tasks_changed") {
+        return;
+      }
+      const { parentAgentId, tasks } = message.payload;
+      setSuggestedTasksForParent(serverId, parentAgentId, tasks);
+    });
+
+    const unsubBackgroundShellTasksChanged = client.on(
+      "background_shell_tasks_changed",
+      (message) => {
+        if (message.type !== "background_shell_tasks_changed") {
+          return;
+        }
+        const { parentAgentId, tasks } = message.payload;
+        setBackgroundShellTasksForParent(serverId, parentAgentId, tasks);
+      },
+    );
+
     const unsubTerminalAttention = client.on("terminal_attention_required", (message) => {
       if (message.type !== "terminal_attention_required") {
         return;
@@ -1171,6 +1202,8 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubChunk();
       unsubTranscription();
       unsubVoiceInputState();
+      unsubSuggestedTasksChanged();
+      unsubBackgroundShellTasksChanged();
       unsubTerminalAttention();
       agentStreamReducerQueue.dispose({ flush: true });
     };
@@ -1190,6 +1223,8 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     setAgents,
     setWorkspaces,
     setPendingPermissions,
+    setSuggestedTasksForParent,
+    setBackgroundShellTasksForParent,
     notifyAgentAttention,
     recoverTimelineGap,
     applyWorkspaceSetupProgress,

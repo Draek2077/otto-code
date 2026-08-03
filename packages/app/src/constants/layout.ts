@@ -39,15 +39,19 @@ export const COMPACT_FORM_FACTOR_WIDTH = 500;
 // portal root, which has its own scale in lib/overlay-root.ts). Anything that
 // floats over the conversation claims a slot here rather than picking a bare
 // number, so the ordering is stated in one place instead of inferred from
-// sibling paint order. The suggested-task card sits above a Visualizer PIP:
-// the PIP is ambient, the card is an offer the user has to answer.
+// sibling paint order. The chat-top stack sits above a Visualizer PIP: the PIP
+// is ambient, and the stack carries offers the user has to answer.
 export const CHAT_PANE_OVERLAY_Z = {
   visualizerPip: 20,
-  // The pinned task checklist sits below the suggested-task card: the checklist
-  // is ambient progress the user watches, a suggestion is an offer they must
-  // answer, so on the rare occasion both show, the offer wins the top slot.
-  pinnedTaskList: 25,
-  suggestedTasks: 30,
+  // One slot, not one per card. The suggested-task card and the pinned task
+  // checklist both want the top of the chat, and when each owned its own
+  // absolute wrap at `top: 0` the winner of the z-fight covered the loser
+  // outright — the higher number did not order them, it hid one. They now share
+  // a single absolutely-positioned column (panels/chat-top-overlay-stack.tsx)
+  // that lays them out one under the other, so "which is on top" is a matter of
+  // order in the column: the offer the user must answer comes before the
+  // ambient progress they only watch.
+  chatTopStack: 30,
 } as const;
 
 export type ChatWidth = "default" | "wide" | "full";

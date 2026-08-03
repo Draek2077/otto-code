@@ -120,6 +120,7 @@ import {
   useSuggestedTasksForParent,
 } from "@/suggested-tasks";
 import { PinnedTaskListOverlay, usePinnedTaskList } from "@/pinned-task-list";
+import { ChatTopOverlayStack } from "@/panels/chat-top-overlay-stack";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
@@ -1359,16 +1360,22 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   const contentContainer = (
     <View style={styles.contentContainer}>
       {streamContent}
-      {pinnedTaskList.item ? (
-        <PinnedTaskListOverlay
-          item={pinnedTaskList.item}
-          autoDismiss={pinnedTaskList.autoDismiss}
-          onDismiss={pinnedTaskList.dismiss}
-        />
-      ) : null}
-      {hasSuggestedTasks ? (
-        <SuggestedTasksOverlay rows={suggestedTaskRows} actions={suggestedTaskActions} />
-      ) : null}
+      {/* One column, not two absolute wraps: a suggestion and a live checklist
+          both belong at the top of the chat, and stacked at the same origin the
+          upper one simply hid the lower. The offer the user must answer comes
+          first; the ambient checklist sits under it. */}
+      <ChatTopOverlayStack>
+        {hasSuggestedTasks ? (
+          <SuggestedTasksOverlay rows={suggestedTaskRows} actions={suggestedTaskActions} />
+        ) : null}
+        {pinnedTaskList.item ? (
+          <PinnedTaskListOverlay
+            item={pinnedTaskList.item}
+            autoDismiss={pinnedTaskList.autoDismiss}
+            onDismiss={pinnedTaskList.dismiss}
+          />
+        ) : null}
+      </ChatTopOverlayStack>
     </View>
   );
 
@@ -1848,10 +1855,10 @@ function ActiveAgentComposer({
           onClearTasks={handleClearCompletedBackgroundTasks}
         />
       ) : null}
-      {/* Top of the fan: an exiting card's absolutely-positioned web clone gets
-          appended after the composer in the DOM, so the composer needs the
-          highest explicit z-index to stay painted over it. See
-          COMPOSER_TRACK_LAYERS / the STACKING note in track-transition.tsx. */}
+      {/* Front of the fan: a card mid-entrance or mid-dismissal overflows its own
+          collapsing box across this space, so the composer needs the highest
+          explicit z-index for the card to pass behind it rather than over the
+          input. See COMPOSER_TRACK_LAYERS in composer/track-layers.ts. */}
       <View style={styles.composerLayer}>
         <Composer
           agentId={agentId}

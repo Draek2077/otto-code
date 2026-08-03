@@ -23,21 +23,107 @@ const TODO_CHECK_DURATION = 260;
 const TODO_FLASH_DURATION = 700;
 const TODO_PROGRESS_DURATION = 320;
 
+/**
+ * The three states a whole checklist can be in, as read at a glance from a
+ * collapsed row: nothing picked up yet, work underway, everything done.
+ */
+export type TodoPhase = "empty" | "partial" | "done";
+
 export interface TodoCounts {
   completedCount: number;
+  inProgressCount: number;
   total: number;
   progress: number;
+  phase: TodoPhase;
+}
+
+function resolveTodoPhase(completedCount: number, inProgressCount: number, total: number) {
+  if (total > 0 && completedCount === total) {
+    return "done" as const;
+  }
+  if (completedCount === 0 && inProgressCount === 0) {
+    return "empty" as const;
+  }
+  return "partial" as const;
 }
 
 export function useTodoCounts(items: TodoEntry[]): TodoCounts {
   return useMemo(() => {
     const total = items.length;
-    const completedCount = items.reduce(
-      (count, item) => (item.status === "completed" ? count + 1 : count),
-      0,
-    );
-    return { completedCount, total, progress: total > 0 ? completedCount / total : 0 };
+    let completedCount = 0;
+    let inProgressCount = 0;
+    for (const item of items) {
+      if (item.status === "completed") {
+        completedCount += 1;
+      } else if (item.status === "in_progress") {
+        inProgressCount += 1;
+      }
+    }
+    return {
+      completedCount,
+      inProgressCount,
+      total,
+      progress: total > 0 ? completedCount / total : 0,
+      phase: resolveTodoPhase(completedCount, inProgressCount, total),
+    };
   }, [items]);
+}
+
+interface TodoSummaryMarkerProps {
+  phase: TodoPhase;
+  animationsEnabled: boolean;
+}
+
+/**
+ * One glyph standing in for an entire checklist — what the collapsed compact
+ * card shows instead of the rows. A hollow ring while nothing has started, a
+ * pulsing accent dot while the agent is partway through, a filled success check
+ * once every task is done. Larger than the per-row {@link TodoStatusMarker}
+ * because on a phone it is the only status the user gets until they expand.
+ */
+export function TodoSummaryMarker({ phase, animationsEnabled }: TodoSummaryMarkerProps) {
+  const pulse = useSharedValue(phase === "partial" ? 1 : 0);
+
+  useEffect(() => {
+    if (phase === "partial" && animationsEnabled) {
+      pulse.value = withRepeat(
+        withTiming(0, { duration: TODO_PULSE_DURATION, easing: Easing.inOut(Easing.quad) }),
+        -1,
+        true,
+      );
+    } else {
+      cancelAnimation(pulse);
+      pulse.value = phase === "partial" ? 1 : 0;
+    }
+  }, [phase, animationsEnabled, pulse]);
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    opacity: 0.4 + pulse.value * 0.6,
+    transform: [{ scale: 0.7 + pulse.value * 0.3 }],
+  }));
+
+  const doneStyle = useMemo(() => [styles.summaryMarker, styles.summaryMarkerDone], []);
+  const partialStyle = useMemo(() => [styles.summaryMarker, styles.summaryMarkerPartial], []);
+  const emptyStyle = useMemo(() => [styles.summaryMarker, styles.summaryMarkerEmpty], []);
+  const partialDotStyle = useMemo(() => [styles.summaryMarkerPartialDot, pulseStyle], [pulseStyle]);
+
+  if (phase === "done") {
+    return (
+      <View style={doneStyle}>
+        <ThemedTodoCheckIcon size={12} uniProps={primaryForegroundColorMapping} />
+      </View>
+    );
+  }
+
+  if (phase === "partial") {
+    return (
+      <View style={partialStyle}>
+        <Animated.View style={partialDotStyle} />
+      </View>
+    );
+  }
+
+  return <View style={emptyStyle} />;
 }
 
 interface TodoStatusMarkerProps {
@@ -292,6 +378,33 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.accent,
   },
   markerPending: {
+    borderWidth: 1.5,
+    borderColor: theme.colors.border,
+  },
+  // The collapsed-card summary glyph. Sized for a touch row rather than a list
+  // line, so it stays legible as the only progress signal on a phone.
+  summaryMarker: {
+    width: 18,
+    height: 18,
+    borderRadius: theme.borderRadius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  summaryMarkerDone: {
+    backgroundColor: theme.colors.statusSuccess,
+  },
+  summaryMarkerPartial: {
+    borderWidth: 1.5,
+    borderColor: theme.colors.accent,
+  },
+  summaryMarkerPartialDot: {
+    width: 8,
+    height: 8,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.accent,
+  },
+  summaryMarkerEmpty: {
     borderWidth: 1.5,
     borderColor: theme.colors.border,
   },
