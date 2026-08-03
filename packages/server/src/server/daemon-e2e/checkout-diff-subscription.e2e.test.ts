@@ -140,6 +140,13 @@ test("pushes updates when subscribed from a subdirectory and files change outsid
   }
 }, 60000);
 
+// Regression guard for a silent merge drop. The server-side producer for
+// `diffTooLarge` was lost by the v0.2.5 merge (5e3cc1def), which took the
+// pre-#2488 checkout-git.ts wholesale. The consumer (checkout-diff-manager.ts),
+// the protocol field, and the whole app UI (diff-too-large-state.tsx plus 8
+// locales) all survived, so nothing failed to compile and the feature went
+// dead in silence. Only an assertion on the producer catches that class of
+// loss; keep this test pointed at the daemon's own output.
 test("keeps the socket usable after rejecting an oversized structured diff", async () => {
   const cwd = tmpCwd();
 
@@ -165,11 +172,21 @@ test("keeps the socket usable after rejecting an oversized structured diff", asy
       { subscriptionId: "oversized-checkout-diff" },
     );
 
-    expect(initial).toMatchObject({
+    // Assert on a small projection, never on `initial` itself. When this
+    // expectation fails the daemon has just built the very payload the guard
+    // exists to prevent, and letting the matcher pretty-print it dumped ~934k
+    // lines (26MB of "[Object],", one per highlight token) into the run log,
+    // which is 99% of the file and buries every other failure in the suite.
+    expect({
+      cwd: initial.cwd,
+      fileCount: initial.files.length,
+      diffTooLarge: initial.diffTooLarge,
+      errorCode: initial.error?.code ?? null,
+    }).toEqual({
       cwd,
-      files: [],
+      fileCount: 0,
       diffTooLarge: true,
-      error: { code: "UNKNOWN" },
+      errorCode: "UNKNOWN",
     });
 
     const status = await ctx.client.getCheckoutStatus(cwd);

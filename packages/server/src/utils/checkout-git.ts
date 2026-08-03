@@ -4,6 +4,7 @@ import { open as openFile, readFile, stat as statFile } from "fs/promises";
 import { TTLCache } from "@isaacs/ttlcache";
 import type { Logger } from "pino";
 import type { CheckoutCommit, CheckoutCommitFile } from "@otto-code/protocol/messages";
+import { maxBase64EncryptedPlaintextByteLength } from "@otto-code/relay";
 import type { ParsedDiffFile } from "../server/utils/diff-highlighter.js";
 import { parseAndHighlightDiff } from "../server/utils/diff-highlighter.js";
 import { parseGitHubRepoFromRemote } from "../server/workspace-git-metadata.js";
@@ -2163,6 +2164,47 @@ export async function getCheckoutSnapshotFacts(
 
 const PER_FILE_DIFF_MAX_BYTES = 1024 * 1024; // 1MB
 const TOTAL_DIFF_MAX_BYTES = 2 * 1024 * 1024; // 2MB
+const RELAY_MAX_FRAME_BYTES = 32 * 1024 * 1024;
+const CHECKOUT_DIFF_FRAME_HEADROOM_BYTES = 1024 * 1024;
+// Temporary until diffs load lazily per file. The Paseo relay's 32 MiB frame limit is
+// binding: string frames are encrypted and base64-encoded. Reserve 1 MiB plaintext for
+// the surrounding WebSocket JSON envelope after inverting that exact wire expansion.
+export const CHECKOUT_DIFF_MAX_STRUCTURED_BYTES =
+  maxBase64EncryptedPlaintextByteLength(RELAY_MAX_FRAME_BYTES) - CHECKOUT_DIFF_FRAME_HEADROOM_BYTES;
+
+/**
+ * The `diff` text is capped by {@link TOTAL_DIFF_MAX_BYTES}, but the structured
+ * payload is a separate, far larger object: every diff line carries highlight
+ * tokens, so a 3.6MB patch expands into ~900k token objects. Without this bound
+ * the daemon builds that in memory and ships it as one frame. Callers that
+ * overflow return `diffTooLarge` so the client renders the too-large state
+ * instead of receiving a payload no socket should carry.
+ */
+interface StructuredDiffAccumulator {
+  files: ParsedDiffFile[];
+  serializedBytes: number;
+}
+
+function createStructuredDiffAccumulator(): StructuredDiffAccumulator {
+  return { files: [], serializedBytes: Buffer.byteLength("[]", "utf8") };
+}
+
+/** Returns false when appending `file` would exceed the frame budget. */
+function appendStructuredFile(
+  structured: StructuredDiffAccumulator,
+  file: ParsedDiffFile,
+): boolean {
+  const separatorBytes = structured.files.length > 0 ? 1 : 0;
+  const fileBytes = Buffer.byteLength(JSON.stringify(file), "utf8");
+  const nextBytes = structured.serializedBytes + separatorBytes + fileBytes;
+  if (nextBytes > CHECKOUT_DIFF_MAX_STRUCTURED_BYTES) {
+    return false;
+  }
+  structured.files.push(file);
+  structured.serializedBytes = nextBytes;
+  return true;
+}
+
 const UNTRACKED_BINARY_SNIFF_BYTES = 16 * 1024;
 
 async function isLikelyBinaryFile(absolutePath: string): Promise<boolean> {
@@ -2779,7 +2821,7 @@ interface AppendStructuredTrackedDiffsInput {
   trackedDiffText: string;
   refsForDiff: CheckoutDiffRefs;
   ignoreWhitespace: boolean;
-  structured: ParsedDiffFile[];
+  structured: StructuredDiffAccumulator;
   appendDiff: (text: string) => void;
   appendTrackedPlaceholderComment: (
     change: CheckoutFileChange,
@@ -2787,9 +2829,10 @@ interface AppendStructuredTrackedDiffsInput {
   ) => void;
 }
 
+/** Returns false when the structured payload overflowed the frame budget. */
 async function appendStructuredTrackedDiffs(
   input: AppendStructuredTrackedDiffsInput,
-): Promise<void> {
+): Promise<boolean> {
   const {
     cwd,
     trackedChanges,
@@ -2827,12 +2870,16 @@ async function appendStructuredTrackedDiffs(
   for (const change of trackedChanges) {
     const placeholder = trackedPlaceholderByPath.get(change.path);
     if (placeholder) {
-      structured.push(
+      const appended = appendStructuredFile(
+        structured,
         buildPlaceholderParsedDiffFile(change, {
           status: placeholder.status,
           stat: placeholder.stat,
         }),
       );
+      if (!appended) {
+        return false;
+      }
       appendTrackedPlaceholderComment(change, placeholder.status);
       continue;
     }
@@ -2840,13 +2887,16 @@ async function appendStructuredTrackedDiffs(
     const stat = trackedNumstatByPath.get(change.path) ?? null;
     const parsedFile = parsedTrackedByPath.get(change.path);
     if (parsedFile) {
-      structured.push({
+      const appended = appendStructuredFile(structured, {
         ...parsedFile,
         path: change.path,
         isNew: change.isNew,
         isDeleted: change.isDeleted,
         status: "ok",
       });
+      if (!appended) {
+        return false;
+      }
       continue;
     }
 
@@ -2861,7 +2911,7 @@ async function appendStructuredTrackedDiffs(
       continue;
     }
 
-    structured.push({
+    const appended = appendStructuredFile(structured, {
       path: change.path,
       isNew: change.isNew,
       isDeleted: change.isDeleted,
@@ -2870,7 +2920,12 @@ async function appendStructuredTrackedDiffs(
       hunks: [],
       status: "ok",
     });
+    if (!appended) {
+      return false;
+    }
   }
+
+  return true;
 }
 
 interface ProcessUntrackedChangeInput {
@@ -2878,11 +2933,12 @@ interface ProcessUntrackedChangeInput {
   change: CheckoutFileChange;
   ignoreWhitespace: boolean;
   includeStructured: boolean;
-  structured: ParsedDiffFile[];
+  structured: StructuredDiffAccumulator;
   appendDiff: (text: string) => void;
 }
 
-async function processUntrackedChange(input: ProcessUntrackedChangeInput): Promise<void> {
+/** Returns false when the structured payload overflowed the frame budget. */
+async function processUntrackedChange(input: ProcessUntrackedChangeInput): Promise<boolean> {
   const { cwd, change, ignoreWhitespace, includeStructured, structured, appendDiff } = input;
   const { text, truncated, stat } = await getUntrackedDiffText(cwd, change, ignoreWhitespace);
 
@@ -2894,19 +2950,33 @@ async function processUntrackedChange(input: ProcessUntrackedChangeInput): Promi
     } else {
       appendDiff(text);
     }
-    return;
+    return true;
   }
 
   if (stat?.isBinary) {
-    structured.push(buildPlaceholderParsedDiffFile(change, { status: "binary", stat }));
+    if (
+      !appendStructuredFile(
+        structured,
+        buildPlaceholderParsedDiffFile(change, { status: "binary", stat }),
+      )
+    ) {
+      return false;
+    }
     appendDiff(`# ${change.path}: binary diff omitted\n`);
-    return;
+    return true;
   }
 
   if (truncated) {
-    structured.push(buildPlaceholderParsedDiffFile(change, { status: "too_large", stat }));
+    if (
+      !appendStructuredFile(
+        structured,
+        buildPlaceholderParsedDiffFile(change, { status: "too_large", stat }),
+      )
+    ) {
+      return false;
+    }
     appendDiff(`# ${change.path}: diff too large omitted\n`);
-    return;
+    return true;
   }
 
   appendDiff(text);
@@ -2922,7 +2992,7 @@ async function processUntrackedChange(input: ProcessUntrackedChangeInput): Promi
       hunks: [],
     } satisfies ParsedDiffFile);
 
-  structured.push({
+  return appendStructuredFile(structured, {
     ...parsedFile,
     path: change.path,
     isNew: change.isNew,
@@ -3070,7 +3140,7 @@ export async function getCheckoutDiff(
     return a.path < b.path ? -1 : 1;
   });
 
-  const structured: ParsedDiffFile[] = [];
+  const structured = createStructuredDiffAccumulator();
   let diffText = "";
   let diffBytes = 0;
   const appendDiff = (text: string) => {
@@ -3111,7 +3181,7 @@ export async function getCheckoutDiff(
   };
 
   if (compare.includeStructured) {
-    await appendStructuredTrackedDiffs({
+    const didAppendTrackedDiffs = await appendStructuredTrackedDiffs({
       cwd,
       trackedChanges,
       trackedChangeByPath: trackedDiff.trackedChangeByPath,
@@ -3124,6 +3194,9 @@ export async function getCheckoutDiff(
       appendDiff,
       appendTrackedPlaceholderComment,
     });
+    if (!didAppendTrackedDiffs) {
+      return { diff: "", structured: [], diffTooLarge: true };
+    }
   } else {
     for (const change of trackedChanges) {
       const placeholder = trackedDiff.trackedPlaceholderByPath.get(change.path);
@@ -3137,7 +3210,7 @@ export async function getCheckoutDiff(
     if (diffBytes >= TOTAL_DIFF_MAX_BYTES) {
       break;
     }
-    await processUntrackedChange({
+    const didAppendUntrackedDiff = await processUntrackedChange({
       cwd,
       change,
       ignoreWhitespace,
@@ -3145,10 +3218,13 @@ export async function getCheckoutDiff(
       structured,
       appendDiff,
     });
+    if (!didAppendUntrackedDiff) {
+      return { diff: "", structured: [], diffTooLarge: true };
+    }
   }
 
   if (compare.includeStructured) {
-    return { diff: diffText, structured };
+    return { diff: diffText, structured: structured.files };
   }
   return { diff: diffText };
 }
