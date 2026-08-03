@@ -2357,7 +2357,10 @@ export class Session {
     );
   }
 
-  private dispatchHostDomainMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+  private dispatchHostDomainMessage(
+    msg: SessionInboundMessage,
+    source?: object,
+  ): Promise<void> | undefined {
     return (
       this.dispatchCheckoutMessage(msg) ??
       this.dispatchPreviewMessage(msg) ??
@@ -2365,7 +2368,7 @@ export class Session {
       this.dispatchWorkspaceAndProjectMessage(msg) ??
       this.dispatchWorktreeReattachMessage(msg) ??
       this.dispatchWorkspaceFilesMessage(msg) ??
-      this.dispatchWorkspaceFileMessage(msg) ??
+      this.dispatchWorkspaceFileMessage(msg, source) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
       this.dispatchChatScheduleLoopMessage(msg) ??
@@ -2376,7 +2379,7 @@ export class Session {
 
   private async dispatchInboundMessage(msg: SessionInboundMessage, source?: object): Promise<void> {
     const promise =
-      this.dispatchAgentDomainMessage(msg, source) ?? this.dispatchHostDomainMessage(msg);
+      this.dispatchAgentDomainMessage(msg, source) ?? this.dispatchHostDomainMessage(msg, source);
     if (promise) await promise;
   }
 
@@ -4036,10 +4039,17 @@ export class Session {
     }
   }
 
-  private dispatchWorkspaceFileMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+  private dispatchWorkspaceFileMessage(
+    msg: SessionInboundMessage,
+    source?: object,
+  ): Promise<void> | undefined {
     switch (msg.type) {
       case "file_explorer_request":
-        return this.workspaceFilesSession.handleFileExplorerRequest(msg);
+        // `source` is load-bearing: file_explorer_request answers with binary
+        // file-transfer frames, and those must reach only the socket that asked.
+        // Two sockets can share one clientId, so broadcasting leaks another
+        // tab's file bytes onto this one.
+        return this.workspaceFilesSession.handleFileExplorerRequest(msg, source);
       // COMPAT(fsFileWatch): Paseo's namespaced watch RPCs map onto Otto's
       // file.watch.* handlers; same subscription, different wire name.
       case "fs.file.subscribe.request":
@@ -6506,6 +6516,17 @@ export class Session {
         `Created agent ${snapshot.id} (${snapshot.provider})`,
       );
     } catch (error) {
+      console.error(
+        "DIAG createAgent failed",
+        "worktreeWs=",
+        createdWorktreeForCleanup?.workspace.workspaceId,
+        "worktreeCwd=",
+        createdWorktreeForCleanup?.workspace.cwd,
+        "agentId=",
+        createdAgentId,
+        "err=",
+        (error as Error).message,
+      );
       await this.createAgentLifecycleDispatch.cleanupCreatedWorktreeAfterFailedAgentCreate({
         createdWorktree: createdWorktreeForCleanup,
         createdAgentId,

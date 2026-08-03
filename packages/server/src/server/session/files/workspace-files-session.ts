@@ -98,7 +98,10 @@ export interface WorkspaceFilesSessionHost {
   // `source` is the socket that issued the request. Otto routes file-transfer
   // responses back to it rather than fanning out to every session.
   emit(msg: SessionOutboundMessage, source?: object): void;
-  emitBinary(frame: Uint8Array, source?: object): void;
+  // Awaitable: the source-scoped send applies backpressure and rejects once the
+  // requesting socket detaches. Firing chunks without awaiting queued a whole
+  // multi-megabyte file at once and turned that rejection into an unhandled one.
+  emitBinary(frame: Uint8Array, source?: object): void | Promise<void>;
   hasBinaryChannel(): boolean;
 }
 
@@ -244,7 +247,7 @@ export class WorkspaceFilesSession {
     });
   }
 
-  async handleFileExplorerRequest(request: FileExplorerRequest): Promise<void> {
+  async handleFileExplorerRequest(request: FileExplorerRequest, source?: object): Promise<void> {
     const { cwd: workspaceCwd, path: requestedPath = ".", mode, requestId } = request;
     const cwd = workspaceCwd.trim();
     if (!cwd) {
@@ -294,7 +297,7 @@ export class WorkspaceFilesSession {
           // re-checks the file's revision at the end, so a file rewritten
           // mid-transfer raises instead of arriving as two spliced revisions.
           await streamExplorerFile({ root: cwd, relativePath: requestedPath }, async (file) => {
-            this.host.emitBinary(
+            await this.host.emitBinary(
               encodeFileTransferFrame({
                 opcode: FileTransferOpcode.FileBegin,
                 requestId,
@@ -306,21 +309,24 @@ export class WorkspaceFilesSession {
                   revision: file.revision,
                 },
               }),
+              source,
             );
             for await (const chunk of file.chunks) {
-              this.host.emitBinary(
+              await this.host.emitBinary(
                 encodeFileTransferFrame({
                   opcode: FileTransferOpcode.FileChunk,
                   requestId,
                   payload: chunk,
                 }),
+                source,
               );
             }
-            this.host.emitBinary(
+            await this.host.emitBinary(
               encodeFileTransferFrame({
                 opcode: FileTransferOpcode.FileEnd,
                 requestId,
               }),
+              source,
             );
           });
         } else {
