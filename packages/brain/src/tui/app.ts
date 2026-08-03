@@ -24,6 +24,7 @@ import * as archive from "../ops/archive.js";
 import { Supervisor } from "../service/supervisor.js";
 import { createRouter, Telemetry } from "../service/router.js";
 import * as sysmon from "../sysmon.js";
+import { resolveVersion } from "../version.js";
 
 import http from "node:http";
 
@@ -1681,7 +1682,7 @@ export class App {
   }
 
   header(cols: number): string {
-    const title = `${style.bold}${style.brightCyan}Otto Brain${style.reset}`;
+    const title = `${style.bold}${style.brightCyan}Otto Brain${style.reset}${style.grey} v${resolveVersion()}${style.reset}`;
     const rt = `${style.grey}llama.cpp ${this.runtime.label} v${this.runtime.version}${style.reset}`;
     const g = this.gpuInfo
       ? `${style.grey}${this.gpuInfo.name} · ${vram.formatGiB(this.gpuInfo.usedBytes)}/${vram.formatGiB(this.gpuInfo.totalBytes)}${style.reset}`
