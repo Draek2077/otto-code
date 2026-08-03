@@ -183,12 +183,23 @@ jobs:
         working-directory: packages/app/android
         run: |
           set -euo pipefail
+          # The generated file ends WITHOUT a trailing newline, so appending
+          # straight onto it welds the first key to the last existing one and
+          # Gradle reads `kotlinVersion=2.1.20org.gradle.jvmargs=-Xmx5g...` as
+          # the Kotlin version. Open with a newline; a blank line costs nothing.
           {
+            printf '\n'
             echo "org.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
             echo "kotlin.compiler.execution.strategy=in-process"
             echo "kotlin.daemon.jvmargs=-Xmx2g"
           } >> gradle.properties
-          grep -E "jvmargs|execution.strategy" gradle.properties
+
+          # Prove the keys stand alone before handing the file to Gradle: this
+          # exact welding shipped once and only surfaced two minutes into the
+          # build, as an unsupported-Kotlin-version error naming neither file.
+          grep -qE "^kotlinVersion=[0-9.]+$" gradle.properties
+          grep -qE "^org\.gradle\.jvmargs=-Xmx5g" gradle.properties
+          tail -6 gradle.properties
 
       # `-Pandroid.injected.version.code` is a NO-OP for assembleRelease under
       # AGP 8 — it silently yields versionCode 1, which Android refuses to
