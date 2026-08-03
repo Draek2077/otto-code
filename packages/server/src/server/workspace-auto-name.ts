@@ -193,7 +193,10 @@ export class WorkspaceAutoName {
     input: { title: string; branch?: string | null; promptTitle?: string | null },
   ): Promise<void> {
     const current = await this.workspaceRegistry.get(workspaceId);
-    if (!current) {
+    // Titles are generated asynchronously, so the workspace can be archived
+    // between the request and the result. Writing then would re-emit an upsert
+    // for an archived record and put it back in front of the user.
+    if (!current || current.archivedAt) {
       return;
     }
     let title = current.title;

@@ -65,7 +65,7 @@ export interface ArchiveDependencies {
   // when the request does not supply a per-repo root.
   ottoWorktreesBaseRoot?: string;
   github: ForgeService;
-  workspaceGitService: Pick<WorkspaceGitService, "getSnapshot">;
+  workspaceGitService: Pick<WorkspaceGitService, "getSnapshot" | "invalidateAuxiliaryReads">;
   agentManager: Pick<AgentManager, "listAgents" | "archiveAgent" | "archiveSnapshot">;
   agentStorage: Pick<AgentStorage, "list">;
   // Resolves the worktree at a path to its workspaceId for archive-by-path. The
@@ -202,14 +202,6 @@ export async function archiveByScope(
       targetWorkspaceIds,
       request.requestId,
     );
-    console.error(
-      "DIAG archiveByScope",
-      JSON.stringify(request.scope),
-      "targets=",
-      JSON.stringify(targetWorkspaceIds),
-      "archived=",
-      JSON.stringify(archivedWorkspaceIds),
-    );
 
     await dropGitOperationLogsForArchivedRecords(dependencies, target, archivedWorkspaceIds);
 
@@ -229,7 +221,30 @@ export async function archiveByScope(
       });
     }
 
+    if (target.backing !== null) {
+      const removal = await maybeRemoveDirectory(
+        dependencies,
+        backingDependencies,
+        resolvedRequest,
+        target,
+        archivedWorkspaceIds,
+      );
+      removedDirectory = removal.removedDirectory;
+      deletedBranch = removal.deletedBranch;
+    }
+
     if (resolvedRequest.repoRoot) {
+      // After the removal, never before it. This refresh exists so clients stop
+      // showing a worktree that is gone, and taken while the directory is still
+      // there it republishes exactly the state it was meant to correct.
+      //
+      // The cached reads have to go with it. The worktree list is keyed by repo
+      // root and holds for 15s, so the pane that asked just before the archive
+      // kept listing the removed worktree until the entry aged out.
+      dependencies.workspaceGitService.invalidateAuxiliaryReads(resolvedRequest.repoRoot);
+      if (target.backing !== null) {
+        dependencies.workspaceGitService.invalidateAuxiliaryReads(target.backing.path);
+      }
       try {
         await dependencies.workspaceGitService.getSnapshot(resolvedRequest.repoRoot, {
           force: true,
@@ -241,18 +256,6 @@ export async function archiveByScope(
           "Failed to force-refresh workspace git snapshot after archiving",
         );
       }
-    }
-
-    if (target.backing !== null) {
-      const removal = await maybeRemoveDirectory(
-        dependencies,
-        backingDependencies,
-        resolvedRequest,
-        target,
-        archivedWorkspaceIds,
-      );
-      removedDirectory = removal.removedDirectory;
-      deletedBranch = removal.deletedBranch;
     }
 
     return {

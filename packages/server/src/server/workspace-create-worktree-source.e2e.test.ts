@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
 
+import { removeTempDir } from "../test-utils/remove-temp-dir.js";
 import { DaemonClient } from "./test-utils/index.js";
 import { createTestOttoDaemon } from "./test-utils/otto-daemon.js";
 
@@ -60,7 +61,7 @@ test("workspace.create worktree source forwards action=checkout + refName into t
   } finally {
     await client.close().catch(() => undefined);
     await daemon.close();
-    rmSync(tempRoot, { recursive: true, force: true });
+    removeTempDir(tempRoot);
   }
 }, 180000);
 
@@ -92,6 +93,6 @@ test("workspace.create keeps a branch-off name separate from its worktree slug",
   } finally {
     await client.close().catch(() => undefined);
     await daemon.close();
-    rmSync(tempRoot, { recursive: true, force: true });
+    removeTempDir(tempRoot);
   }
 }, 180000);

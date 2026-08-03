@@ -450,12 +450,20 @@ export function createWorkspaceProvisioningService(deps: {
     if (project && !project.archivedAt) {
       await refreshProjectKind(project, workspace.cwd, checkout);
     }
+    // Re-read after the checkout await. `workspace` was captured before a git
+    // read that takes long enough for an archive to land, and merging onto that
+    // stale copy writes its `archivedAt` back — reviving a workspace the user
+    // just archived. Refreshing git metadata must never resurrect a record.
+    // Unlike ensureWorkspaceRecordUnarchived, un-archiving is not this
+    // function's job.
+    const current = await workspaceRegistry.get(workspace.workspaceId);
+    if (!current || current.archivedAt) return workspace;
     const update = reconcileWorkspacePlacement({
-      workspace,
+      workspace: current,
       checkout,
       updatedAt: new Date().toISOString(),
     });
-    if (!update) return workspace;
+    if (!update) return current;
     await workspaceRegistry.upsert(update.workspace);
     return update.workspace;
   }

@@ -447,7 +447,10 @@ export async function handleOttoWorktreeArchiveRequest(
     "emitWorkspaceUpdatesForWorkspaceIds" | "workspaceGitService"
   > & {
     emit: EmitSessionMessage;
-    workspaceGitService: Pick<WorkspaceGitService, "getSnapshot" | "listWorktrees">;
+    workspaceGitService: Pick<
+      WorkspaceGitService,
+      "getSnapshot" | "listWorktrees" | "invalidateAuxiliaryReads"
+    >;
     emitWorkspaceUpdatesForWorkspaceIds: (workspaceIds: Iterable<string>) => Promise<void>;
   },
   msg: Extract<SessionInboundMessage, { type: "otto_worktree_archive_request" }>,

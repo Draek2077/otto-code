@@ -377,9 +377,20 @@ export class WorkspaceReconciliationService {
 
     await Promise.all(
       workspaceCheckouts.map(async ({ workspace, checkout: wsGit }) => {
+        // Re-read before writing. `workspace` was snapshotted when this
+        // reconciliation pass started, and reading a checkout is slow enough
+        // that an archive can land in between — writing the stale copy back
+        // carried its `archivedAt: null` with it and resurrected the record.
+        // That is how an archive could report success, drop the workspace from
+        // the active list, and then have it reappear moments later.
+        // Reconciliation only syncs git metadata; it must never revive a
+        // workspace that has since been archived or removed.
+        const current = await this.workspaceRegistry.get(workspace.workspaceId);
+        if (!current || current.archivedAt) return;
+
         const timestamp = new Date().toISOString();
         const update = reconcileWorkspacePlacement({
-          workspace,
+          workspace: current,
           checkout: wsGit,
           updatedAt: timestamp,
         });
@@ -388,8 +399,8 @@ export class WorkspaceReconciliationService {
         await this.workspaceRegistry.upsert(update.workspace);
         changes.push({
           kind: "workspace_updated",
-          workspaceId: workspace.workspaceId,
-          directory: workspace.cwd,
+          workspaceId: current.workspaceId,
+          directory: current.cwd,
           fields: update.fields,
         });
       }),

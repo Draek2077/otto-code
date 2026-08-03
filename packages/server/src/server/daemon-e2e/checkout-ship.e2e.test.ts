@@ -301,15 +301,21 @@ describe("daemon checkout ship loop", () => {
         expect(archiveResult.error).toBeNull();
         expect(archiveResult.success).toBe(true);
 
-        // Archiving removes the agent from the active list but leaves the
-        // worktree on disk — disk deletion is a separate, explicit step.
+        // Archiving the last workspace referencing a worktree takes the
+        // directory with it. There is no separate "delete from disk" step and
+        // no prompt: the reference count decides. This assertion used to expect
+        // the opposite, which is how it read before the archive policy became
+        // reference-counted, and it kept saying so because nothing here runs
+        // without a GitHub token.
+        await expect
+          .poll(() => existsSync(worktree.worktreePath), { timeout: 10000, interval: 100 })
+          .toBe(false);
         const worktreeListAfter = await ctx.client.getOttoWorktreeList({
           cwd: repoDir,
         });
         expect(
           worktreeListAfter.worktrees.some((entry) => entry.worktreePath === worktree.worktreePath),
-        ).toBe(true);
-        expect(existsSync(worktree.worktreePath)).toBe(true);
+        ).toBe(false);
 
         const remainingAgents = await ctx.client.fetchAgents();
         expect(remainingAgents.entries.some((entry) => entry.agent.id === agent.id)).toBe(false);

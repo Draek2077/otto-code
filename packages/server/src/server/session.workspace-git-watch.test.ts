@@ -241,6 +241,7 @@ function createSessionForWorkspaceGitWatchTests(options?: {
       scheduleRefreshForCwd: () => {},
       onWorkspaceStateMayHaveChanged: () => {},
       invalidateForge: () => {},
+      invalidateAuxiliaryReads: () => {},
       getMetrics: () => ({
         checkoutDiffTargetCount: 0,
         checkoutDiffSubscriptionCount: 0,

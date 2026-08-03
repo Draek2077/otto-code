@@ -12,13 +12,17 @@ import type {
 import { createGitMutationService } from "./git-mutation-service.js";
 
 // The production module reads only WorkspaceGitService.{validateBranchRef,getSnapshot,
-// hasLocalBranch,invalidateForge}. The fake below implements exactly that slice as an
+// hasLocalBranch,invalidateForge,invalidateAuxiliaryReads}. The fake below implements exactly that slice as an
 // in-memory adapter; the happy-path tests cross the real git boundary against a temp repo,
 // since that is where checkoutResolvedBranch / `git checkout -b` actually run.
 
 type GitSource = Pick<
   WorkspaceGitService,
-  "validateBranchRef" | "getSnapshot" | "hasLocalBranch" | "invalidateForge"
+  | "validateBranchRef"
+  | "getSnapshot"
+  | "hasLocalBranch"
+  | "invalidateForge"
+  | "invalidateAuxiliaryReads"
 >;
 
 const logger = pino({ level: "silent" });
@@ -36,6 +40,7 @@ function createFakeGit(opts: FakeGitOptions = {}) {
   const branchExists = opts.branchExists ?? false;
   const snapshotCalls: Array<{ cwd: string; force: boolean; reason?: string }> = [];
   const invalidateCalls: Array<{ cwd: string }> = [];
+  const auxiliaryInvalidateCalls: Array<{ cwd: string }> = [];
   const git: GitSource = {
     async validateBranchRef() {
       return resolution;
@@ -53,14 +58,18 @@ function createFakeGit(opts: FakeGitOptions = {}) {
     invalidateForge(cwd) {
       invalidateCalls.push({ cwd });
     },
+    invalidateAuxiliaryReads(cwd) {
+      auxiliaryInvalidateCalls.push({ cwd });
+    },
   };
-  return { git, snapshotCalls, invalidateCalls };
+  return { git, snapshotCalls, invalidateCalls, auxiliaryInvalidateCalls };
 }
 
 function buildService(gitOptions: FakeGitOptions = {}) {
-  const { git, snapshotCalls, invalidateCalls } = createFakeGit(gitOptions);
+  const { git, snapshotCalls, invalidateCalls, auxiliaryInvalidateCalls } =
+    createFakeGit(gitOptions);
   const service = createGitMutationService({ workspaceGitService: git, logger });
-  return { service, snapshotCalls, invalidateCalls };
+  return { service, snapshotCalls, invalidateCalls, auxiliaryInvalidateCalls };
 }
 
 const tempRepos: string[] = [];
@@ -204,6 +213,14 @@ describe("notifyGitMutation", () => {
     await service.notifyGitMutation("/tmp/repo", "pull");
     expect(invalidateCalls).toEqual([]);
     expect(snapshotCalls).toEqual([{ cwd: "/tmp/repo", force: true, reason: "pull" }]);
+  });
+
+  test("drops the cached auxiliary reads for every mutation, forge or not", async () => {
+    // Without this, committing and then reading the uncommitted diff serves the
+    // files that were just committed for the rest of the 15s read cache.
+    const { service, auxiliaryInvalidateCalls } = buildService();
+    await service.notifyGitMutation("/tmp/repo", "commit-changes");
+    expect(auxiliaryInvalidateCalls).toEqual([{ cwd: "/tmp/repo" }]);
   });
 
   test("swallows a snapshot-refresh failure", async () => {

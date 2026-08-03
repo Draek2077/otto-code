@@ -248,7 +248,8 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
   // the spies the harness added. Chiefly invalidateForge: every git mutation
   // runs through GitMutationService, which invalidates the forge before forcing
   // the refresh, so a stub carrying only getSnapshot throws on the invalidate
-  // and the forced refresh silently never happens.
+  // and the forced refresh silently never happens. The same goes for
+  // invalidateAuxiliaryReads, which that path calls for the same reason.
   const workspaceGitService = (options.workspaceGitService ?? {}) as Record<string, unknown>;
   const workspaceGitServiceDefaults: Record<string, unknown> = {
     getCheckoutDiff: vi.fn(),
@@ -262,6 +263,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     resolveRepoRoot: vi.fn(),
     getWorkspaceGitMetadata: vi.fn(),
     invalidateForge: vi.fn(),
+    invalidateAuxiliaryReads: vi.fn(),
   };
   for (const [key, value] of Object.entries(workspaceGitServiceDefaults)) {
     if (!(key in workspaceGitService)) {

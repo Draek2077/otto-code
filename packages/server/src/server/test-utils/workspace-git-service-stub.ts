@@ -81,6 +81,7 @@ export function createNoopWorkspaceGitService(
     onWorkspaceStateMayHaveChanged: () => {},
     setActiveWorkspace: () => {},
     invalidateForge: () => {},
+    invalidateAuxiliaryReads: () => {},
     getMetrics: () => ({
       workspaceTargetCount: 0,
       workspaceListenerCount: 0,

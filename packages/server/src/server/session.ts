@@ -6516,17 +6516,6 @@ export class Session {
         `Created agent ${snapshot.id} (${snapshot.provider})`,
       );
     } catch (error) {
-      console.error(
-        "DIAG createAgent failed",
-        "worktreeWs=",
-        createdWorktreeForCleanup?.workspace.workspaceId,
-        "worktreeCwd=",
-        createdWorktreeForCleanup?.workspace.cwd,
-        "agentId=",
-        createdAgentId,
-        "err=",
-        (error as Error).message,
-      );
       await this.createAgentLifecycleDispatch.cleanupCreatedWorktreeAfterFailedAgentCreate({
         createdWorktree: createdWorktreeForCleanup,
         createdAgentId,

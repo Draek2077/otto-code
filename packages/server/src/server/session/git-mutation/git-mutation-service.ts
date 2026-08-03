@@ -36,7 +36,11 @@ export interface GitMutationService {
 
 type GitMutationGitSource = Pick<
   WorkspaceGitService,
-  "validateBranchRef" | "getSnapshot" | "hasLocalBranch" | "invalidateForge"
+  | "validateBranchRef"
+  | "getSnapshot"
+  | "hasLocalBranch"
+  | "invalidateForge"
+  | "invalidateAuxiliaryReads"
 >;
 
 export function createGitMutationService(deps: {
@@ -80,6 +84,11 @@ export function createGitMutationService(deps: {
     if (options?.invalidateForge) {
       workspaceGitService.invalidateForge(cwd);
     }
+    // The daemon just changed this checkout, so every cwd-scoped read it has
+    // cached is now describing the world before the change. Drop them before
+    // the refresh below, or the next diff/stash/branch read serves the
+    // pre-mutation answer for the rest of its TTL.
+    workspaceGitService.invalidateAuxiliaryReads(cwd);
     try {
       await workspaceGitService.getSnapshot(cwd, { force: true, reason });
     } catch (error) {

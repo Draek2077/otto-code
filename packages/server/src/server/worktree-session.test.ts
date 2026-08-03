@@ -1520,7 +1520,10 @@ describe("handleCreateOttoWorktreeRequest", () => {
         createOttoWorktree,
         checkoutExistingBranch,
         createBranchFromBase,
-        workspaceGitService: { invalidateForge: invalidate } as unknown as WorkspaceGitService,
+        workspaceGitService: {
+          invalidateForge: invalidate,
+          invalidateAuxiliaryReads: vi.fn(),
+        } as unknown as WorkspaceGitService,
       },
       {
         provider: "codex",
@@ -1548,7 +1551,10 @@ describe("handleCreateOttoWorktreeRequest", () => {
         createOttoWorktree,
         checkoutExistingBranch,
         createBranchFromBase,
-        workspaceGitService: { invalidateForge: invalidate } as unknown as WorkspaceGitService,
+        workspaceGitService: {
+          invalidateForge: invalidate,
+          invalidateAuxiliaryReads: vi.fn(),
+        } as unknown as WorkspaceGitService,
       },
       {
         provider: "codex",
@@ -1856,6 +1862,7 @@ describe("handleOttoWorktreeArchiveRequest worktree scope", () => {
         workspaceGitService: {
           getSnapshot: vi.fn(async () => null),
           listWorktrees: vi.fn(async () => []),
+          invalidateAuxiliaryReads: vi.fn(),
         },
         agentManager: {
           listAgents: () => [],
@@ -1927,6 +1934,7 @@ describe("handleOttoWorktreeArchiveRequest worktree scope", () => {
         workspaceGitService: {
           getSnapshot: vi.fn(async () => null),
           listWorktrees: vi.fn(async () => []),
+          invalidateAuxiliaryReads: vi.fn(),
         },
         agentManager: {
           listAgents: () => [],
@@ -2003,6 +2011,7 @@ describe("handleOttoWorktreeArchiveRequest worktree scope", () => {
         workspaceGitService: {
           getSnapshot: vi.fn(async () => null),
           listWorktrees: vi.fn(async () => []),
+          invalidateAuxiliaryReads: vi.fn(),
         },
         agentManager: {
           listAgents: () => [],
@@ -2079,6 +2088,7 @@ describe("handleOttoWorktreeArchiveRequest worktree scope", () => {
       workspaceGitService: {
         getSnapshot: vi.fn(async () => null),
         listWorktrees: vi.fn(async () => []),
+        invalidateAuxiliaryReads: vi.fn(),
       },
       agentManager: {
         listAgents: () => [],

@@ -933,11 +933,26 @@ test("subscribe response is sent before the initial snapshot frame", async () =>
   const ws = await connectRawWebSocket(ctx.daemon.port);
 
   try {
+    // This test is about frame ORDER, so the marker has to already be in the
+    // grid before the ordering window opens — otherwise a snapshot that simply
+    // has not caught up yet reads as an ordering failure.
+    //
+    // Two Windows problems were folded into the old `printf` + 300ms sleep:
+    // cmd.exe has no `printf`, and a freshly spawned Windows shell routinely
+    // takes longer than 300ms to start reading its PTY, so the input landed
+    // before anything was listening and never rendered at all. Wait for the
+    // real output instead of guessing, exactly as the raw-bytes test below
+    // does, and use `echo`, which prints the same line in cmd.exe and POSIX
+    // shells alike.
+    const rendered = waitForTerminalOutput(ctx.client, terminalId, (text) =>
+      text.includes("hello-ordering"),
+    );
+    await ctx.client.subscribeTerminal(terminalId);
     ctx.client.sendTerminalInput(terminalId, {
       type: "input",
-      data: "printf 'hello-ordering\\n'\r",
+      data: "echo hello-ordering\r",
     });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await rendered;
 
     const observed = await new Promise<Array<"response" | "snapshot">>((resolve, reject) => {
       const events: Array<"response" | "snapshot"> = [];

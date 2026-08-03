@@ -182,7 +182,7 @@ export interface OttoToolHostDependencies {
   github?: ForgeService;
   workspaceGitService?: Pick<
     WorkspaceGitService,
-    "getSnapshot" | "listWorktrees" | "resolveRepoRoot"
+    "getSnapshot" | "listWorktrees" | "resolveRepoRoot" | "invalidateAuxiliaryReads"
   >;
   findWorkspaceIdForCwd?: ArchiveDependencies["findWorkspaceIdForCwd"];
   listActiveWorkspaces?: ArchiveDependencies["listActiveWorkspaces"];

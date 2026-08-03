@@ -1860,6 +1860,7 @@ describe("create_agent MCP tool", () => {
       getSnapshot: vi.fn(async () => {
         throw new Error("agent metadata branch rename should not run");
       }),
+      invalidateAuxiliaryReads: vi.fn(),
     };
 
     try {
@@ -2324,6 +2325,7 @@ describe("create_agent MCP tool", () => {
       getSnapshot: vi.fn(async () => {
         throw new Error("agent metadata branch rename should not run");
       }),
+      invalidateAuxiliaryReads: vi.fn(),
     };
 
     try {
@@ -2469,6 +2471,7 @@ describe("create_agent MCP tool", () => {
       getSnapshot: vi.fn(async () => {
         throw new Error("agent metadata branch rename should not run");
       }),
+      invalidateAuxiliaryReads: vi.fn(),
     };
     spies.agentManager.createAgent.mockImplementation(async (config: { cwd: string }) => ({
       id: "agent-pr-worktree",
@@ -2548,6 +2551,7 @@ describe("create_agent MCP tool", () => {
         getSnapshot: vi.fn(async () => null),
         listWorktrees: vi.fn(async () => []),
         resolveRepoRoot: vi.fn(async () => repoDir),
+        invalidateAuxiliaryReads: vi.fn(),
       };
 
       const server = await createAgentMcpServer({
@@ -2758,6 +2762,7 @@ describe("create_agent MCP tool", () => {
         getSnapshot: vi.fn(async () => null),
         listWorktrees: vi.fn(async () => []),
         resolveRepoRoot: vi.fn(async () => repoDir),
+        invalidateAuxiliaryReads: vi.fn(),
       };
       const archiveWorkspaceRecord = vi.fn(async () => undefined);
       const emitWorkspaceUpdatesForWorkspaceIds = vi.fn(async () => undefined);
@@ -2865,6 +2870,7 @@ describe("create_agent MCP tool", () => {
         getSnapshot: vi.fn(async () => null),
         listWorktrees: vi.fn(async () => []),
         resolveRepoRoot: vi.fn(async () => repoDir),
+        invalidateAuxiliaryReads: vi.fn(),
       };
       const archivedWorkspaceIds: string[] = [];
       let activeWorkspaces: Array<{
@@ -2953,6 +2959,7 @@ describe("create_agent MCP tool", () => {
         getSnapshot: vi.fn(async () => null),
         listWorktrees: vi.fn(async () => []),
         resolveRepoRoot: vi.fn(async () => repoDir),
+        invalidateAuxiliaryReads: vi.fn(),
       };
       const server = await createAgentMcpServer({
         agentManager,

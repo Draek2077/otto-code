@@ -1,7 +1,7 @@
 import type { GitHostingProviderId, GitHostingCapabilities } from "@otto-code/protocol/messages";
 import { watch, type FSWatcher } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { LRUCache } from "lru-cache";
 import pLimit from "p-limit";
 import type pino from "pino";
@@ -201,6 +201,7 @@ export interface WorkspaceGitService {
    */
   setActiveWorkspace(cwd: string | null): void;
   invalidateForge(cwd: string): void;
+  invalidateAuxiliaryReads(cwd: string): void;
   getMetrics(): WorkspaceGitServiceMetrics;
   dispose(): void;
 }
@@ -288,12 +289,29 @@ interface WorkspaceGitRefreshRequest {
   includeForge: boolean;
   reason: string;
   notify: boolean;
+  /**
+   * True when this request carries a one-shot "the checkout changed" signal — a
+   * watcher event, a self-heal tick, a finished fetch — rather than a caller
+   * merely wanting to read the snapshot.
+   *
+   * The distinction decides what happens when a refresh is already in flight. A
+   * read can safely join it; a change signal cannot, because the in-flight pass
+   * may have already run its git read before the change landed, so joining it
+   * means the change is never observed at all. Change signals are queued behind
+   * the running pass instead.
+   */
+  changeSignal: boolean;
 }
 
 interface ScheduledWorkspaceGitRefreshOptions {
   force?: boolean;
   includeForge?: boolean;
   reason?: string;
+  /**
+   * Defaults to true: the scheduled path exists for watcher events and the like.
+   * Pass false for a catch-up read that nothing is known to have invalidated.
+   */
+  changeSignal?: boolean;
 }
 
 type WorkspaceGitRefreshState =
@@ -358,6 +376,8 @@ interface WorkspaceGitTarget {
   watchers: FSWatcher[];
   debounceTimer: NodeJS.Timeout | null;
   pendingDebounceRequest: WorkspaceGitRefreshRequest | null;
+  throttleTimer: NodeJS.Timeout | null;
+  pendingThrottledRequest: WorkspaceGitRefreshRequest | null;
   selfHealTimer: NodeJS.Timeout | null;
   forgePrStatusPollSubscription: { unsubscribe: () => void } | null;
   forgePrStatusPollKey: string | null;
@@ -373,6 +393,20 @@ interface WorkspaceGitTarget {
   factsPromise: Promise<CheckoutSnapshotFacts> | null;
   latestFingerprint: string | null;
   lastShellOutAtMs: number | null;
+  /**
+   * When this target's git watchers started, or null while it has none.
+   *
+   * A snapshot measured before this instant is not covered by them: whatever
+   * moved in between produced no event and never will. Trusting the cache
+   * indefinitely is only sound for a snapshot taken at or after this point.
+   */
+  watchersStartedAtMs: number | null;
+  /**
+   * Whether the refresh currently in flight has already read git. Decides
+   * whether an incoming change signal can ride along with it or has to queue
+   * behind it; see requestWorkspaceSnapshot.
+   */
+  currentPassReadGit: boolean;
   repoGitRoot: string | null;
   observationSetupPromise: Promise<void> | null;
   observationSetupComplete: boolean;
@@ -410,6 +444,45 @@ interface WorkspaceForgePrStatusPollTarget {
   headRef: string;
   headSha?: string;
   headRepositoryOwner?: string;
+}
+
+/**
+ * A path reduced to a form two different producers can be compared on.
+ *
+ * Auxiliary cache keys are built from two sources that disagree about how a
+ * Windows path is spelled: `resolve()` yields backslashes, while anything read
+ * out of git (`rev-parse`, and so the repo root every worktree list is keyed by)
+ * yields forward slashes. Matching keys as raw text therefore missed exactly the
+ * entries that came from git, which is how an archived worktree went on being
+ * listed after its directory was removed.
+ */
+function canonicalPathCacheToken(value: string): string {
+  const normalized = resolve(value).replaceAll("\\", "/");
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+/**
+ * Whether a cache key is scoped to `canonicalPath`. Keys are JSON arrays of a
+ * label plus the read's parameters; only absolute elements can be the directory,
+ * so labels and refs ("uncommitted", "main") are never resolved against the
+ * process cwd and mistaken for it.
+ */
+function auxiliaryCacheKeyScopesToPath(key: string, canonicalPath: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(key);
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(parsed)) {
+    return false;
+  }
+  return parsed.some(
+    (element) =>
+      typeof element === "string" &&
+      isAbsolute(element) &&
+      canonicalPathCacheToken(element) === canonicalPath,
+  );
 }
 
 function buildDefaultWorkspaceGitServiceDeps(): WorkspaceGitServiceDependencies {
@@ -586,7 +659,19 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     const request = this.normalizeRefreshRequest(options, "getSnapshot", true);
     const target = this.ensureWorkspaceTarget(cwd);
     if (!request.force && target.latestSnapshot) {
-      return target.latestSnapshot;
+      if (this.isSnapshotCacheTrustworthy(target)) {
+        return target.latestSnapshot;
+      }
+      // Watched, but by watchers that started after this entry was measured.
+      // Re-read once so the entry the watchers vouch for is one they could
+      // actually have seen change. Forced deliberately: an unforced read passes
+      // `allowRecent` down to loadCheckoutFacts, which reuses facts on its own
+      // window, so it would hand back the same stale branch it is replacing.
+      return this.requestWorkspaceSnapshot(target, {
+        ...request,
+        force: true,
+        reason: "snapshot-predates-watchers",
+      });
     }
 
     return this.requestWorkspaceSnapshot(target, request);
@@ -812,6 +897,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       includeForge: false,
       reason: "refresh",
       notify: true,
+      changeSignal: true,
     });
     this.scheduleWorkspaceObservationSetup(target);
   }
@@ -861,6 +947,42 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
    */
   invalidateForge(cwd: string): void {
     this.forgeResolver.invalidate(resolve(cwd));
+  }
+
+  /**
+   * Drop every cwd-scoped auxiliary read (diffs, stash list, branch lookups).
+   *
+   * These caches have a 15s TTL and no invalidation, which is fine for reads
+   * the daemon does not cause. A mutation it performs itself is different: the
+   * daemon knows the answer just changed, so serving the pre-mutation value is
+   * a straight lie. Committing and then reading the uncommitted diff returned
+   * the files that had just been committed for the rest of the window.
+   *
+   * Snapshot state is not touched here; mutation callers force-refresh that
+   * separately.
+   */
+  invalidateAuxiliaryReads(cwd: string): void {
+    const target = canonicalPathCacheToken(cwd);
+    const caches = [
+      this.checkoutDiffCache,
+      this.branchValidationCache,
+      this.localBranchCache,
+      this.branchSuggestionsCache,
+      this.stashListCache,
+      this.worktreeListCache,
+      this.defaultBranchCache,
+    ];
+    for (const cache of caches) {
+      const staleKeys: string[] = [];
+      for (const key of cache.keys()) {
+        if (auxiliaryCacheKeyScopesToPath(key, target)) {
+          staleKeys.push(key);
+        }
+      }
+      for (const key of staleKeys) {
+        cache.delete(key);
+      }
+    }
   }
 
   dispose(): void {
@@ -977,6 +1099,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       watchers: [],
       debounceTimer: null,
       pendingDebounceRequest: null,
+      throttleTimer: null,
+      pendingThrottledRequest: null,
       selfHealTimer: null,
       forgePrStatusPollSubscription: null,
       forgePrStatusPollKey: null,
@@ -992,6 +1116,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       factsPromise: null,
       latestFingerprint: null,
       lastShellOutAtMs: null,
+      watchersStartedAtMs: null,
+      currentPassReadGit: false,
       repoGitRoot: null,
       observationSetupPromise: null,
       observationSetupComplete: false,
@@ -1016,6 +1142,9 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         includeForge: false,
         reason: "initial",
         notify: true,
+        // Nothing to coalesce behind: this only runs when the target has no
+        // snapshot at all.
+        changeSignal: false,
       });
     });
   }
@@ -1062,6 +1191,15 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     }
     target.repoGitRoot = repoGitRoot;
     this.startWorkspaceWatchers(target, gitDir, repoGitRoot);
+    // Any snapshot taken before the watchers existed describes a checkout the
+    // watchers never saw. Re-measure it, or a branch that moved during setup —
+    // registration is asynchronous and lands well after the first status read —
+    // stays cached forever, since from here on the entry is authoritative.
+    // Scheduled rather than awaited, so registering a workspace still returns
+    // without blocking on git.
+    if (target.latestSnapshot && !this.isSnapshotCoveredByWatchers(target)) {
+      this.scheduleWorkspaceRefresh(target, { reason: "observation-started" });
+    }
     await this.ensureRepoTarget(target);
     if (this.isActiveObservedWorkspaceTarget(target)) {
       target.observationSetupComplete = true;
@@ -1108,6 +1246,35 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       });
     target.factsPromise = promise;
     return promise;
+  }
+
+  /**
+   * Whether `target.latestSnapshot` can be returned without re-reading git.
+   *
+   * Snapshots do not expire on read: a caller that needs a fresh measurement
+   * forces one, and an unwatched target has nobody promising it anything. The
+   * single exception is a target that IS watched but whose entry predates its
+   * own watchers. There the daemon is making a promise it cannot keep, because
+   * whatever moved before the watchers started produced no event and never
+   * will.
+   */
+  private isSnapshotCacheTrustworthy(target: WorkspaceGitTarget): boolean {
+    if (!this.isActiveObservedWorkspaceTarget(target) || !target.observationSetupComplete) {
+      return true;
+    }
+    return this.isSnapshotCoveredByWatchers(target);
+  }
+
+  /**
+   * Whether the cached snapshot was measured while the watchers were already
+   * running. Only then does "no event since" actually mean "nothing changed".
+   */
+  private isSnapshotCoveredByWatchers(target: WorkspaceGitTarget): boolean {
+    return (
+      target.watchersStartedAtMs !== null &&
+      target.latestSnapshotLoadedAtMs !== null &&
+      target.latestSnapshotLoadedAtMs >= target.watchersStartedAtMs
+    );
   }
 
   private isActiveObservedWorkspaceTarget(target: WorkspaceGitTarget): boolean {
@@ -1256,6 +1423,13 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       });
       target.watchers.push(watcher);
     }
+
+    // Stamped only when a watcher actually took. A target whose watches all
+    // failed keeps `null` here and falls back to the unobserved TTL rather than
+    // silently pretending it is covered.
+    if (target.watchers.length > 0) {
+      target.watchersStartedAtMs = this.deps.now().getTime();
+    }
   }
 
   private async ensureRepoTarget(workspaceTarget: WorkspaceGitTarget): Promise<void> {
@@ -1352,7 +1526,12 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     for (const target of this.workspaceTargets.values()) {
       if (this.isActiveWorkspaceTarget(target)) {
         this.startWorkspaceSubscriptionTimers(target);
-        this.scheduleWorkspaceRefresh(target, { reason: "became-active" });
+        // A catch-up read, not a change signal: nothing is known to have moved,
+        // this workspace is simply the one being looked at now. If the throttle
+        // turns it away because a measurement was just taken, that measurement
+        // is the catch-up, and re-firing it later would restart polling the user
+        // has since navigated away from.
+        this.scheduleWorkspaceRefresh(target, { reason: "became-active", changeSignal: false });
       } else {
         this.stopWorkspacePeriodicWork(target);
       }
@@ -1419,6 +1598,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
           includeForge: false,
           reason: "self-heal-git",
           notify: true,
+          // A poll, not a signal. It re-reads on a timer to catch anything the
+          // watchers missed, so a throttled tick has lost nothing the next tick
+          // will not pick up.
+          changeSignal: false,
         }).catch((error) => {
           this.logger.warn(
             { err: error, cwd: target.cwd, reason: "self-heal-git" },
@@ -1930,20 +2113,46 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       const needsForcedRefresh = request.force && !target.refreshState.force;
       const needsGitHubRefresh =
         request.force && request.includeForge && !target.refreshState.includeForge;
-      if (needsForcedRefresh || needsGitHubRefresh) {
+      // A change signal queues when the running pass has already taken its git
+      // measurement. Each pass reads git first and the forge second, and a forge
+      // round-trip is a `gh` process plus a network call — seconds. A branch
+      // that moves during that tail was already missed by this pass's read, so
+      // joining its promise reports the old branch and discards the only signal
+      // that would have corrected it. While the read is still pending there is
+      // nothing to miss, so the signal rides along for free and a watcher burst
+      // still costs exactly one shell-out.
+      const missedByRunningPass = request.changeSignal && target.currentPassReadGit;
+      if (needsForcedRefresh || needsGitHubRefresh || missedByRunningPass) {
         target.refreshState.queued = this.mergeRefreshRequests(target.refreshState.queued, request);
       }
       return target.refreshState.promise;
     }
 
     if (!request.force && this.shouldThrottleNonForcedRefresh(target)) {
+      // Defer the throttled request, never drop it. Most non-forced refreshes
+      // carry a one-shot signal — a watcher saw `.git/HEAD` or `refs/heads`
+      // move — and handing back the cached snapshot without re-arming loses
+      // that signal permanently: the watcher does not fire twice, and an
+      // observed target's cache is trusted indefinitely on read. Because the
+      // watch debounce (1s) is shorter than this gap (2s), a branch switch
+      // within two seconds of any prior git read landed exactly in that hole
+      // and the daemon reported the old branch forever.
+      this.scheduleThrottledRefresh(target, request);
       return Promise.resolve(target.latestSnapshot);
     }
 
     const promise = this.runWorkspaceRefreshLoop(target, request).finally(() => {
       const state = target.refreshState;
-      if (state.status === "in-flight" && state.promise === promise) {
-        target.refreshState = { status: "idle" };
+      if (state.status !== "in-flight" || state.promise !== promise) {
+        return;
+      }
+      // Anything enqueued between the loop's last drain and this callback would
+      // otherwise be thrown away with the state. Re-fire it instead.
+      const leftover = state.queued;
+      target.refreshState = { status: "idle" };
+      target.currentPassReadGit = false;
+      if (leftover) {
+        void this.refreshWorkspaceTarget(target, leftover);
       }
     });
     target.refreshState = {
@@ -1972,6 +2181,9 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       includeForge: options?.includeForge ?? true,
       reason: options?.reason ?? defaultReason,
       notify,
+      // A read, not a signal: these callers want the current snapshot and are
+      // happy to join whatever pass is already running.
+      changeSignal: false,
     };
   }
 
@@ -1987,6 +2199,49 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     return this.deps.now().getTime() - target.lastShellOutAtMs < WORKSPACE_GIT_INTERNAL_MIN_GAP_MS;
   }
 
+  /**
+   * Re-arm a refresh that the minimum-gap throttle just turned away, for the
+   * moment that gap expires. Requests merge, so a burst still costs one git
+   * read, and a single timer is kept so repeated turn-aways cannot pile up.
+   *
+   * Only change signals are re-armed. A throttled poll (self-heal, a read) is
+   * redundant by construction — it asked for a measurement that was just taken —
+   * so re-firing it would only resurrect periodic work the caller has since
+   * paused.
+   */
+  private scheduleThrottledRefresh(
+    target: WorkspaceGitTarget,
+    request: WorkspaceGitRefreshRequest,
+  ): void {
+    if (!request.changeSignal) {
+      return;
+    }
+    target.pendingThrottledRequest = this.mergeRefreshRequests(
+      target.pendingThrottledRequest,
+      request,
+    );
+    if (target.throttleTimer) {
+      return;
+    }
+
+    const elapsedMs =
+      target.lastShellOutAtMs === null
+        ? WORKSPACE_GIT_INTERNAL_MIN_GAP_MS
+        : this.deps.now().getTime() - target.lastShellOutAtMs;
+    const waitMs = Math.max(0, WORKSPACE_GIT_INTERNAL_MIN_GAP_MS - elapsedMs);
+
+    target.throttleTimer = setTimeout(() => {
+      target.throttleTimer = null;
+      const pending = target.pendingThrottledRequest;
+      target.pendingThrottledRequest = null;
+      if (!pending || target.closed || this.workspaceTargets.get(target.cwd) !== target) {
+        return;
+      }
+      void this.refreshWorkspaceTarget(target, pending);
+    }, waitMs);
+    target.throttleTimer.unref?.();
+  }
+
   private buildScheduledRefreshRequest(
     options: ScheduledWorkspaceGitRefreshOptions | undefined,
   ): WorkspaceGitRefreshRequest {
@@ -1995,6 +2250,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       includeForge: options?.includeForge ?? false,
       reason: options?.reason ?? "watch",
       notify: true,
+      changeSignal: options?.changeSignal ?? true,
     };
   }
 
@@ -2014,6 +2270,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       includeForge: pending.includeForge || request.includeForge,
       reason: upgradesForce || upgradesForge ? request.reason : pending.reason,
       notify: pending.notify || request.notify,
+      changeSignal: pending.changeSignal || request.changeSignal,
     };
   }
 
@@ -2049,7 +2306,11 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     target: WorkspaceGitTarget,
     request: WorkspaceGitRefreshRequest,
   ): Promise<WorkspaceGitRuntimeSnapshot> {
+    target.currentPassReadGit = false;
     const facts = await this.refreshGitSnapshot(target, request);
+    // Past this line the git half of this pass is fixed, so a change landing now
+    // cannot be reported by it.
+    target.currentPassReadGit = true;
     if (request.includeForge) {
       await this.refreshForgeSnapshot(target, request, facts);
     }
@@ -2296,6 +2557,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
             includeForge: false,
             reason: "repo-fetch",
             notify: true,
+            changeSignal: true,
           });
         }),
       );
@@ -2350,6 +2612,11 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     if (target.debounceTimer) {
       clearTimeout(target.debounceTimer);
       target.debounceTimer = null;
+    }
+    if (target.throttleTimer) {
+      clearTimeout(target.throttleTimer);
+      target.throttleTimer = null;
+      target.pendingThrottledRequest = null;
     }
     if (target.selfHealTimer) {
       clearInterval(target.selfHealTimer);

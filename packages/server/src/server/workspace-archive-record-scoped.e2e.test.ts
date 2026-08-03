@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
+
+import { removeTempDir } from "../test-utils/remove-temp-dir.js";
 
 import { getFullAccessConfig } from "./daemon-e2e/agent-configs.js";
 import {
@@ -28,7 +30,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await ctx.cleanup();
   for (const tempRoot of tempRoots.splice(0)) {
-    rmSync(tempRoot, { recursive: true, force: true });
+    removeTempDir(tempRoot);
   }
 });
 

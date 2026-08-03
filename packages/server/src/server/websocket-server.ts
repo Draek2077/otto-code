@@ -267,6 +267,7 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     scheduleRefreshForCwd: () => {},
     onWorkspaceStateMayHaveChanged: () => {},
     invalidateForge: () => {},
+    invalidateAuxiliaryReads: () => {},
     getMetrics: () => ({
       workspaceTargetCount: 0,
       workspaceListenerCount: 0,
