@@ -5,6 +5,7 @@ import { Writable } from "node:stream";
 import net from "node:net";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
+import { createRequire } from "node:module";
 import { Buffer } from "node:buffer";
 
 import { generateLocalPairingOffer } from "../pairing-offer.js";
@@ -170,10 +171,16 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
     relayStdoutLines = [];
     relayPort = await getAvailablePort();
     const relayDir = path.resolve(process.cwd(), "../relay");
+    // Spawn wrangler's JS entrypoint under this same Node rather than going
+    // through `npx`. The npm shims are `.cmd` files on Windows, and since the
+    // CVE-2024-27980 mitigation Node refuses to spawn those without a shell
+    // (EINVAL); a bare "npx" fails the other way, with ENOENT, because spawn
+    // does not consult PATHEXT. Resolving the module skips both traps, and
+    // skips an npx resolution round-trip per test.
     relayProcess = spawn(
-      "npx",
+      process.execPath,
       [
-        "wrangler",
+        createRequire(import.meta.url).resolve("wrangler/bin/wrangler.js"),
         "dev",
         "--local",
         "--ip",
@@ -190,6 +197,15 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
         detached: false,
       },
     );
+
+    // Without a listener, a failure to spawn (a missing npx, a blocked exec)
+    // is emitted as an unhandled 'error' that takes down the whole worker and
+    // is reported against whichever file happened to be running. Capture it so
+    // the 30s waitForServer below reports the real cause instead.
+    let relaySpawnError: Error | null = null;
+    relayProcess.on("error", (error: Error) => {
+      relaySpawnError = error;
+    });
 
     relayProcess.stdout?.on("data", (data: Buffer) => {
       const lines = data
@@ -213,7 +229,17 @@ async function waitForRelayWebSocketReady(port: number, timeout = 60000): Promis
       }
     });
 
-    await waitForServer(relayPort, 30000);
+    try {
+      await waitForServer(relayPort, 30000);
+    } catch (error) {
+      if (relaySpawnError) {
+        throw new Error(
+          `Failed to start wrangler for the relay: ${(relaySpawnError as Error).message}`,
+          { cause: error },
+        );
+      }
+      throw error;
+    }
     await waitForRelayWebSocketReady(relayPort, 60000);
   };
 

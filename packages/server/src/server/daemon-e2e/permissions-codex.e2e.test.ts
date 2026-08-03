@@ -42,7 +42,7 @@ describe("permission flow: Codex", () => {
       thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
       cwd,
       title: "Codex Permission Test",
-      modeId: "read-only",
+      modeId: "auto",
     });
 
     expect(agent.id).toBeTruthy();
@@ -107,7 +107,7 @@ describe("permission flow: Codex", () => {
       thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
       cwd,
       title: "Codex Permission Deny Test",
-      modeId: "read-only",
+      modeId: "auto",
     });
 
     expect(agent.id).toBeTruthy();

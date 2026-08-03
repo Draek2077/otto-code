@@ -101,6 +101,7 @@ export class CreateAgentLifecycleDispatch {
       agentId: null,
       createdWorktree,
     }).catch((archiveError) => {
+      console.error("DIAG cleanup archive threw", archiveError);
       this.dependencies.logger.warn(
         {
           err: archiveError,

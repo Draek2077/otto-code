@@ -74,6 +74,10 @@ test("an empty project becomes Git without changing its identity or creating a w
       projectCustomName: null,
       projectRootPath: projectRoot,
       projectKind: "non_git",
+      // The cross-host grouping key. Its exact shape (host:<serverId>:<lowercased
+      // root>) is covered by the project-key tests; here we only pin that the
+      // daemon still emits one, so this toEqual stays strict about the rest.
+      projectKey: expect.any(String),
     },
     error: null,
   });
@@ -119,5 +123,8 @@ test("an empty project becomes Git without changing its identity or creating a w
     createdAt: expect.any(String),
     updatedAt: expect.any(String),
     archivedAt: null,
+    // Persisted alongside the record, same as on the wire. See the addProject
+    // expectation above for why this is pinned by type rather than by value.
+    projectKey: expect.any(String),
   });
 }, 30_000);

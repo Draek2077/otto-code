@@ -1,10 +1,11 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
 import type { SessionOutboundMessage } from "../messages.js";
+import { removeTempDir } from "../../test-utils/remove-temp-dir.js";
 
 function tmpCwd(): string {
   return mkdtempSync(path.join(tmpdir(), "daemon-e2e-"));
@@ -72,7 +73,7 @@ describe("daemon E2E - persistence", () => {
 
       await ctx.client.deleteAgent(resumed.id);
     } finally {
-      rmSync(cwd, { recursive: true, force: true });
+      removeTempDir(cwd);
     }
   }, 30_000);
 
@@ -126,8 +127,8 @@ describe("daemon E2E - persistence", () => {
     } finally {
       await ctx.cleanup();
       cleaned = true;
-      rmSync(cwd, { recursive: true, force: true });
-      rmSync(ottoHomeRoot, { recursive: true, force: true });
+      removeTempDir(cwd);
+      removeTempDir(ottoHomeRoot);
     }
   }, 30_000);
 });

@@ -1,10 +1,11 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { afterEach, beforeEach, expect, test } from "vitest";
 
 import { DaemonClient, type DaemonEvent } from "../test-utils/daemon-client.js";
 import { createTestOttoDaemon, type TestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { removeTempDirAsync } from "../../test-utils/remove-temp-dir.js";
 
 const cleanupPaths = new Set<string>();
 const cleanupDaemons = new Set<TestOttoDaemon>();
@@ -22,9 +23,7 @@ afterEach(async () => {
   cleanupClients.clear();
   await Promise.all(Array.from(cleanupDaemons, (daemon) => daemon.close().catch(() => undefined)));
   cleanupDaemons.clear();
-  await Promise.all(
-    Array.from(cleanupPaths, (target) => rm(target, { recursive: true, force: true })),
-  );
+  await Promise.all(Array.from(cleanupPaths, (target) => removeTempDirAsync(target)));
   cleanupPaths.clear();
 });
 

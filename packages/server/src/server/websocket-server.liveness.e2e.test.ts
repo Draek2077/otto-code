@@ -1,10 +1,15 @@
 import { expect, test } from "vitest";
 import { WebSocket, type RawData } from "ws";
 import { createTestOttoDaemon, type TestOttoDaemon } from "./test-utils/index.js";
+import { MAX_PHYSICAL_SOCKET_BUFFERED_BYTES } from "./websocket/physical-socket.js";
 import { WSOutboundMessageSchema, type WSOutboundMessage } from "./messages.js";
 
 const LARGE_REQUEST_BYTES = 512 * 1024;
-const BURST_MESSAGE_COUNT = 32;
+// Derived, never hardcoded: this burst only proves anything if it overruns the
+// daemon's buffered-byte bound, and that bound has already moved once (8 MiB ->
+// 64 MiB) and left a fixed count silently asserting nothing. The slack absorbs
+// the pong envelope and whatever the stale socket drains before it is paused.
+const BURST_MESSAGE_COUNT = Math.ceil(MAX_PHYSICAL_SOCKET_BUFFERED_BYTES / LARGE_REQUEST_BYTES) + 8;
 const TEST_TIMEOUT_MS = 30_000;
 
 interface SocketClose {

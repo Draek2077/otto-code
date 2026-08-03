@@ -1,6 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
 import { createMessageCollector, type MessageCollector } from "../test-utils/message-collector.js";
+import { removeTempDir } from "../../test-utils/remove-temp-dir.js";
 
 // Use gpt-5.4-mini with low thinking preset for faster test execution
 const CODEX_TEST_MODEL = "gpt-5.4-mini";
@@ -9,6 +13,7 @@ const CODEX_TEST_THINKING_OPTION_ID = "low";
 describe("daemon E2E", () => {
   let ctx: DaemonTestContext;
   let collector: MessageCollector;
+  const tempRoots: string[] = [];
 
   beforeEach(async () => {
     ctx = await createDaemonTestContext();
@@ -18,15 +23,23 @@ describe("daemon E2E", () => {
   afterEach(async () => {
     collector.unsubscribe();
     await ctx.cleanup();
+    for (const tempRoot of tempRoots.splice(0)) {
+      removeTempDir(tempRoot);
+    }
   }, 60000);
 
   test("creates agent and receives response", async () => {
+    // A real directory from the OS temp root. Hardcoding "/tmp" made the daemon
+    // resolve it to "C:\tmp" on Windows, so the echoed cwd never matched.
+    const cwd = realpathSync(mkdtempSync(path.join(tmpdir(), "agent-basics-")));
+    tempRoots.push(cwd);
+
     // Create a Codex agent
     const agent = await ctx.client.createAgent({
       provider: "codex",
       model: CODEX_TEST_MODEL,
       thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID,
-      cwd: "/tmp",
+      cwd,
       title: "Test Agent",
     });
 
@@ -34,7 +47,7 @@ describe("daemon E2E", () => {
     expect(agent.provider).toBe("codex");
     expect(agent.status).toBe("idle");
     // Title may or may not be set depending on timing
-    expect(agent.cwd).toBe("/tmp");
+    expect(agent.cwd).toBe(cwd);
 
     // Send a simple message
     await ctx.client.sendMessage(agent.id, "Say 'hello world' and nothing else");
@@ -78,7 +91,9 @@ describe("daemon E2E", () => {
   }, 180000); // 3 minute timeout for E2E test
 
   test("fails to create agent with non-existent cwd", async () => {
-    const nonExistentCwd = "/this/path/does/not/exist/12345";
+    // Built from the OS temp root so the path the daemon echoes back in the
+    // error is the same string we assert on, on POSIX and Windows alike.
+    const nonExistentCwd = path.join(tmpdir(), "this-path-does-not-exist-12345");
 
     await expect(
       ctx.client.createAgent({

@@ -728,6 +728,21 @@ class FakeAgentSession implements AgentSession {
       await this.appendHistoryEvent(turnStarted);
       this.notifySubscribers(turnStarted);
 
+      // Every real provider echoes the prompt back as a `user_message` before it
+      // answers (Claude from the SDK's user message, ACP from
+      // `user_message_chunk`), and the daemon has no echo of its own: what a
+      // client sees in the timeline is exactly what the provider reported. A
+      // fixture that skipped this made the daemon look like it drops the user's
+      // own turn, so anything asserting on a conversation and not just a reply
+      // could never pass against it.
+      const userEcho: AgentStreamEvent = {
+        type: "timeline",
+        provider: this.providerName,
+        item: { type: "user_message", text: textPrompt },
+      };
+      await this.appendHistoryEvent(userEcho);
+      this.notifySubscribers(userEcho);
+
       if (textPrompt.toLowerCase().includes("emit a turn failure")) {
         const failed: AgentStreamEvent = {
           type: "turn_failed",

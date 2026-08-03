@@ -202,6 +202,14 @@ export async function archiveByScope(
       targetWorkspaceIds,
       request.requestId,
     );
+    console.error(
+      "DIAG archiveByScope",
+      JSON.stringify(request.scope),
+      "targets=",
+      JSON.stringify(targetWorkspaceIds),
+      "archived=",
+      JSON.stringify(archivedWorkspaceIds),
+    );
 
     await dropGitOperationLogsForArchivedRecords(dependencies, target, archivedWorkspaceIds);
 

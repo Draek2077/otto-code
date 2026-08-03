@@ -1,7 +1,9 @@
 import { test, expect } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import { removeTempDir } from "../test-utils/remove-temp-dir.js";
 
 import { DaemonClient } from "./test-utils/index.js";
 import { createTestOttoDaemon } from "./test-utils/otto-daemon.js";
@@ -122,7 +124,7 @@ test("daemon resolves human and managed CLI workspace ownership", async () => {
   } finally {
     await client.close().catch(() => undefined);
     await daemon.close();
-    rmSync(cwd, { recursive: true, force: true });
-    rmSync(otherCwd, { recursive: true, force: true });
+    removeTempDir(cwd);
+    removeTempDir(otherCwd);
   }
 }, 180000);

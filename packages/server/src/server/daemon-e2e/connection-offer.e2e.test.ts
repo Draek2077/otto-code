@@ -6,6 +6,7 @@ import os from "node:os";
 import { mkdtemp, rm } from "node:fs/promises";
 import { Writable } from "node:stream";
 import { spawn } from "node:child_process";
+import { quoteWindowsArgument, quoteWindowsCommand } from "../../utils/windows-command.js";
 
 import { generateLocalPairingOffer } from "../pairing-offer.js";
 import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
@@ -203,7 +204,16 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
 
     const serverRoot = path.resolve(import.meta.dirname, "../../..");
     const supervisorPath = path.join(serverRoot, "scripts/supervisor-entrypoint.ts");
-    const tsxBin = path.resolve(serverRoot, "../../node_modules/.bin/tsx");
+    // npm writes the `.bin` shim as `tsx.cmd` on Windows; the extensionless
+    // name only exists for POSIX shells, so spawn cannot find it there. Node
+    // then refuses to exec a .cmd without a shell (CVE-2024-27980), so Windows
+    // needs `shell: true` plus the cmd.exe quoting the repo helper applies.
+    const isWindows = process.platform === "win32";
+    const tsxBin = path.resolve(
+      serverRoot,
+      "../../node_modules/.bin",
+      isWindows ? "tsx.cmd" : "tsx",
+    );
 
     const env = {
       ...process.env,
@@ -216,10 +226,16 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
     };
 
     const stdoutLines: string[] = [];
-    const proc = spawn(tsxBin, [supervisorPath, "--dev", "--no-relay"], {
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const spawnArgs = [supervisorPath, "--dev", "--no-relay"];
+    const proc = spawn(
+      isWindows ? quoteWindowsCommand(tsxBin) : tsxBin,
+      isWindows ? spawnArgs.map(quoteWindowsArgument) : spawnArgs,
+      {
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+        shell: isWindows,
+      },
+    );
 
     try {
       const sawListeningLog = await new Promise<boolean>((resolve, reject) => {

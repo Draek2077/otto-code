@@ -98,11 +98,22 @@ async function waitForCheckoutStatus(options: {
   predicate: (status: CheckoutStatusResponse) => boolean;
   timeoutMs?: number;
 }): Promise<CheckoutStatusResponse> {
-  const deadline = Date.now() + (options.timeoutMs ?? 15_000);
+  const timeoutMs = options.timeoutMs ?? 15_000;
+  const deadline = Date.now() + timeoutMs;
   let latest = await options.client.getCheckoutStatus(options.cwd);
   while (!options.predicate(latest) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 50));
     latest = await options.client.getCheckoutStatus(options.cwd);
+  }
+  // Returning the last candidate on timeout made every caller fail on its own
+  // follow-up assertion instead, which reported "expected 'ship-loop' to be
+  // 'ship-loop-ready'" — a branch-rename bug — when the actual fault was that
+  // the daemon never invalidated its cached git snapshot inside the window.
+  if (!options.predicate(latest)) {
+    throw new Error(
+      `Checkout status for ${options.cwd} never satisfied the predicate within ${timeoutMs}ms. ` +
+        `Last seen currentBranch=${latest.isGit ? latest.currentBranch : "<non-git>"}.`,
+    );
   }
   return latest;
 }

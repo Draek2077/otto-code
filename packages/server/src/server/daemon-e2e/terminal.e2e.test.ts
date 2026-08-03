@@ -1457,9 +1457,12 @@ test("snapshot fidelity through websocket decode preserves dimensions and visibl
   });
   const terminalId = created.terminal!.id;
 
+  // Chained `echo` rather than `printf`: cmd.exe has no printf, so on Windows
+  // the old command only ever rendered a "not recognized" error into the grid.
+  // `a && b` is valid in cmd.exe and in POSIX shells alike.
   ctx.client.sendTerminalInput(terminalId, {
     type: "input",
-    data: "printf 'line1\\nline2\\nline3\\n'\r",
+    data: "echo line1 && echo line2 && echo line3\r",
   });
   await new Promise((resolve) => setTimeout(resolve, 300));
 
