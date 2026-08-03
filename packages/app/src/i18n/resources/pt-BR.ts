@@ -150,6 +150,8 @@ export const ptBR: TranslationResources = {
       sendAllQueuedMessages: "Enviar tudo",
       moveQueuedMessageUp: "Mover mensagem da fila para antes",
       moveQueuedMessageDown: "Mover mensagem da fila para depois",
+      queuedAttachments_one: "{{count}} anexo",
+      queuedAttachments_other: "{{count}} anexos",
       openImage: "Abrir anexo de imagem",
       removeImage: "Remover anexo de imagem",
       removeFile: "Remover anexo de arquivo",
@@ -1032,11 +1034,21 @@ export const ptBR: TranslationResources = {
         restartScript: "Reiniciar {{scriptName}}",
         copyUrl: "Copiar URL de {{scriptName}}",
         chooseUrl: "Escolher URL para {{scriptName}}",
+        expandGroup: "Show {{groupName}} scripts",
+        collapseGroup: "Hide {{groupName}} scripts",
       },
       states: {
         exitCode: "saída {{code}}",
         startFailed: "Falha ao iniciar {{scriptName}}",
         stopFailed: "Falha ao parar {{scriptName}}",
+      },
+      filter: {
+        placeholder: "Filter scripts",
+        noMatches: "No scripts match",
+      },
+      sources: {
+        otto: "Otto",
+        recent: "Recent",
       },
       routes: {
         public: "Proxy reverso",

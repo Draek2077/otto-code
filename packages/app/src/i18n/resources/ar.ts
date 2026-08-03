@@ -149,6 +149,8 @@ export const ar: TranslationResources = {
       sendAllQueuedMessages: "إرسال الكل",
       moveQueuedMessageUp: "نقل الرسالة في قائمة الانتظار إلى الأعلى",
       moveQueuedMessageDown: "نقل الرسالة في قائمة الانتظار إلى الأسفل",
+      queuedAttachments_one: "{{count}} مرفق",
+      queuedAttachments_other: "{{count}} مرفقات",
       openImage: "فتح مرفق الصورة",
       removeImage: "إزالة مرفق الصورة",
       removeFile: "إزالة الملف المرفق",
@@ -1021,11 +1023,21 @@ export const ar: TranslationResources = {
         restartScript: "إعادة تشغيل{{scriptName}}",
         copyUrl: "نسخ عنوان URL لـ{{scriptName}}",
         chooseUrl: "اختيار رابط {{scriptName}}",
+        expandGroup: "Show {{groupName}} scripts",
+        collapseGroup: "Hide {{groupName}} scripts",
       },
       states: {
         exitCode: "الخروج من{{code}}",
         startFailed: "فشل بدء تشغيل{{scriptName}}",
         stopFailed: "فشل إيقاف{{scriptName}}",
+      },
+      filter: {
+        placeholder: "Filter scripts",
+        noMatches: "No scripts match",
+      },
+      sources: {
+        otto: "Otto",
+        recent: "Recent",
       },
       routes: {
         public: "الوكيل العكسي",

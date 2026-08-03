@@ -150,6 +150,8 @@ export const en = {
       sendAllQueuedMessages: "Send all",
       moveQueuedMessageUp: "Move queued message earlier",
       moveQueuedMessageDown: "Move queued message later",
+      queuedAttachments_one: "{{count}} attachment",
+      queuedAttachments_other: "{{count}} attachments",
       openImage: "Open image attachment",
       removeImage: "Remove image attachment",
       removeFile: "Remove file attachment",
@@ -1043,11 +1045,21 @@ export const en = {
         restartScript: "Restart {{scriptName}}",
         copyUrl: "Copy {{scriptName}} URL",
         chooseUrl: "Choose URL for {{scriptName}}",
+        expandGroup: "Show {{groupName}} scripts",
+        collapseGroup: "Hide {{groupName}} scripts",
       },
       states: {
         exitCode: "exit {{code}}",
         startFailed: "Failed to start {{scriptName}}",
         stopFailed: "Failed to stop {{scriptName}}",
+      },
+      filter: {
+        placeholder: "Filter scripts",
+        noMatches: "No scripts match",
+      },
+      sources: {
+        otto: "Otto",
+        recent: "Recent",
       },
       routes: {
         public: "Reverse proxy",

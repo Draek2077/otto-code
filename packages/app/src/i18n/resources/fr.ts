@@ -151,6 +151,8 @@ export const fr: TranslationResources = {
       sendAllQueuedMessages: "Tout envoyer",
       moveQueuedMessageUp: "Déplacer le message en file d'attente plus tôt",
       moveQueuedMessageDown: "Déplacer le message en file d'attente plus tard",
+      queuedAttachments_one: "{{count}} pièce jointe",
+      queuedAttachments_other: "{{count}} pièces jointes",
       openImage: "Ouvrir la pièce jointe de l'image",
       removeImage: "Supprimer l'image jointe",
       removeFile: "Retirer le fichier joint",
@@ -1035,11 +1037,21 @@ export const fr: TranslationResources = {
         restartScript: "Redémarrer{{scriptName}}",
         copyUrl: "Copier l'URL de{{scriptName}}",
         chooseUrl: "Choisir l’URL pour {{scriptName}}",
+        expandGroup: "Show {{groupName}} scripts",
+        collapseGroup: "Hide {{groupName}} scripts",
       },
       states: {
         exitCode: "quitter{{code}}",
         startFailed: "Échec du démarrage de{{scriptName}}",
         stopFailed: "Échec de l'arrêt de{{scriptName}}",
+      },
+      filter: {
+        placeholder: "Filter scripts",
+        noMatches: "No scripts match",
+      },
+      sources: {
+        otto: "Otto",
+        recent: "Recent",
       },
       routes: {
         public: "Proxy inverse",

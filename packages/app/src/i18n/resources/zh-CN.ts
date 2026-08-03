@@ -148,6 +148,8 @@ export const zhCN: TranslationResources = {
       sendAllQueuedMessages: "全部发送",
       moveQueuedMessageUp: "将排队消息前移",
       moveQueuedMessageDown: "将排队消息后移",
+      queuedAttachments_one: "{{count}} 个附件",
+      queuedAttachments_other: "{{count}} 个附件",
       openImage: "打开图片附件",
       removeImage: "移除图片附件",
       removeFile: "移除附件文件",
@@ -1012,11 +1014,21 @@ export const zhCN: TranslationResources = {
         restartScript: "重启 {{scriptName}}",
         copyUrl: "复制 {{scriptName}} 的 URL",
         chooseUrl: "选择 {{scriptName}} 的 URL",
+        expandGroup: "Show {{groupName}} scripts",
+        collapseGroup: "Hide {{groupName}} scripts",
       },
       states: {
         exitCode: "退出码 {{code}}",
         startFailed: "启动 {{scriptName}} 失败",
         stopFailed: "停止 {{scriptName}} 失败",
+      },
+      filter: {
+        placeholder: "Filter scripts",
+        noMatches: "No scripts match",
+      },
+      sources: {
+        otto: "Otto",
+        recent: "Recent",
       },
       routes: {
         public: "反向代理",

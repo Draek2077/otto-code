@@ -150,6 +150,8 @@ export const ru: TranslationResources = {
       sendAllQueuedMessages: "Отправить все",
       moveQueuedMessageUp: "Переместить сообщение в очереди раньше",
       moveQueuedMessageDown: "Переместить сообщение в очереди позже",
+      queuedAttachments_one: "{{count}} вложение",
+      queuedAttachments_other: "вложений: {{count}}",
       openImage: "Открыть прикрепленное изображение",
       removeImage: "Удалить прикрепленное изображение",
       removeFile: "Удалить вложенный файл",
@@ -1033,11 +1035,21 @@ export const ru: TranslationResources = {
         restartScript: "Перезапустить{{scriptName}}",
         copyUrl: "Скопировать URL {{scriptName}}",
         chooseUrl: "Выбрать URL для {{scriptName}}",
+        expandGroup: "Show {{groupName}} scripts",
+        collapseGroup: "Hide {{groupName}} scripts",
       },
       states: {
         exitCode: "выйти из{{code}}",
         startFailed: "Не удалось запустить{{scriptName}}",
         stopFailed: "Не удалось остановить{{scriptName}}",
+      },
+      filter: {
+        placeholder: "Filter scripts",
+        noMatches: "No scripts match",
+      },
+      sources: {
+        otto: "Otto",
+        recent: "Recent",
       },
       routes: {
         public: "Обратный прокси",

@@ -151,6 +151,8 @@ export const ja: TranslationResources = {
       sendAllQueuedMessages: "すべて送信",
       moveQueuedMessageUp: "キューのメッセージを前へ移動",
       moveQueuedMessageDown: "キューのメッセージを後ろへ移動",
+      queuedAttachments_one: "添付 {{count}} 件",
+      queuedAttachments_other: "添付 {{count}} 件",
       openImage: "画像添付ファイルを開く",
       removeImage: "画像添付ファイルを削除",
       removeFile: "ファイル添付ファイルを削除",
@@ -1031,11 +1033,21 @@ export const ja: TranslationResources = {
         restartScript: "{{scriptName}}を再起動",
         copyUrl: "{{scriptName}}のURLをコピー",
         chooseUrl: "{{scriptName}}のURLを選択",
+        expandGroup: "Show {{groupName}} scripts",
+        collapseGroup: "Hide {{groupName}} scripts",
       },
       states: {
         exitCode: "終了コード: {{code}}",
         startFailed: "{{scriptName}}の起動に失敗しました",
         stopFailed: "{{scriptName}}の停止に失敗しました",
+      },
+      filter: {
+        placeholder: "Filter scripts",
+        noMatches: "No scripts match",
+      },
+      sources: {
+        otto: "Otto",
+        recent: "Recent",
       },
       routes: {
         public: "リバースプロキシ",
