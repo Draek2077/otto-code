@@ -9,7 +9,7 @@ import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { rateLimitDismissKey, useSessionStore } from "@/stores/session-store";
 import { resolveProviderLabel } from "@/utils/provider-definitions";
 import { FlyoutBand } from "@/composer/flyout-band";
-import { COMPOSER_TRACK_LAYERS } from "@/composer/track-transition";
+import { COMPOSER_TRACK_LAYERS, ComposerTrackTransition } from "@/composer/track-transition";
 import type { FlyoutTone } from "@/styles/status-tone";
 
 interface RateLimitWarningTrackProps {
@@ -27,7 +27,7 @@ interface RateLimitWarningTrackProps {
 export function RateLimitWarningTrack({
   serverId,
   agentId,
-}: RateLimitWarningTrackProps): ReactElement | null {
+}: RateLimitWarningTrackProps): ReactElement {
   const { t } = useTranslation();
   const { settings } = useAppSettings();
   const rateLimitInfo = useSessionStore((state) =>
@@ -87,24 +87,27 @@ export function RateLimitWarningTrack({
     dismissal.key === rateLimitDismissKey(rateLimitInfo) &&
     Date.now() < dismissal.mutedUntil;
 
-  if (!message || !rateLimitInfo || isMuted) return null;
-
   // Orange while approaching the limit, escalating to red once it is reached.
-  const tone: FlyoutTone = rateLimitInfo.status === "rejected" ? "red" : "orange";
+  const tone: FlyoutTone = rateLimitInfo?.status === "rejected" ? "red" : "orange";
   const dismissLabel = t("composer.rateLimit.dismiss");
 
+  // The transition wrapper is rendered either way — an empty one is how the band
+  // is dismissed, and it has to stay mounted to animate the band out.
   return (
-    <FlyoutBand
-      tone={tone}
-      layer={COMPOSER_TRACK_LAYERS.rateLimit}
-      message={message}
-      icon={TriangleAlert}
-      onDismiss={handleDismiss}
-      dismissLabel={dismissLabel}
-      testID="composer-rate-limit-track"
-      messageTestID="composer-rate-limit-warning"
-      dismissTestID="composer-rate-limit-dismiss"
-    />
+    <ComposerTrackTransition layer={COMPOSER_TRACK_LAYERS.rateLimit}>
+      {message && rateLimitInfo && !isMuted ? (
+        <FlyoutBand
+          tone={tone}
+          message={message}
+          icon={TriangleAlert}
+          onDismiss={handleDismiss}
+          dismissLabel={dismissLabel}
+          testID="composer-rate-limit-track"
+          messageTestID="composer-rate-limit-warning"
+          dismissTestID="composer-rate-limit-dismiss"
+        />
+      ) : null}
+    </ComposerTrackTransition>
   );
 }
 

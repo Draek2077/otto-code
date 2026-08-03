@@ -51,7 +51,7 @@ export function BackgroundTasksTrack({
   rows,
   onStopTask,
   onClearTasks,
-}: BackgroundTasksTrackProps): ReactElement | null {
+}: BackgroundTasksTrackProps): ReactElement {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [completedExpanded, setCompletedExpanded] = useState(false);
@@ -92,7 +92,9 @@ export function BackgroundTasksTrack({
   );
 
   if (rows.length === 0) {
-    return null;
+    // An empty wrapper, not `null`: the transition owns the dismount so the card
+    // can sink away instead of vanishing. See composer/track-transition.web.tsx.
+    return <ComposerTrackTransition layer={COMPOSER_TRACK_LAYERS.backgroundTasks} />;
   }
 
   // Summarize the same partition the list renders, so every row is counted in

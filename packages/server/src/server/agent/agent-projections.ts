@@ -120,10 +120,18 @@ function toQueuedMessagePayloads(
     return undefined;
   }
   return queue.map((entry) => {
+    // Everything that is not the message's own prose. Images and file/PR/issue
+    // blocks are obvious; a text ATTACHMENT (added-to-chat file, folder, chat
+    // history, review) also counts, because the user attached it and expects to
+    // see it in the row's count. It is told apart from a plain prompt text
+    // block by its required `mimeType` — TextAttachmentSchema declares it,
+    // buildAgentPrompt's own text block never carries one. Counting only
+    // `type !== "text"` undercounted every added-to-chat file, so the daemon
+    // path disagreed with the client-held queue on the very same message.
     const attachmentCount =
       typeof entry.prompt === "string"
         ? 0
-        : entry.prompt.filter((block) => block.type !== "text").length;
+        : entry.prompt.filter((block) => block.type !== "text" || "mimeType" in block).length;
     return {
       id: entry.id,
       preview: steerQueuePreview(entry),

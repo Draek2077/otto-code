@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "vitest";
 
+import type { AgentAttachment } from "@otto-code/protocol/messages";
+
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { AgentManager } from "./agent-manager.js";
 import { startAgentRun } from "./agent-prompt.js";
 import { toAgentPayload } from "./agent-projections.js";
 import { cancelAgentRunCommand } from "./lifecycle-command.js";
+import { buildAgentPrompt } from "./prompt-attachments.js";
 import {
   createSteerQueueEntry,
   mergeSteerQueueBatch,
@@ -34,6 +37,23 @@ const TEST_CAPABILITIES = {
 } as const;
 
 const logger = createTestLogger();
+
+/** A prompt attachment block, the shape the composer sends for an upload. */
+function uploadedFile(fileName: string): AgentAttachment {
+  return {
+    type: "uploaded_file",
+    id: `file-${fileName}`,
+    fileName,
+    mimeType: "application/octet-stream",
+    size: 1,
+    path: `/tmp/${fileName}`,
+  };
+}
+
+/** Identify an attachment in an assertion without narrowing the union by hand. */
+function attachmentLabel(attachment: AgentAttachment): string {
+  return attachment.type === "uploaded_file" ? attachment.fileName : attachment.type;
+}
 
 /**
  * A session whose turns stay open until the test completes them. The queue is
@@ -255,6 +275,40 @@ describe("steer queue state", () => {
     });
   });
 
+  test("merging keeps the union of every entry's attachments, in FIFO order", () => {
+    const batch = [
+      createSteerQueueEntry({
+        prompt: [
+          { type: "text", text: "start here" },
+          { type: "image", data: "IMG1", mimeType: "image/png" },
+          uploadedFile("one.pdf"),
+        ],
+      }),
+      createSteerQueueEntry({
+        prompt: [
+          { type: "text", text: "and this" },
+          uploadedFile("two.csv"),
+          { type: "image", data: "IMG2", mimeType: "image/jpeg" },
+        ],
+      }),
+      // A text-only entry in the middle must not truncate what follows it.
+      createSteerQueueEntry({ prompt: "no attachments on this one" }),
+      createSteerQueueEntry({
+        prompt: [{ type: "text", text: "last" }, uploadedFile("three.txt")],
+      }),
+    ];
+
+    const merged = mergeSteerQueueBatch(batch);
+    const parts = steerQueuePromptParts(merged.prompt);
+
+    expect(parts.text).toBe("start here\n\nand this\n\nno attachments on this one\n\nlast");
+    expect(parts.images).toEqual([
+      { data: "IMG1", mimeType: "image/png" },
+      { data: "IMG2", mimeType: "image/jpeg" },
+    ]);
+    expect(parts.attachments.map(attachmentLabel)).toEqual(["one.pdf", "two.csv", "three.txt"]);
+  });
+
   test("preview truncates long text and ignores non-text blocks", () => {
     const entry = createSteerQueueEntry({
       prompt: [
@@ -265,6 +319,33 @@ describe("steer queue state", () => {
     const preview = steerQueuePreview(entry);
     expect(preview).toHaveLength(200);
     expect(preview.endsWith("…")).toBe(true);
+  });
+
+  test("the wire count covers every attachment, prose excluded", async () => {
+    const { manager, agentId } = await createRunningAgent();
+
+    startAgentRun(
+      manager,
+      agentId,
+      buildAgentPrompt(
+        "have a look",
+        [{ data: "IMG1", mimeType: "image/png" }],
+        [
+          uploadedFile("report.pdf"),
+          // An added-to-chat file rides as a text ATTACHMENT. It is still
+          // something the user attached, so the row must count it.
+          { type: "text", mimeType: "text/plain", title: "File · src/app.ts", text: "…" },
+        ],
+      ),
+      logger,
+      { delivery: "queue" },
+    );
+    startAgentRun(manager, agentId, "plain prose, nothing attached", logger, { delivery: "queue" });
+
+    const queued = toAgentPayload(manager.getAgent(agentId)!).queuedMessages;
+    expect(queued?.[0]?.attachmentCount).toBe(3);
+    // Absent rather than 0, so the field stays off the wire when there is nothing to say.
+    expect(queued?.[1]?.attachmentCount).toBeUndefined();
   });
 
   test("an empty queue has nothing to drain", () => {
@@ -329,6 +410,48 @@ describe("queued delivery", () => {
       "use the existing helper\n\nand add a test\n\nthen run lint",
     ]);
     expect(manager.getSteerQueue(agentId)).toEqual([]);
+  });
+
+  test("grouped queued messages deliver every attachment they carried", async () => {
+    const { manager, agentId, session } = await createRunningAgent();
+
+    // Exactly what the composer sends: buildAgentPrompt over text + images +
+    // attachments, parked with delivery "queue" while a turn is in flight.
+    startAgentRun(
+      manager,
+      agentId,
+      buildAgentPrompt(
+        "review this shot",
+        [{ data: "IMG1", mimeType: "image/png" }],
+        [uploadedFile("one.pdf")],
+      ),
+      logger,
+      { delivery: "queue" },
+    );
+    startAgentRun(
+      manager,
+      agentId,
+      buildAgentPrompt("and this spreadsheet", undefined, [uploadedFile("two.csv")]),
+      logger,
+      { delivery: "queue" },
+    );
+    startAgentRun(
+      manager,
+      agentId,
+      buildAgentPrompt("no attachment here", undefined, undefined),
+      logger,
+      { delivery: "queue" },
+    );
+
+    session.completeTurn();
+    await settle();
+
+    // One merged turn, carrying the union of everything queued.
+    expect(session.prompts).toHaveLength(2);
+    const delivered = steerQueuePromptParts(session.prompts[1]!);
+    expect(delivered.text).toBe("review this shot\n\nand this spreadsheet\n\nno attachment here");
+    expect(delivered.images).toEqual([{ data: "IMG1", mimeType: "image/png" }]);
+    expect(delivered.attachments.map(attachmentLabel)).toEqual(["one.pdf", "two.csv"]);
   });
 
   test("queueing to an idle agent runs it immediately instead of waiting", async () => {

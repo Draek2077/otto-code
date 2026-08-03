@@ -34,6 +34,7 @@ import {
   GitPullRequest,
   Github,
   Image as ImageIcon,
+  Paperclip,
   UploadFile,
 } from "@/components/icons/material-icons";
 import Animated from "react-native-reanimated";
@@ -355,6 +356,8 @@ interface RenderQueueTrackArgs {
   sendAllLabel: string;
   moveUpLabel: string;
   moveDownLabel: string;
+  /** Pluralized "N attachments" for the row's leading count badge. */
+  formatAttachmentCount: (count: number) => string;
 }
 
 function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
@@ -369,6 +372,7 @@ function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
     sendAllLabel,
     moveUpLabel,
     moveDownLabel,
+    formatAttachmentCount,
   } = args;
   if (queuedMessages.length === 0) return null;
   // One row cannot be re-ordered, so the controls only appear once there is
@@ -395,6 +399,7 @@ function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
           sendAllLabel={sendAllLabel}
           moveUpLabel={moveUpLabel}
           moveDownLabel={moveDownLabel}
+          formatAttachmentCount={formatAttachmentCount}
         />
       ))}
     </View>
@@ -534,6 +539,7 @@ interface QueuedMessageRowProps {
   sendAllLabel: string;
   moveUpLabel: string;
   moveDownLabel: string;
+  formatAttachmentCount: (count: number) => string;
 }
 
 function QueuedMessageRow({
@@ -549,6 +555,7 @@ function QueuedMessageRow({
   sendAllLabel,
   moveUpLabel,
   moveDownLabel,
+  formatAttachmentCount,
 }: QueuedMessageRowProps) {
   const iconSize = useIconSize();
   const handleEdit = useCallback(() => {
@@ -563,8 +570,24 @@ function QueuedMessageRow({
   const handleMoveDown = useCallback(() => {
     onMove?.(item.id, "down");
   }, [onMove, item.id]);
+  // The daemon-backed queue reports what IT holds; the client-held queue only
+  // has its own array. Read both so the count is right on either path.
+  const attachmentCount = item.attachmentCount ?? item.attachments.length;
   return (
     <View style={styles.queueItem}>
+      {attachmentCount > 0 ? (
+        // Leads the row, ahead of the text: the whole point is that the
+        // attachments are visibly part of the queued message, not an
+        // afterthought hidden behind the actions.
+        <View
+          style={styles.queueAttachmentBadge}
+          testID="composer-queue-attachment-count"
+          accessibilityLabel={formatAttachmentCount(attachmentCount)}
+        >
+          <ThemedPaperclip size={iconSize.xs} uniProps={iconForegroundMutedMapping} />
+          <Text style={styles.queueAttachmentCount}>{attachmentCount}</Text>
+        </View>
+      ) : null}
       <Text style={styles.queueText} numberOfLines={2} ellipsizeMode="tail">
         {item.text}
       </Text>
@@ -1822,18 +1845,11 @@ export function Composer({
    */
   const handleSendAllQueued = useCallback(async () => {
     if (!sendAgentMessageRef.current && !onSubmitMessageRef.current) return;
-    // Two kinds of entry must NOT be pulled into a merged user turn, and are left
-    // in the queue to drain naturally instead:
-    //  - system-injected entries (mentions/schedules), which the daemon's own
-    //    drain never merges into a user turn;
-    //  - entries whose attachments the daemon holds but this client can't back
-    //    (sidecar lost to a reload or another device) — merging here would send
-    //    the turn with those images silently dropped.
-    const sendable = queuedMessages.filter(
-      (item) =>
-        item.source !== "system" &&
-        !((item.attachmentCount ?? 0) > 0 && item.attachments.length === 0),
-    );
+    // Which entries may merge is the queue's own question, and it must be asked
+    // live: a message queued a moment ago is on screen before this client knows
+    // the id to file its attachments under, so the rendered snapshot can show a
+    // row as unbackable that is merely still settling. See useComposerQueue.
+    const sendable = await messageQueue.listSendable();
     const ids = sendable.map((item) => item.id);
     if (ids.length === 0) return;
     if (isAgentRunning) {
@@ -1880,7 +1896,6 @@ export function Composer({
     agentId,
     isAgentRunning,
     messageQueue,
-    queuedMessages,
     serverId,
     setSelectedAttachments,
     setUserInput,
@@ -2350,6 +2365,8 @@ export function Composer({
         sendAllLabel: t("composer.attachments.sendAllQueuedMessages"),
         moveUpLabel: t("composer.attachments.moveQueuedMessageUp"),
         moveDownLabel: t("composer.attachments.moveQueuedMessageDown"),
+        formatAttachmentCount: (count: number) =>
+          t("composer.attachments.queuedAttachments", { count }),
       }),
     [
       handleEditQueuedMessage,
@@ -2640,6 +2657,19 @@ const styles = StyleSheet.create((theme: Theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
   },
+  // Leads the row. Sized to sit under the text's baseline weight so it reads as
+  // a marker on the message, not a control competing with edit/send.
+  queueAttachmentBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    flexShrink: 0,
+  },
+  queueAttachmentCount: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
   queueActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -2703,6 +2733,7 @@ const QUEUE_MOVE_BUTTON_DISABLED_STYLE = [styles.queueMoveButton, styles.queueMo
 const QUEUE_MOVE_UP_HIT_SLOP = { top: 6, bottom: 0, left: 6, right: 6 } as const;
 const QUEUE_MOVE_DOWN_HIT_SLOP = { top: 0, bottom: 6, left: 6, right: 6 } as const;
 
+const ThemedPaperclip = withUnistyles(Paperclip);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedChevronUp = withUnistyles(ChevronUp);

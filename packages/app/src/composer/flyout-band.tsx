@@ -3,7 +3,6 @@ import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { ComposerTrackSeamShadow } from "@/composer/track-seam-shadow";
-import { ComposerTrackTransition } from "@/composer/track-transition";
 import { X } from "@/components/icons/material-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -19,6 +18,11 @@ import {
 // color is entirely `tone`, so a caller switches the whole band by naming one.
 //
 // Callers own WHEN to show it and WHAT it says. They never name a color value.
+//
+// The band is only the card, not its motion: the caller wraps it in a
+// ComposerTrackTransition that stays mounted whether or not there is a band to
+// show. Owning the wrapper here instead would swap it out of the tree the moment
+// the band went away, taking the exit animation with it.
 
 const ThemedIcon = withUnistyles(
   ({ Icon, color, size }: { Icon: FlyoutIcon; color?: string; size: number }) => (
@@ -31,8 +35,6 @@ type FlyoutIcon = ComponentType<{ size: number; color: string }>;
 export interface FlyoutBandProps {
   /** Which color the band wears. The only knob that changes its look. */
   tone: FlyoutTone;
-  /** Paint layer in the composer fan, from COMPOSER_TRACK_LAYERS. */
-  layer: number;
   message: string;
   /** Leading status icon, tinted to the tone. */
   icon: FlyoutIcon;
@@ -46,7 +48,6 @@ export interface FlyoutBandProps {
 
 export function FlyoutBand({
   tone,
-  layer,
   message,
   icon,
   onDismiss,
@@ -59,29 +60,27 @@ export function FlyoutBand({
   const surfaceStyle = useMemo(() => [styles.surface, toneStyles[toneSurface(tone)]], [tone]);
   const messageStyle = useMemo(() => [styles.message, toneStyles[toneText(tone)]], [tone]);
   return (
-    <ComposerTrackTransition layer={layer}>
-      <View style={styles.outer} testID={testID}>
-        <ChatWidthBounds style={styles.track}>
-          <View style={surfaceStyle}>
-            <View style={styles.icon}>
-              <ThemedIcon Icon={icon} size={14} uniProps={iconColor} />
-            </View>
-            <Text style={messageStyle} testID={messageTestID}>
-              {message}
-            </Text>
-            {onDismiss ? (
-              <BandDismissButton
-                iconColor={iconColor}
-                label={dismissLabel}
-                onDismiss={onDismiss}
-                testID={dismissTestID}
-              />
-            ) : null}
+    <View style={styles.outer} testID={testID}>
+      <ChatWidthBounds style={styles.track}>
+        <View style={surfaceStyle}>
+          <View style={styles.icon}>
+            <ThemedIcon Icon={icon} size={14} uniProps={iconColor} />
           </View>
-          <ComposerTrackSeamShadow />
-        </ChatWidthBounds>
-      </View>
-    </ComposerTrackTransition>
+          <Text style={messageStyle} testID={messageTestID}>
+            {message}
+          </Text>
+          {onDismiss ? (
+            <BandDismissButton
+              iconColor={iconColor}
+              label={dismissLabel}
+              onDismiss={onDismiss}
+              testID={dismissTestID}
+            />
+          ) : null}
+        </View>
+        <ComposerTrackSeamShadow />
+      </ChatWidthBounds>
+    </View>
   );
 }
 

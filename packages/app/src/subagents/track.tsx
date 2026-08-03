@@ -89,7 +89,7 @@ export function SubagentsTrack({
   onClearCompleted,
   onDetachSubagent,
   clearedTokens = 0,
-}: SubagentsTrackProps): ReactElement | null {
+}: SubagentsTrackProps): ReactElement {
   const [expanded, setExpanded] = useState(false);
   const [completedExpanded, setCompletedExpanded] = useState(false);
   // Rows the user just stopped stay pinned in the active list instead of
@@ -151,7 +151,9 @@ export function SubagentsTrack({
   );
 
   if (rows.length === 0) {
-    return null;
+    // An empty wrapper, not `null`: the transition owns the dismount so the card
+    // can sink away instead of vanishing. See composer/track-transition.web.tsx.
+    return <ComposerTrackTransition layer={COMPOSER_TRACK_LAYERS.subagents} />;
   }
 
   const headerLabel = formatHeaderLabel({ active, completed }, clearedTokens);

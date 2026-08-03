@@ -41,10 +41,7 @@ interface ContextHealthTrackProps {
  * can have three files called CLAUDE.md) and offering a rewrite from a one-line
  * strip would be alarming. All real work happens in the tab.
  */
-export function ContextHealthTrack({
-  serverId,
-  agentId,
-}: ContextHealthTrackProps): ReactElement | null {
+export function ContextHealthTrack({ serverId, agentId }: ContextHealthTrackProps): ReactElement {
   const { t } = useTranslation();
   const { settings } = useAppSettings();
 
@@ -94,7 +91,11 @@ export function ContextHealthTrack({
   // the Date.now() comparison and the warning pops back.
   const muted = isContextWarningMuted(dismissal, report);
 
-  if (!message || !report || muted) return null;
+  if (!message || !report || muted) {
+    // An empty wrapper, not `null`: the transition owns the dismount so the card
+    // can sink away instead of vanishing. See composer/track-transition.web.tsx.
+    return <ComposerTrackTransition layer={COMPOSER_TRACK_LAYERS.contextHealth} />;
+  }
 
   const critical = isCriticalSeverity(report.aggregateSeverity);
   const surfaceStyle = critical ? styles.surfaceCritical : styles.surface;

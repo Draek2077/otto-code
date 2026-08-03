@@ -12,6 +12,7 @@ import {
 import { useHostFeature } from "@/runtime/host-features";
 import { useSessionStore } from "@/stores/session-store";
 import type { DaemonClient } from "@otto-code/client";
+import type { QueuedAgentMessagePayload } from "@otto-code/protocol/messages";
 
 export interface ComposerQueueItem {
   id: string;
@@ -31,6 +32,12 @@ export interface ComposerQueueController {
   /** Pull a message back out (to edit it, or to send it right now). */
   take: (id: string) => Promise<ComposerQueueItem | null>;
   /**
+   * The entries "Send all" may merge into one user turn, resolved when it is
+   * clicked rather than read off the rendered snapshot. Never trust `items`
+   * for this: see `settleEnqueues` for why the snapshot lags.
+   */
+  listSendable: () => Promise<readonly ComposerQueueItem[]>;
+  /**
    * Move a message one place earlier or later. Null when this host cannot
    * re-order, which is what hides the controls — order is still meaningful,
    * there is just no way to change it here.
@@ -39,6 +46,53 @@ export interface ComposerQueueController {
 }
 
 const EMPTY_ITEMS: readonly ComposerQueueItem[] = [];
+
+/**
+ * Turn the daemon's entries into rows, pairing each with whatever attachments
+ * this client still holds for it. Also drops sidecar entries the daemon no
+ * longer reports — they have run, or were cleared — so the map cannot grow
+ * without bound.
+ */
+function projectDaemonQueueItems(
+  daemonItems: readonly QueuedAgentMessagePayload[],
+  sidecar: Map<string, ComposerAttachment[]>,
+): ComposerQueueItem[] {
+  const live = new Set(daemonItems.map((entry) => entry.id));
+  for (const id of sidecar.keys()) {
+    if (!live.has(id)) {
+      sidecar.delete(id);
+    }
+  }
+  return daemonItems.map((entry) => ({
+    id: entry.id,
+    text: entry.preview,
+    attachments: sidecar.get(entry.id) ?? [],
+    source: entry.source,
+    attachmentCount: entry.attachmentCount,
+  }));
+}
+
+/**
+ * Whether "Send all" may pull this entry into the merged user turn. Two kinds
+ * must not be, and are left in the queue to drain naturally instead:
+ *
+ *  - system-injected entries (mentions/schedules), which the daemon's own
+ *    drain never merges into a user turn;
+ *  - entries whose attachments the daemon holds but this client cannot back.
+ *    "Send all" *takes* each entry out of the daemon's queue and re-sends one
+ *    merged message built from the client's copy of the attachments, so the
+ *    daemon's copy is destroyed by the take: if the sidecar is gone (reload,
+ *    another device) the merged turn would go out with those files silently
+ *    dropped. Only reachable through `listSendable`, which settles in-flight
+ *    enqueues first — so "the client cannot back it" is a real fact here, not
+ *    a write that simply hasn't landed yet.
+ */
+function isSendableAsUserTurn(item: ComposerQueueItem): boolean {
+  if (item.source === "system") {
+    return false;
+  }
+  return !((item.attachmentCount ?? 0) > 0 && item.attachments.length === 0);
+}
 
 /**
  * The composer's Queue track, backed by whichever queue the host supports.
@@ -51,10 +105,16 @@ const EMPTY_ITEMS: readonly ComposerQueueItem[] = [];
  * build of the daemon feature.
  *
  * Attachments only ever exist client-side, so the daemon-backed path keeps a
- * local sidecar keyed by the daemon's entry id purely so "edit" can put them
- * back in the box. The daemon still owns whether an entry exists and when it
- * runs; losing the sidecar (reload, other device) costs the attachments on
- * edit, nothing else.
+ * local sidecar keyed by the daemon's entry id purely so this client can put
+ * them back — in the box on "edit", or in the merged turn on "Send all". The
+ * daemon still owns whether an entry exists and when it runs; losing the
+ * sidecar (reload, other device) costs those two client-side re-sends, and the
+ * entry still drains with its attachments intact from the daemon's own copy.
+ *
+ * The sidecar is written when the send answers, which is a tick AFTER the
+ * daemon has already broadcast the new entry — so nothing may decide anything
+ * from `items` alone. `take` and `listSendable` settle first; see
+ * `settleEnqueues`.
  */
 export function useComposerQueue(input: {
   serverId: string;
@@ -79,6 +139,27 @@ export function useComposerQueue(input: {
   );
 
   const attachmentSidecar = useRef(new Map<string, ComposerAttachment[]>());
+  const inFlightEnqueues = useRef(new Set<Promise<void>>());
+
+  /**
+   * Wait for every enqueue still in flight.
+   *
+   * The daemon broadcasts the new entry from inside `enqueueSteerMessage`,
+   * BEFORE it answers the send — so the row is on screen a tick before this
+   * client learns the entry id it must file the attachments under. Until that
+   * write lands the row reads `attachmentCount: 2, attachments: []`, and
+   * because the sidecar is a ref, the write that fixes it re-renders nothing.
+   * Any decision made from `items` in that window is made on a half-built row.
+   *
+   * So the read paths settle first instead of guessing. Draining in a loop
+   * rather than snapshotting the set once covers an enqueue that starts while
+   * we are already waiting.
+   */
+  const settleEnqueues = useCallback(async () => {
+    while (inFlightEnqueues.current.size > 0) {
+      await Promise.all(inFlightEnqueues.current);
+    }
+  }, []);
 
   const queueWriter = useMemo<QueueWriter>(
     () => ({
@@ -95,22 +176,7 @@ export function useComposerQueue(input: {
     if (!daemonItems || daemonItems.length === 0) {
       return EMPTY_ITEMS;
     }
-    const sidecar = attachmentSidecar.current;
-    // Entries the daemon no longer reports have run (or were cleared); drop
-    // their attachments so the sidecar can't grow without bound.
-    const live = new Set(daemonItems.map((entry) => entry.id));
-    for (const id of sidecar.keys()) {
-      if (!live.has(id)) {
-        sidecar.delete(id);
-      }
-    }
-    return daemonItems.map((entry) => ({
-      id: entry.id,
-      text: entry.preview,
-      attachments: sidecar.get(entry.id) ?? [],
-      source: entry.source,
-      attachmentCount: entry.attachmentCount,
-    }));
+    return projectDaemonQueueItems(daemonItems, attachmentSidecar.current);
   }, [daemonItems, daemonOwnsQueue, localItems]);
 
   const enqueue = useCallback(
@@ -122,22 +188,38 @@ export function useComposerQueue(input: {
       if (!client) {
         throw new Error("Not connected");
       }
-      const wirePayload = splitComposerAttachmentsForSubmit(attachments);
-      const images = await encodeImages(wirePayload.images);
-      const result = await client.sendAgentMessage(agentId, text, {
-        delivery: "queue",
-        images: images ?? [],
-        attachments: wirePayload.attachments,
+      const send = async () => {
+        const wirePayload = splitComposerAttachmentsForSubmit(attachments);
+        const images = await encodeImages(wirePayload.images);
+        const result = await client.sendAgentMessage(agentId, text, {
+          delivery: "queue",
+          images: images ?? [],
+          attachments: wirePayload.attachments,
+        });
+        if (result.queuedMessageId && attachments.length > 0) {
+          attachmentSidecar.current.set(result.queuedMessageId, attachments);
+        }
+      };
+      const started = send();
+      // The tracked copy swallows the failure so settling never throws and
+      // never becomes a second unhandled rejection; the caller still gets the
+      // real promise back and reports the error.
+      const tracked = started.catch(() => {});
+      inFlightEnqueues.current.add(tracked);
+      void tracked.finally(() => {
+        inFlightEnqueues.current.delete(tracked);
       });
-      if (result.queuedMessageId && attachments.length > 0) {
-        attachmentSidecar.current.set(result.queuedMessageId, attachments);
-      }
+      await started;
     },
     [agentId, client, daemonOwnsQueue, encodeImages, queueWriter],
   );
 
   const take = useCallback(
     async (id: string): Promise<ComposerQueueItem | null> => {
+      // Taking a row the user queued a moment ago must hand back its
+      // attachments, not the empty array the sidecar holds until the send
+      // answers. Covers edit and "Send now" as well as "Send all".
+      await settleEnqueues();
       if (!daemonOwnsQueue) {
         const result = editQueuedComposerMessage({ agentId, messageId: id, queue: queueWriter });
         return result ? { id, text: result.text, attachments: result.attachments } : null;
@@ -153,8 +235,27 @@ export function useComposerQueue(input: {
       attachmentSidecar.current.delete(id);
       return { id: removed.id, text: removed.text, attachments };
     },
-    [agentId, client, daemonOwnsQueue, queueWriter],
+    [agentId, client, daemonOwnsQueue, queueWriter, settleEnqueues],
   );
+
+  /**
+   * What "Send all" should pull, read live: settle the enqueues in flight,
+   * then re-read the queue from the store rather than the rendered snapshot,
+   * which a sidecar write cannot invalidate (it is a ref, by design — the
+   * sidecar is incidental cache, not UI truth).
+   *
+   * The client-held queue has no sidecar and no such lag, but goes through the
+   * same call so both paths answer the question the same way.
+   */
+  const listSendable = useCallback(async (): Promise<readonly ComposerQueueItem[]> => {
+    await settleEnqueues();
+    if (!daemonOwnsQueue) {
+      return queueWriter.read(agentId).filter(isSendableAsUserTurn);
+    }
+    const entries =
+      useSessionStore.getState().sessions[serverId]?.agents?.get(agentId)?.queuedMessages ?? [];
+    return projectDaemonQueueItems(entries, attachmentSidecar.current).filter(isSendableAsUserTurn);
+  }, [agentId, daemonOwnsQueue, queueWriter, serverId, settleEnqueues]);
 
   // A daemon that owns the queue but predates agent.queue.reorder has no way to
   // move an entry, so the controls are absent rather than faked client-side —
@@ -183,5 +284,5 @@ export function useComposerQueue(input: {
     [agentId, client, daemonOwnsQueue, items, queueWriter],
   );
 
-  return { items, enqueue, take, move: canReorder ? move : null };
+  return { items, enqueue, take, listSendable, move: canReorder ? move : null };
 }
