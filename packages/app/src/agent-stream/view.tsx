@@ -54,6 +54,7 @@ import type {
 } from "@otto-code/protocol/agent-types";
 import type { AgentScreenAgent } from "@/hooks/use-agent-screen-state-machine";
 import { useSessionStore } from "@/stores/session-store";
+import { useWorkspaceProjectId } from "@/stores/session-store-hooks";
 import { useAgentStreamRetention } from "@/timeline/use-agent-stream-retention";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { useLoadOlderAgentHistory } from "@/hooks/use-load-older-agent-history";
@@ -162,11 +163,13 @@ function StreamItemWithTurnFooter({
   content,
   layoutItem,
   strategy,
+  supportsTimelineCursor,
   onForkAssistantTurn,
 }: {
   content: ReactNode;
   layoutItem: StreamLayoutItem;
   strategy: TurnContentStrategy;
+  supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
 }): ReactNode {
   const [isHovered, setIsHovered] = useState(false);
@@ -191,6 +194,7 @@ function StreamItemWithTurnFooter({
       items={footerHost.items}
       timing={footerHost.timing}
       startIndex={footerHost.startIndex}
+      supportsTimelineCursor={supportsTimelineCursor}
       onForkAssistantTurn={onForkAssistantTurn}
       revealed={isHovered}
     />
@@ -350,6 +354,7 @@ function buildChatHistoryAttachment(input: {
       serverId: input.serverId,
       agentId: input.agentId,
       boundaryMessageId: input.payload.boundaryMessageId,
+      boundaryCursor: input.payload.boundaryCursor,
       itemCount: input.payload.itemCount,
     },
   };
@@ -488,6 +493,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const supportsAgentForkContext = useSessionStore(
       (state) => state.sessions[resolvedServerId]?.serverInfo?.features?.agentForkContext === true,
     );
+    const supportsAgentForkContextCursor = useSessionStore(
+      (state) =>
+        state.sessions[resolvedServerId]?.serverInfo?.features?.agentForkContextCursor === true,
+    );
+
+    // Forking into a new workspace routes a project id, and `projectPlacement`
+    // only carries `projectKey` -- the cross-host grouping key, which the daemon
+    // rejects ("Project not found for worktree"). The workspace record is where
+    // this host's opaque project id lives, so read it from there.
+    const forkProjectId = useWorkspaceProjectId(resolvedServerId, agent.workspaceId ?? null);
 
     const workspaceRoot = agent.cwd?.trim() || "";
     const { requestDirectoryListing } = useFileExplorerActions({
@@ -581,7 +596,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     });
 
     const handleForkAssistantTurn: AssistantTurnForkHandler = useStableEvent(
-      async ({ target, boundaryMessageId }) => {
+      async ({ target, boundary }) => {
         try {
           if (!supportsAgentForkContext) {
             toast?.error(t("message.actions.forkUnavailable"));
@@ -593,10 +608,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           const draftSetup = buildForkDraftSetup(agent);
           const prepareForkDraft = async () => {
             const draftId = generateDraftId();
-            const payload = await client.buildAgentForkContext(
-              agentId,
-              boundaryMessageId ? { boundaryMessageId } : {},
-            );
+            const payload = await client.buildAgentForkContext(agentId, boundary);
             const attachment = buildChatHistoryAttachment({
               draftId,
               serverId: resolvedServerId,
@@ -640,7 +652,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               serverId: resolvedServerId,
               sourceDirectory,
               displayName: agent.projectPlacement?.projectName,
-              projectId: agent.projectPlacement?.projectKey,
+              projectId: forkProjectId ?? undefined,
               draftId,
             }),
           );
@@ -1097,11 +1109,17 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             content={content}
             layoutItem={layoutItem}
             strategy={streamRenderStrategy}
+            supportsTimelineCursor={supportsAgentForkContextCursor}
             onForkAssistantTurn={handleForkAssistantTurn}
           />
         );
       },
-      [handleForkAssistantTurn, renderStreamItemContent, streamRenderStrategy],
+      [
+        handleForkAssistantTurn,
+        renderStreamItemContent,
+        streamRenderStrategy,
+        supportsAgentForkContextCursor,
+      ],
     );
 
     const pendingPermissionItems = useMemo(
@@ -1132,6 +1150,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             inFlightEstimatedTokens={baseRenderModel.turnTiming.runningEstimatedTokens}
             host={bottomTurnFooterHost}
             strategy={streamRenderStrategy}
+            supportsTimelineCursor={supportsAgentForkContextCursor}
             onForkAssistantTurn={handleForkAssistantTurn}
             spinner={agent.personalitySpinner ?? undefined}
           />
@@ -1143,6 +1162,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         baseRenderModel.turnTiming.runningEstimatedTokens,
         bottomTurnFooterHost,
         streamRenderStrategy,
+        supportsAgentForkContextCursor,
         agent.personalitySpinner,
       ],
     );

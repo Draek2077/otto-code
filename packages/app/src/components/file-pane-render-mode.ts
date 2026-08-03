@@ -34,6 +34,34 @@ export function renderedDocumentKind(filePath: string): RenderedDocumentKind | n
   return null;
 }
 
+/**
+ * Highlighting is a synchronous pass over the whole file on the UI thread, and
+ * every highlighted line then mounts as its own row. Past this size a multi-MB
+ * log or lockfile freezes the app for seconds on open, so the viewer falls back
+ * to plain text. Characters, not bytes: `length` is what the highlighter walks.
+ */
+export const HIGHLIGHT_MAX_CHARS = 1_000_000;
+export const HIGHLIGHT_MAX_LINES = 10_000;
+
+/** Whether a file is too big to highlight and mount line-by-line. */
+export function exceedsHighlightBudget(content: string): boolean {
+  if (content.length > HIGHLIGHT_MAX_CHARS) {
+    return true;
+  }
+  // Counted by scanning rather than `split`, so an under-budget file never pays
+  // for an array of every line, and an over-budget one stops at the limit.
+  let lines = 1;
+  let index = content.indexOf("\n");
+  while (index !== -1) {
+    lines += 1;
+    if (lines > HIGHLIGHT_MAX_LINES) {
+      return true;
+    }
+    index = content.indexOf("\n", index + 1);
+  }
+  return false;
+}
+
 // Formats whose preview is not just the highlighted source: rendered (SVG as
 // an image), viewable-only (images, media), or binary. Grows as the
 // File rendering section of projects/README.md ships more rich previews

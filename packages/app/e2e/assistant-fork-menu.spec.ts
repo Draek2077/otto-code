@@ -10,8 +10,11 @@ import {
   type MockAgentWorkspace,
 } from "./helpers/mock-agent";
 import { getServerId } from "./helpers/server-id";
-import { seedSavedSettingsHosts } from "./helpers/settings";
-import { submitNewWorkspaceEmpty } from "./helpers/new-workspace";
+import { seedAppSettings, seedSavedSettingsHosts } from "./helpers/settings";
+import {
+  openExistingWorkspaceFromOccupiedSteer,
+  submitNewWorkspaceEmpty,
+} from "./helpers/new-workspace";
 
 const test = base.extend<{
   seedForkWorkspace: (options: MockAgentOptions) => Promise<MockAgentWorkspace>;
@@ -53,6 +56,16 @@ async function expectChatHistoryPill(page: Page): Promise<void> {
 
 test.describe("Assistant fork menu", () => {
   test.describe.configure({ timeout: 180_000 });
+
+  // The assistant turn footer that hosts the fork trigger is hidden-until-hover
+  // by default (`hideChatMessageDetails` defaults to true), which on desktop web
+  // renders it with opacity 0 / pointer-events none — the trigger is present and
+  // passes toBeVisible(), but every click is intercepted by the element behind
+  // it, so the whole fork flow stalls until the test times out. Pin the setting
+  // off so the footer is always visible for these tests.
+  test.beforeEach(async ({ page }) => {
+    await seedAppSettings(page, { hideChatMessageDetails: false });
+  });
 
   test("forks a failed assistant turn that has no provider message id", async ({
     page,
@@ -205,6 +218,11 @@ test.describe("Assistant fork menu", () => {
     await expectChatHistoryPill(page);
 
     await submitNewWorkspaceEmpty(page);
+    // The fork's project is the seeded temp repo, whose directory already backs
+    // the seeded workspace, so the daemon refuses a second one there and the app
+    // steers instead of failing. What this test pins is that the attachment
+    // survives to the new agent's user message, not which branch created it.
+    await openExistingWorkspaceFromOccupiedSteer(page);
 
     const userMessage = page.getByTestId("user-message").filter({ hasText: "Chat history" }).last();
     await expect(userMessage).toBeVisible({ timeout: 30_000 });

@@ -16,6 +16,8 @@ export interface SeedWorkspaceDescriptor {
 interface SeedProjectDescriptor {
   projectId: string;
   projectKey?: string;
+  /** Absolute directory the project is registered against. */
+  projectRootPath: string;
 }
 
 /**

@@ -37,6 +37,17 @@ function assistantMessage(id: string, seed: number): StreamItem {
   };
 }
 
+function assistantBlock(groupId: string, blockIndex: number, seed: number): StreamItem {
+  return {
+    kind: "assistant_message",
+    id: `${groupId}:block:${blockIndex}`,
+    text: `block ${blockIndex}`,
+    timestamp: createTimestamp(seed),
+    blockGroupId: groupId,
+    blockIndex,
+  };
+}
+
 function toolCall(id: string, seed: number): StreamItem {
   return {
     kind: "tool_call",
@@ -136,6 +147,71 @@ describe("findMountedWindowStart", () => {
         pinnedStartItemId: "u20",
       }),
     ).toBe(39);
+  });
+
+  it("gives up the walk-back on a long single turn while following, but not while pinned", () => {
+    // One agentic run: a single user message, then 300 rows of tool calls and
+    // replies with no user message anywhere in them. Uncapped, the walk anchors
+    // on the line that opened the turn and the entire turn stays mounted for as
+    // long as it streams, which voids the tail cap exactly when it matters.
+    const items: StreamItem[] = [userMessage("u0", 1)];
+    for (let step = 0; step < 150; step += 1) {
+      items.push(toolCall(`t${step}`, 2));
+      items.push(assistantMessage(`a${step}`, 3));
+    }
+    expect(items).toHaveLength(301);
+
+    expect(
+      findMountedWindowStart({
+        items,
+        minMountedCount: 12,
+      }),
+    ).toBe(289);
+
+    // Detached, the contract is unchanged: the boundary the reader was looking
+    // at holds, whatever it costs. See docs/chat-scrolling.md.
+    expect(
+      findMountedWindowStart({
+        items,
+        minMountedCount: 12,
+        pinnedStartItemId: "a149",
+      }),
+    ).toBe(0);
+  });
+
+  it("settles on a bubble group's first block rather than cutting the bubble in half", () => {
+    // The tail lands mid-way through a 20-block reply. Blocks sharing a
+    // blockGroupId butt together into one visible bubble, so the only place to
+    // cut is the block that starts it.
+    const items: StreamItem[] = [userMessage("u0", 1)];
+    for (let step = 0; step < 60; step += 1) {
+      items.push(toolCall(`t${step}`, 2));
+    }
+    for (let block = 0; block < 20; block += 1) {
+      items.push(assistantBlock("g", block, 3));
+    }
+    expect(items).toHaveLength(81);
+
+    const start = findMountedWindowStart({ items, minMountedCount: 12 });
+
+    expect(start).toBe(61);
+    expect(items[start]?.id).toBe("g:block:0");
+  });
+
+  it("still rewinds to a user message that sits within the cap", () => {
+    // 29 rows back is an ordinary conversational turn, which is the shape the
+    // walk-back exists for — the closer tool-call boundaries must not win.
+    const items: StreamItem[] = [userMessage("u0", 1)];
+    for (let step = 0; step < 40; step += 1) {
+      items.push(toolCall(`t${step}`, 2));
+    }
+
+    expect(
+      findMountedWindowStart({
+        items,
+        minMountedCount: 12,
+      }),
+    ).toBe(0);
   });
 
   it("ignores a pin that has fallen out of the tail", () => {

@@ -195,9 +195,12 @@ yet" in the tree, "Pick a file" in the pane — none of which distinguishes **sc
 Three rules, enforced in `use-context-report.ts`:
 
 1. **Answers outlive the tab.** Results cache in the store keyed by
-   `serverId:workspaceId:provider:windowTokens`, so re-opening paints the last answer immediately
-   and revalidates behind it. `isLoading` (nothing to show) is exposed separately from
-   `isRefreshing` (numbers on screen may still move); only the first blanks anything.
+   `serverId:workspaceId:provider:windowTokens:personalityId`, so re-opening paints the last answer
+   immediately and revalidates behind it. `isLoading` (nothing to show) is exposed separately from
+   `isRefreshing` (numbers on screen may still move); only the first blanks anything. They outlive
+   the tab, not the app: each server keeps its `MAX_QUERY_REPORTS_PER_SERVER` most recently written
+   answers (currently 20) and drops the tail, because a report is a whole context graph and that key
+   is a product of five dimensions. A dropped key just scans again like a first open.
 2. **The pushed baseline seeds the first open.** The composer already primes a report per
    workspace, so when it was evaluated against the same window the tab starts from it.
 3. **Identical scans coalesce.** A module-level in-flight map collapses two panes on one workspace

@@ -91,7 +91,12 @@ export function useWorkspaceDirectory(
   );
 }
 
-/** The workspace's project grouping key — see selectWorkspaceProjectId. */
+/**
+ * The workspace's per-host project id — the opaque `prj_...` the daemon
+ * registry is keyed on, which is what every RPC taking a `projectId` wants.
+ * It is NOT the cross-host grouping key: for that, read `projectKey` off the
+ * workspace structure (`useWorkspaceStructure`) or `getHostProjectId`'s project.
+ */
 export function useWorkspaceProjectId(
   serverId: string | null,
   workspaceId: string | null,

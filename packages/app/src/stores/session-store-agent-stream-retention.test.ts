@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
-import { useSessionStore } from "./session-store";
+import { useSessionStore, type Agent } from "./session-store";
 import { AGENT_STREAM_MAX_RETAINED_AGENTS } from "@/timeline/agent-stream-retention";
+import { useClearedSubagentTokensStore } from "@/subagents/cleared-subagent-tokens-store";
 import type { StreamItem } from "@/types/stream";
 
 const SERVER_ID = "retention-server";
@@ -26,8 +27,21 @@ function bufferedAgentIds(): string[] {
   return [...session().agentStreamTail.keys()].sort();
 }
 
+// Only the id is read by the store; the panel is what interprets the rest.
+function detailAgent(agentId: string): Agent {
+  return { id: agentId } as Agent;
+}
+
+function clearedTokensFor(parentAgentId: string): number {
+  return (
+    useClearedSubagentTokensStore.getState().byParent.get(`${SERVER_ID}::${parentAgentId}`)
+      ?.total ?? 0
+  );
+}
+
 beforeEach(() => {
   useSessionStore.getState().initializeSession(SERVER_ID, null as unknown as DaemonClient);
+  useClearedSubagentTokensStore.setState({ byParent: new Map() });
 });
 
 afterEach(() => {
@@ -141,6 +155,84 @@ describe("agent stream retention in the session store", () => {
     release();
 
     expect(bufferedAgentIds()).toEqual([]);
+  });
+
+  // Every per-agent side map has to travel with the buffers; each one left
+  // behind is an entry per agent for the life of the app.
+  it("releasing an agent also clears its per-agent side maps", () => {
+    const store = useSessionStore.getState();
+    bufferAgent("agent-1");
+    store.markAgentHistorySynchronized(SERVER_ID, "agent-1");
+    store.setAgentPromptSuggestion(SERVER_ID, "agent-1", "Run the tests");
+    store.setAgentRateLimit(SERVER_ID, "agent-1", { status: "warning", limitType: "five_hour" });
+    store.dismissAgentRateLimit(SERVER_ID, "agent-1");
+    store.appendSentPrompt(SERVER_ID, "agent-1", "ship it");
+
+    useSessionStore.getState().releaseAgentStreams(SERVER_ID, ["agent-1"]);
+
+    const current = session();
+    expect({
+      syncGeneration: current.agentHistorySyncGeneration.has("agent-1"),
+      suggestion: current.agentPromptSuggestions.has("agent-1"),
+      rateLimit: current.agentRateLimits.has("agent-1"),
+      dismissed: current.dismissedRateLimits.has("agent-1"),
+      sentPrompts: current.sentPromptHistory.has("agent-1"),
+    }).toEqual({
+      syncGeneration: false,
+      suggestion: false,
+      rateLimit: false,
+      dismissed: false,
+      sentPrompts: false,
+    });
+  });
+
+  it("closing a chat tab evicts the hydrated snapshot it was opened with", () => {
+    const store = useSessionStore.getState();
+    store.setAgentDetails(SERVER_ID, new Map([["closed-chat", detailAgent("closed-chat")]]));
+    useClearedSubagentTokensStore.getState().recordCleared({
+      serverId: SERVER_ID,
+      parentAgentId: "closed-chat",
+      rows: [{ id: "sub-1", cumulativeTokens: 400 }],
+    });
+
+    store.releaseClosedChat(SERVER_ID, "closed-chat");
+
+    expect(session().agentDetails.has("closed-chat")).toBe(false);
+    expect(clearedTokensFor("closed-chat")).toBe(0);
+  });
+
+  it("keeps the snapshot of a chat that is still in the active directory", () => {
+    const store = useSessionStore.getState();
+    const live = detailAgent("live-chat");
+    store.setAgents(SERVER_ID, new Map([["live-chat", live]]));
+    store.setAgentDetails(SERVER_ID, new Map([["live-chat", live]]));
+    useClearedSubagentTokensStore.getState().recordCleared({
+      serverId: SERVER_ID,
+      parentAgentId: "live-chat",
+      rows: [{ id: "sub-1", cumulativeTokens: 400 }],
+    });
+
+    store.releaseClosedChat(SERVER_ID, "live-chat");
+
+    expect(session().agentDetails.has("live-chat")).toBe(true);
+    expect(clearedTokensFor("live-chat")).toBe(400);
+  });
+
+  // A pane can unmount (mounted-tab retention, deck eviction) while its tab is
+  // still open, and the tab strip renders its title out of `agentDetails`.
+  it("unmounting the last pane does not evict the snapshot", () => {
+    const store = useSessionStore.getState();
+    bufferAgent("background-chat");
+    store.setAgentDetails(
+      SERVER_ID,
+      new Map([["background-chat", detailAgent("background-chat")]]),
+    );
+    const release = useSessionStore.getState().retainAgentStream(SERVER_ID, "background-chat");
+
+    release();
+
+    expect(bufferedAgentIds()).toEqual([]);
+    expect(session().agentDetails.has("background-chat")).toBe(true);
   });
 
   it("keeps a departed agent that is still on screen", () => {

@@ -247,6 +247,7 @@ import {
 } from "@otto-code/protocol/terminal-profiles";
 import { getProviderIcon } from "@/components/provider-icons";
 import { setFileViewModeFor } from "@/stores/file-view-store";
+import { releaseCleanEditorBuffer } from "@/editor/editor-buffer-store";
 import {
   createWorkspaceFileTabTarget,
   normalizeWorkspaceFileLocation,
@@ -2724,6 +2725,24 @@ function WorkspaceScreenContent({
       if (input.target?.kind === "agent") {
         unpinWorkspaceAgent(persistenceKey, input.target.agentId);
         hideWorkspaceAgent(persistenceKey, input.target.agentId);
+        // Closing the tab is what ends the by-id projection an archived chat
+        // was opened with; a pane unmounting is not (mounted-tab retention and
+        // deck eviction unmount panes whose tabs stay open). A surface that
+        // somehow still shows the chat re-fetches it by id.
+        useSessionStore.getState().releaseClosedChat(normalizedServerId, input.target.agentId);
+      }
+      if (input.target?.kind === "file") {
+        // Every close path funnels through here — single close, "Close all" /
+        // "Close others" (workspace-bulk-close.ts), and pane close — so this is
+        // where a file tab's editor buffer is released. Only a CLEAN one:
+        // unsaved text is never discarded without the confirm in
+        // panels/file-panel.tsx, so a dirty or conflicted buffer stays retained.
+        releaseCleanEditorBuffer({
+          serverId: normalizedServerId,
+          // Match the origin-aware buffer key the pane uses (gated-multi-root).
+          workspaceId: input.target.origin?.workspaceId ?? normalizedWorkspaceId,
+          path: input.target.path,
+        });
       }
       if (input.target?.kind === "browser") {
         const { browserId } = input.target;
@@ -2743,7 +2762,16 @@ function WorkspaceScreenContent({
       }
       closeWorkspaceTab(persistenceKey, normalizedTabId);
     },
-    [client, closeWorkspaceTab, hideWorkspaceAgent, persistenceKey, settings, unpinWorkspaceAgent],
+    [
+      client,
+      closeWorkspaceTab,
+      hideWorkspaceAgent,
+      normalizedServerId,
+      normalizedWorkspaceId,
+      persistenceKey,
+      settings,
+      unpinWorkspaceAgent,
+    ],
   );
 
   const focusedPaneTabState = useMemo(
@@ -2801,8 +2829,18 @@ function WorkspaceScreenContent({
     return target.terminalId;
   }, [focusedPaneTabState.activeTab]);
 
+  // Both setters drop the write when the server has no session entry yet, and on
+  // a cold boot straight into a workspace the pane resolves its agent tab from
+  // the route before the daemon connection has created that entry. Without the
+  // session's existence in the dependency list nothing here changes again, so
+  // that one dropped write left `focusedAgentId` null for the rest of the
+  // session — which silently takes "Add to context" out of Changes, Files and
+  // Search, since all three only offer it while a chat is focused.
+  const hasSessionEntry = useSessionStore(
+    (state) => state.sessions[normalizedServerId] !== undefined,
+  );
   useEffect(() => {
-    if (!isRouteFocused) {
+    if (!isRouteFocused || !hasSessionEntry) {
       return;
     }
     setFocusedAgentId(normalizedServerId, focusedPaneAgentId);
@@ -2810,6 +2848,7 @@ function WorkspaceScreenContent({
   }, [
     focusedPaneAgentId,
     focusedPaneTerminalId,
+    hasSessionEntry,
     isRouteFocused,
     normalizedServerId,
     setFocusedAgentId,

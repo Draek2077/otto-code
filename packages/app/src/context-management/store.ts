@@ -58,18 +58,28 @@ export function contextDismissKey(report: ContextReport): string {
   return `${report.aggregateSeverity}:${Math.floor(share / 5)}`;
 }
 
+/**
+ * How many what-if answers one server keeps. Re-opening a tab must paint
+ * instantly, and a user revisits a handful of provider/window/personality
+ * combinations per workspace — but a report is a whole context graph, and the
+ * key space is a product of five dimensions, so "every answer ever computed"
+ * grows without bound over a long session. Recent keys keep the documented
+ * behavior; the tail is re-scanned like a first open.
+ */
+export const MAX_QUERY_REPORTS_PER_SERVER = 20;
+
 interface ContextManagementState {
   reports: Record<string, ContextReport | null>;
   /**
-   * Last answer per what-if query, kept for the app's lifetime so re-opening the
-   * tab paints immediately instead of showing an empty shell for the length of a
+   * Last answer per what-if query, kept beyond the tab's life so re-opening it
+   * paints immediately instead of showing an empty shell for the length of a
    * filesystem scan. Always revalidated in the background — this is a seed, not
-   * a source of truth.
+   * a source of truth. Capped per server, least-recently-written out first.
    */
   queryReports: Record<string, ContextReport | null>;
   dismissals: Record<string, ContextDismissal>;
   setReport: (serverId: string, workspaceId: string, report: ContextReport | null) => void;
-  setQueryReport: (key: string, report: ContextReport | null) => void;
+  setQueryReport: (input: { serverId: string; key: string; report: ContextReport | null }) => void;
   dismiss: (serverId: string, workspaceId: string, report: ContextReport) => void;
   clearServer: (serverId: string) => void;
 }
@@ -86,8 +96,21 @@ export const useContextManagementStore = create<ContextManagementState>((set) =>
     }));
   },
 
-  setQueryReport: (key, report) => {
-    set((prev) => ({ ...prev, queryReports: { ...prev.queryReports, [key]: report } }));
+  setQueryReport: ({ serverId, key, report }) => {
+    set((prev) => {
+      const queryReports = { ...prev.queryReports };
+      // Delete before re-inserting so key order IS write-recency order (JS keeps
+      // insertion order for these string keys; none of them look like indices).
+      delete queryReports[key];
+      queryReports[key] = report;
+      const prefix = `${serverId}:`;
+      const owned = Object.keys(queryReports).filter((candidate) => candidate.startsWith(prefix));
+      const overflow = Math.max(0, owned.length - MAX_QUERY_REPORTS_PER_SERVER);
+      for (const stale of owned.slice(0, overflow)) {
+        delete queryReports[stale];
+      }
+      return { ...prev, queryReports };
+    });
   },
 
   dismiss: (serverId, workspaceId, report) => {

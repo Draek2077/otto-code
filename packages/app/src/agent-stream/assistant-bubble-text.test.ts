@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearAssistantBubbleTexts,
+  getAssistantBubbleHasText,
   getAssistantBubbleText,
   reportAssistantBubbleText,
   subscribeAssistantBubbleText,
@@ -44,7 +45,7 @@ describe("assistant bubble text registry", () => {
 
   it("notifies subscribers only when the text actually changes", () => {
     const listener = vi.fn();
-    const unsubscribe = subscribeAssistantBubbleText(listener);
+    const unsubscribe = subscribeAssistantBubbleText("g", listener);
 
     reportAssistantBubbleText({ groupId: "g", blockIndex: 0, text: "one" });
     expect(listener).toHaveBeenCalledTimes(1);
@@ -60,5 +61,38 @@ describe("assistant bubble text registry", () => {
     unsubscribe();
     reportAssistantBubbleText({ groupId: "g", blockIndex: 0, text: "three" });
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it("leaves other groups' subscribers alone when one group flushes", () => {
+    // The point of per-group buckets: while one reply streams, every other
+    // mounted bubble in the transcript must stay asleep instead of re-deriving
+    // its own state on each reveal tick.
+    const live = vi.fn();
+    const settled = vi.fn();
+    subscribeAssistantBubbleText("live", live);
+    subscribeAssistantBubbleText("settled", settled);
+
+    reportAssistantBubbleText({ groupId: "live", blockIndex: 0, text: "streaming" });
+    reportAssistantBubbleText({ groupId: "live", blockIndex: 0, text: "streaming stil" });
+    reportAssistantBubbleText({ groupId: "live", blockIndex: 0, text: "streaming still" });
+
+    expect(live).toHaveBeenCalledTimes(3);
+    expect(settled).not.toHaveBeenCalled();
+  });
+
+  it("tracks whether a group has readable text without joining it", () => {
+    expect(getAssistantBubbleHasText("g")).toBe(false);
+
+    reportAssistantBubbleText({ groupId: "g", blockIndex: 0, text: "  \n " });
+    expect(getAssistantBubbleHasText("g")).toBe(false);
+
+    reportAssistantBubbleText({ groupId: "g", blockIndex: 1, text: "words" });
+    expect(getAssistantBubbleHasText("g")).toBe(true);
+
+    // A block emptied back out again — the count has to come back down, or the
+    // playback button offers to read nothing.
+    reportAssistantBubbleText({ groupId: "g", blockIndex: 1, text: "" });
+    expect(getAssistantBubbleHasText("g")).toBe(false);
+    expect(getAssistantBubbleText("g")).toBe("");
   });
 });

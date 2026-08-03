@@ -6,7 +6,7 @@ import path from "node:path";
 const TEMP_CLEANUP_RETRIES = 5;
 const TEMP_CLEANUP_RETRY_DELAY_MS = 100;
 
-interface TempRepo {
+export interface TempRepo {
   path: string;
   branchHeads: Record<string, string>;
   cleanup: () => Promise<void>;

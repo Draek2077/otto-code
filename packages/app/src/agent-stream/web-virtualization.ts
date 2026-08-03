@@ -17,6 +17,15 @@ export const DEFAULT_WEB_MOUNTED_RECENT_STREAM_ITEMS = 12;
 // 8 still covers a phone screen plus the live turn.
 export const DEFAULT_WEB_MOBILE_MOUNTED_RECENT_STREAM_ITEMS = 8;
 const COLLAPSED_TOOL_SEQUENCE_ROW_HEIGHT_ESTIMATE = 40;
+// How far the walk-back below may hunt for the turn's opening user message before it
+// settles for a boundary inside the turn instead.
+//
+// One agentic turn runs for hundreds of rows with no user message anywhere in it, so an
+// uncapped walk-back anchors on the line that *started* the turn and mounts the entire
+// thing — the tail cap above becomes a no-op during exactly the long streaming runs it
+// was reduced for. 40 is wide enough that an ordinary conversational turn still rewinds
+// to its user message, which is the shape the walk-back exists for.
+const MAX_MOUNTED_WINDOW_WALK_BACK = 40;
 
 type BottomAnchorE2ETestGlobals = typeof globalThis & {
   __OTTO_E2E_WEB_PARTIAL_VIRTUALIZATION_THRESHOLD?: unknown;
@@ -84,6 +93,28 @@ export function estimateStreamItemHeight(item: StreamItem): number {
 }
 
 /**
+ * Does the row at `index` begin something, or continue the row above it?
+ *
+ * Every kind except an assistant block is its own self-contained row — a tool
+ * call, a folded action group, a todo list — so the mounted window can start on
+ * one without cutting anything in half. Assistant blocks are the exception: a
+ * streamed reply is promoted one markdown block at a time into separate rows
+ * sharing a `blockGroupId` that butt together into a single visible bubble, and
+ * only that group's first block is a place to cut.
+ */
+function startsAVisualRow(items: StreamItem[], index: number): boolean {
+  const item = items[index];
+  if (!item) {
+    return false;
+  }
+  if (item.kind !== "assistant_message" || item.blockGroupId === undefined) {
+    return true;
+  }
+  const previous = items[index - 1];
+  return !(previous?.kind === "assistant_message" && previous.blockGroupId === item.blockGroupId);
+}
+
+/**
  * Where the mounted (real-DOM) window begins. Everything before it is handed to
  * the virtualizer, which renders it from *estimates* until each row is measured.
  *
@@ -100,6 +131,15 @@ export function estimateStreamItemHeight(item: StreamItem): number {
  * OPEN (a smaller start mounts more). Nothing already on screen is yanked into
  * the virtualizer under them. The pin releases when they return to the bottom,
  * where the collapse happens above the viewport and is invisible.
+ *
+ * That same invisibility is why the walk-back is capped **only while following**
+ * (no pin). A single agentic turn can hold hundreds of promoted blocks and tool
+ * rows without one user message among them, so the walk anchors on the message
+ * that opened the turn and the whole turn stays real-DOM-mounted for as long as
+ * it streams. While following, the window gives up after
+ * `MAX_MOUNTED_WINDOW_WALK_BACK` rows and settles for the nearest boundary
+ * inside the turn; the measured-to-estimate collapse that costs lands above the
+ * viewport, where nobody sees it. While pinned, the full walk-back stands.
  */
 export function findMountedWindowStart(input: {
   items: StreamItem[];
@@ -111,11 +151,24 @@ export function findMountedWindowStart(input: {
     return 0;
   }
 
-  let startIndex = Math.max(items.length - minMountedCount, 0);
+  const isFollowing = !pinnedStartItemId;
+  const tailStart = Math.max(items.length - minMountedCount, 0);
+  // The closest cut inside the turn, held in reserve in case the walk runs out of
+  // budget before it finds a user message.
+  let turnInternalStart = -1;
+  let startIndex = tailStart;
   while (startIndex > 0 && items[startIndex]?.kind !== "user_message") {
+    if (isFollowing) {
+      if (turnInternalStart < 0 && startsAVisualRow(items, startIndex)) {
+        turnInternalStart = startIndex;
+      }
+      if (tailStart - startIndex >= MAX_MOUNTED_WINDOW_WALK_BACK) {
+        return turnInternalStart >= 0 ? turnInternalStart : startIndex;
+      }
+    }
     startIndex -= 1;
   }
-  if (!pinnedStartItemId) {
+  if (isFollowing) {
     return startIndex;
   }
   // A pin that has fallen out of the tail entirely is stale — ignore it rather

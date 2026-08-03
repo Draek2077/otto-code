@@ -7,6 +7,7 @@ import { useSessionStore } from "@/stores/session-store";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { isAgentArchiving, setAgentArchiving } from "@/hooks/use-archive-agent";
 import { queryClient } from "@/data/query-client";
+import { useClearedSubagentTokensStore } from "@/subagents/cleared-subagent-tokens-store";
 import { applyAgentDirectoryDelta, replaceFetchedAgentDirectory } from "./agent-directory-sync";
 
 function createAgentPayload(
@@ -143,6 +144,18 @@ describe("replaceFetchedAgentDirectory", () => {
     );
     store.setInitializingAgents(serverId, new Map([[agentId, true]]));
     setAgentArchiving({ queryClient, serverId, agentId, isArchiving: true });
+    // Side maps a removed agent used to leave behind, one entry per agent for
+    // the life of the app.
+    store.setAgentPromptSuggestion(serverId, agentId, "Run the tests");
+    store.setAgentRateLimit(serverId, agentId, { status: "warning" });
+    store.dismissAgentRateLimit(serverId, agentId);
+    store.appendSentPrompt(serverId, agentId, "ship it");
+    store.markAgentHistorySynchronized(serverId, agentId);
+    useClearedSubagentTokensStore.getState().recordCleared({
+      serverId,
+      parentAgentId: agentId,
+      rows: [{ id: "sub-1", cumulativeTokens: 400 }],
+    });
 
     applyAgentDirectoryDelta({ serverId, delta: { kind: "remove", agentId } });
 
@@ -155,6 +168,14 @@ describe("replaceFetchedAgentDirectory", () => {
       permissions: session?.pendingPermissions.size,
       initializing: session?.initializingAgents.has(agentId),
       archivePending: isAgentArchiving({ queryClient, serverId, agentId }),
+      suggestion: session?.agentPromptSuggestions.has(agentId),
+      rateLimit: session?.agentRateLimits.has(agentId),
+      dismissedRateLimit: session?.dismissedRateLimits.has(agentId),
+      sentPrompts: session?.sentPromptHistory.has(agentId),
+      syncGeneration: session?.agentHistorySyncGeneration.has(agentId),
+      clearedSubagentTokens: useClearedSubagentTokensStore
+        .getState()
+        .byParent.has(`${serverId}::${agentId}`),
     }).toEqual({
       agents: false,
       details: false,
@@ -163,6 +184,12 @@ describe("replaceFetchedAgentDirectory", () => {
       permissions: 0,
       initializing: false,
       archivePending: false,
+      suggestion: false,
+      rateLimit: false,
+      dismissedRateLimit: false,
+      sentPrompts: false,
+      syncGeneration: false,
+      clearedSubagentTokens: false,
     });
 
     store.clearSession(serverId);

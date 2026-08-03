@@ -84,6 +84,17 @@ the agent streams, and the turn it hands to the virtualizer collapses from
 measured heights to estimates in one frame, which is the "thrown to the top of the
 chat" failure.
 
+While **following**, the boundary's walk-back to a user message is capped at 40
+rows. One agentic turn can hold hundreds of promoted blocks and tool rows without
+a single user message among them, so an uncapped walk anchors on the message that
+opened the turn and keeps the whole turn in the real DOM for as long as it
+streams, which voids the 12-row mounted tail. Past the cap the window settles for
+the nearest boundary inside the turn: any self-contained row, or the first block
+of an assistant bubble group, so a bubble is never cut in half. The cap is safe
+for exactly the reason the pin releases at the bottom, and only there: the
+collapse it causes happens above the viewport, where nobody sees it. Detached,
+the full walk-back stands.
+
 ## Native: sustained movement beats a queued re-stick
 
 The inverted `FlatList` keeps its position through content growth natively

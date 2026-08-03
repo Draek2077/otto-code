@@ -172,20 +172,21 @@ someone to run it by hand.
 
 ## 9. Files, editor & search
 
-| Behavior                                                                                          | Status | Specs / plan                                                                                              | Tier | Pri |
-| ------------------------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------- | ---- | --- |
-| Text editor (CM6): open, edit, save via daemon RPCs                                               | ✅     | `text-editor.spec.ts`                                                                                     | T1   | —   |
-| File finder (quick open)                                                                          | ✅     | `file-finder.spec.ts`                                                                                     | T1   | —   |
-| Project-wide search                                                                               | ✅     | `project-search.spec.ts`                                                                                  | T1   | —   |
-| File explorer collapse behavior                                                                   | ✅     | `file-explorer-collapse.spec.ts`                                                                          | T1   | —   |
-| Scripts menu resize behavior                                                                      | ✅     | `workspace-scripts-menu-resize.spec.ts`                                                                   | T1   | —   |
-| Unified file tab mode bar (editor/split/preview surfaces + per-file mode memory across reopen)    | ✅     | `file-tab-mode-bar.spec.ts`                                                                               | T1   | —   |
-| Formatted axis on the mode bar (markers hide/show, inert in preview, live in split, non-markdown) | ✅     | `file-tab-mode-bar.spec.ts`                                                                               | T1   | —   |
-| Editor dirty guard (dot, no-autosave, confirm-on-close, second-file open, buffer survives switch) | ✅     | `editor-dirty-guard.spec.ts`                                                                              | T1   | —   |
-| Markdown image paste/drop (writes under `assets/`, inserts a relative link, never clobbers)       | ❌     | pure naming/path logic is unit-covered; the drop needs a synthetic `DataTransfer` and a real daemon write | T1   | P2  |
-| File rendering: mermaid/images/CSV in preview mode                                                | ❌     | mermaid, AsciiDoc and relative images shipped; add per-format smoke                                       | T1   | P2  |
-| AI Refactor flow (real agent behind selection refactor)                                           | ❌     | good T2 candidate — deterministic small refactor                                                          | T2   | P2  |
-| File editing (open, edit, save round-trip)                                                        | 🟡     | `file-editing.spec.ts`                                                                                    | T1   | —   |
+| Behavior                                                                                          | Status | Specs / plan                                                        | Tier | Pri |
+| ------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------- | ---- | --- |
+| Text editor (CM6): open, edit, save via daemon RPCs                                               | ✅     | `text-editor.spec.ts`                                               | T1   | —   |
+| File finder (quick open)                                                                          | ✅     | `file-finder.spec.ts`                                               | T1   | —   |
+| Project-wide search                                                                               | ✅     | `project-search.spec.ts`                                            | T1   | —   |
+| File explorer collapse behavior                                                                   | ✅     | `file-explorer-collapse.spec.ts`                                    | T1   | —   |
+| Scripts menu resize behavior                                                                      | ✅     | `workspace-scripts-menu-resize.spec.ts`                             | T1   | —   |
+| Unified file tab mode bar (editor/split/preview surfaces + per-file mode memory across reopen)    | ✅     | `file-tab-mode-bar.spec.ts`                                         | T1   | —   |
+| Formatted axis on the mode bar (markers hide/show, inert in preview, live in split, non-markdown) | ✅     | `file-tab-mode-bar.spec.ts`                                         | T1   | —   |
+| Editor dirty guard (dot, no-autosave, confirm-on-close, second-file open, buffer survives switch) | ✅     | `editor-dirty-guard.spec.ts`                                        | T1   | —   |
+| Markdown image paste/drop (writes under `assets/`, inserts a relative link, never clobbers)       | 🟡     | `markdown-image-drop.spec.ts`                                       | T1   | —   |
+| File rendering: mermaid/images/CSV in preview mode                                                | ❌     | mermaid, AsciiDoc and relative images shipped; add per-format smoke | T1   | P2  |
+| AI Refactor flow (real agent behind selection refactor)                                           | ❌     | good T2 candidate — deterministic small refactor                    | T2   | P2  |
+| Assistant file link opens at its referenced line (`path:line`, re-applied on an open tab)         | ✅     | `file-editing.spec.ts`                                              | T1   | —   |
+| BOM / CRLF preservation on save (no `lineSeparator` handling outside the dead `src/file-pane/`)   | ❌     | `file-editing.spec.ts` (skipped, ready once the capability exists)  | T1   | P2  |
 
 ## 10. Git & Changes
 

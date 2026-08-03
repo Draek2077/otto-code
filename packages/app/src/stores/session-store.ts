@@ -48,6 +48,8 @@ import {
   type WorkspaceAgentActivity,
 } from "@/utils/workspace-agent-activity";
 import { planAgentStreamEviction } from "@/timeline/agent-stream-retention";
+import { buildWorkspaceExplorerStateKey } from "@/file-explorer/state-key";
+import { useClearedSubagentTokensStore } from "@/subagents/cleared-subagent-tokens-store";
 
 // Ordering-only clock for stream-buffer retention. Global rather than
 // per-session because it only ever has to increase; comparisons are always
@@ -611,6 +613,15 @@ interface SessionStoreActions {
    * session. Called where the buffer key set can grow and on departure events.
    */
   sweepAgentStreams: (serverId: string, departedAgentIds?: readonly string[]) => void;
+  /**
+   * Drop what a closed chat tab owned and nothing else does: the hydrated
+   * snapshot an archived chat was opened from (`agentDetails`) and its
+   * cleared-sub-agent tally. Call it when the TAB closes, not when a pane
+   * unmounts — a background pane can be unmounted by mounted-tab retention or
+   * a workspace-deck eviction while its tab is very much still open, and the
+   * tab strip renders its title straight out of this map.
+   */
+  releaseClosedChat: (serverId: string, agentId: string) => void;
 
   // Initializing agents
   setInitializingAgents: (
@@ -1328,6 +1339,15 @@ export const useSessionStore = create<SessionStore>()(
           const nextOlderInFlight = new Map(session.agentTimelineOlderFetchInFlight);
           const nextApplied = new Map(session.agentAuthoritativeHistoryApplied);
           const nextTouchSeq = new Map(session.agentStreamTouchSeq);
+          // Everything below is per-agent bookkeeping with no owner once the
+          // chat's buffers are gone. Left behind it accumulates one entry per
+          // agent for the app's lifetime, which on an orchestrator workload is
+          // one entry per sub-agent ever spawned.
+          const nextSyncGeneration = new Map(session.agentHistorySyncGeneration);
+          const nextPromptSuggestions = new Map(session.agentPromptSuggestions);
+          const nextRateLimits = new Map(session.agentRateLimits);
+          const nextDismissedRateLimits = new Map(session.dismissedRateLimits);
+          const nextSentPromptHistory = new Map(session.sentPromptHistory);
 
           let changed = false;
           for (const agentId of agentIds) {
@@ -1335,7 +1355,8 @@ export const useSessionStore = create<SessionStore>()(
             // purpose: leaving them would tell planInitialAgentTimelineSync the
             // client is caught up, so the next open would issue an `after`
             // catch-up that returns nothing onto an empty tail — a blank chat.
-            // Clearing them makes the next open plan a full `tail` fetch.
+            // Clearing them makes the next open plan a full `tail` fetch, and
+            // dropping the sync generation with them keeps that family whole.
             changed =
               [
                 nextTail.delete(agentId),
@@ -1345,6 +1366,11 @@ export const useSessionStore = create<SessionStore>()(
                 nextOlderInFlight.delete(agentId),
                 nextApplied.delete(agentId),
                 nextTouchSeq.delete(agentId),
+                nextSyncGeneration.delete(agentId),
+                nextPromptSuggestions.delete(agentId),
+                nextRateLimits.delete(agentId),
+                nextDismissedRateLimits.delete(agentId),
+                nextSentPromptHistory.delete(agentId),
               ].some(Boolean) || changed;
           }
           if (!changed) {
@@ -1364,6 +1390,11 @@ export const useSessionStore = create<SessionStore>()(
                 agentTimelineOlderFetchInFlight: nextOlderInFlight,
                 agentAuthoritativeHistoryApplied: nextApplied,
                 agentStreamTouchSeq: nextTouchSeq,
+                agentHistorySyncGeneration: nextSyncGeneration,
+                agentPromptSuggestions: nextPromptSuggestions,
+                agentRateLimits: nextRateLimits,
+                dismissedRateLimits: nextDismissedRateLimits,
+                sentPromptHistory: nextSentPromptHistory,
               },
             },
           };
@@ -1392,6 +1423,32 @@ export const useSessionStore = create<SessionStore>()(
           return;
         }
         get().releaseAgentStreams(serverId, evicted);
+      },
+
+      releaseClosedChat: (serverId, agentId) => {
+        // A chat that is still in the active directory keeps its snapshot: the
+        // directory owns that entry, not the tab. Only the by-id projection an
+        // archived or deleted chat was opened with is the tab's to release —
+        // and it is the one nothing else ever removes, so browsing History
+        // accumulates one full Agent per chat visited.
+        if (get().sessions[serverId]?.agents.has(agentId)) {
+          return;
+        }
+        get().setAgentDetails(serverId, (current) => {
+          if (!current.has(agentId)) {
+            return current;
+          }
+          const next = new Map(current);
+          next.delete(agentId);
+          return next;
+        });
+        // Same owner, same lifetime: the tally only exists to keep this chat's
+        // header total honest, and its id set otherwise grows one entry per
+        // sub-agent ever cleared, for the life of the app.
+        useClearedSubagentTokensStore.getState().resetForParent({
+          serverId,
+          parentAgentId: agentId,
+        });
       },
 
       handoffCreatedAgentUserMessage: (serverId, agentId, message) => {
@@ -1882,13 +1939,32 @@ export const useSessionStore = create<SessionStore>()(
           if (!session || !workspaceKey) {
             return prev;
           }
+          const removed = session.workspaces.get(workspaceKey);
           const next = new Map(session.workspaces);
           next.delete(workspaceKey);
+          // The explorer caches one ExplorerDirectory per directory ever listed
+          // and nothing else ever drops them, so the listings outlive the
+          // workspace they describe. A pane keys them by whichever handle it
+          // had (opaque id, path id, or bare root), so clear every spelling.
+          let fileExplorer = session.fileExplorer;
+          for (const key of [
+            buildWorkspaceExplorerStateKey({ workspaceId: workspaceKey }),
+            buildWorkspaceExplorerStateKey({ workspaceId }),
+            buildWorkspaceExplorerStateKey({ workspaceRoot: removed?.workspaceDirectory }),
+          ]) {
+            if (!key || !fileExplorer.has(key)) {
+              continue;
+            }
+            if (fileExplorer === session.fileExplorer) {
+              fileExplorer = new Map(fileExplorer);
+            }
+            fileExplorer.delete(key);
+          }
           return {
             ...prev,
             sessions: {
               ...prev.sessions,
-              [serverId]: { ...session, workspaces: next },
+              [serverId]: { ...session, workspaces: next, fileExplorer },
             },
           };
         });

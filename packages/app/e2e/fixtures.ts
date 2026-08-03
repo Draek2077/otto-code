@@ -1,6 +1,7 @@
 import { test as base, expect, type Page } from "@playwright/test";
 import { startOutdatedDaemon, type OutdatedDaemon } from "./helpers/daemon-update";
 import { getE2EDaemonPort } from "./helpers/daemon-port";
+import { sweepDanglingProjects } from "./helpers/dangling-projects";
 import { EVIDENCE_SEPARATOR, MONEY_SHOT_PREFIX } from "./helpers/evidence";
 import { buildCreateAgentPreferences, buildSeededHost } from "./helpers/daemon-registry";
 import {
@@ -24,6 +25,7 @@ interface TrackedProjectPickerFixture extends ProjectPickerFixture {
 // reliably for every test that uses this `test` object.
 const test = base.extend<{
   ottoE2ESetup: void;
+  danglingProjectSweep: void;
   outdatedDaemon: OutdatedDaemon;
   desktopManagedOutdatedDaemon: OutdatedDaemon;
   projectPickerFixture: TrackedProjectPickerFixture;
@@ -173,6 +175,34 @@ const test = base.extend<{
         } catch {
           // Page already closed by the test — nothing to prove, nothing to fail.
         }
+      }
+    },
+    { auto: true },
+  ],
+  // Runs last, after the spec's own `afterEach`, so a spec that tears its
+  // records down properly leaves nothing to find. See helpers/dangling-projects.ts
+  // for why one leaked project can take out the rest of a shard. The annotation
+  // names the offender in the report instead of silently patching over it.
+  //
+  // `OTTO_E2E_SKIP_PROJECT_SWEEP=1` turns it off, which is the control run when
+  // you suspect the sweep itself of removing state a spec still needed.
+  danglingProjectSweep: [
+    async ({}, provide, testInfo) => {
+      await provide();
+      if (process.env.OTTO_E2E_SKIP_PROJECT_SWEEP === "1") {
+        return;
+      }
+      try {
+        const removed = await sweepDanglingProjects();
+        if (removed.length > 0) {
+          testInfo.annotations.push({
+            type: "leaked-projects",
+            description: `Removed daemon projects whose directory was already deleted: ${removed.join(", ")}. Remove the project record before deleting the directory.`,
+          });
+        }
+      } catch {
+        // The sweep is a safety net, never a source of failures: a daemon that
+        // is down or restarting mid-teardown must not turn a passing test red.
       }
     },
     { auto: true },

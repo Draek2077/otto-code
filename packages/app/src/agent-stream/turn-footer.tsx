@@ -12,7 +12,7 @@ import {
   collectAssistantTurnContentForStreamRenderStrategy,
   type StreamStrategy,
 } from "./strategy";
-import { resolveAssistantTurnBoundaryMessageId } from "./turn-boundary";
+import { resolveAssistantTurnForkBoundary, type AssistantTurnForkBoundary } from "./turn-boundary";
 import { AssistantTurnFooter, LiveElapsed, type AssistantForkTarget } from "@/components/message";
 import type { TurnFooterHost } from "./layout";
 import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
@@ -27,7 +27,7 @@ export interface PersonalitySpinnerColors {
 export type TurnContentStrategy = StreamStrategy;
 export type AssistantTurnForkHandler = (input: {
   target: AssistantForkTarget;
-  boundaryMessageId?: string;
+  boundary: AssistantTurnForkBoundary;
 }) => Promise<void> | void;
 
 export const TurnFooter = memo(function TurnFooter({
@@ -36,6 +36,7 @@ export const TurnFooter = memo(function TurnFooter({
   inFlightEstimatedTokens,
   host,
   strategy,
+  supportsTimelineCursor,
   onForkAssistantTurn,
   spinner,
 }: {
@@ -44,6 +45,7 @@ export const TurnFooter = memo(function TurnFooter({
   inFlightEstimatedTokens?: number | null;
   host: TurnFooterHost | null;
   strategy: TurnContentStrategy;
+  supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   spinner?: PersonalitySpinnerColors;
 }) {
@@ -67,6 +69,7 @@ export const TurnFooter = memo(function TurnFooter({
       items={host.items}
       timing={host.timing}
       startIndex={host.startIndex}
+      supportsTimelineCursor={supportsTimelineCursor}
       onForkAssistantTurn={onForkAssistantTurn}
     />
   );
@@ -85,6 +88,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   items,
   timing,
   startIndex,
+  supportsTimelineCursor,
   onForkAssistantTurn,
   revealed = false,
 }: {
@@ -92,6 +96,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   items: StreamItem[];
   timing?: TurnTiming;
   startIndex: number;
+  supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   revealed?: boolean;
 }) {
@@ -114,6 +119,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
             items={items}
             timing={timing}
             startIndex={startIndex}
+            supportsTimelineCursor={supportsTimelineCursor}
             onForkAssistantTurn={onForkAssistantTurn}
           />
         </View>
@@ -197,12 +203,14 @@ function CompletedTurnFooter({
   items,
   timing,
   startIndex,
+  supportsTimelineCursor,
   onForkAssistantTurn,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
   timing?: TurnTiming;
   startIndex: number;
+  supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
 }) {
   const getContent = useCallback(
@@ -214,10 +222,24 @@ function CompletedTurnFooter({
       }),
     [strategy, items, startIndex],
   );
-  const boundaryMessageId = resolveAssistantTurnBoundaryMessageId({
+  // A failed turn can end in a daemon-authored timeline item that carries no
+  // provider message id, so the boundary falls back to the canonical timeline
+  // cursor. Gating the menu on the message id alone hid the fork action for
+  // exactly the turns most worth forking.
+  const boundary = resolveAssistantTurnForkBoundary({
     items,
     startIndex,
+    supportsTimelineCursor,
   });
+  const handleFork = useCallback(
+    (target: AssistantForkTarget) => {
+      if (!boundary) {
+        return;
+      }
+      return onForkAssistantTurn?.({ target, boundary });
+    },
+    [boundary, onForkAssistantTurn],
+  );
   return (
     <View style={stylesheet.turnFooterSlot}>
       <AssistantTurnFooter
@@ -225,8 +247,7 @@ function CompletedTurnFooter({
         completedAt={timing?.completedAt}
         durationMs={timing?.durationMs}
         usage={timing?.usage}
-        forkBoundaryMessageId={boundaryMessageId}
-        onFork={onForkAssistantTurn}
+        onFork={boundary && onForkAssistantTurn ? handleFork : undefined}
       />
     </View>
   );

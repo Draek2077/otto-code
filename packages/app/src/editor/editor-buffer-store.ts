@@ -132,4 +132,37 @@ export function removeEditorBuffer(input: {
   useEditorBufferStore.getState().removeBuffer(buildEditorBufferKey(input));
 }
 
+/**
+ * Drops a buffer on tab close when it holds nothing the user could lose — a
+ * buffer is the whole file's text, twice over once it is dirty, so a session
+ * that opens a few hundred files never gives that memory back otherwise.
+ *
+ * A dirty or conflicted buffer is RETAINED deliberately, and so is one with a
+ * pending draft: that text is unsaved work, and the close paths that call this
+ * (`closeWorkspaceTabWithCleanup`, "Close all" / "Close others", pane close)
+ * have no discard prompt. The interactive close in `panels/file-panel.tsx` is
+ * the only place allowed to drop one, and only after the user confirms.
+ *
+ * A released clean buffer costs nothing to get back: a pane still showing the
+ * file re-reads it (see `use-editor-buffer.ts`).
+ *
+ * Returns true when the buffer was released.
+ */
+export function releaseCleanEditorBuffer(input: {
+  serverId: string;
+  workspaceId: string;
+  path: string;
+}): boolean {
+  const key = buildEditorBufferKey(input);
+  const buffer = useEditorBufferStore.getState().buffers[key];
+  if (!buffer) {
+    return false;
+  }
+  if (buffer.dirty || buffer.conflict || buffer.draft != null) {
+    return false;
+  }
+  useEditorBufferStore.getState().removeBuffer(key);
+  return true;
+}
+
 export { buildEditorBufferKey };

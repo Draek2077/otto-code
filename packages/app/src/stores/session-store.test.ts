@@ -6,9 +6,25 @@ import type { WorkspaceDescriptorPayload } from "@otto-code/protocol/messages";
 import {
   normalizeWorkspaceDescriptor,
   useSessionStore,
+  type AgentFileExplorerState,
   type WorkspaceDescriptor,
 } from "./session-store";
 import { patchWorkspaceScripts } from "../contexts/session-workspace-scripts";
+import { buildWorkspaceExplorerStateKey } from "@/file-explorer/state-key";
+
+function explorerState(): AgentFileExplorerState {
+  return {
+    directories: new Map(),
+    files: new Map(),
+    isLoading: false,
+    lastError: null,
+    pendingRequest: null,
+    currentPath: ".",
+    history: ["."],
+    lastVisitedPath: ".",
+    selectedEntryPath: null,
+  };
+}
 
 function createWorkspace(
   input: Partial<WorkspaceDescriptor> & Pick<WorkspaceDescriptor, "id">,
@@ -401,6 +417,29 @@ describe("removeWorkspace", () => {
     expect(after.sessions).toBe(before.sessions);
     expect(after.session).toBe(before.session);
     expect(after.workspaces).toBe(before.workspaces);
+  });
+
+  // The explorer keeps one ExplorerDirectory per directory ever listed, which is
+  // the heaviest per-workspace map in the session — it must not outlive the
+  // workspace it describes, under either spelling of its key.
+  it("drops the removed workspace's file explorer listings", () => {
+    const store = useSessionStore.getState();
+    initializeTestSession();
+    const workspace = createWorkspace({ id: "/repo/main", workspaceDirectory: "/repo/main" });
+    store.setWorkspaces("test-server", new Map([[workspace.id, workspace]]));
+    store.setFileExplorer(
+      "test-server",
+      new Map([
+        [buildWorkspaceExplorerStateKey({ workspaceId: workspace.id }) ?? "", explorerState()],
+        [buildWorkspaceExplorerStateKey({ workspaceRoot: "/repo/main" }) ?? "", explorerState()],
+        [buildWorkspaceExplorerStateKey({ workspaceId: "/repo/other" }) ?? "", explorerState()],
+      ]),
+    );
+
+    store.removeWorkspace("test-server", workspace.id);
+
+    const { session } = getTestSessionReferences();
+    expect([...session.fileExplorer.keys()]).toEqual(["workspace:/repo/other"]);
   });
 });
 

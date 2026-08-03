@@ -123,6 +123,9 @@ export async function openProjectViaDaemon(
 }
 
 export interface RegisteredProject {
+  /** Host-local identity. What `removeProject` and other daemon calls take. */
+  projectId: string;
+  /** Opaque cross-host grouping key. What the composer's picker renders. */
   projectKey: string;
   projectDisplayName: string;
 }
@@ -133,6 +136,13 @@ export interface RegisteredProject {
  * "main" workspace, which makes the new-workspace composer refuse to create a
  * second workspace on it ("This directory already backs the workspace …") — use
  * this when the spec needs a composer-selectable, workspace-free target.
+ *
+ * The two ids are not interchangeable and `project.add` only answers with the
+ * host-local one. The picker's option testID is keyed by the grouping key
+ * (`new-workspace-project-picker-option-${project.projectKey}` in
+ * new-workspace-screen.tsx), so returning `projectId` under the name
+ * `projectKey` made `selectNewWorkspaceProject` wait 30s for an option that
+ * could never match. Resolve the real key the way `openProjectViaDaemon` does.
  */
 export async function addProjectViaDaemon(
   client: NewWorkspaceDaemonClient,
@@ -145,8 +155,15 @@ export async function addProjectViaDaemon(
   if (!payload.project) {
     throw new Error("project.add returned no project.");
   }
+  const projectId = payload.project.projectId;
+  const listed = await client.listProjects();
+  const descriptor = listed.projects.find((candidate) => candidate.projectId === projectId);
+  if (!descriptor?.projectKey) {
+    throw new Error(`Project ${projectId} has no project key`);
+  }
   return {
-    projectKey: payload.project.projectId,
+    projectId,
+    projectKey: descriptor.projectKey,
     projectDisplayName: payload.project.projectDisplayName,
   };
 }

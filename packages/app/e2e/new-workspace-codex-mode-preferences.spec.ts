@@ -200,6 +200,12 @@ test.describe("New workspace Codex mode preferences", () => {
         .toBe("full-access");
     } finally {
       await seeded.cleanup();
+      // Remove the daemon's project record BEFORE the directory goes: removing
+      // the project also drops the workspace the composer created on it. Leaving
+      // it behind left the shard's daemon serving a project on a deleted path,
+      // which the next spec's composer preselected as the last active project
+      // and then failed to list features for, over and over.
+      await newWorkspaceClient.removeProject(targetProject.projectId).catch(() => undefined);
       await newWorkspaceClient.close().catch(() => undefined);
       await targetRepo.cleanup().catch(() => undefined);
     }
@@ -235,7 +241,9 @@ test.describe("New workspace Codex mode preferences", () => {
 
       await openGlobalNewWorkspaceComposer(page);
       await selectNewWorkspaceProject(page, {
-        projectKey: seeded.projectId,
+        // The picker's option testID is the cross-host grouping key, not the
+        // host-local project id — see SeededWorkspace's two fields.
+        projectKey: seeded.projectKey,
         projectDisplayName: seeded.projectDisplayName,
       });
 

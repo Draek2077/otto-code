@@ -9,6 +9,7 @@ import { acceptAgentDirectoryUpdate } from "@/utils/agent-directory-update-polic
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { useDraftStore } from "@/stores/draft-store";
 import { getInitDeferred, getInitKey, rejectInitDeferred } from "@/utils/agent-initialization";
+import { useClearedSubagentTokensStore } from "@/subagents/cleared-subagent-tokens-store";
 
 type AgentDirectoryFetchEntry = FetchAgentsEntry;
 export type AgentDirectoryDelta = Extract<
@@ -102,7 +103,6 @@ export function removeAgentDirectoryReplica(serverId: string, agentId: string): 
   store.setAgents(serverId, removeKey);
   store.setAgentDetails(serverId, removeKey);
   store.setQueuedMessages(serverId, removeKey);
-  store.setAgentTimelineCursor(serverId, removeKey);
   store.setInitializingAgents(serverId, removeKey);
   store.setPendingPermissions(serverId, (current) => {
     const next = new Map(current);
@@ -111,9 +111,15 @@ export function removeAgentDirectoryReplica(serverId: string, agentId: string): 
     }
     return next.size === current.size ? current : next;
   });
-  store.setAgentAuthoritativeHistoryApplied(serverId, agentId, false);
-  store.setAgentStreamTail(serverId, removeKey);
-  store.clearAgentStreamHead(serverId, agentId);
+  // One funnel for every per-agent map the stream release owns — buffers,
+  // cursor, applied flag, sync generation, and the transient composer state
+  // (prompt suggestion, rate limits, sent-prompt history). Clearing them one
+  // by one here is how side-maps got missed in the first place.
+  store.releaseAgentStreams(serverId, [agentId]);
+  useClearedSubagentTokensStore.getState().resetForParent({
+    serverId,
+    parentAgentId: agentId,
+  });
   useSessionStore.setState((state) => {
     if (!state.agentLastActivity.has(agentId)) return state;
     const agentLastActivity = new Map(state.agentLastActivity);

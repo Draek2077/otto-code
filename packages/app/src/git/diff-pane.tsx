@@ -2844,24 +2844,46 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     return files.every((file) => expandedPaths.has(file.path));
   }, [expandedPaths, files]);
 
+  // Expand/collapse all owns FOLDERS as well as file bodies. In tree mode a
+  // collapsed folder hides its files outright, so "everything is open" means
+  // every body expanded AND every folder expanded — and one collapse press has
+  // to close both, or the list still shows every file header afterwards.
+  const allDiffsExpanded = useMemo(
+    () => allFileDiffsExpanded && (viewMode !== "tree" || collapsedFolders.size === 0),
+    [allFileDiffsExpanded, collapsedFolders, viewMode],
+  );
+
   const handleToggleExpandAll = useCallback(() => {
     if (!workspaceStateKey) {
       return;
     }
-    if (allFileDiffsExpanded) {
+    if (allDiffsExpanded) {
       setDiffExpandedPathsForWorkspace(workspaceStateKey, []);
+      if (viewMode === "tree") {
+        setDiffCollapsedFoldersForWorkspace(workspaceStateKey, allFolderPaths);
+      }
       return;
     }
-    // Never expand thousands of bodies at once — that's the crash path. Collapse
-    // (the branch above) always stays available.
-    if (files.length > MAX_EXPAND_ALL_FILE_COUNT) {
-      return;
+    // Never expand thousands of bodies at once — that's the crash path. Only the
+    // body half is capped: collapsing, and opening folders, always stay available.
+    if (files.length <= MAX_EXPAND_ALL_FILE_COUNT) {
+      setDiffExpandedPathsForWorkspace(
+        workspaceStateKey,
+        files.map((file) => file.path),
+      );
     }
-    setDiffExpandedPathsForWorkspace(
-      workspaceStateKey,
-      files.map((file) => file.path),
-    );
-  }, [allFileDiffsExpanded, files, setDiffExpandedPathsForWorkspace, workspaceStateKey]);
+    if (viewMode === "tree") {
+      setDiffCollapsedFoldersForWorkspace(workspaceStateKey, []);
+    }
+  }, [
+    allDiffsExpanded,
+    allFolderPaths,
+    files,
+    setDiffCollapsedFoldersForWorkspace,
+    setDiffExpandedPathsForWorkspace,
+    viewMode,
+    workspaceStateKey,
+  ]);
 
   // "View changes" from the Files tree or a file tab's toolbar. The request is
   // stashed in the panel store before the tab switch, so this pane usually
@@ -3008,7 +3030,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
       // large to expand safely; the label doubles as the tooltip explaining why.
       const expandAllDisabled = !allFileDiffsExpanded && files.length > MAX_EXPAND_ALL_FILE_COUNT;
       let expandLabel: string;
-      if (allFileDiffsExpanded) {
+      if (allDiffsExpanded) {
         expandLabel = t("workspace.git.diff.collapseAll");
       } else if (expandAllDisabled) {
         expandLabel = t("workspace.git.diff.expandAllTooManyFiles");
@@ -3019,7 +3041,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
         id: "expand",
         label: expandLabel,
         renderIcon: (size) =>
-          allFileDiffsExpanded ? (
+          allDiffsExpanded ? (
             <ThemedListChevronsDownUp size={size} uniProps={foregroundMutedIconColorMapping} />
           ) : (
             <ThemedListChevronsUpDown size={size} uniProps={foregroundMutedIconColorMapping} />
@@ -3093,6 +3115,7 @@ export function GitDiffPane({ serverId, workspaceId, cwd, enabled, onOpenFile }:
     files,
     viewMode,
     allFileDiffsExpanded,
+    allDiffsExpanded,
     wrapLines,
     reviewCommentCount,
     refreshSupported,

@@ -118,6 +118,8 @@ import { PinnableMenuItem } from "@/workspace-pins/pinnable-menu-item";
 import { useMoveChatMenu } from "@/workspace/use-move-chat-menu";
 import type { PreviewConfiguredServer, PreviewRunningServer } from "@otto-code/protocol/messages";
 import { useSessionStore } from "@/stores/session-store";
+import { useRetainedPanelActive } from "@/components/retained-panel";
+import { useAppVisible } from "@/hooks/use-app-visible";
 import { createWorkspaceBrowser, useBrowserStore } from "@/stores/browser-store";
 import { ArtifactOpenMenu } from "@/components/artifacts/artifact-open-menu";
 import {
@@ -575,11 +577,21 @@ function useWorkspacePreviewController({
       : null,
   );
 
+  // A workspace the deck retains hidden, and the whole app while its window is
+  // backgrounded, both keep this row mounted, so without these two gates every
+  // workspace visited this session goes on hitting `preview.list_config`
+  // forever. `isPanelActive` is the deck's route-focus signal (RetainedPanel
+  // feeds it the same `isRouteFocused` WorkspaceScreen gets), `isAppVisible` the
+  // window's. Same pairing as file-pane's re-read gate.
+  const isPanelActive = useRetainedPanelActive();
+  const isAppVisible = useAppVisible();
+
   // Background refresh: poll for this pane's running preview servers as soon
   // as a chat is focused, so the icon reflects real server state without the
-  // user having to open the picker first.
+  // user having to open the picker first. Regaining focus or visibility re-runs
+  // the effect, whose first poll is immediate, so the icon is fresh on return.
   useEffect(() => {
-    if (!enabled || !focusedAgentCwd) {
+    if (!enabled || !focusedAgentCwd || !isPanelActive || !isAppVisible) {
       return;
     }
     const cwd = focusedAgentCwd;
@@ -590,7 +602,7 @@ function useWorkspacePreviewController({
     poll();
     const intervalId = setInterval(poll, PREVIEW_SERVER_POLL_INTERVAL_MS);
     return () => clearInterval(intervalId);
-  }, [enabled, fetchAndRecordRunningServers, focusedAgentCwd]);
+  }, [enabled, fetchAndRecordRunningServers, focusedAgentCwd, isAppVisible, isPanelActive]);
 
   const handleOpenChange = useCallback(
     (next: boolean) => {

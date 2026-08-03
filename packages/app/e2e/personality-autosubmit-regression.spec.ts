@@ -54,17 +54,20 @@ test.describe("Personality survives new-workspace auto-submit", () => {
     // target this workspace-free project instead.
     const targetRepo = await createTempGitRepo("personality-autosubmit-target-");
     let openedProjectWorkspaceId: string | null = null;
-    let openedProjectKey: string | null = null;
-    let targetProjectKey: string | null = null;
+    // Removal takes the host-local project id, never the cross-host grouping
+    // key the picker renders — passing the key made both removals no-ops that
+    // the .catch() swallowed, leaving projects on deleted directories.
+    let openedProjectId: string | null = null;
+    let targetProjectId: string | null = null;
     let createdWorkspaceDirectory: string | null = null;
 
     try {
       await seedPersonalities(client, [personality]);
       const openedProject = await openProjectViaDaemon(nwClient, repo.path);
       openedProjectWorkspaceId = openedProject.workspaceId;
-      openedProjectKey = openedProject.projectKey;
+      openedProjectId = openedProject.projectId;
       const targetProject = await addProjectViaDaemon(nwClient, targetRepo.path);
-      targetProjectKey = targetProject.projectKey;
+      targetProjectId = targetProject.projectId;
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -117,11 +120,11 @@ test.describe("Personality survives new-workspace auto-submit", () => {
           () => undefined,
         );
       }
-      if (openedProjectKey) {
-        await nwClient.removeProject(openedProjectKey).catch(() => undefined);
+      if (openedProjectId) {
+        await nwClient.removeProject(openedProjectId).catch(() => undefined);
       }
-      if (targetProjectKey) {
-        await nwClient.removeProject(targetProjectKey).catch(() => undefined);
+      if (targetProjectId) {
+        await nwClient.removeProject(targetProjectId).catch(() => undefined);
       }
       await removePersonalitiesById(client, [personality.id]).catch(() => undefined);
       await nwClient.close().catch(() => undefined);

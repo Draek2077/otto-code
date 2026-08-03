@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useCheckoutDiffQuery } from "@/git/use-diff-query";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useChangesPreferences } from "@/hooks/use-changes-preferences";
@@ -6,6 +6,37 @@ import { buildReviewDraftScopeKey, useResolvedDiffMode } from "@/review";
 import { usePanelStore } from "@/stores/panel-store";
 
 const EMPTY_CHANGED_PATHS: ReadonlySet<string> = new Set<string>();
+
+/**
+ * Build the changed-path set for a diff snapshot, keeping `previous` when the
+ * membership is unchanged.
+ *
+ * The daemon re-pushes `checkout_diff_update` on every write an agent makes, so
+ * a fresh `new Set(...)` per snapshot hands consumers a new identity many times
+ * a second while the list of changed files sits perfectly still. That identity
+ * is a prop of every visible row in the Files tree and a top-level dependency of
+ * every open file tab's chrome, so churning it re-renders both per push for no
+ * visible change. Returning the previous set when the contents match cuts the
+ * whole cascade at the source.
+ */
+export function resolveChangedPathSet(
+  files: readonly { path: string }[],
+  previous: ReadonlySet<string>,
+): ReadonlySet<string> {
+  if (files.length === 0) {
+    return previous.size === 0 ? previous : EMPTY_CHANGED_PATHS;
+  }
+  const next = new Set(files.map((file) => file.path));
+  if (next.size !== previous.size) {
+    return next;
+  }
+  for (const path of next) {
+    if (!previous.has(path)) {
+      return next;
+    }
+  }
+  return previous;
+}
 
 interface ChangedPathsInput {
   serverId: string;
@@ -73,11 +104,14 @@ export function useChangedFilePaths({
     enabled: enabled && isGit,
   });
 
+  // The ref, not the memo, is what makes the identity stable: `files` is a new
+  // array per push, so the memo recomputes every time regardless. Comparing
+  // against the last set we handed out is what lets consumers skip the render.
+  const previousRef = useRef<ReadonlySet<string>>(EMPTY_CHANGED_PATHS);
   return useMemo(() => {
-    if (files.length === 0) {
-      return EMPTY_CHANGED_PATHS;
-    }
-    return new Set(files.map((file) => file.path));
+    const resolved = resolveChangedPathSet(files, previousRef.current);
+    previousRef.current = resolved;
+    return resolved;
   }, [files]);
 }
 

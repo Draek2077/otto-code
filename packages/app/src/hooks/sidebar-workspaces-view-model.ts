@@ -145,7 +145,16 @@ export function createSidebarWorkspaceEntry(input: {
   pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
   workspaceAgentActivity?: ReadonlyMap<string, WorkspaceAgentActivity>;
 }): SidebarWorkspaceEntry {
-  const projectKey = input.projectKey ?? input.workspace.projectId;
+  // `projectKey` is supplied by the structure path, which is the only caller
+  // that has the grouped key. The single-workspace hook has no structure to
+  // read, so fall back to the key the daemon stamped on the workspace, and only
+  // then to `projectId`. That last hop is a per-host id standing in for a
+  // cross-host key -- it labels a row, it must never be routed or put on the
+  // wire as a projectId's counterpart. No consumer of the fallback reads this
+  // field today; see the regression test in host-projects.test.ts for why the
+  // two are not interchangeable.
+  const projectKey =
+    input.projectKey ?? input.workspace.project?.projectKey ?? input.workspace.projectId;
   const effectiveStatus = deriveEffectiveWorkspaceStatus(input);
   return {
     workspaceKey: `${input.serverId}:${input.workspace.id}`,

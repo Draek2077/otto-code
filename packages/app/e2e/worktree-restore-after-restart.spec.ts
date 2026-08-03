@@ -78,12 +78,12 @@ test.describe("Worktree restore after daemon restart", () => {
     const worktreeSlug = `restart-restore-${randomUUID().slice(0, 8)}`;
 
     const project = await openProjectViaDaemon(worktreeClient, tempRepo.path);
-    createdProjectIds.add(project.projectKey);
+    createdProjectIds.add(project.projectId);
     const worktree = await createWorktreeViaDaemon(worktreeClient, {
       cwd: tempRepo.path,
       slug: worktreeSlug,
     });
-    createdProjectIds.add(worktree.projectKey);
+    createdProjectIds.add(worktree.projectId);
     createdWorktreeDirectories.add(worktree.workspaceDirectory);
 
     const agent = await createIdleAgent(client, {

@@ -20,7 +20,8 @@ import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { lineNumberGutterWidth } from "@/components/code-insets";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
-import { isRenderedMarkdownFile } from "@/components/file-pane-render-mode";
+import { exceedsHighlightBudget, isRenderedMarkdownFile } from "@/components/file-pane-render-mode";
+import { LargeFileNotice } from "@/components/large-file-notice";
 import type { AttachmentMetadata } from "@/attachments/types";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
 import { persistAttachmentFromBytes } from "@/attachments/service";
@@ -220,13 +221,19 @@ function FilePreviewBody({
 
   const previewScrollRef = useRef<RNScrollView>(null);
 
+  const highlightTooLarge = useMemo(
+    () =>
+      preview?.kind === "text" && !isMarkdownFile && exceedsHighlightBudget(preview.content ?? ""),
+    [isMarkdownFile, preview],
+  );
+
   const highlightedLines = useMemo(() => {
-    if (!preview || preview.kind !== "text" || isMarkdownFile) {
+    if (!preview || preview.kind !== "text" || isMarkdownFile || highlightTooLarge) {
       return null;
     }
 
     return highlightCode(preview.content ?? "", filePath);
-  }, [isMarkdownFile, preview, filePath]);
+  }, [highlightTooLarge, isMarkdownFile, preview, filePath]);
 
   const gutterWidth = useMemo(() => {
     if (!highlightedLines) return 0;
@@ -321,6 +328,7 @@ function FilePreviewBody({
 
     return (
       <View style={styles.previewScrollContainer}>
+        <LargeFileNotice visible={highlightTooLarge} />
         <RNScrollView
           ref={previewScrollRef}
           style={styles.previewContent}

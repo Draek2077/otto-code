@@ -317,6 +317,15 @@ function createLegacyWorkspace(
     workspaceDirectory;
   return {
     id: workspaceDirectory,
+    // A projectKey standing in for a projectId, which is normally the bug that
+    // makes the daemon answer "Project not found for worktree". It is safe here
+    // and only here: this shim runs against pre-v0.1.97 daemons, which have no
+    // project registry to mint an opaque id in, so the key is the only identity
+    // that exists. Nothing sends it back either -- workspace creation is gated
+    // on the same `workspaceMultiplicity` feature that switches this shim off,
+    // and these synthetic workspaces never join a project row (the structure
+    // builder matches them against ProjectDescriptors, which this shim does not
+    // produce). Delete with the rest of the shim, not by "fixing" this line.
     projectId: entry.project.projectKey,
     projectDisplayName: entry.project.projectName,
     projectCustomName: null,

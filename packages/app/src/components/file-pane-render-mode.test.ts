@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultFileViewMode,
+  exceedsHighlightBudget,
+  HIGHLIGHT_MAX_CHARS,
+  HIGHLIGHT_MAX_LINES,
   isRenderedMarkdownFile,
   isRenderedMermaidFile,
   renderedDocumentKind,
@@ -50,6 +53,23 @@ describe("renderedDocumentKind", () => {
 
   it("leaves PGP armored files as source", () => {
     expect(renderedDocumentKind("release.asc")).toBeNull();
+  });
+});
+
+describe("exceedsHighlightBudget", () => {
+  it("highlights ordinary source files", () => {
+    expect(exceedsHighlightBudget("")).toBe(false);
+    expect(exceedsHighlightBudget("const a = 1;\nconst b = 2;\n")).toBe(false);
+  });
+
+  it("gives up on a file past the character budget", () => {
+    expect(exceedsHighlightBudget("x".repeat(HIGHLIGHT_MAX_CHARS))).toBe(false);
+    expect(exceedsHighlightBudget("x".repeat(HIGHLIGHT_MAX_CHARS + 1))).toBe(true);
+  });
+
+  it("gives up on a file past the line budget even when it is small", () => {
+    expect(exceedsHighlightBudget("\n".repeat(HIGHLIGHT_MAX_LINES - 1))).toBe(false);
+    expect(exceedsHighlightBudget("\n".repeat(HIGHLIGHT_MAX_LINES))).toBe(true);
   });
 });
 

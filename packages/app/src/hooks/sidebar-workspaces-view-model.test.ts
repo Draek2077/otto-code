@@ -37,7 +37,11 @@ function project(input: {
     hosts: input.hosts ?? [
       {
         serverId: "srv",
-        projectId: input.projectKey,
+        // Deliberately not `input.projectKey`. The per-host project id and the
+        // cross-host grouping key are different values, and a stub that made
+        // them equal is exactly why nothing here caught the app routing a key
+        // into a `projectId` field ("Project not found for worktree").
+        projectId: `prj_${input.projectKey}`,
         iconWorkingDir: input.iconWorkingDir ?? input.projectKey,
         canCreateWorktree: true,
       },

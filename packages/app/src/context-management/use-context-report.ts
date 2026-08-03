@@ -195,7 +195,7 @@ export function useContextReportQuery(
           force,
         });
         if (cancelled) return;
-        setQueryReport(key, report);
+        setQueryReport({ serverId, key, report });
         setScanning(false);
       } catch (cause) {
         if (cancelled) return;
@@ -206,7 +206,17 @@ export function useContextReportQuery(
     return () => {
       cancelled = true;
     };
-  }, [client, workspaceId, key, provider, windowTokens, personalityId, nonce, setQueryReport]);
+  }, [
+    client,
+    serverId,
+    workspaceId,
+    key,
+    provider,
+    windowTokens,
+    personalityId,
+    nonce,
+    setQueryReport,
+  ]);
 
   return useMemo(
     () => ({
