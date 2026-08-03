@@ -146,6 +146,7 @@ import { resolveMountedTabLimit } from "@/screens/workspace/mounted-tab-retentio
 import { isNative, isWeb } from "@/constants/platform";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
+import { useRetainedScrollOffset } from "@/hooks/use-retained-scroll-offset";
 import {
   buildOpenProjectRoute,
   buildProjectsSettingsRoute,
@@ -1473,6 +1474,11 @@ function DesktopAppUpdateRow() {
 // Sidebar
 // ---------------------------------------------------------------------------
 
+// The desktop sidebar's own scroll region. The compact root list renders the
+// same body but pushes rather than replaces, so its screen stays mounted and
+// keeps its position without help.
+const SETTINGS_SIDEBAR_SCROLL_KEY = "settings-sidebar";
+
 /**
  * Local daemon first, then remaining hosts in their existing order.
  */
@@ -1784,6 +1790,7 @@ function SettingsSidebar({
     () => [sidebarStyles.resizeHandle, isWeb && ({ cursor: "col-resize" } as object)],
     [],
   );
+  const sidebarScroll = useRetainedScrollOffset(SETTINGS_SIDEBAR_SCROLL_KEY);
   const selectedSectionId = view.kind === "section" ? view.section : null;
   const selectedHostSection = view.kind === "host" ? view.section : null;
   const isProjectsSelected = view.kind === "projects" || view.kind === "project";
@@ -1904,7 +1911,19 @@ function SettingsSidebar({
             testID="settings-back-to-workspace"
           />
         </View>
-        <ScrollView style={sidebarStyles.scrollBody} showsVerticalScrollIndicator={false}>
+        {/* Every settings section is its own route, so picking one replaces the
+            whole SettingsScreen (see mountedSettingsScreens) and this list
+            remounts at the top — scrolling the menu away from the row that was
+            just clicked whenever it is taller than the pane. Retain the offset
+            across that remount. */}
+        <ScrollView
+          ref={sidebarScroll.ref}
+          style={sidebarStyles.scrollBody}
+          onScroll={sidebarScroll.onScroll}
+          onContentSizeChange={sidebarScroll.onContentSizeChange}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
+        >
           {sidebarBody}
         </ScrollView>
 
