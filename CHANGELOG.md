@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.7.6 - 2026-08-03
+
+### Added
+
+- Markdown files open in a live preview that hides the syntax on every line except the one your caret is on
+- Format Markdown from a toolbar and keyboard shortcuts, laid out for touch on mobile
+- Move around a Markdown document from a heading outline
+- Build and edit GitHub-flavored tables inside a Markdown file
+- Paste HTML into a Markdown file and it arrives as Markdown
+- Turn an HTML table in a Markdown file into a GitHub-flavored one
+- TeX math renders wherever Markdown does
+- GitHub alert blocks render as themed callouts
+- Footnotes render in Markdown
+- Tick a task-list checkbox straight in the file
+- Export a Markdown document as standalone HTML or as a PDF
+- Drop an image into a Markdown file to insert it
+- Write binary files from the file explorer
+- A run of tool calls collapses into one overview row, so a turn that reads twenty files is one line instead of twenty cards
+- Claude's thinking can be turned off, per model
+- Workspace scripts pick up the npm scripts already in package.json, not only what otto.json declares
+- Search the keyboard shortcuts dialog
+- A provider's sub-agent opens as its own tab
+- Attachments travel with the queued message they belong to when you send the queue
+- Agents can create, list and archive workspaces through Otto's own tools
+
+### Changed
+
+- Otto is rebuilt on Paseo v0.2.5, adopting everything upstream shipped since v0.2.1
+- The workspace sidebar, footer nav and segmented control share one set of heights and radii instead of restating them per component
+- A single icon set now covers tool calls and roles, which were missing icons before
+- Otto is clearer about when an agent actually wants your attention
+- Picking a model explicitly leaves the mode that was choosing one for you
+- Large files transfer as a stream instead of being held whole in memory
+- A workspace script that serves a URL offers to open it, the same as a declared service route
+- An agent can only delete the heartbeats it created
+- The Windows installer puts ~/.local/bin on your PATH
+- The bundled agent catalog picks up current versions of Cline, CodeBuddy, Dimcode, Dirac, Factory Droid, Gemini CLI, Nova, Qoder and Qwen Code
+
+### Fixed
+
+- The Settings sidebar stays where you left it when you pick a section
+- The chat transcript no longer mistakes your own scrolling for drift and pulls you back
+- Returning to a busy chat lands on its settled state instead of replaying it
+- A chat asks for older history when the first page does not fill the window
+- Stop actually stops the agent, or says why it could not
+- Stop holds the queued messages instead of firing them at an agent that is stopping
+- A workspace opened on a subdirectory stays on that subdirectory when you cut a worktree from it
+- A git worktree you created by hand groups under its repository instead of standing up as its own project
+- An archived workspace reopens even when its project is archived too
+- Saving a file no longer reports a conflict with its own unchanged contents
+- File permissions survive a save
+- OpenCode token counts add up across a turn instead of showing only the last step
+- Otto no longer labels every git host as GitHub
+- A browser directory left empty counts as not installed
+- Quitting the desktop app does not re-ask a question the update already answered
+- Otto Brain says why its terminal UI cannot run under the bundled Windows binary
+
 ## 0.7.5 - 2026-07-31
 
 ### Added
