@@ -20,13 +20,14 @@ export interface AgentConfigSessionHost {
 /**
  * The per-agent config mutations this subsystem drives. The shell adapts these
  * onto the AgentManager and loads a closed agent before mutation (mode still
- * routes through setAgentModeCommand); tests wire an in-memory fake. Mode and
- * thinking yield a provider notice; model and feature do not.
+ * routes through setAgentModeCommand); tests wire an in-memory fake. Mode,
+ * model and thinking yield a provider notice; feature does not. Model's notice
+ * reports a mode the pick had to leave (see exitModelSelectingMode).
  */
 export interface AgentConfigOperations {
   ensureLoaded(agentId: string): Promise<void>;
   setMode(agentId: string, modeId: string): Promise<AgentProviderNotice | null>;
-  setModel(agentId: string, modelId: string | null): Promise<void>;
+  setModel(agentId: string, modelId: string | null): Promise<AgentProviderNotice | null>;
   setFeature(agentId: string, featureId: string, value: unknown): Promise<void>;
   setThinking(
     agentId: string,
@@ -102,10 +103,7 @@ export class AgentConfigSession {
       logLabel: "set_agent_model_request",
       logFields: { agentId, modelId, requestId },
       failureText: "Failed to set agent model",
-      run: async () => {
-        await this.operations.setModel(agentId, modelId);
-        return undefined;
-      },
+      run: () => this.operations.setModel(agentId, modelId),
       emitResponse: (payload) => this.host.emit({ type: "set_agent_model_response", payload }),
     });
   }

@@ -19,6 +19,12 @@ export interface ModelIdentityInput {
   effortLabel: string | null | undefined;
   /** Operating mode, already formatted. Null when the provider exposes none. */
   modeLabel: string | null | undefined;
+  /**
+   * Label of the model the provider actually ran the last turn on, when that is
+   * not the selection above. Already decided by resolveRuntimeModelFact — a
+   * label, never an id, so it stays a statement and never becomes a choice.
+   */
+  runtimeModelLabel: string | null | undefined;
 }
 
 export interface ModelIdentity {
@@ -34,6 +40,8 @@ export interface ModelIdentity {
   classLabel: string;
   effortLabel: string | null;
   modeLabel: string | null;
+  /** What actually ran last turn, when it differs from the selection. */
+  runtimeModelLabel: string | null;
 }
 
 function cleanLabel(value: string | null | undefined): string | null {
@@ -61,5 +69,6 @@ export function buildModelIdentity(input: ModelIdentityInput): ModelIdentity | n
     classLabel: modelTierLabel(input.tier),
     effortLabel: cleanLabel(input.effortLabel),
     modeLabel: cleanLabel(input.modeLabel),
+    runtimeModelLabel: cleanLabel(input.runtimeModelLabel),
   };
 }

@@ -146,12 +146,28 @@ function getFallbackModel(models: AgentModelDefinition[] | null): AgentModelDefi
   return models?.find((model) => model.isDefault) ?? models?.[0] ?? null;
 }
 
+/**
+ * The configured model is the user's explicit selection, so it wins whenever it
+ * resolves to a real model in the provider catalog. The runtime model is only
+ * what the provider reported for the LAST turn — it lags a fresh switch (the
+ * provider keeps reporting the old model until its query restarts) and under
+ * Claude's Auto mode it names whatever the CLI picked for that turn. Preferring
+ * it here is what made a mid-chat switch silently revert in the picker.
+ * Runtime stays the fallback: an agent spawned without an explicit model has no
+ * configured id, and runtime is then the only honest answer.
+ */
 function resolvePreferredModelId(
+  configuredSelectedModel: AgentModelDefinition | null,
   runtimeSelectedModel: AgentModelDefinition | null,
   normalizedConfiguredModelId: string | null,
   normalizedRuntimeModelId: string | null,
 ): string | null {
-  return runtimeSelectedModel?.id ?? normalizedConfiguredModelId ?? normalizedRuntimeModelId;
+  return (
+    configuredSelectedModel?.id ??
+    runtimeSelectedModel?.id ??
+    normalizedConfiguredModelId ??
+    normalizedRuntimeModelId
+  );
 }
 
 function pickSelectedModel(
@@ -215,6 +231,43 @@ function resolveThinkingDisplay(
   return unknownThinkingLabel;
 }
 
+/**
+ * The model the provider reported for the LAST turn, stated as a fact only when
+ * it is not the one the picker is already showing. This is the counterweight to
+ * resolveAgentModelSelection preferring the configured choice: under a mode that
+ * picks the model itself (Claude's Auto) the turn can run on something else, and
+ * without this there would be nowhere at all to see what that was.
+ *
+ * Returns a display LABEL, never an id and never a model. That is deliberate and
+ * structural: a label cannot be fed back into the picker, which is keyed by id,
+ * so this fact can never become a selection again. Do not change the return type
+ * to an id or an AgentModelDefinition — preferring the runtime model in the
+ * selection is exactly the bug this pair of functions exists to keep fixed.
+ *
+ * Null (say nothing) when:
+ *  - there is no runtime model yet, e.g. a chat that has not run a turn;
+ *  - the runtime model is not in the provider catalog, so we cannot name it
+ *    honestly — a raw dated id like `claude-opus-5-20260101` is noise, and it
+ *    reads as a difference when it is usually the same model;
+ *  - it matches the selection, where the row would just restate the headline.
+ */
+export function resolveRuntimeModelFact(input: {
+  models: AgentModelDefinition[] | null;
+  runtimeModelId: string | null | undefined;
+  /** The id the picker settled on, i.e. resolveAgentModelSelection's activeModelId. */
+  selectedModelId: string | null | undefined;
+}): string | null {
+  const normalizedRuntimeModelId = normalizeModelId(input.runtimeModelId);
+  if (!normalizedRuntimeModelId) {
+    return null;
+  }
+  const runtimeModel = findModelById(input.models, normalizedRuntimeModelId);
+  if (!runtimeModel || runtimeModel.id === normalizeModelId(input.selectedModelId)) {
+    return null;
+  }
+  return runtimeModel.label;
+}
+
 export function resolveAgentModelSelection(input: {
   models: AgentModelDefinition[] | null;
   runtimeModelId: string | null | undefined;
@@ -225,8 +278,10 @@ export function resolveAgentModelSelection(input: {
   const normalizedRuntimeModelId = normalizeModelId(runtimeModelId);
   const normalizedConfiguredModelId = normalizeModelId(configuredModelId);
 
+  const configuredSelectedModel = findModelById(models, normalizedConfiguredModelId);
   const runtimeSelectedModel = findModelById(models, normalizedRuntimeModelId);
   const preferredModelId = resolvePreferredModelId(
+    configuredSelectedModel,
     runtimeSelectedModel,
     normalizedConfiguredModelId,
     normalizedRuntimeModelId,

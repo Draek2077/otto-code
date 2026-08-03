@@ -87,6 +87,7 @@ import {
   formatAgentModeLabel,
   formatThinkingOptionLabel,
   resolveAgentModelSelection,
+  resolveRuntimeModelFact,
 } from "@/composer/agent-controls/utils";
 import { resolveModeSelection } from "@/composer/agent-controls/mode";
 import { buildModelIdentity, type ModelIdentity } from "@/composer/agent-controls/model-identity";
@@ -287,7 +288,10 @@ function useRunningChatPersonality(input: {
             boundPersonalityId,
             personalityName,
             provider,
-            model: agent?.runtimeModelId ?? agent?.model ?? null,
+            // Configured first, same rule as resolveAgentModelSelection: this
+            // subtitle names the agent's selected model, and the runtime one
+            // lags a fresh switch by a turn.
+            model: agent?.model ?? agent?.runtimeModelId ?? null,
             spinner: agent?.personalitySpinner,
           }),
     [
@@ -295,8 +299,8 @@ function useRunningChatPersonality(input: {
       boundPersonalityId,
       personalityName,
       provider,
-      agent?.runtimeModelId,
       agent?.model,
+      agent?.runtimeModelId,
       agent?.personalitySpinner,
     ],
   );
@@ -931,6 +935,8 @@ function buildAgentModelIdentity(input: {
   selection: ReturnType<typeof resolveAgentModelSelection>;
   providerEntry: ProviderSnapshotEntry | null;
   thinkingOptions: AgentControlOption[];
+  /** Already resolved by resolveRuntimeModelFact; a label, never an id. */
+  runtimeModelLabel: string | null;
 }): ModelIdentity | null {
   return buildModelIdentity({
     personalityName: input.personalityName,
@@ -939,6 +945,7 @@ function buildAgentModelIdentity(input: {
     tier: input.selection.selectedModel?.tier,
     effortLabel: input.thinkingOptions.length > 0 ? input.selection.displayThinking : null,
     modeLabel: input.agent?.modeLabel,
+    runtimeModelLabel: input.runtimeModelLabel,
   });
 }
 
@@ -977,6 +984,8 @@ function buildDraftModelIdentity(input: {
     tier: model?.tier,
     effortLabel: thinking?.label ?? null,
     modeLabel: mode ? formatAgentModeLabel(mode) : null,
+    // A draft has not run a turn, so there is no such fact to state yet.
+    runtimeModelLabel: null,
   });
 }
 
@@ -2148,10 +2157,16 @@ export const AgentControls = memo(function AgentControls({
       if (!client || !agentProvider) {
         return;
       }
-      void client.setAgentModel(agentId, modelId).catch((error) => {
-        console.warn("[AgentControls] setAgentModel failed", error);
-        toast.error(toErrorMessage(error));
-      });
+      // The notice reports a mode the pick had to leave (Claude's Auto picks
+      // the model per turn). The mode chip beside this control also updates,
+      // but it is easy to miss while the model menu has the user's attention.
+      void client
+        .setAgentModel(agentId, modelId)
+        .then((notice) => showProviderNoticeToast(toast, notice))
+        .catch((error) => {
+          console.warn("[AgentControls] setAgentModel failed", error);
+          toast.error(toErrorMessage(error));
+        });
     },
     [agentId, agentProvider, client, toast],
   );
@@ -2268,6 +2283,13 @@ export const AgentControls = memo(function AgentControls({
     selection: modelSelection,
     providerEntry: snapshotSelectedEntry,
     thinkingOptions,
+    // One-way read: the runtime model reaches the card as a label and nothing
+    // else, so it can never re-enter the selection above it.
+    runtimeModelLabel: resolveRuntimeModelFact({
+      models,
+      runtimeModelId: agent?.runtimeModelId,
+      selectedModelId: modelSelection.activeModelId,
+    }),
   });
 
   if (!agent) {

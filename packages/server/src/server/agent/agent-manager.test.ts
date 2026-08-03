@@ -25,6 +25,7 @@ import type {
   AgentCreateSessionOptions,
   AgentFeature,
   AgentLaunchContext,
+  AgentMode,
   AgentPermissionResponse,
   AgentPromptInput,
   AgentProvider,
@@ -1457,6 +1458,158 @@ test("setAgentMode persists the selected mode across session reload", async () =
   const reloaded = await manager.reloadAgentSession(snapshot.id);
   expect(reloaded.config.modeId).toBe("full-access");
   expect(reloaded.currentModeId).toBe("full-access");
+});
+
+test("an explicit model pick leaves a mode that picks the model itself", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-model-pick-mode-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+
+  // Claude's shape: Auto routes each turn to a model of the CLI's own choosing,
+  // so a model the user picked silently loses to it unless the pick exits Auto.
+  const AUTO_MODES: AgentMode[] = [
+    { id: "default", label: "Always Ask" },
+    { id: "plan", label: "Plan Mode" },
+    { id: "auto", label: "Auto mode", selectsModel: true },
+  ];
+
+  class AutoModeSession implements AgentSession {
+    readonly provider = "claude" as const;
+    readonly capabilities = TEST_CAPABILITIES;
+    readonly id = randomUUID();
+    private currentMode: string | null;
+    private model: string | null;
+
+    constructor(config: AgentSessionConfig) {
+      this.currentMode = config.modeId ?? null;
+      this.model = config.model ?? null;
+    }
+
+    async run(): Promise<AgentRunResult> {
+      return { sessionId: this.id, finalText: "", timeline: [] };
+    }
+
+    async startTurn(): Promise<{ turnId: string }> {
+      return { turnId: "turn-1" };
+    }
+
+    subscribe(): () => void {
+      return () => {};
+    }
+
+    async *streamHistory(): AsyncGenerator<AgentStreamEvent> {}
+
+    async getRuntimeInfo() {
+      return {
+        provider: this.provider,
+        sessionId: this.id,
+        model: this.model,
+        modeId: this.currentMode,
+      };
+    }
+
+    async getAvailableModes() {
+      return AUTO_MODES;
+    }
+
+    async getCurrentMode() {
+      return this.currentMode;
+    }
+
+    async setMode(modeId: string): Promise<void> {
+      this.currentMode = modeId;
+    }
+
+    async setModel(modelId: string | null): Promise<void> {
+      this.model = modelId;
+    }
+
+    getPendingPermissions() {
+      return [];
+    }
+
+    async respondToPermission(): Promise<void> {}
+
+    describePersistence() {
+      return { provider: this.provider, sessionId: this.id };
+    }
+
+    async interrupt(): Promise<void> {}
+    async close(): Promise<void> {}
+  }
+
+  class AutoModeClient implements AgentClient {
+    readonly provider = "claude" as const;
+    readonly capabilities = TEST_CAPABILITIES;
+
+    async isAvailable(): Promise<boolean> {
+      return true;
+    }
+
+    async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new AutoModeSession(config);
+    }
+
+    async resumeSession(
+      _handle: AgentPersistenceHandle,
+      config?: Partial<AgentSessionConfig>,
+    ): Promise<AgentSession> {
+      return new AutoModeSession({
+        provider: "claude",
+        cwd: config?.cwd ?? workdir,
+        modeId: config?.modeId,
+        model: config?.model,
+      });
+    }
+
+    async fetchCatalog() {
+      return {
+        models: [{ provider: "claude" as const, id: "claude-fable-5", label: "Fable 5" }],
+        modes: AUTO_MODES,
+      };
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: {
+      claude: new AutoModeClient(),
+    },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000302",
+  });
+
+  const snapshot = await manager.createAgent(
+    {
+      provider: "claude",
+      cwd: workdir,
+      modeId: "auto",
+      model: "claude-opus-5",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+  expect(manager.getAgent(snapshot.id)?.currentModeId).toBe("auto");
+
+  const notice = await manager.setAgentModel(snapshot.id, "claude-fable-5");
+
+  const afterPick = manager.getAgent(snapshot.id);
+  expect(afterPick?.config.model).toBe("claude-fable-5");
+  expect(afterPick?.currentModeId).toBe("default");
+  expect(afterPick?.config.modeId).toBe("default");
+  expect(notice?.type).toBe("info");
+
+  // Clearing the model back to the provider default is the user declining to
+  // choose, which is what Auto is for — that must not evict the mode.
+  await manager.setAgentMode(snapshot.id, "auto");
+  const clearNotice = await manager.setAgentModel(snapshot.id, null);
+
+  const afterClear = manager.getAgent(snapshot.id);
+  expect(afterClear?.currentModeId).toBe("auto");
+  expect(afterClear?.config.model).toBeUndefined();
+  expect(clearNotice).toBeNull();
+
+  rmSync(workdir, { recursive: true, force: true });
 });
 
 test("reloadAgentSession completes when the previous session close hangs", async () => {

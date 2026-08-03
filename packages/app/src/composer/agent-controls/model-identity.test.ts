@@ -8,6 +8,7 @@ const BASE: ModelIdentityInput = {
   tier: "standard",
   effortLabel: "High",
   modeLabel: "Plan",
+  runtimeModelLabel: null,
 };
 
 describe("buildModelIdentity", () => {
@@ -19,7 +20,16 @@ describe("buildModelIdentity", () => {
       classLabel: "Standard",
       effortLabel: "High",
       modeLabel: "Plan",
+      runtimeModelLabel: null,
     });
+  });
+
+  it("carries what actually ran when the surface hands it one", () => {
+    const identity = buildModelIdentity({ ...BASE, runtimeModelLabel: "Opus 5" });
+    // The selection is untouched by it: the fact sits beside the headline,
+    // never in place of it.
+    expect(identity?.name).toBe("Sonnet 5");
+    expect(identity?.runtimeModelLabel).toBe("Opus 5");
   });
 
   it("headlines the personality and keeps the model as its own fact", () => {
@@ -38,10 +48,12 @@ describe("buildModelIdentity", () => {
       providerLabel: "  ",
       effortLabel: null,
       modeLabel: undefined,
+      runtimeModelLabel: "  ",
     });
     expect(identity?.providerLabel).toBeNull();
     expect(identity?.effortLabel).toBeNull();
     expect(identity?.modeLabel).toBeNull();
+    expect(identity?.runtimeModelLabel).toBeNull();
   });
 
   it("returns null when nothing is selected yet", () => {

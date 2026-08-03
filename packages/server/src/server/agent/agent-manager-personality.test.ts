@@ -9,6 +9,7 @@ import { AgentManager } from "./agent-manager.js";
 import type { ResolvedPersonalitySnapshot } from "./agent-personalities.js";
 import type {
   AgentClient,
+  AgentMode,
   AgentPersonalityUpdate,
   AgentProviderNotice,
   AgentRunResult,
@@ -30,6 +31,8 @@ const TEST_CAPABILITIES = {
 interface SessionBehavior {
   failSetModeWith?: Error;
   applyPersonalityDelayMs?: number;
+  /** Default (absent) is an empty roster, which no mode rule can act on. */
+  availableModes?: AgentMode[];
 }
 
 class PersonalityTestSession implements AgentSession {
@@ -73,7 +76,7 @@ class PersonalityTestSession implements AgentSession {
   }
 
   async getAvailableModes() {
-    return [];
+    return this.behavior.availableModes ?? [];
   }
 
   async getCurrentMode() {
@@ -237,6 +240,66 @@ test("setAgentPersonality applies mode before model before thinking, prompt last
     expect(agent.config.modeId).toBe("auto");
     expect(agent.config.thinkingOptionId).toBe("high");
     expect(agent.config.systemPrompt).toBe("You are Vera.");
+  } finally {
+    harness.cleanup();
+  }
+});
+
+// A mode that picks the model itself would swallow the personality's model just
+// as it swallows an explicit pick, so binding one leaves that mode too.
+const MODEL_PICKING_MODES: AgentMode[] = [
+  { id: "router", label: "Router", selectsModel: true },
+  { id: "standard", label: "Standard" },
+  { id: "plan", label: "Plan" },
+];
+
+test("a personality carrying a model but no mode leaves a model-picking mode", async () => {
+  const harness = createHarness({ behavior: { availableModes: MODEL_PICKING_MODES } });
+  try {
+    const agent = await harness.manager.createAgent(
+      { provider: "codex", cwd: harness.workdir },
+      undefined,
+      { workspaceId: undefined },
+    );
+    await harness.manager.setAgentMode(agent.id, "router");
+    expect(harness.manager.getAgent(agent.id)?.currentModeId).toBe("router");
+
+    await harness.manager.setAgentPersonality(
+      agent.id,
+      buildSnapshot({ modeId: undefined, model: "gpt-5.4-mini" }),
+    );
+
+    const session = harness.client.lastSession!;
+    expect(session.calls).toContain("setModel:gpt-5.4-mini");
+    expect(session.calls).toContain("setMode:standard");
+    expect(agent.config.model).toBe("gpt-5.4-mini");
+    expect(agent.config.modeId).toBe("standard");
+    expect(harness.manager.getAgent(agent.id)?.currentModeId).toBe("standard");
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("a personality that names a model-picking mode keeps it", async () => {
+  const harness = createHarness({ behavior: { availableModes: MODEL_PICKING_MODES } });
+  try {
+    const agent = await harness.manager.createAgent(
+      { provider: "codex", cwd: harness.workdir },
+      undefined,
+      { workspaceId: undefined },
+    );
+    await harness.manager.setAgentMode(agent.id, "standard");
+
+    await harness.manager.setAgentPersonality(
+      agent.id,
+      buildSnapshot({ modeId: "router", model: "gpt-5.4-mini" }),
+    );
+
+    // The personality asked for this mode explicitly; that stands, exactly as a
+    // chat created in Auto with a model keeps both.
+    expect(agent.config.modeId).toBe("router");
+    expect(harness.manager.getAgent(agent.id)?.currentModeId).toBe("router");
+    expect(agent.config.model).toBe("gpt-5.4-mini");
   } finally {
     harness.cleanup();
   }

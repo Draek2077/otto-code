@@ -364,6 +364,61 @@ describe("OpenAICompatAgentClient", () => {
     ]);
   });
 
+  // Attachments must survive to the wire here exactly as they do on claude,
+  // acp, codex, omp, opencode and pi. They used to be dropped: the prompt was
+  // flattened to its text and image blocks, so an uploaded file or a PR
+  // attached to a message reached the model as nothing at all. That loss was
+  // invisible — the turn ran, it just answered about content it never saw —
+  // and it bit hardest when the composer's Queue track merged several messages
+  // into one turn, taking every attachment in the batch down with it.
+  test("renders attachment blocks into the prompt instead of dropping them", async () => {
+    const endpoint = await startEndpoint();
+    const client = createClient(endpoint.baseUrl);
+    const session = await client.createSession({
+      provider: "lmstudio",
+      cwd: process.cwd(),
+      model: "test-model-a",
+    });
+
+    await session.run([
+      { type: "text", text: "review these" },
+      {
+        type: "uploaded_file",
+        id: "file-1",
+        fileName: "report.pdf",
+        mimeType: "application/pdf",
+        size: 12,
+        path: "/tmp/report.pdf",
+      },
+      { type: "image", data: "AAAA", mimeType: "image/png" },
+      {
+        type: "forge_issue",
+        forge: "github",
+        number: 42,
+        title: "Queue drops attachments",
+        url: "https://example.test/issues/42",
+      },
+    ]);
+
+    const body = endpoint.completionBodies[0] as {
+      messages: Array<{ role: string; content: unknown }>;
+    };
+    const userContent = body.messages.find((message) => message.role === "user")?.content;
+    // Vision requests carry the text as one part among the image parts, so
+    // read either shape rather than assuming which one this turn produced.
+    const textSent =
+      typeof userContent === "string"
+        ? userContent
+        : (userContent as Array<{ type: string; text?: string }>)
+            .flatMap((part) => (part.type === "text" && part.text ? [part.text] : []))
+            .join("\n");
+
+    expect(textSent).toContain("review these");
+    expect(textSent).toContain("report.pdf");
+    expect(textSent).toContain("Queue drops attachments");
+    expect(textSent).toContain("https://example.test/issues/42");
+  });
+
   // Workspace access on this provider is total enforcement: the daemon owns
   // the tool loop, so a withheld tool is never advertised to the model and
   // cannot be called. These assert on the tools array in the real request body.

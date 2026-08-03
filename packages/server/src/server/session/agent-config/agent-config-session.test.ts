@@ -16,6 +16,7 @@ class FakeAgentConfigOperations implements AgentConfigOperations {
   readonly thinkingCalls: Array<{ agentId: string; thinkingOptionId: string | null }> = [];
   readonly personalityCalls: Array<{ agentId: string; personalityId: string | null }> = [];
   modeNotice: AgentProviderNotice | null = null;
+  modelNotice: AgentProviderNotice | null = null;
   thinkingNotice: AgentProviderNotice | null = null;
   personalityNotice: AgentProviderNotice | null = null;
   loadFailure: Error | null = null;
@@ -32,9 +33,10 @@ class FakeAgentConfigOperations implements AgentConfigOperations {
     return this.modeNotice;
   }
 
-  async setModel(agentId: string, modelId: string | null): Promise<void> {
+  async setModel(agentId: string, modelId: string | null): Promise<AgentProviderNotice | null> {
     this.modelCalls.push({ agentId, modelId });
     if (this.failWith) throw this.failWith;
+    return this.modelNotice;
   }
 
   async setFeature(agentId: string, featureId: string, value: unknown): Promise<void> {
@@ -165,7 +167,7 @@ describe("AgentConfigSession", () => {
     });
   });
 
-  test("set model: emits an accepted response with no notice", async () => {
+  test("set model: emits an accepted response with a null notice", async () => {
     const { subsystem, emitted, operations } = makeSubsystem();
 
     await subsystem.handleSetAgentModelRequest({
@@ -179,7 +181,40 @@ describe("AgentConfigSession", () => {
     expect(emitted).toEqual([
       {
         type: "set_agent_model_response",
-        payload: { requestId: "req-1", agentId: "agent-1", accepted: true, error: null },
+        payload: {
+          requestId: "req-1",
+          agentId: "agent-1",
+          accepted: true,
+          error: null,
+          notice: null,
+        },
+      },
+    ]);
+  });
+
+  // The pick can evict a mode that picks the model itself (Claude's Auto), and
+  // the user only learns that from the notice riding back on this response.
+  test("set model: forwards the notice reporting a mode the pick had to leave", async () => {
+    const { subsystem, emitted, operations } = makeSubsystem();
+    operations.modelNotice = { type: "info", message: "Switched off Auto mode to Always Ask" };
+
+    await subsystem.handleSetAgentModelRequest({
+      type: "set_agent_model_request",
+      agentId: "agent-1",
+      modelId: "claude-fable-5",
+      requestId: "req-1",
+    });
+
+    expect(emitted).toEqual([
+      {
+        type: "set_agent_model_response",
+        payload: {
+          requestId: "req-1",
+          agentId: "agent-1",
+          accepted: true,
+          error: null,
+          notice: { type: "info", message: "Switched off Auto mode to Always Ask" },
+        },
       },
     ]);
   });

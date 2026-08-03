@@ -24,6 +24,10 @@ export type AgentProviderModeDefinition = Omit<AgentMode, "icon" | "colorTier"> 
   AgentModeVisuals & {
     // Marks the provider's most-permissioned no-prompt mode. Selecting it means tools run without approval; the runtime mechanism is provider-specific.
     isUnattended?: boolean;
+    // The provider picks the model itself per turn in this mode, so a model the
+    // user chose cannot stick. An explicit pick moves the agent out of the mode
+    // rather than losing to it. Absent = the mode leaves the model alone.
+    selectsModel?: boolean;
     // False = a mode the runtime can put an agent INTO (unattended runs, or the
     // auto→dontAsk coercion for models that can't run Auto) but that a user may
     // never pick themselves. It is hidden from every mode dropdown and, on a live
@@ -77,6 +81,10 @@ const CLAUDE_MODES: AgentProviderModeDefinition[] = [
     description: "Uses a model classifier to review permission prompts automatically",
     icon: "LocalPolice",
     colorTier: "moderate",
+    // Auto also lets the CLI pick the model per turn. Codex's unrelated "auto"
+    // mode is a permission level only, which is exactly why this is a flag and
+    // not a check on the mode id.
+    selectsModel: true,
   },
   {
     id: "dontAsk",

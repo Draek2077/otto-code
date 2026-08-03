@@ -353,6 +353,10 @@ const DEFAULT_MODES: AgentMode[] = [
     id: "auto",
     label: "Auto mode",
     description: "Uses a model classifier to review permission prompts automatically",
+    // The CLI also routes the turn to its own choice of model here, which is
+    // why an explicit model pick pulls the agent out of Auto (see
+    // resolveModelPickExitModeId) instead of being silently overridden.
+    selectsModel: true,
   },
   {
     id: "dontAsk",

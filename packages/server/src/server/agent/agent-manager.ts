@@ -114,6 +114,7 @@ import {
   type SteerQueueEntry,
 } from "./steer-queue-state.js";
 import { getAgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
+import { resolveModelPickExitModeId } from "./model-pick-mode.js";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
 import { formatSystemNotificationPrompt, isSystemInjectedEnvelope } from "./agent-prompt.js";
 import {
@@ -2864,24 +2865,45 @@ export class AgentManager {
     modeId: string,
   ): Promise<AgentProviderNotice | null> {
     const agent = this.requireSessionAgent(agentId);
-    const notice = (await agent.session.setMode(modeId)) ?? null;
-    const currentMode = (await agent.session.getCurrentMode()) ?? modeId;
+    const notice = await this.applyModeToAgent(agent, agent.session, modeId);
+    this.touchUpdatedAt(agent);
+    this.emitState(agent);
+    return notice;
+  }
+
+  /**
+   * Push a mode onto a live session and mirror it onto the managed agent.
+   * Shared by the mode setter and the model-pick exit below so both land the
+   * agent's mode state the same way; neither emits, so the caller controls when.
+   * The session is explicit because the personality path already holds one.
+   */
+  private async applyModeToAgent(
+    agent: ManagedAgent,
+    session: AgentSession,
+    modeId: string,
+  ): Promise<AgentProviderNotice | null> {
+    const notice = (await session.setMode(modeId)) ?? null;
+    const currentMode = (await session.getCurrentMode()) ?? modeId;
     agent.config.modeId = currentMode ?? undefined;
     agent.currentModeId = currentMode;
     // Update runtimeInfo to reflect the new mode
     if (agent.runtimeInfo) {
       agent.runtimeInfo = { ...agent.runtimeInfo, modeId: currentMode };
     }
-    this.touchUpdatedAt(agent);
-    this.emitState(agent);
     return notice;
   }
 
-  async setAgentModel(agentId: string, modelId: string | null): Promise<void> {
+  async setAgentModel(
+    agentId: string,
+    modelId: string | null,
+  ): Promise<AgentProviderNotice | null> {
     return this.withAgentConfigLock(agentId, () => this.setAgentModelUnlocked(agentId, modelId));
   }
 
-  private async setAgentModelUnlocked(agentId: string, modelId: string | null): Promise<void> {
+  private async setAgentModelUnlocked(
+    agentId: string,
+    modelId: string | null,
+  ): Promise<AgentProviderNotice | null> {
     const agent = this.requireSessionAgent(agentId);
     const normalizedModelId =
       typeof modelId === "string" && modelId.trim().length > 0 ? modelId : null;
@@ -2894,8 +2916,61 @@ export class AgentManager {
     if (agent.runtimeInfo) {
       agent.runtimeInfo = { ...agent.runtimeInfo, model: normalizedModelId };
     }
+    // Only an explicit pick leaves a model-selecting mode. Clearing back to the
+    // provider default (null) is the user declining to choose, which is exactly
+    // what such a mode is for.
+    const notice = normalizedModelId
+      ? await this.exitModelSelectingMode(agent, agent.session)
+      : null;
     this.touchUpdatedAt(agent);
     this.emitState(agent);
+    return notice;
+  }
+
+  /**
+   * A mode that picks the model for each turn (Claude's Auto) would silently
+   * override a model that was just chosen, so choosing one moves the agent out
+   * of it. Shared by the explicit pick and by a personality that carries a model
+   * without carrying a mode. No-op for every provider whose modes don't claim
+   * `selectsModel`.
+   *
+   * A failure to change the mode does not fail the model change: the caller
+   * asked for a model and got one. It downgrades to a warning so the override is
+   * named rather than left to be discovered on the next turn.
+   */
+  private async exitModelSelectingMode(
+    agent: ManagedAgent,
+    session: AgentSession,
+  ): Promise<AgentProviderNotice | null> {
+    const exitModeId = resolveModelPickExitModeId({
+      provider: agent.provider,
+      currentModeId: agent.currentModeId,
+      availableModes: agent.availableModes,
+    });
+    if (!exitModeId) {
+      return null;
+    }
+    const findLabel = (modeId: string | null | undefined): string =>
+      agent.availableModes.find((mode) => mode.id === modeId)?.label ??
+      modeId ??
+      "the current mode";
+    const previousLabel = findLabel(agent.currentModeId);
+    try {
+      await this.applyModeToAgent(agent, session, exitModeId);
+    } catch (error) {
+      this.logger.warn(
+        { err: error, agentId: agent.id, provider: agent.provider, exitModeId },
+        "agent.model.exit_mode_failed",
+      );
+      return {
+        type: "warning",
+        message: `${previousLabel} picks the model for each turn and could not be changed, so it may override this model.`,
+      };
+    }
+    return {
+      type: "info",
+      message: `Switched off ${previousLabel} to ${findLabel(agent.currentModeId)}: it picks the model for each turn, which would override your choice.`,
+    };
   }
 
   async setAgentThinkingOption(
@@ -3069,6 +3144,15 @@ export class AgentManager {
       if (agent.runtimeInfo) {
         agent.runtimeInfo = { ...agent.runtimeInfo, model: snapshot.model };
       }
+    }
+    // A personality that declares no mode leaves the agent in whatever mode it
+    // was already in. If that mode picks the model itself, the personality's
+    // model would silently lose to it, exactly as an explicit pick would — so
+    // it leaves the mode on the same terms. A personality that DOES declare a
+    // mode has already said what it wants, and that stands even when the mode
+    // it names is the model-picking one.
+    if (snapshot.modeId === undefined && snapshot.model) {
+      notices.push(await this.exitModelSelectingMode(agent, session));
     }
     if (session.setThinkingOption) {
       // Always set — a snapshot without an effort (degraded or unspecified)

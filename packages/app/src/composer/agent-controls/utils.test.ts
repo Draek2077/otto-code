@@ -9,6 +9,7 @@ import {
   formatThinkingOptionLabel,
   normalizeModelId,
   resolveAgentModelSelection,
+  resolveRuntimeModelFact,
   type ModeTierColors,
 } from "./utils";
 
@@ -131,8 +132,121 @@ describe("formatThinkingOptionLabel", () => {
   });
 });
 
+describe("resolveRuntimeModelFact", () => {
+  const models = [
+    { id: "claude-opus-5", provider: "claude" as const, label: "Opus 5" },
+    { id: "claude-fable-5", provider: "claude" as const, label: "Fable 5" },
+  ];
+
+  // The Auto case: the picker shows the configured Fable, the CLI ran Opus, and
+  // this is now the only place that says so.
+  it("names the model that ran when it differs from the selection", () => {
+    expect(
+      resolveRuntimeModelFact({
+        models,
+        runtimeModelId: "claude-opus-5",
+        selectedModelId: "claude-fable-5",
+      }),
+    ).toBe("Opus 5");
+  });
+
+  it("says nothing when the runtime model is the selection", () => {
+    expect(
+      resolveRuntimeModelFact({
+        models,
+        runtimeModelId: "claude-fable-5",
+        selectedModelId: "claude-fable-5",
+      }),
+    ).toBeNull();
+  });
+
+  it("says nothing before a turn has run", () => {
+    expect(
+      resolveRuntimeModelFact({
+        models,
+        runtimeModelId: null,
+        selectedModelId: "claude-fable-5",
+      }),
+    ).toBeNull();
+  });
+
+  // A raw dated id is usually the same model under another name, so naming it
+  // would report a difference that isn't one.
+  it("says nothing when the runtime model is not in the catalog", () => {
+    expect(
+      resolveRuntimeModelFact({
+        models,
+        runtimeModelId: "claude-opus-5-20260101",
+        selectedModelId: "claude-fable-5",
+      }),
+    ).toBeNull();
+  });
+
+  it("returns a label, never an id, so it can never be fed back as a selection", () => {
+    const fact = resolveRuntimeModelFact({
+      models,
+      runtimeModelId: "claude-opus-5",
+      selectedModelId: "claude-fable-5",
+    });
+
+    expect(fact).toBe("Opus 5");
+    expect(models.some((model) => model.id === fact)).toBe(false);
+  });
+});
+
 describe("resolveAgentModelSelection", () => {
-  it("prefers runtime model over configured model", () => {
+  // The reported bug: switch Opus -> Fable mid-chat, and the picker slides back
+  // to Opus on the next turn. The daemon keeps the choice in config.model, but
+  // the provider goes on reporting the model it actually ran (Claude's Auto mode
+  // names the CLI's per-turn pick, and any provider lags until its query
+  // restarts). The user's explicit selection has to win the display.
+  it("keeps the configured model when the runtime model reports a different one", () => {
+    const models = [
+      {
+        id: "claude-opus-5",
+        provider: "claude" as const,
+        label: "Opus 5",
+        thinkingOptions: [{ id: "high", label: "High" }],
+      },
+      {
+        id: "claude-fable-5",
+        provider: "claude" as const,
+        label: "Fable 5",
+        thinkingOptions: [{ id: "high", label: "High" }],
+      },
+    ];
+
+    const selection = resolveAgentModelSelection({
+      models,
+      runtimeModelId: "claude-opus-5",
+      configuredModelId: "claude-fable-5",
+      explicitThinkingOptionId: null,
+    });
+
+    expect(selection.activeModelId).toBe("claude-fable-5");
+    expect(selection.displayModel).toBe("Fable 5");
+  });
+
+  it("falls back to the runtime model when nothing is configured", () => {
+    const selection = resolveAgentModelSelection({
+      models: [
+        {
+          id: "claude-opus-5",
+          provider: "claude",
+          label: "Opus 5",
+          thinkingOptions: [{ id: "high", label: "High" }],
+        },
+      ],
+      runtimeModelId: "claude-opus-5",
+      configuredModelId: null,
+      explicitThinkingOptionId: null,
+    });
+
+    expect(selection.activeModelId).toBe("claude-opus-5");
+    expect(selection.displayModel).toBe("Opus 5");
+  });
+
+  it("prefers runtime model over a configured model absent from the catalog", () => {
     const selection = resolveAgentModelSelection({
       models: [
         {

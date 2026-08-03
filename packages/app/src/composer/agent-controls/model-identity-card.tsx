@@ -47,6 +47,17 @@ export function ModelIdentityCard({ identity, hint }: ModelIdentityCardProps): R
         <IdentityRow label="Class" value={identity.classLabel} />
         {identity.effortLabel ? <IdentityRow label="Effort" value={identity.effortLabel} /> : null}
         {identity.modeLabel ? <IdentityRow label="Mode" value={identity.modeLabel} /> : null}
+        {/*
+          A statement, not a field: full-width prose with no label column, so it
+          cannot be skimmed as another attribute of the selection above, let
+          alone as a second picker. Only present when the provider actually ran
+          a different model than the one selected (see resolveRuntimeModelFact).
+        */}
+        {identity.runtimeModelLabel ? (
+          <Text style={styles.note} numberOfLines={2}>
+            {`Last turn ran on ${identity.runtimeModelLabel}`}
+          </Text>
+        ) : null}
       </View>
       <Text style={styles.hint}>{hint}</Text>
     </View>
@@ -81,6 +92,11 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xs,
+  },
+  note: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    paddingTop: theme.spacing[1],
   },
   hint: {
     color: theme.colors.foregroundMuted,

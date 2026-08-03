@@ -66,6 +66,7 @@ import {
   resolveEnabledConnectors,
   type McpToolBinding,
 } from "./openai-compat-mcp.js";
+import { renderPromptAttachmentAsText } from "../prompt-attachments.js";
 import { ottoToolPermissionKind } from "./openai-compat-otto-tool-permissions.js";
 import { PreviewStartGate, type PreviewStartCheck } from "./openai-compat-preview-start-gate.js";
 import type { McpServerConfig } from "../agent-sdk-types.js";
@@ -645,14 +646,31 @@ function extractOpenAICompletionText(payload: unknown): string {
   return typeof content === "string" ? content.trim() : "";
 }
 
+/**
+ * Flatten a structured prompt to the text this provider sends.
+ *
+ * Image blocks are skipped here — they ride along as `image_url` parts (see
+ * promptToImages). EVERY other block is an attachment and must be rendered into
+ * the text, exactly as claude, acp, codex, omp, opencode and pi already do.
+ * Dropping them silently was a provider-parity hole: an uploaded file, a PR, or
+ * a review attached to a prompt reached this provider and vanished, so the model
+ * answered about content it had never been shown. Attachments in, attachments
+ * out — for every provider, not just the frontier ones.
+ */
 function promptToText(prompt: AgentPromptInput): string {
   if (typeof prompt === "string") {
     return prompt;
   }
-  return prompt
-    .flatMap((block) => (block.type === "text" ? [block.text] : []))
-    .join("\n")
-    .trim();
+  const parts: string[] = [];
+  for (const block of prompt) {
+    if (block.type === "image") {
+      continue;
+    }
+    // An attachment whose own type is "text" (chat history, file context) is
+    // already plain text, and renderPromptAttachmentAsText returns it verbatim.
+    parts.push(block.type === "text" ? block.text : renderPromptAttachmentAsText(block));
+  }
+  return parts.join("\n\n").trim();
 }
 
 /**

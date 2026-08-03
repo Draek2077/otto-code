@@ -79,6 +79,13 @@ export interface AgentMode {
   icon?: string;
   colorTier?: string;
   isUnattended?: boolean;
+  /**
+   * The provider chooses the model per turn while this mode is active, so an
+   * explicit model pick cannot stick. Setting a model on an agent in such a
+   * mode moves it out of the mode first; see resolveModelPickExitModeId.
+   * Purely a capability marker: providers without one are unaffected.
+   */
+  selectsModel?: boolean;
 }
 
 export type ProviderStatus = "ready" | "loading" | "error" | "unavailable";
