@@ -188,6 +188,7 @@ test("exposes and applies auto permission mode", async () => {
           id: "auto",
           label: "Auto mode",
           description: "Uses a model classifier to review permission prompts automatically",
+          selectsModel: true,
         },
       ]),
     );
