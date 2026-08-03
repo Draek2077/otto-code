@@ -327,6 +327,22 @@ export async function submitNewWorkspaceEmpty(page: Page): Promise<void> {
   await createButton.click();
 }
 
+/**
+ * Answer the occupied-directory steer with "open the workspace that is already
+ * there". One directory backs one live workspace, so a spec that seeds a
+ * workspace on a temp repo and then submits a New Workspace draft against that
+ * same project always lands on this dialog. Both of its branches carry the
+ * submission through; opening the existing workspace is the cheap one, where
+ * "create a worktree" shells out to `git worktree add` for no gain to a spec
+ * that is not about isolation.
+ */
+export async function openExistingWorkspaceFromOccupiedSteer(page: Page): Promise<void> {
+  const openIt = page.getByTestId("confirm-dialog-confirm");
+  await expect(openIt).toBeVisible({ timeout: 30_000 });
+  await openIt.click();
+  await expect(openIt).toHaveCount(0, { timeout: 30_000 });
+}
+
 export async function openStartingRefPicker(page: Page): Promise<void> {
   const trigger = page.getByTestId("new-workspace-ref-picker-trigger");
   await expect(trigger).toBeVisible({ timeout: 30_000 });
@@ -502,8 +518,77 @@ function getStringField(input: Record<string, unknown>, key: string): string | n
 
 export interface AgentCreatedDelayControl {
   release(): void;
-  waitForCreateRequest(): Promise<void>;
-  waitForDelayedCreatedStatus(): Promise<void>;
+  waitForCreateRequest(timeoutMs?: number): Promise<void>;
+  waitForDelayedCreatedStatus(timeoutMs?: number): Promise<void>;
+}
+
+/**
+ * Ceiling for either gate below. Both wait on a WebSocket message that the app
+ * only sends when everything upstream of it succeeded, so a gate that never
+ * opens is the normal shape of a break here — and an unbounded wait spends the
+ * whole test timeout to report nothing at all. Bounded well under a spec's
+ * timeout, the failure arrives with the daemon's own error text attached, which
+ * is almost always the answer: when workspace creation is refused, no create
+ * request ever follows.
+ */
+const AGENT_CREATED_GATE_TIMEOUT_MS = 30_000;
+
+/** Enough daemon errors to spot the pattern, few enough to stay readable. */
+const MAX_RECORDED_GATE_ERRORS = 5;
+
+/** Guards the request-type list against an unbounded chatty session. */
+const MAX_RECORDED_REQUEST_TYPES = 40;
+
+/**
+ * The error a daemon message carries, if any. Deliberately shape-driven rather
+ * than keyed to specific message types: `rpc_error`, the `*.response` payloads
+ * and the `agent_create_failed` status all report through a payload `error`,
+ * and a gate diagnosis wants whichever one arrived.
+ */
+function errorText(error: unknown): string | null {
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error && typeof error === "object") {
+    return getStringField(error as Record<string, unknown>, "message");
+  }
+  return null;
+}
+
+function extractDaemonError(sessionMessage: Record<string, unknown>): string | null {
+  const payload = sessionMessage.payload;
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  const text = errorText(record.error);
+  if (!text) {
+    return null;
+  }
+  const type = getStringField(sessionMessage, "type") ?? "unknown";
+  const status = getStringField(record, "status");
+  return `${type}${status ? ` (${status})` : ""}: ${text}`;
+}
+
+async function waitForGate(
+  gate: Promise<void>,
+  input: { label: string; timeoutMs: number; describeState: () => string },
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(
+        new Error(
+          `Timed out after ${input.timeoutMs}ms waiting for ${input.label}.\n${input.describeState()}`,
+        ),
+      );
+    }, input.timeoutMs);
+  });
+  try {
+    await Promise.race([gate, expiry]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function delayBrowserAgentCreatedStatus(
@@ -512,21 +597,45 @@ export async function delayBrowserAgentCreatedStatus(
   const daemonPortPattern = daemonWsRoutePattern();
   const createRequestIds = new Set<string>();
   const delayedForwards: Array<() => void> = [];
+  const requestTypes = new Set<string>();
+  const daemonErrors: string[] = [];
   let releaseRequested = false;
   let resolveCreateRequest: (() => void) | null = null;
   let resolveDelayedCreatedStatus: (() => void) | null = null;
+  let failGates: ((error: Error) => void) | null = null;
   const createRequestSeen = new Promise<void>((resolve) => {
     resolveCreateRequest = resolve;
   });
   const delayedCreatedStatusSeen = new Promise<void>((resolve) => {
     resolveDelayedCreatedStatus = resolve;
   });
+  // Raced by both gates so a refused creation fails them at once instead of
+  // waiting out the ceiling. Pre-caught: nothing consumes it when the spec has
+  // already moved past the gate, and an unobserved rejection would take the
+  // whole run down.
+  const gateFailed = new Promise<never>((_, reject) => {
+    failGates = reject;
+  });
+  gateFailed.catch(() => {});
+
+  const describeState = () => {
+    const requests = requestTypes.size > 0 ? [...requestTypes].join(", ") : "(none)";
+    const errors =
+      daemonErrors.length > 0
+        ? daemonErrors.map((error) => `  - ${error}`).join("\n")
+        : "  (none — the daemon reported no error, so look upstream in the app)";
+    return `Requests the app sent: ${requests}\nErrors the daemon returned:\n${errors}`;
+  };
 
   await page.routeWebSocket(daemonPortPattern, (ws) => {
     const server = ws.connectToServer();
 
     ws.onMessage((message) => {
       const sessionMessage = getSessionMessage(message);
+      const type = sessionMessage ? getStringField(sessionMessage, "type") : null;
+      if (type && requestTypes.size < MAX_RECORDED_REQUEST_TYPES) {
+        requestTypes.add(type);
+      }
       if (sessionMessage?.type === "create_agent_request") {
         const requestId = getStringField(sessionMessage, "requestId");
         if (requestId) {
@@ -539,11 +648,33 @@ export async function delayBrowserAgentCreatedStatus(
 
     server.onMessage((message) => {
       const sessionMessage = getSessionMessage(message);
+      if (sessionMessage) {
+        const daemonError = extractDaemonError(sessionMessage);
+        if (daemonError && daemonErrors.length < MAX_RECORDED_GATE_ERRORS) {
+          daemonErrors.push(daemonError);
+        }
+      }
       const payload =
         sessionMessage?.type === "status" && typeof sessionMessage.payload === "object"
           ? (sessionMessage.payload as Record<string, unknown>)
           : null;
       const requestId = payload ? getStringField(payload, "requestId") : null;
+
+      if (
+        payload?.status === "agent_create_failed" &&
+        requestId &&
+        createRequestIds.has(requestId)
+      ) {
+        failGates?.(
+          new Error(
+            `The daemon refused to create the agent: ${
+              getStringField(payload, "error") ?? "no error text"
+            }`,
+          ),
+        );
+        ws.send(message);
+        return;
+      }
 
       if (payload?.status === "agent_created" && requestId && createRequestIds.has(requestId)) {
         resolveDelayedCreatedStatus?.();
@@ -566,7 +697,17 @@ export async function delayBrowserAgentCreatedStatus(
         forward();
       }
     },
-    waitForCreateRequest: () => createRequestSeen,
-    waitForDelayedCreatedStatus: () => delayedCreatedStatusSeen,
+    waitForCreateRequest: (timeoutMs = AGENT_CREATED_GATE_TIMEOUT_MS) =>
+      waitForGate(Promise.race([createRequestSeen, gateFailed]), {
+        label: "the app to send create_agent_request",
+        timeoutMs,
+        describeState,
+      }),
+    waitForDelayedCreatedStatus: (timeoutMs = AGENT_CREATED_GATE_TIMEOUT_MS) =>
+      waitForGate(Promise.race([delayedCreatedStatusSeen, gateFailed]), {
+        label: "the daemon to answer with the agent_created status",
+        timeoutMs,
+        describeState,
+      }),
   };
 }
