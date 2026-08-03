@@ -1,15 +1,25 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, type ReactElement } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from "react";
 import type { GestureResponderEvent } from "react-native";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useMutation } from "@tanstack/react-query";
 import {
   ChevronDown,
+  ChevronRight,
   Copy,
   Eye,
   Globe,
   Play,
   RotateCw,
+  Search,
   Square,
   SquareTerminal,
 } from "@/components/icons/material-icons";
@@ -22,10 +32,21 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   useDropdownMenuClose,
 } from "@/components/ui/dropdown-menu";
+import { useWorkspaceScriptGroups } from "@/screens/workspace/use-workspace-script-groups";
+import {
+  buildScriptMenuView,
+  RECENT_SCRIPT_GROUP_KEY,
+  type ScriptMenuGroupView,
+} from "@/screens/workspace/script-menu-view";
+import {
+  buildScriptMenuWorkspaceKey,
+  useScriptMenuPreferencesStore,
+} from "@/screens/workspace/script-menu-preferences-store";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/contexts/toast-context";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -89,8 +110,29 @@ const ThemedEye = withUnistyles(Eye);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedSquare = withUnistyles(Square);
+const ThemedChevronRight = withUnistyles(ChevronRight);
+const ThemedSearch = withUnistyles(Search);
+// TextInput is a leaf, which is the only thing withUnistyles may wrap
+// (docs/unistyles.md). It carries the theme only for placeholderTextColor,
+// which has no style-sheet equivalent.
+const ThemedTextInput = withUnistyles(TextInput);
 
 const GHOST_TRIGGER_ICON_SIZE = 16;
+
+// Stable identities so the store selectors do not resubscribe every render.
+const EMPTY_RECENCY: Record<string, number> = {};
+const EMPTY_EXPANSION: Record<string, boolean> = {};
+
+/**
+ * Caps the menu before it runs off the screen. Discovered groups are collapsed
+ * by default so this is rarely reached, but a user who expands 98 npm scripts
+ * needs the list to scroll rather than overflow the viewport.
+ */
+const SCRIPT_MENU_MAX_HEIGHT = 420;
+
+const filterPlaceholderMapping = (theme: Theme) => ({
+  placeholderTextColor: theme.colors.foregroundMuted,
+});
 
 const foregroundColorMapping = (theme: Theme) => ({
   color: theme.colors.foreground,
@@ -533,7 +575,7 @@ function ScriptRow({
       <View style={styles.scriptHeader}>
         <ScriptIcon size={scriptIconSize} uniProps={iconColorMapping} style={styles.scriptIcon} />
         <Text style={scriptNameStyle} numberOfLines={1}>
-          {script.scriptName}
+          {script.label ?? script.scriptName}
         </Text>
         {showExitBadge ? <ExitCodeBadge code={exitCode} /> : null}
         <View style={styles.spacer} />
@@ -542,6 +584,16 @@ function ScriptRow({
         {restartAction}
         {lifecycleAction}
       </View>
+      {/* A discovered row shows what it will actually run — the label is the
+          project's own name for it, which on its own says nothing about the
+          command behind it. Otto's declared rows keep their existing chrome. */}
+      {script.source && script.command ? (
+        <View style={styles.hostList}>
+          <Text style={styles.commandLabel} numberOfLines={1}>
+            {script.command}
+          </Text>
+        </View>
+      ) : null}
       {selectedLink ? (
         <View style={styles.hostList}>
           <ServiceLinkRow
@@ -553,6 +605,116 @@ function ScriptRow({
           />
         </View>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * A source's header, doubling as its expand/collapse control.
+ *
+ * The count is on the header rather than hidden inside the group because the
+ * whole point of collapsing is that the user decides whether 98 rows are worth
+ * opening; a header that will not say how many is asking them to guess.
+ */
+function ScriptGroupHeader({
+  group,
+  onToggle,
+}: {
+  group: ScriptMenuGroupView;
+  onToggle: (groupKey: string, expanded: boolean) => void;
+}): ReactElement {
+  const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
+  const label =
+    group.label ??
+    (group.key === RECENT_SCRIPT_GROUP_KEY
+      ? t("workspace.scripts.sources.recent")
+      : t("workspace.scripts.sources.otto"));
+
+  const isExpanded = group.isExpanded;
+  const groupKey = group.key;
+  const handlePress = useCallback(
+    () => onToggle(groupKey, !isExpanded),
+    [onToggle, groupKey, isExpanded],
+  );
+  const accessibilityState = useMemo(() => ({ expanded: isExpanded }), [isExpanded]);
+
+  if (group.isAlwaysExpanded) {
+    return (
+      <DropdownMenuLabel testID={`workspace-scripts-group-${group.key}`}>{label}</DropdownMenuLabel>
+    );
+  }
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={accessibilityState}
+      accessibilityLabel={
+        isExpanded
+          ? t("workspace.scripts.accessibility.collapseGroup", { groupName: label })
+          : t("workspace.scripts.accessibility.expandGroup", { groupName: label })
+      }
+      testID={`workspace-scripts-group-${group.key}`}
+      onPress={handlePress}
+      style={styles.groupHeader}
+    >
+      {({ hovered }) => (
+        <>
+          {/* Two icons rather than a rotated one: a transform here would need a
+              worklet to animate, and a static rotate is the same pixels for
+              more machinery. */}
+          {group.isExpanded ? (
+            <ThemedChevronDown
+              size={isCompact ? 18 : 12}
+              uniProps={hovered ? foregroundColorMapping : mutedColorMapping}
+            />
+          ) : (
+            <ThemedChevronRight
+              size={isCompact ? 18 : 12}
+              uniProps={hovered ? foregroundColorMapping : mutedColorMapping}
+            />
+          )}
+          <Text style={hovered ? groupHeaderTextActiveStyle : styles.groupHeaderText}>{label}</Text>
+          <View style={styles.spacer} />
+          <Text style={styles.groupHeaderCount}>{group.totalCount}</Text>
+        </>
+      )}
+    </Pressable>
+  );
+}
+
+/**
+ * Inline filter, shown only once the menu is too long to scan.
+ *
+ * `autoFocus` is desktop-only: on a compact form factor focusing it raises the
+ * software keyboard over the very list the user came to read.
+ */
+function ScriptFilterField({
+  query,
+  onChangeQuery,
+}: {
+  query: string;
+  onChangeQuery: (next: string) => void;
+}): ReactElement {
+  const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
+  const placeholder = t("workspace.scripts.filter.placeholder");
+
+  return (
+    <View style={styles.filterRow}>
+      <ThemedSearch size={isCompact ? 18 : 13} uniProps={mutedColorMapping} />
+      <ThemedTextInput
+        accessibilityLabel={placeholder}
+        testID="workspace-scripts-filter"
+        value={query}
+        onChangeText={onChangeQuery}
+        placeholder={placeholder}
+        autoFocus={!isCompact}
+        autoCorrect={false}
+        autoCapitalize="none"
+        style={styles.filterInput}
+        uniProps={filterPlaceholderMapping}
+      />
     </View>
   );
 }
@@ -577,6 +739,51 @@ export function WorkspaceScriptsButton({
   const toast = useToast();
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const activeConnection = useHostRuntimeSnapshot(serverId)?.activeConnection ?? null;
+  // Uncontrolled callers still need the open state, because discovery refetches
+  // on open so an edited package.json is never a stale menu.
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const isOpen = open ?? uncontrolledOpen;
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      setUncontrolledOpen(next);
+      onOpenChange?.(next);
+    },
+    [onOpenChange],
+  );
+  const groups = useWorkspaceScriptGroups({
+    serverId,
+    workspaceId,
+    scripts,
+    isMenuOpen: isOpen,
+  });
+  const allScripts = useMemo(() => groups.flatMap((group) => group.scripts), [groups]);
+
+  const [query, setQuery] = useState("");
+  // A search is a one-off act, not a setting: reopening the menu should show
+  // the curated view again rather than yesterday's half-typed filter.
+  useEffect(() => {
+    if (!isOpen) setQuery("");
+  }, [isOpen]);
+
+  const workspaceKey = buildScriptMenuWorkspaceKey(serverId, workspaceId);
+  const lastRunAtByScriptName = useScriptMenuPreferencesStore(
+    (state) => state.lastRunAtByWorkspace[workspaceKey] ?? EMPTY_RECENCY,
+  );
+  const expansionByGroupKey = useScriptMenuPreferencesStore(
+    (state) => state.groupExpansionByWorkspace[workspaceKey] ?? EMPTY_EXPANSION,
+  );
+  const setGroupExpanded = useScriptMenuPreferencesStore((state) => state.setGroupExpanded);
+  const recordScriptRun = useScriptMenuPreferencesStore((state) => state.recordScriptRun);
+
+  const menuView = useMemo(
+    () => buildScriptMenuView({ groups, query, expansionByGroupKey, lastRunAtByScriptName }),
+    [groups, query, expansionByGroupKey, lastRunAtByScriptName],
+  );
+
+  const handleToggleGroup = useCallback(
+    (groupKey: string, expanded: boolean) => setGroupExpanded({ workspaceKey, groupKey, expanded }),
+    [setGroupExpanded, workspaceKey],
+  );
   const preferredRouteKind = useWorkspaceServiceRoutePreferencesStore(
     (state) => state.byServerId[serverId] ?? null,
   );
@@ -620,7 +827,7 @@ export function WorkspaceScriptsButton({
       if (!client) {
         throw new Error(t("common.errors.daemonClientUnavailable"));
       }
-      const terminalId = scripts.find((s) => s.scriptName === scriptName)?.terminalId;
+      const terminalId = allScripts.find((s) => s.scriptName === scriptName)?.terminalId;
       if (!terminalId) {
         throw new Error(t("workspace.scripts.states.stopFailed", { scriptName }));
       }
@@ -647,12 +854,12 @@ export function WorkspaceScriptsButton({
   useEffect(() => {
     const pending = pendingRestartRef.current;
     if (pending.size === 0) return;
-    for (const script of scripts) {
+    for (const script of allScripts) {
       if (!pending.has(script.scriptName) || script.lifecycle === "running") continue;
       pending.delete(script.scriptName);
       startScript(script.scriptName);
     }
-  }, [scripts, startScript]);
+  }, [allScripts, startScript]);
 
   const isFillSplit = Boolean(fill) && presentation === "split";
   const rowStyle = useMemo(() => [styles.row, isFillSplit && styles.fillItem], [isFillSplit]);
@@ -683,8 +890,14 @@ export function WorkspaceScriptsButton({
   );
 
   const handleStartScript = useCallback(
-    (scriptName: string) => startScriptMutation.mutate(scriptName),
-    [startScriptMutation],
+    (scriptName: string) => {
+      // Recorded on intent rather than on success: what the recency order is
+      // for is "the thing I reach for", and a script that failed to start is
+      // still the thing the user was reaching for.
+      recordScriptRun({ workspaceKey, scriptName, runAt: Date.now() });
+      startScriptMutation.mutate(scriptName);
+    },
+    [recordScriptRun, startScriptMutation, workspaceKey],
   );
 
   const handleStopScript = useCallback(
@@ -713,11 +926,11 @@ export function WorkspaceScriptsButton({
     [serverId, setPreferredRoute],
   );
 
-  if (scripts.length === 0) {
+  if (allScripts.length === 0) {
     return null;
   }
 
-  const hasAnyRunning = scripts.some((s) => s.lifecycle === "running");
+  const hasAnyRunning = allScripts.some((s) => s.lifecycle === "running");
   const triggerPlayMapping = hasAnyRunning ? blueColorMapping : mutedColorMapping;
   const triggerIconSize =
     presentation === "ghost" ? (ghostIconSize ?? GHOST_TRIGGER_ICON_SIZE) : 14;
@@ -752,34 +965,55 @@ export function WorkspaceScriptsButton({
     </DropdownMenuTrigger>
   );
 
+  // One group per source, headed by where its Scripts came from. A single
+  // unheaded group is the pre-discovery shape, so a project with only otto.json
+  // scripts looks exactly as it always did.
+  const showGroupHeaders = menuView.showGroupHeaders;
+
   const menu = (
-    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+    <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
       {trigger}
       <DropdownMenuContent
         align="end"
-        minWidth={200}
-        maxWidth={280}
+        minWidth={240}
+        maxWidth={320}
+        maxHeight={SCRIPT_MENU_MAX_HEIGHT}
+        scrollable
         testID="workspace-scripts-menu"
       >
+        {menuView.showFilter ? <ScriptFilterField query={query} onChangeQuery={setQuery} /> : null}
         <View style={styles.scriptList}>
-          {scripts.map((script, index) => (
-            <Fragment key={script.scriptName}>
-              {index > 0 ? <DropdownMenuSeparator /> : null}
-              <ScriptRow
-                script={script}
-                liveTerminalIdSet={liveTerminalIdSet}
-                activeConnection={activeConnection}
-                isStartPending={startScriptMutation.isPending}
-                isStopPending={stopScriptMutation.isPending}
-                onStartScript={handleStartScript}
-                onStopScript={handleStopScript}
-                onRestartScript={handleRestartScript}
-                onCopyUrl={handleCopyUrl}
-                preferredRouteKind={preferredRouteKind}
-                onSelectRouteKind={handleSelectRouteKind}
-                onViewTerminal={onViewTerminal}
-                onOpenUrlInBrowserTab={onOpenUrlInBrowserTab}
-              />
+          {menuView.hasNoMatches ? (
+            <Text style={styles.emptyText}>{t("workspace.scripts.filter.noMatches")}</Text>
+          ) : null}
+          {menuView.groups.map((group, groupIndex) => (
+            <Fragment key={group.key}>
+              {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
+              {showGroupHeaders ? (
+                <ScriptGroupHeader group={group} onToggle={handleToggleGroup} />
+              ) : null}
+              {group.isExpanded
+                ? group.scripts.map((script, scriptIndex) => (
+                    <Fragment key={script.scriptName}>
+                      {scriptIndex > 0 ? <DropdownMenuSeparator /> : null}
+                      <ScriptRow
+                        script={script}
+                        liveTerminalIdSet={liveTerminalIdSet}
+                        activeConnection={activeConnection}
+                        isStartPending={startScriptMutation.isPending}
+                        isStopPending={stopScriptMutation.isPending}
+                        onStartScript={handleStartScript}
+                        onStopScript={handleStopScript}
+                        onRestartScript={handleRestartScript}
+                        onCopyUrl={handleCopyUrl}
+                        preferredRouteKind={preferredRouteKind}
+                        onSelectRouteKind={handleSelectRouteKind}
+                        onViewTerminal={onViewTerminal}
+                        onOpenUrlInBrowserTab={onOpenUrlInBrowserTab}
+                      />
+                    </Fragment>
+                  ))
+                : null}
             </Fragment>
           ))}
         </View>
@@ -880,6 +1114,78 @@ const styles = StyleSheet.create((theme) => ({
   scriptList: {
     paddingVertical: theme.spacing[1],
   },
+  // A group header names a group, so it takes `medium` per docs/design.md,
+  // while the rows inside stay `normal`.
+  groupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: {
+      xs: theme.spacing[2],
+      md: theme.spacing[1],
+    },
+    minHeight: {
+      xs: 36,
+      md: 24,
+    },
+  },
+  groupHeaderText: {
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foregroundMuted,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  groupHeaderTextActive: {
+    color: theme.colors.foreground,
+  },
+  groupHeaderCount: {
+    fontSize: {
+      xs: theme.fontSize.xs + 2,
+      md: theme.fontSize.xs,
+    },
+    color: theme.colors.foregroundMuted,
+    fontVariant: ["tabular-nums"],
+  },
+  filterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: {
+      xs: theme.spacing[2],
+      md: theme.spacing[1.5],
+    },
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: theme.colors.borderAccent,
+  },
+  filterInput: {
+    flex: 1,
+    minWidth: 0,
+    padding: 0,
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
+    color: theme.colors.foreground,
+    // The row already draws the chrome; the field itself is just the caret.
+    outlineWidth: 0,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+  },
+  emptyText: {
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    fontSize: {
+      xs: theme.fontSize.sm + 2,
+      md: theme.fontSize.sm,
+    },
+    color: theme.colors.foregroundMuted,
+  },
   scriptItem: {
     paddingVertical: 6,
   },
@@ -949,6 +1255,20 @@ const styles = StyleSheet.create((theme) => ({
   hostLabelActive: {
     color: theme.colors.foreground,
   },
+  // A command is code, so it takes the code font size like every other code
+  // surface (docs/design.md).
+  commandLabel: {
+    fontSize: {
+      xs: theme.fontSize.code + 2,
+      md: theme.fontSize.code,
+    },
+    lineHeight: {
+      xs: 18,
+      md: 14,
+    },
+    fontFamily: theme.fontFamily.mono,
+    color: theme.colors.foregroundMuted,
+  },
   exitBadge: {
     paddingHorizontal: theme.spacing[1.5],
     paddingVertical: 1,
@@ -1003,5 +1323,6 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 const hostLabelActiveStyle = [styles.hostLabel, styles.hostLabelActive];
+const groupHeaderTextActiveStyle = [styles.groupHeaderText, styles.groupHeaderTextActive];
 const scriptNameActiveStyle = [styles.scriptName, styles.scriptNameActive];
 const exitBadgeTextErrorStyle = [styles.exitBadgeText, styles.exitBadgeTextError];

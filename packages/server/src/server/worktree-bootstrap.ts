@@ -1,3 +1,4 @@
+import path from "node:path";
 import { v4 as uuidv4 } from "uuid";
 import type { Logger } from "pino";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
@@ -15,6 +16,7 @@ import {
   WorktreeSetupError,
   type WorktreeConfig,
   type WorktreeSetupCommandResult,
+  type ScriptConfig,
   type WorktreeRuntimeEnv,
 } from "../utils/worktree.js";
 import type { ServiceProxySubsystem } from "./service-proxy.js";
@@ -714,6 +716,23 @@ export interface SpawnWorkspaceScriptOptions {
   projectSlug: string;
   branchName: string | null;
   scriptName: string;
+  /**
+   * The command for a Script that otto.json does not declare — a **discovered**
+   * one, read from the project's own files (`package.json` scripts and, later,
+   * Makefile targets or .NET launch profiles). Absent ⇒ the name must resolve
+   * in otto.json, which is the pre-discovery behavior.
+   *
+   * Always run as a plain script: a service needs a declared port and the
+   * intent to serve HTTP, and neither is inferable from a discovered command.
+   * See projects/script-discovery/script-discovery.md.
+   */
+  resolvedScript?: {
+    command: string;
+    /** Relative to `workspaceDirectory`; null ⇒ the workspace root. */
+    cwd: string | null;
+    /** The project's own name for it, used as the terminal's title. */
+    displayName: string;
+  };
   daemonPort?: number | null;
   daemonListenHost?: string | null;
   serviceProxyPublicBaseUrl?: string | null;
@@ -847,9 +866,12 @@ async function setupServiceScriptRoute(params: {
  */
 async function buildWorkspaceScriptLocationEnv(params: {
   workspaceDirectory: string;
+  /** Where the terminal is actually spawned — equals the workspace directory
+   * unless a discovered script declared a subdirectory. */
+  scriptDirectory: string;
   branchName: string | null;
 }): Promise<Record<string, string>> {
-  const { workspaceDirectory, branchName } = params;
+  const { workspaceDirectory, scriptDirectory, branchName } = params;
   const sourceCheckoutPath = await inferRepoRootPathFromWorktreePath(workspaceDirectory);
   return {
     // For a non-worktree workspace this equals the checkout itself, which is
@@ -862,7 +884,7 @@ async function buildWorkspaceScriptLocationEnv(params: {
     // Shells recompute PWD from the spawn cwd, but anything reading it before
     // the first `cd` (or a shell that trusts the inherited value) would
     // otherwise see the daemon's directory.
-    PWD: workspaceDirectory,
+    PWD: scriptDirectory,
   };
 }
 
@@ -870,18 +892,22 @@ async function acquireWorkspaceScriptTerminal(params: {
   serviceScript: boolean;
   existingRuntimeEntry: ReturnType<WorkspaceScriptRuntimeStore["get"]>;
   terminalManager: TerminalManager;
-  workspaceDirectory: string;
+  /** Where the script runs — the workspace root, or a subdirectory a
+   * discovered script declared. */
+  scriptDirectory: string;
   workspaceId: string;
-  scriptName: string;
+  /** The terminal's title: the project's own name for a discovered script,
+   * which is friendlier than its qualified key ("dev", not "npm:dev"). */
+  terminalName: string;
   env: Record<string, string> | undefined;
 }): Promise<{ terminal: TerminalSession; reusableTerminal: TerminalSession | null }> {
   const {
     serviceScript,
     existingRuntimeEntry,
     terminalManager,
-    workspaceDirectory,
+    scriptDirectory,
     workspaceId,
-    scriptName,
+    terminalName,
     env,
   } = params;
   let reusableTerminal: TerminalSession | null = null;
@@ -891,13 +917,55 @@ async function acquireWorkspaceScriptTerminal(params: {
   const terminal =
     reusableTerminal ??
     (await terminalManager.createTerminal({
-      cwd: workspaceDirectory,
+      cwd: scriptDirectory,
       workspaceId,
-      name: scriptName,
-      title: scriptName,
+      name: terminalName,
+      title: terminalName,
       env,
     }));
   return { terminal, reusableTerminal };
+}
+
+interface ScriptExecutionPlan {
+  config: ScriptConfig;
+  /** Where the terminal is spawned. */
+  scriptDirectory: string;
+  /** The terminal's name and title. */
+  terminalName: string;
+}
+
+/**
+ * What to run, and from where. A **declared** script always wins: otto.json is
+ * the authored source of truth, so a caller passing a resolved command for a
+ * name that is also declared gets the thing the user wrote down. Only a name
+ * otto.json does not know falls through to the discovered command, and that
+ * always runs as a plain script.
+ */
+function resolveScriptExecution(params: {
+  workspaceDirectory: string;
+  scriptName: string;
+  scriptConfigs: ReturnType<typeof getScriptConfigs>;
+  resolvedScript: SpawnWorkspaceScriptOptions["resolvedScript"];
+}): ScriptExecutionPlan {
+  const { workspaceDirectory, scriptName, scriptConfigs, resolvedScript } = params;
+  const declaredConfig = scriptConfigs.get(scriptName);
+  if (declaredConfig) {
+    return {
+      config: declaredConfig,
+      scriptDirectory: workspaceDirectory,
+      terminalName: scriptName,
+    };
+  }
+  if (!resolvedScript) {
+    throw new Error(`Script '${scriptName}' is not configured in otto.json`);
+  }
+  return {
+    config: { command: resolvedScript.command },
+    scriptDirectory: resolvedScript.cwd
+      ? path.join(workspaceDirectory, resolvedScript.cwd)
+      : workspaceDirectory,
+    terminalName: resolvedScript.displayName,
+  };
 }
 
 export async function spawnWorkspaceScript(
@@ -920,15 +988,18 @@ export async function spawnWorkspaceScript(
     logger,
     onLifecycleChanged,
   } = options;
+  const resolvedScript = options.resolvedScript;
   const configResult = readOttoConfig(workspaceDirectory);
   if (!configResult.ok) {
     throw ottoConfigParseError(configResult);
   }
   const scriptConfigs = getScriptConfigs(configResult.config);
-  const config = scriptConfigs.get(scriptName);
-  if (!config) {
-    throw new Error(`Script '${scriptName}' is not configured in otto.json`);
-  }
+  const { config, scriptDirectory, terminalName } = resolveScriptExecution({
+    workspaceDirectory,
+    scriptName,
+    scriptConfigs,
+    resolvedScript,
+  });
 
   const serviceScript = isServiceScript(config);
   const scriptType = serviceScript ? "service" : "script";
@@ -948,6 +1019,7 @@ export async function spawnWorkspaceScript(
     // daemon's inherited location env can never decide where a script runs.
     let env: Record<string, string> = await buildWorkspaceScriptLocationEnv({
       workspaceDirectory,
+      scriptDirectory,
       branchName,
     });
     if (serviceScript) {
@@ -976,9 +1048,9 @@ export async function spawnWorkspaceScript(
       serviceScript,
       existingRuntimeEntry,
       terminalManager,
-      workspaceDirectory,
+      scriptDirectory,
       workspaceId,
-      scriptName,
+      terminalName,
       env,
     });
 

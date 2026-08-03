@@ -9216,7 +9216,10 @@ export class Session {
     request: WorkspaceScriptListRequest,
   ): Promise<void> {
     try {
-      const scripts = await this.workspaceScripts.list(request.workspaceId);
+      const scripts = await this.workspaceScripts.list({
+        workspaceId: request.workspaceId,
+        includeDiscovered: request.includeDiscovered,
+      });
       this.emit({
         type: "workspace.script.list.response",
         payload: {

@@ -1868,6 +1868,8 @@ export class VoiceAssistantWebSocketServer {
         textEditor: true,
         // COMPAT(refine): added in v0.6.9, drop the gate when daemon floor >= v0.6.9.
         refine: true,
+        // COMPAT(workspaceScriptDiscovery): added in v0.7.6, drop the gate when daemon floor >= v0.7.6.
+        workspaceScriptDiscovery: true,
         // COMPAT(projectSearch): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         projectSearch: true,
         // COMPAT(codeIndex): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.

@@ -98,12 +98,13 @@ An unlisted page is an invisible page.
 
 ## Providers and integration
 
-| Page                                       | What's in it                                                                                                                                                                                            |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [providers.md](providers.md)               | Adding a new agent provider end to end                                                                                                                                                                  |
-| [custom-providers.md](custom-providers.md) | Custom provider config: Z.AI, Alibaba/Qwen, ACP agents, profiles, custom binaries                                                                                                                       |
-| [preview.md](preview.md)                   | The Preview subsystem — design principles (token economy, guardrail-bearing tool descriptions, daemon-enforced tab binding), settings, `launch.json`. **Read before touching anything preview-related** |
-| [service-proxy.md](service-proxy.md)       | Exposing workspace scripts at public URLs — DNS setup, reverse proxy config                                                                                                                             |
+| Page                                       | What's in it                                                                                                                                                                                                             |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [providers.md](providers.md)               | Adding a new agent provider end to end                                                                                                                                                                                   |
+| [custom-providers.md](custom-providers.md) | Custom provider config: Z.AI, Alibaba/Qwen, ACP agents, profiles, custom binaries                                                                                                                                        |
+| [preview.md](preview.md)                   | The Preview subsystem — design principles (token economy, guardrail-bearing tool descriptions, daemon-enforced tab binding), settings, `launch.json`. **Read before touching anything preview-related**                  |
+| [service-proxy.md](service-proxy.md)       | Exposing workspace scripts at public URLs — DNS setup, reverse proxy config                                                                                                                                              |
+| [scripts.md](scripts.md)                   | Scripts — declared (`otto.json`) vs discovered (`package.json`, …), the script-provider contract, qualified names, why discovery is on-demand and never in the descriptor, and why discovered Scripts get no proxy route |
 
 ## Client and UI
 

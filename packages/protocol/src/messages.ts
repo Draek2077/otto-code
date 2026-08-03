@@ -6036,6 +6036,14 @@ export const WorkspaceScriptListRequestSchema = z.object({
   type: z.literal("workspace.script.list.request"),
   workspaceId: z.string(),
   requestId: z.string(),
+  /**
+   * Also return the Scripts the workspace's own project files declare
+   * (`package.json` scripts, and later Makefile targets, .NET launch profiles),
+   * each tagged with the `source` it came from. Off by default so a client that
+   * predates discovery gets exactly the otto.json list it asked for.
+   * COMPAT(workspaceScriptDiscovery): added in v0.7.6.
+   */
+  includeDiscovered: z.boolean().optional().default(false),
 });
 
 export const WorkspaceScriptStartRequestSchema = z.object({
@@ -6730,6 +6738,16 @@ export const ServerInfoStatusPayloadSchema = z
         // client-side fallback could read.
         // COMPAT(personalityMemory): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
         personalityMemory: z.boolean().optional(),
+        // Script discovery — the daemon scans a workspace for the Scripts its
+        // project files already declare (package.json scripts, and later
+        // Makefile targets, .NET launch profiles) and serves them from
+        // `workspace.script.list` with `includeDiscovered`. Without it the
+        // Scripts dropdown shows only what otto.json declares, which is the
+        // pre-existing behavior and not a degraded build of this feature: only
+        // the daemon can read the workspace's files, so there is no client-side
+        // scan to fall back to.
+        // COMPAT(workspaceScriptDiscovery): added in v0.7.6, drop the gate when daemon floor >= v0.7.6.
+        workspaceScriptDiscovery: z.boolean().optional(),
         // COMPAT(projectSearch): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
         projectSearch: z.boolean().optional(),
         // COMPAT(codeIndex): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
@@ -7222,8 +7240,51 @@ export const ProjectPlacementPayloadSchema = z.object({
 export const WorkspaceScriptLifecycleSchema = z.enum(["running", "stopped"]);
 export const WorkspaceScriptHealthSchema = z.enum(["healthy", "unhealthy"]);
 
+export const WorkspaceScriptSourcePayloadSchema = z.object({
+  /** Stable provider id; also the prefix of every `scriptName` it produces. */
+  id: z.string(),
+  /** The tool half of the dropdown's group header, e.g. "npm" or "pnpm". */
+  label: z.string(),
+  /**
+   * Repo-relative file the script was read from, e.g. "package.json".
+   *
+   * Plain-optional rather than defaulted, matching `label` and `command` on the
+   * payload: absent means unknown. A discovery run knows the file, but the
+   * descriptor's orphan path recovers a source from a qualified runtime name
+   * alone (`npm:dev`) and has no discovery behind it to ask. A `.default(null)`
+   * here would make the field required on the output type and force that path
+   * to invent an answer it does not have.
+   */
+  file: z.string().nullable().optional(),
+});
+
 export const WorkspaceScriptPayloadSchema = z.object({
+  /**
+   * The launch/stop key, unique within a workspace. Otto's own otto.json
+   * scripts use their bare name; a discovered one is qualified by its source
+   * ("npm:build") so two sources offering "build" cannot collide in the
+   * runtime store or the service-proxy hostname.
+   */
   scriptName: z.string(),
+  /**
+   * What to show instead of `scriptName` — the name the project itself uses.
+   * COMPAT(workspaceScriptDiscovery): added in v0.7.6; absent ⇒ show `scriptName`.
+   */
+  label: z.string().optional(),
+  /**
+   * Where this Script came from. Absent ⇒ declared in otto.json, which is the
+   * only kind that existed before discovery and the only kind that may own a
+   * service-proxy route.
+   * COMPAT(workspaceScriptDiscovery): added in v0.7.6.
+   */
+  source: WorkspaceScriptSourcePayloadSchema.optional(),
+  /**
+   * The command the Script runs, for the row's subtitle. Left plain-optional
+   * rather than defaulted so an existing payload that never carried a command
+   * stays valid without gaining a field it has no answer for.
+   * COMPAT(workspaceScriptDiscovery): added in v0.7.6; absent ⇒ no subtitle.
+   */
+  command: z.string().nullable().optional(),
   type: z.enum(["script", "service"]).optional().default("service"),
   hostname: z.string(),
   port: z.number().int().positive().nullable(),

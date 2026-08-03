@@ -9,6 +9,7 @@ import type { WorkspaceScriptPayload } from "@otto-code/protocol/messages";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot } from "react-dom/client";
 import { WorkspaceScriptsButton } from "@/screens/workspace/workspace-scripts-button";
+import { useScriptMenuPreferencesStore } from "@/screens/workspace/script-menu-preferences-store";
 
 void testI18n;
 
@@ -21,13 +22,16 @@ const {
   routePreferenceByServerIdMock,
   routePreferenceListenersMock,
   setPreferredRouteMock,
+  discoveryEnabledRef,
+  listWorkspaceScriptsMock,
 } = vi.hoisted(() => {
   const hoistedTheme = {
     spacing: { 1: 4, 1.5: 6, 2: 8, 3: 12 },
     borderWidth: { 1: 1 },
     borderRadius: { md: 6, lg: 8 },
-    fontSize: { xs: 11, sm: 13 },
+    fontSize: { xs: 11, sm: 13, code: 12 },
     fontWeight: { normal: "400", medium: "500" },
+    fontFamily: { ui: "Inter", mono: "JetBrains Mono" },
     colors: {
       foreground: "#fff",
       foregroundMuted: "#aaa",
@@ -48,7 +52,26 @@ const {
     for (const listener of routePreferenceListeners) listener();
   });
 
+  // COMPAT(workspaceScriptDiscovery): the daemon capability the grouped list is
+  // gated on. Mutable so one file can cover both the gated-off shape (the
+  // pre-discovery menu) and the grouped one.
+  const discoveryEnabled = { value: false };
+
   return {
+    discoveryEnabledRef: discoveryEnabled,
+    listWorkspaceScriptsMock: vi.fn(
+      async (): Promise<{
+        requestId: string;
+        workspaceId: string;
+        scripts: WorkspaceScriptPayload[];
+        error: string | null;
+      }> => ({
+        requestId: "req-list",
+        workspaceId: "workspace-1",
+        scripts: [],
+        error: null,
+      }),
+    ),
     theme: hoistedTheme,
     startWorkspaceScriptMock: vi.fn(async () => ({ terminalId: "terminal-script-1" })),
     killTerminalMock: vi.fn(async () => ({
@@ -124,9 +147,13 @@ vi.mock("@/stores/session-store", () => ({
     selector({
       sessions: {
         "test-server": {
+          serverInfo: {
+            features: { workspaceScriptDiscovery: discoveryEnabledRef.value },
+          },
           client: {
             startWorkspaceScript: startWorkspaceScriptMock,
             killTerminal: killTerminalMock,
+            listWorkspaceScripts: listWorkspaceScriptsMock,
           },
         },
       },
@@ -151,6 +178,9 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
     <div data-testid={testID}>{children}</div>
   ),
   DropdownMenuSeparator: () => <div role="separator" />,
+  DropdownMenuLabel: ({ children, testID }: { children: React.ReactNode; testID?: string }) => (
+    <div data-testid={testID}>{children}</div>
+  ),
   DropdownMenuItem: ({
     children,
     description,
@@ -334,6 +364,8 @@ describe("WorkspaceScriptsButton", () => {
     setStringAsyncMock.mockClear();
     copiedToastMock.mockClear();
     setPreferredRouteMock.mockClear();
+    listWorkspaceScriptsMock.mockClear();
+    discoveryEnabledRef.value = false;
     for (const serverId of Object.keys(routePreferenceByServerIdMock)) {
       delete routePreferenceByServerIdMock[serverId];
     }
@@ -625,5 +657,311 @@ describe("WorkspaceScriptsButton", () => {
     await act(async () => {});
 
     expect(startWorkspaceScriptMock).toHaveBeenCalledWith("workspace-1", "dev");
+  });
+});
+
+// react-query resolves the fetch across several microtask turns before the
+// component re-renders with data; one act() flush is not enough.
+/** Idempotent: the header is a toggle, so clicking an open group would close it. */
+async function expandGroup(groupKey: string): Promise<void> {
+  const header = document.querySelector(`[data-testid="workspace-scripts-group-${groupKey}"]`);
+  if (!(header instanceof HTMLElement)) {
+    throw new Error(`Missing group header for ${groupKey}`);
+  }
+  if (header.getAttribute("aria-expanded") === "true") {
+    return;
+  }
+  fireEvent.click(header);
+  await flushQueries();
+}
+
+async function flushQueries(): Promise<void> {
+  for (let i = 0; i < 5; i += 1) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+}
+
+describe("WorkspaceScriptsButton discovery", () => {
+  let current: ReturnType<typeof renderScripts> | null = null;
+
+  beforeEach(() => {
+    vi.stubGlobal("React", React);
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.stubGlobal(
+      "ResizeObserver",
+      class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    document.body.innerHTML = "";
+    startWorkspaceScriptMock.mockClear();
+    listWorkspaceScriptsMock.mockClear();
+    discoveryEnabledRef.value = true;
+    // The preferences store is a real module singleton, so collapse state and
+    // run history leak between tests unless it is reset.
+    useScriptMenuPreferencesStore.setState({
+      lastRunAtByWorkspace: {},
+      groupExpansionByWorkspace: {},
+    });
+  });
+
+  afterEach(() => {
+    current?.unmount();
+    current = null;
+    discoveryEnabledRef.value = false;
+    vi.unstubAllGlobals();
+  });
+
+  function discovered(input: {
+    scriptName: string;
+    label: string;
+    command: string;
+    file?: string;
+    sourceLabel?: string;
+  }): WorkspaceScriptPayload {
+    return {
+      ...script({ scriptName: input.scriptName }),
+      label: input.label,
+      command: input.command,
+      source: {
+        id: "npm",
+        label: input.sourceLabel ?? "npm",
+        file: input.file ?? "package.json",
+      },
+    };
+  }
+
+  it("groups discovered scripts under a header naming their source", async () => {
+    listWorkspaceScriptsMock.mockResolvedValueOnce({
+      requestId: "req-list",
+      workspaceId: "workspace-1",
+      scripts: [
+        { ...script({ scriptName: "app" }), command: "node app.js" },
+        discovered({ scriptName: "npm:build", label: "build", command: "npm run build" }),
+      ],
+      error: null,
+    });
+
+    current = renderScripts([script({ scriptName: "app" })]);
+    await flushQueries();
+
+    expect(
+      document.querySelector('[data-testid="workspace-scripts-group-otto"]')?.textContent,
+    ).toBe("Otto");
+    // The discovered header names its source and its row count, and starts
+    // collapsed: its rows are not in the DOM until the user opens it.
+    expect(
+      document.querySelector('[data-testid="workspace-scripts-group-npm:package.json"]')
+        ?.textContent,
+    ).toBe("npm · package.json1");
+    expect(document.querySelector('[data-testid="workspace-scripts-item-npm:build"]')).toBeNull();
+
+    await expandGroup("npm:package.json");
+
+    // The row shows the project's own name, not the qualified wire key.
+    expect(requireRow("npm:build").textContent).toContain("build");
+    expect(requireRow("npm:build").textContent).toContain("npm run build");
+  });
+
+  it("shows the Play button for a project whose only scripts are discovered", async () => {
+    listWorkspaceScriptsMock.mockResolvedValueOnce({
+      requestId: "req-list",
+      workspaceId: "workspace-1",
+      scripts: [discovered({ scriptName: "npm:dev", label: "dev", command: "npm run dev" })],
+      error: null,
+    });
+
+    current = renderScripts([]);
+    await flushQueries();
+
+    expect(document.querySelector('[data-testid="workspace-scripts-button"]')).not.toBeNull();
+    await expandGroup("npm:package.json");
+    expect(requireRow("npm:dev")).not.toBeNull();
+  });
+
+  it("starts a discovered script by its qualified name", async () => {
+    listWorkspaceScriptsMock.mockResolvedValueOnce({
+      requestId: "req-list",
+      workspaceId: "workspace-1",
+      scripts: [discovered({ scriptName: "npm:dev", label: "dev", command: "npm run dev" })],
+      error: null,
+    });
+
+    current = renderScripts([]);
+    await flushQueries();
+    await expandGroup("npm:package.json");
+
+    const start = document.querySelector('[data-testid="workspace-scripts-start-npm:dev"]');
+    fireEvent.click(start as HTMLElement);
+    await flushQueries();
+
+    expect(startWorkspaceScriptMock).toHaveBeenCalledWith("workspace-1", "npm:dev");
+  });
+
+  it("overlays live status from the descriptor onto the fetched list", async () => {
+    listWorkspaceScriptsMock.mockResolvedValueOnce({
+      requestId: "req-list",
+      workspaceId: "workspace-1",
+      scripts: [discovered({ scriptName: "npm:dev", label: "dev", command: "npm run dev" })],
+      error: null,
+    });
+
+    current = renderScripts([]);
+    await flushQueries();
+    await expandGroup("npm:package.json");
+    expect(
+      document.querySelector('[data-testid="workspace-scripts-start-npm:dev"]'),
+    ).not.toBeNull();
+
+    // The daemon pushes the running orphan through the descriptor; the fetched
+    // list is not refetched, so the Stop control has to come from the overlay.
+    await current.rerender([
+      {
+        ...script({ scriptName: "npm:dev", lifecycle: "running", terminalId: "terminal-script-1" }),
+      },
+    ]);
+    await flushQueries();
+
+    expect(document.querySelector('[data-testid="workspace-scripts-stop-npm:dev"]')).not.toBeNull();
+    expect(requireRow("npm:dev").textContent).toContain("npm run dev");
+  });
+
+  it("renders no group headers when everything came from otto.json", async () => {
+    listWorkspaceScriptsMock.mockResolvedValueOnce({
+      requestId: "req-list",
+      workspaceId: "workspace-1",
+      scripts: [{ ...script({ scriptName: "app" }), command: "node app.js" }],
+      error: null,
+    });
+
+    current = renderScripts([script({ scriptName: "app" })]);
+    await flushQueries();
+
+    expect(document.querySelector('[data-testid="workspace-scripts-group-otto"]')).toBeNull();
+  });
+});
+
+describe("WorkspaceScriptsButton menu ergonomics", () => {
+  let current: ReturnType<typeof renderScripts> | null = null;
+
+  function manyDiscovered(count: number): WorkspaceScriptPayload[] {
+    return Array.from({ length: count }, (_, index) => ({
+      ...script({ scriptName: `npm:task-${index}` }),
+      label: `task-${index}`,
+      command: `npm run task-${index}`,
+      source: { id: "npm", label: "npm", file: "package.json" },
+    }));
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal("React", React);
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.stubGlobal(
+      "ResizeObserver",
+      class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    document.body.innerHTML = "";
+    startWorkspaceScriptMock.mockClear();
+    listWorkspaceScriptsMock.mockClear();
+    discoveryEnabledRef.value = true;
+    useScriptMenuPreferencesStore.setState({
+      lastRunAtByWorkspace: {},
+      groupExpansionByWorkspace: {},
+    });
+  });
+
+  afterEach(() => {
+    current?.unmount();
+    current = null;
+    discoveryEnabledRef.value = false;
+    vi.unstubAllGlobals();
+  });
+
+  it("shows two rows on first open of a 100-script project", async () => {
+    listWorkspaceScriptsMock.mockResolvedValueOnce({
+      requestId: "req-list",
+      workspaceId: "workspace-1",
+      scripts: [
+        { ...script({ scriptName: "daemon" }), command: "./scripts/dev-daemon.sh" },
+        { ...script({ scriptName: "app" }), command: "./scripts/dev-app.sh" },
+        ...manyDiscovered(98),
+      ],
+      error: null,
+    });
+
+    current = renderScripts([]);
+    await flushQueries();
+
+    const rows = document.querySelectorAll('[data-testid^="workspace-scripts-item-"]');
+    expect(rows).toHaveLength(2);
+    expect(
+      document.querySelector('[data-testid="workspace-scripts-group-npm:package.json"]')
+        ?.textContent,
+    ).toBe("npm · package.json98");
+  });
+
+  it("filters across the collapsed tree without the user expanding anything", async () => {
+    listWorkspaceScriptsMock.mockResolvedValueOnce({
+      requestId: "req-list",
+      workspaceId: "workspace-1",
+      scripts: [{ ...script({ scriptName: "daemon" }) }, ...manyDiscovered(98)],
+      error: null,
+    });
+
+    current = renderScripts([]);
+    await flushQueries();
+
+    const filter = document.querySelector('[data-testid="workspace-scripts-filter"]');
+    expect(filter).not.toBeNull();
+    fireEvent.change(filter as HTMLElement, { target: { value: "task-42" } });
+    await flushQueries();
+
+    const rows = document.querySelectorAll('[data-testid^="workspace-scripts-item-"]');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.getAttribute("data-testid")).toBe("workspace-scripts-item-npm:task-42");
+  });
+
+  it("hides the filter for a menu short enough to scan", async () => {
+    listWorkspaceScriptsMock.mockResolvedValueOnce({
+      requestId: "req-list",
+      workspaceId: "workspace-1",
+      scripts: [{ ...script({ scriptName: "daemon" }) }, ...manyDiscovered(3)],
+      error: null,
+    });
+
+    current = renderScripts([]);
+    await flushQueries();
+
+    expect(document.querySelector('[data-testid="workspace-scripts-filter"]')).toBeNull();
+  });
+
+  it("lifts a script into Recent once it has been run", async () => {
+    listWorkspaceScriptsMock.mockResolvedValue({
+      requestId: "req-list",
+      workspaceId: "workspace-1",
+      scripts: [{ ...script({ scriptName: "daemon" }) }, ...manyDiscovered(98)],
+      error: null,
+    });
+
+    current = renderScripts([]);
+    await flushQueries();
+    expect(document.querySelector('[data-testid="workspace-scripts-group-recent"]')).toBeNull();
+
+    await expandGroup("npm:package.json");
+    fireEvent.click(
+      document.querySelector('[data-testid="workspace-scripts-start-npm:task-7"]') as HTMLElement,
+    );
+    await flushQueries();
+
+    expect(document.querySelector('[data-testid="workspace-scripts-group-recent"]')).not.toBeNull();
+    expect(startWorkspaceScriptMock).toHaveBeenCalledWith("workspace-1", "npm:task-7");
   });
 });

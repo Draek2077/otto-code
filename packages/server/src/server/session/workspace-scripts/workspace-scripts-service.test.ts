@@ -448,3 +448,123 @@ describe("start", () => {
     ]);
   });
 });
+
+describe("discovered scripts", () => {
+  function workspaceWithFiles(files: Record<string, string>) {
+    const directory = mkdtempSync(join(tmpdir(), "workspace-scripts-discovery-"));
+    tempDirs.push(directory);
+    for (const [name, contents] of Object.entries(files)) {
+      writeFileSync(join(directory, name), contents);
+    }
+    return { workspaceId: "ws-1", cwd: directory } as PersistedWorkspaceRecord;
+  }
+
+  test("list omits discovered scripts unless the caller asks for them", async () => {
+    const workspace = workspaceWithFiles({
+      "otto.json": JSON.stringify({ scripts: { app: { command: "node app.js" } } }),
+      "package.json": JSON.stringify({ scripts: { build: "tsc -b" } }),
+    });
+    const { service } = buildService({ workspace });
+
+    expect((await service.list({ workspaceId: "ws-1" })).map((s) => s.scriptName)).toEqual(["app"]);
+  });
+
+  test("appends discovered scripts after the declared ones, tagged with their source", async () => {
+    const workspace = workspaceWithFiles({
+      "otto.json": JSON.stringify({ scripts: { app: { command: "node app.js" } } }),
+      "package.json": JSON.stringify({ scripts: { build: "tsc -b" } }),
+    });
+    const { service } = buildService({ workspace });
+
+    const scripts = await service.list({ workspaceId: "ws-1", includeDiscovered: true });
+
+    expect(scripts.map((s) => s.scriptName)).toEqual(["app", "npm:build"]);
+    expect(scripts[0]).toMatchObject({ command: "node app.js" });
+    expect(scripts[0]?.source).toBeUndefined();
+    expect(scripts[1]).toMatchObject({
+      label: "build",
+      command: "npm run build",
+      type: "script",
+      lifecycle: "stopped",
+      source: { id: "npm", label: "npm", file: "package.json" },
+    });
+  });
+
+  test("a declared script suppresses the discovered one it wraps", async () => {
+    const workspace = workspaceWithFiles({
+      "otto.json": JSON.stringify({ scripts: { build: { command: "npm run build" } } }),
+      "package.json": JSON.stringify({ scripts: { build: "tsc -b", lint: "oxlint" } }),
+    });
+    const { service } = buildService({ workspace });
+
+    const scripts = await service.list({ workspaceId: "ws-1", includeDiscovered: true });
+
+    expect(scripts.map((s) => s.scriptName)).toEqual(["build", "npm:lint"]);
+  });
+
+  test("a running discovered script appears once, with its source intact", async () => {
+    const workspace = workspaceWithFiles({
+      "package.json": JSON.stringify({ scripts: { dev: "vite" } }),
+    });
+    const scriptRuntimeStore = new WorkspaceScriptRuntimeStore();
+    scriptRuntimeStore.set({
+      workspaceId: "ws-1",
+      scriptName: "npm:dev",
+      type: "script",
+      lifecycle: "running",
+      terminalId: "terminal-9",
+      exitCode: null,
+    });
+    const { service } = buildService({ workspace, scriptRuntimeStore });
+
+    const scripts = await service.list({ workspaceId: "ws-1", includeDiscovered: true });
+
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0]).toMatchObject({
+      scriptName: "npm:dev",
+      label: "dev",
+      lifecycle: "running",
+      terminalId: "terminal-9",
+      source: { id: "npm", label: "npm" },
+    });
+  });
+
+  test("launching a discovered script hands the launcher its resolved command", async () => {
+    const workspace = workspaceWithFiles({
+      "package.json": JSON.stringify({ scripts: { dev: "vite" } }),
+    });
+    const { service, spawnCalls } = buildService({ workspace });
+
+    await service.start({ ...request, scriptName: "npm:dev" });
+
+    expect(spawnCalls[0]).toMatchObject({
+      scriptName: "npm:dev",
+      resolvedScript: { command: "npm run dev", cwd: null, displayName: "dev" },
+    });
+  });
+
+  test("launching a declared script passes no resolved command", async () => {
+    const workspace = workspaceWithFiles({
+      "otto.json": JSON.stringify({ scripts: { app: { command: "node app.js" } } }),
+      "package.json": JSON.stringify({ scripts: { dev: "vite" } }),
+    });
+    const { service, spawnCalls } = buildService({ workspace });
+
+    await service.start(request);
+
+    expect(spawnCalls[0]?.resolvedScript).toBeUndefined();
+  });
+
+  // Discovery re-runs at launch, so a script deleted from package.json since the
+  // menu opened resolves to nothing. The launcher then finds no otto.json entry
+  // either and refuses — the daemon never invents a command from a stale name.
+  test("launching a name no source still declares resolves to no command", async () => {
+    const workspace = workspaceWithFiles({
+      "package.json": JSON.stringify({ scripts: { dev: "vite" } }),
+    });
+    const { service, spawnCalls } = buildService({ workspace });
+
+    await expect(service.launch({ workspaceId: "ws-1", scriptName: "npm:gone" })).rejects.toThrow();
+    expect(spawnCalls[0]?.resolvedScript).toBeUndefined();
+  });
+});

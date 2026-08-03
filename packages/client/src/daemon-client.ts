@@ -4203,7 +4203,10 @@ export class DaemonClient {
     return payload.notice ?? null;
   }
 
-  async setAgentModel(agentId: string, modelId: string | null): Promise<void> {
+  async setAgentModel(
+    agentId: string,
+    modelId: string | null,
+  ): Promise<AgentProviderNotice | null> {
     const requestId = this.createRequestId();
     const message = SessionInboundMessageSchema.parse({
       type: "set_agent_model_request",
@@ -4228,6 +4231,7 @@ export class DaemonClient {
     if (!payload.accepted) {
       throw new Error(payload.error ?? "setAgentModel rejected");
     }
+    return payload.notice ?? null;
   }
 
   async setAgentFeature(agentId: string, featureId: string, value: unknown): Promise<void> {
@@ -8629,15 +8633,25 @@ export class DaemonClient {
     });
   }
 
+  /**
+   * `includeDiscovered` also returns the Scripts the workspace's own project
+   * files declare (package.json scripts today), each tagged with its `source`.
+   * Gate it on `server_info.features.workspaceScriptDiscovery` — an older
+   * daemon ignores the flag and answers with the otto.json list only.
+   */
   async listWorkspaceScripts(
     workspaceId: string,
-    requestId?: string,
+    options?: { includeDiscovered?: boolean; requestId?: string },
   ): Promise<
     Extract<SessionOutboundMessage, { type: "workspace.script.list.response" }>["payload"]
   > {
     return this.sendCorrelatedSessionRequest({
-      requestId,
-      message: { type: "workspace.script.list.request", workspaceId },
+      requestId: options?.requestId,
+      message: {
+        type: "workspace.script.list.request",
+        workspaceId,
+        includeDiscovered: options?.includeDiscovered ?? false,
+      },
       responseType: "workspace.script.list.response",
     });
   }

@@ -126,6 +126,7 @@ describe("script-status-projection", () => {
       ).toEqual([
         {
           scriptName: "typecheck",
+          command: "npm run typecheck",
           type: "script",
           hostname: "typecheck",
           port: null,
@@ -137,6 +138,7 @@ describe("script-status-projection", () => {
         },
         {
           scriptName: "web",
+          command: "npm run web",
           type: "service",
           hostname: "web--repo.localhost",
           port: 3000,
@@ -183,6 +185,7 @@ describe("script-status-projection", () => {
       expect(payloads).toEqual([
         {
           scriptName: "web",
+          command: "npm run web",
           type: "service",
           hostname: "web--feature-from-service--service-provided.localhost",
           port: 3000,
@@ -226,6 +229,7 @@ describe("script-status-projection", () => {
       ).toEqual([
         {
           scriptName: "web",
+          command: "npm run web",
           type: "service",
           hostname: "web--feature-card--repo.localhost",
           port: 3000,
@@ -284,6 +288,7 @@ describe("script-status-projection", () => {
       ).toEqual([
         {
           scriptName: "web",
+          command: "npm run web",
           type: "service",
           hostname: "web--feature-card--repo.localhost",
           port: 4321,
@@ -341,6 +346,7 @@ describe("script-status-projection", () => {
       ).toEqual([
         {
           scriptName: "web",
+          command: "npm run web",
           type: "service",
           hostname: "web--repo.localhost",
           port: 4321,
@@ -567,6 +573,7 @@ describe("script-status-projection", () => {
           scripts: [
             {
               scriptName: "api",
+              command: "npm run api",
               type: "service",
               hostname: "api--repo.localhost",
               port: 3001,
@@ -580,6 +587,7 @@ describe("script-status-projection", () => {
             },
             {
               scriptName: "typecheck",
+              command: "npm run typecheck",
               type: "script",
               hostname: "typecheck",
               port: null,
