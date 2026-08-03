@@ -3474,14 +3474,23 @@ export class AgentManager {
   async emitLiveTimelineItem(agentId: string, item: AgentTimelineItem): Promise<void> {
     const agent = this.requireAgent(agentId);
     this.touchUpdatedAt(agent);
-    this.dispatchStream(agentId, {
-      // Live-only items skip the store, so they skip the bound recordTimeline
-      // applies. The client renders these the same as persisted ones and
-      // should not have to cope with a megabyte here either.
-      type: "timeline",
-      item: limitAgentTimelineItemContent(item),
-      provider: agent.provider,
-    });
+    this.dispatchStream(
+      agentId,
+      {
+        // Live-only items skip the store, so they skip the bound recordTimeline
+        // applies. The client renders these the same as persisted ones and
+        // should not have to cope with a megabyte here either.
+        type: "timeline",
+        item: limitAgentTimelineItemContent(item),
+        provider: agent.provider,
+      },
+      // No `seq` — this row was never committed, and that absence is how the
+      // client tells a provisional apart from a persisted row. The epoch still
+      // ships: without it a reconnecting client cannot tell whether the
+      // provisional it is holding predates a rewind, so it kept replaying stale
+      // provisionals across the reconnect.
+      { epoch: this.timelineStore.getEpoch(agentId) },
+    );
   }
 
   streamAgent(
@@ -4117,20 +4126,37 @@ export class AgentManager {
       }
 
       this.touchUpdatedAt(agent);
-      await this.persistSnapshot(agent);
       this.emitState(agent);
-
-      const bufferedResolution = agent.bufferedPermissionResolutions.get(requestId);
-      if (bufferedResolution) {
-        agent.bufferedPermissionResolutions.delete(requestId);
-        this.dispatchStream(agent.id, bufferedResolution, { timestamp: new Date().toISOString() });
-      }
+      // The refreshed state is out, so the ordering obligation this buffer
+      // exists to enforce is discharged — drop the marker HERE rather than in
+      // `finally`. Holding it across `persistSnapshot` kept buffering
+      // resolutions behind a disk write, and a provider that answers faster
+      // than the disk (any local one) finished its whole turn in that window,
+      // so the client saw `turn_completed` with no `permission_resolved` at
+      // all. Past this line a resolution takes the normal dispatch path.
+      agent.inFlightPermissionResponses.delete(requestId);
+      this.flushBufferedPermissionResolution(agent, requestId);
+      await this.persistSnapshot(agent);
 
       return result;
     } finally {
       agent.inFlightPermissionResponses.delete(requestId);
-      agent.bufferedPermissionResolutions.delete(requestId);
+      // Deleting the in-flight marker first means a resolution that arrives
+      // from here on dispatches through the normal path. Anything already
+      // buffered still has to be flushed rather than dropped: discarding it
+      // silently loses the only signal the client gets that its own approval
+      // took effect.
+      this.flushBufferedPermissionResolution(agent, requestId);
     }
+  }
+
+  private flushBufferedPermissionResolution(agent: ActiveManagedAgent, requestId: string): void {
+    const buffered = agent.bufferedPermissionResolutions.get(requestId);
+    if (!buffered) {
+      return;
+    }
+    agent.bufferedPermissionResolutions.delete(requestId);
+    this.dispatchStream(agent.id, buffered, { timestamp: new Date().toISOString() });
   }
 
   /**
