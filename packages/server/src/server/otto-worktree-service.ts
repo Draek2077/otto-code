@@ -20,9 +20,12 @@ import {
 } from "./worktree-core.js";
 import {
   isOttoOwnedWorktreeCwd,
+  mapWorkspaceRelativeCwdToWorktree,
   validateBranchSlug,
   type WorktreeConfig,
 } from "../utils/worktree.js";
+import { getRealpathAwareRelativePath } from "../utils/path.js";
+import { stat as statPath } from "node:fs/promises";
 import { getCurrentBranch, localBranchExists, renameCurrentBranch } from "../utils/checkout-git.js";
 import {
   markOttoWorktreeFirstAgentBranchAutoNameAttempted,
@@ -76,10 +79,24 @@ export async function createOttoWorktree(
   input: CreateOttoWorktreeInput,
   deps: CreateOttoWorktreeDeps,
 ): Promise<CreateOttoWorktreeResult> {
+  // Planned against the SOURCE checkout before the new worktree exists. A
+  // workspace opened on a subdirectory of a monorepo (packages/app) has to land
+  // on the same subdirectory of the worktree we create from it; pinning the
+  // workspace to the worktree root instead silently moved the agent up to the
+  // repo root, which is a different project.
+  const workspaceCwdPlan = await planWorkspaceCwdForWorktree(input.cwd, deps.workspaceGitService);
   const createdWorktree = await createWorktreeCore(input, deps);
   maybeMarkFirstAgentBranchAutoNameEligible({ createdWorktree });
+  const workspaceCwd = mapWorkspaceRelativeCwdToWorktree({
+    relativeWorkspaceCwd: workspaceCwdPlan.relativeWorkspaceCwd,
+    targetWorktreePath: createdWorktree.worktree.worktreePath,
+  });
+  if (!(await isDirectory(workspaceCwd))) {
+    throw new Error(`Selected project directory is missing from the worktree: ${workspaceCwd}`);
+  }
   const workspace = await upsertWorkspaceForWorktree({
-    inputCwd: input.cwd,
+    inputCwd: workspaceCwdPlan.inputCwd,
+    workspaceCwd,
     projectId: input.projectId,
     repoRoot: createdWorktree.repoRoot,
     worktree: createdWorktree.worktree,
@@ -98,6 +115,34 @@ export async function createOttoWorktree(
     repoRoot: createdWorktree.repoRoot,
     created: createdWorktree.created,
   };
+}
+
+async function isDirectory(targetPath: string): Promise<boolean> {
+  try {
+    return (await statPath(targetPath)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve where inside its own checkout the requested cwd sits, so the same
+ * relative position can be reproduced inside the worktree we are about to
+ * create. Must run BEFORE `createWorktreeCore`, while the source checkout is
+ * still the one `getCheckout` resolves for this path.
+ */
+async function planWorkspaceCwdForWorktree(
+  inputCwd: string,
+  workspaceGitService: Pick<WorkspaceGitService, "getCheckout">,
+): Promise<{ inputCwd: string; relativeWorkspaceCwd: string }> {
+  const normalizedInputCwd = resolve(inputCwd);
+  const sourceCheckout = await workspaceGitService.getCheckout(normalizedInputCwd);
+  const sourceWorktreePath = sourceCheckout.worktreeRoot ?? normalizedInputCwd;
+  const relativeWorkspaceCwd = getRealpathAwareRelativePath(sourceWorktreePath, normalizedInputCwd);
+  if (relativeWorkspaceCwd === null) {
+    throw new Error(`Workspace cwd is outside its source worktree: ${normalizedInputCwd}`);
+  }
+  return { inputCwd: normalizedInputCwd, relativeWorkspaceCwd };
 }
 
 /**
@@ -252,6 +297,8 @@ function resolveIntentBaseBranch(intent: WorktreeCreationIntent): string | null 
 
 async function upsertWorkspaceForWorktree(options: {
   inputCwd: string;
+  /** The requested cwd mapped into the new worktree; may be a subdirectory of it. */
+  workspaceCwd: string;
   projectId?: string;
   repoRoot: string;
   worktree: WorktreeConfig;
@@ -263,7 +310,8 @@ async function upsertWorkspaceForWorktree(options: {
     "projectRegistry" | "workspaceRegistry" | "workspaceGitService"
   >;
 }): Promise<PersistedWorkspaceRecord> {
-  const normalizedCwd = resolve(options.worktree.worktreePath);
+  const normalizedWorktreeRoot = resolve(options.worktree.worktreePath);
+  const normalizedCwd = resolve(options.workspaceCwd);
   const normalizedInputCwd = resolve(options.inputCwd);
   const normalizedRepoRoot = resolve(options.repoRoot);
   // Creation never deduplicates by directory: a worktree directory may back
@@ -302,8 +350,10 @@ async function upsertWorkspaceForWorktree(options: {
     // tear the directory down.
     ...initialWorkspacePlacement({
       source: "created_worktree",
+      // cwd is where the workspace opens (possibly a subdirectory); worktreeRoot
+      // is the checkout that backs it. Collapsing the two lost nested placement.
       cwd: normalizedCwd,
-      worktreeRoot: normalizedCwd,
+      worktreeRoot: normalizedWorktreeRoot,
       branch: options.worktree.branchName || null,
       baseBranch: options.baseBranch ?? null,
       mainRepoRoot: normalizedRepoRoot,

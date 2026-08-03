@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -9,6 +9,7 @@ import { createDaemonTestContext, type DaemonTestContext } from "./test-utils/in
 import type { CreateAgentOptions } from "./test-utils/index.js";
 import type { CreateAgentWorktreeTarget } from "./messages.js";
 import { createRealpathAwarePathMatcher } from "../utils/path.js";
+import { removeTempDir } from "../test-utils/remove-temp-dir.js";
 
 let ctx: DaemonTestContext;
 const tempRoots: string[] = [];
@@ -20,7 +21,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await ctx.cleanup();
   for (const tempRoot of tempRoots.splice(0)) {
-    rmSync(tempRoot, { recursive: true, force: true });
+    removeTempDir(tempRoot);
   }
 });
 
@@ -98,7 +99,7 @@ async function createAgentInBranchOffWorktree(options?: {
   autoArchive?: boolean;
   branchName?: string;
   repoDir?: string;
-}): Promise<{ repoDir: string; agentId: string; worktreePath: string }> {
+}): Promise<{ repoDir: string; agentId: string; worktreePath: string; branchName: string }> {
   const repoDir = options?.repoDir ?? createGitRepo();
   const branchName = options?.branchName ?? `agent-lifecycle-${Date.now()}`;
   const created = await ctx.client.createAgent({
@@ -114,7 +115,7 @@ async function createAgentInBranchOffWorktree(options?: {
     ...(options?.autoArchive !== undefined ? { autoArchive: options.autoArchive } : {}),
     initialPrompt: "Say done.",
   });
-  return { repoDir, agentId: created.id, worktreePath: created.cwd };
+  return { repoDir, agentId: created.id, worktreePath: created.cwd, branchName };
 }
 
 test("create_agent_request creates a worktree and auto-archives both after the first turn", async () => {
@@ -335,16 +336,30 @@ test("archiving a created worktree removes the directory on last reference", asy
 });
 
 test("auto-archiving a created worktree keeps the directory when a sibling workspace references it", async () => {
-  const created = await createAgentInBranchOffWorktree({ autoArchive: true });
+  // The sibling reference is established FIRST, and that order is the whole
+  // test. An auto-archiving agent tears down after its first turn, and against
+  // the fake provider that turn lands in milliseconds — so minting the
+  // auto-archiving agent first raced its own teardown against this create, and
+  // the second request would intermittently land on a half-deleted directory
+  // ("not a git repository", "working directory does not exist"). Creating the
+  // holder first makes the precondition a fact rather than a hope.
+  //
+  // A sibling workspace on the same backing directory has to come from a
+  // second worktree request on the same branch, not from
+  // createWorkspace({kind:"directory"}): that path is guarded by
+  // WorkspaceDirectoryOccupiedError, because one directory is one physical
+  // checkout and two "independent" workspaces on it cannot actually be
+  // independent. Requesting the same slug reuses the existing worktree
+  // (created: false) while still minting a fresh workspace record, which is the
+  // supported way a worktree ends up with more than one reference.
+  const sibling = await createAgentInBranchOffWorktree();
 
-  // Create a sibling workspace that shares the same backing directory.
-  const sibling = await ctx.client.createWorkspace({
-    source: { kind: "directory", path: created.worktreePath },
-    title: "sibling",
+  const created = await createAgentInBranchOffWorktree({
+    autoArchive: true,
+    repoDir: sibling.repoDir,
+    branchName: sibling.branchName,
   });
-  if (!sibling.workspace) {
-    throw new Error(sibling.error ?? "Failed to create sibling workspace");
-  }
+  expect(created.worktreePath).toBe(sibling.worktreePath);
 
   await ctx.client.waitForFinish(created.agentId, 10000);
 
