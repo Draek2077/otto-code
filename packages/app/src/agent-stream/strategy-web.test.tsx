@@ -846,6 +846,99 @@ describe("createWebStreamStrategy", () => {
     expect(metrics.scrollTop).toBe(800);
   });
 
+  it("does not write back a reader scroll when a commit lands before the scroll event", async () => {
+    installWritingScrollTo();
+    const strategy = createWebStreamStrategy({ isMobileBreakpoint: false });
+    const viewportRef = React.createRef<StreamViewportHandle>();
+    const historyMounted = Array.from({ length: 20 }, (_, index) => userMessage(index));
+    const renderInput = {
+      agentId: "agent",
+      segments: { historyVirtualized: [], historyMounted, liveHead: [] },
+      boundary: {
+        hasVirtualizedHistory: false,
+        hasMountedHistory: true,
+        hasLiveHead: false,
+      },
+      renderers: createRenderers(vi.fn()),
+      listEmptyComponent: null,
+      viewportRef,
+      routeBottomAnchorRequest: null,
+      isAuthoritativeHistoryReady: true,
+      onNearBottomChange: vi.fn(),
+      onNearHistoryStart: vi.fn(),
+      isLoadingOlderHistory: false,
+      hasOlderHistory: false,
+      olderHistoryProgressKey: null,
+      scrollEnabled: true,
+      listStyle: null,
+      baseListContentContainerStyle: null,
+      forwardListContentContainerStyle: null,
+    };
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(strategy.render(renderInput));
+    });
+
+    const scrollContainer = container.querySelector('[data-testid="agent-chat-scroll"]');
+    if (!(scrollContainer instanceof HTMLElement)) {
+      throw new Error("Expected agent chat scroll container");
+    }
+    const metrics = installScrollBox(scrollContainer, {
+      scrollTop: 0,
+      scrollHeight: 2000,
+      clientHeight: 400,
+    });
+
+    const ROW_HEIGHT_PX = 100;
+    Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value(this: HTMLElement): DOMRect {
+        if (this === scrollContainer) {
+          return { top: 0, height: metrics.clientHeight } as DOMRect;
+        }
+        const rowIndex = Number(this.textContent?.replace("message-", "") ?? "0");
+        return {
+          top: rowIndex * ROW_HEIGHT_PX - metrics.scrollTop,
+          height: ROW_HEIGHT_PX,
+        } as DOMRect;
+      },
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+
+    // The reader drags up and the scroll event lands, so the view detaches and
+    // takes its anchor.
+    metrics.scrollTop = 500;
+    act(() => {
+      scrollContainer.dispatchEvent(new Event("scroll"));
+    });
+
+    // They keep dragging, and this time a commit lands FIRST. That ordering is
+    // not hypothetical: layout effects run synchronously at commit while scroll
+    // events are dispatched asynchronously afterwards, so this is the ordinary
+    // case, not the rare one. Nothing about the document changed here, so the
+    // only movement to explain is the reader's own.
+    metrics.scrollTop = 400;
+    act(() => {
+      root?.render(
+        strategy.render({
+          ...renderInput,
+          segments: { ...renderInput.segments, liveHead: [userMessage(20)] },
+        }),
+      );
+    });
+
+    // An anchor measured in viewport space cannot tell this from content drift
+    // and writes it straight back to 500, which pinned the transcript at the
+    // moment of detach and made it unscrollable. Content space reads zero drift.
+    expect(metrics.scrollTop).toBe(400);
+  });
+
   it("reattaches follow-output when a small scroll range returns to bottom", async () => {
     const scrollTo = vi.fn(function (
       this: HTMLElement,

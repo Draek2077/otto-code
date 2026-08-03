@@ -10,7 +10,7 @@ import React, {
 } from "react";
 import { ActivityIndicator } from "react-native";
 import { measureElement as measureVirtualElement, useVirtualizer } from "@tanstack/react-virtual";
-import { estimateStreamItemHeight } from "./web-virtualization";
+import { estimateStreamItemHeight, shouldAbsorbVirtualRowResize } from "./web-virtualization";
 import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./strategy";
 import { createStreamStrategy } from "./strategy";
 
@@ -44,22 +44,46 @@ const historyStartSlotStyle: CSSProperties = {
 };
 
 /**
- * A row that is currently on screen, plus where it sits relative to the top of
- * the viewport. While the reader is detached this is the fixed point the whole
- * transcript is held against: the document can grow, shrink, fold a run of tool
- * calls into a group and unfold it again, and the anchored row stays exactly
- * where their eyes are. Measured through `getBoundingClientRect` against the
- * scroll container rather than `offsetTop` so that the container moving on
- * screen (the mobile keyboard opening) cancels out instead of registering as
- * drift.
+ * A row that is currently on screen, plus where it sits **in the content**.
+ * While the reader is detached this is the fixed point the whole transcript is
+ * held against: the document can grow, shrink, fold a run of tool calls into a
+ * group and unfold it again, and the anchored row stays exactly where their eyes
+ * are.
+ *
+ * Content space, not viewport space, and that is the whole point. A row's
+ * viewport-relative top is `contentRelativeTop - scrollTop`, so the reader
+ * scrolling and the content reflowing move it by exactly the same kind of
+ * number, and a correction computed from it cannot tell the two apart. It does
+ * not have the information. `contentRelativeTop` is independent of `scrollTop`
+ * by construction, so the reader can move as much as they like and the measured
+ * drift stays zero.
+ *
+ * That distinction has to be structural rather than inferred, because the app
+ * cannot win the race that decides it: this is corrected from a layout effect,
+ * which React runs synchronously at commit, while the scroll event that would
+ * report the reader's movement is dispatched asynchronously afterwards. A
+ * viewport-space anchor therefore saw the reader's own scroll as drift and wrote
+ * it straight back, one frame before `handleDomScroll` could re-capture. The
+ * restored value then matched `programmaticScrollTopRef`, so the handler read
+ * the reader's movement as the app's own echo and never refreshed the anchor:
+ * the transcript pinned itself at the moment of detach and could not be scrolled
+ * again. See docs/chat-scrolling.md.
+ *
+ * Still measured through `getBoundingClientRect` against the scroll container
+ * rather than `offsetTop`, so that the container moving on screen (the mobile
+ * keyboard opening) cancels out instead of registering as drift.
  */
 interface ScrollAnchor {
   element: HTMLElement;
-  viewportRelativeTop: number;
+  contentRelativeTop: number;
 }
 
 function measureViewportRelativeTop(scrollContainer: HTMLElement, element: HTMLElement): number {
   return element.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top;
+}
+
+function measureContentRelativeTop(scrollContainer: HTMLElement, element: HTMLElement): number {
+  return measureViewportRelativeTop(scrollContainer, element) + scrollContainer.scrollTop;
 }
 
 function findScrollAnchor(scrollContainer: HTMLElement, content: HTMLElement): ScrollAnchor | null {
@@ -80,7 +104,7 @@ function findScrollAnchor(scrollContainer: HTMLElement, content: HTMLElement): S
     if (relativeTop >= viewportHeight) {
       break;
     }
-    return { element: child, viewportRelativeTop: relativeTop };
+    return { element: child, contentRelativeTop: relativeTop + scrollContainer.scrollTop };
   }
   return null;
 }
@@ -152,6 +176,13 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   const handleContentRef = useCallback((node: HTMLElement | null) => {
     contentRef.current = node;
   }, []);
+  // Needed to place a resized virtual row against the viewport: the virtualizer
+  // reports row offsets from the top of its own block, not from the top of the
+  // scrollable content.
+  const virtualizedBlockRef = useRef<HTMLElement | null>(null);
+  const handleVirtualizedBlockRef = useCallback((node: HTMLElement | null) => {
+    virtualizedBlockRef.current = node;
+  }, []);
   const [followOutput, setFollowOutputr] = useState(true);
   const followOutputRef = useRef(followOutput);
   const setFollowOutput = (value: boolean) => {
@@ -208,10 +239,22 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     overscan: 8,
   });
   useEffect(() => {
-    // Detached, the reader is holding a position and every measured-vs-estimated
-    // correction above them has to be absorbed. Following, the app is heading to
-    // the bottom anyway and an adjustment would only fight the stick.
-    rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => !followOutputRef.current;
+    // Overriding this replaces TanStack's default guard entirely, so the
+    // "is the row above the reader" half has to be restored here alongside the
+    // follow/detach half. See shouldAbsorbVirtualRowResize for what dropping
+    // either one costs.
+    rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item) => {
+      const scrollContainer = scrollContainerRef.current;
+      const virtualizedBlock = virtualizedBlockRef.current;
+      if (!scrollContainer || !virtualizedBlock) {
+        return false;
+      }
+      return shouldAbsorbVirtualRowResize({
+        isFollowingOutput: followOutputRef.current,
+        blockViewportRelativeTop: measureViewportRelativeTop(scrollContainer, virtualizedBlock),
+        rowStart: item.start,
+      });
+    };
     return () => {
       rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined;
     };
@@ -298,6 +341,10 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
    * The only scroll write the app makes while detached, and it exists purely to
    * cancel motion out: whatever the last commit did to the document above the
    * anchored row is subtracted back off so the reader's view does not move.
+   *
+   * The drift it acts on is measured in content space, so movement the *reader*
+   * caused contributes exactly zero to it and this writes nothing at all. Only
+   * the document reflowing above the anchor can produce a correction.
    */
   const restoreScrollAnchor = useCallback(() => {
     if (followOutputRef.current) {
@@ -312,17 +359,19 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       captureScrollAnchor();
       return;
     }
-    const drift =
-      measureViewportRelativeTop(scrollContainer, anchor.element) - anchor.viewportRelativeTop;
+    const contentRelativeTop = measureContentRelativeTop(scrollContainer, anchor.element);
+    const drift = contentRelativeTop - anchor.contentRelativeTop;
     if (Math.abs(drift) < SCROLL_ANCHOR_DRIFT_EPSILON_PX) {
       return;
     }
+    // Consume the drift into the baseline whether or not the write lands whole:
+    // at the very top or bottom of the range the browser clamps it, and a
+    // remainder kept around would re-fire on every subsequent commit. Scrolling
+    // cannot change a content-space position, so this is only ever settling the
+    // reflow that was just observed.
+    anchor.contentRelativeTop = contentRelativeTop;
     scrollContainer.scrollTop += drift;
     noteProgrammaticScroll(scrollContainer);
-    // Re-read rather than assuming the correction landed whole: at the very top
-    // or bottom of the range the browser clamps it, and pretending otherwise
-    // would leave a standing debt that re-fires on every subsequent commit.
-    anchor.viewportRelativeTop = measureViewportRelativeTop(scrollContainer, anchor.element);
   }, [captureScrollAnchor, noteProgrammaticScroll]);
 
   const scrollMessagesToBottom = useCallback(
@@ -752,7 +801,11 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
         <div ref={handleContentRef} style={contentContainerStyle}>
           {historyStartSlot}
           {shouldUseVirtualizer ? (
-            <div style={virtualRowsContainerStyle} {...{ [VIRTUALIZED_BLOCK_ATTRIBUTE]: "" }}>
+            <div
+              ref={handleVirtualizedBlockRef}
+              style={virtualRowsContainerStyle}
+              {...{ [VIRTUALIZED_BLOCK_ATTRIBUTE]: "" }}
+            >
               {virtualRows.map((virtualRow) => {
                 const item = segments.historyVirtualized[virtualRow.index];
                 if (!item) {

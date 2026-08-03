@@ -11,6 +11,7 @@ import {
   findMountedWindowStart,
   getWebMountedRecentStreamItems,
   getWebPartialVirtualizationThreshold,
+  shouldAbsorbVirtualRowResize,
   splitWebVirtualizedHistory,
   type IndexedStreamItem,
 } from "./web-virtualization";
@@ -372,5 +373,108 @@ describe("web virtualization test overrides", () => {
         globalWithOverrides.__OTTO_E2E_WEB_MOUNTED_RECENT_STREAM_ITEMS = previousMounted;
       }
     }
+  });
+});
+
+describe("shouldAbsorbVirtualRowResize", () => {
+  // The block scrolled 900px past the top of the viewport, so a row 200px into
+  // it sits above the fold and one 1000px in sits below it.
+  const BLOCK_TOP_ABOVE_VIEWPORT = -900;
+
+  it("absorbs a correction above the reader while detached", () => {
+    expect(
+      shouldAbsorbVirtualRowResize({
+        isFollowingOutput: false,
+        blockViewportRelativeTop: BLOCK_TOP_ABOVE_VIEWPORT,
+        rowStart: 200,
+      }),
+    ).toBe(true);
+  });
+
+  // The regression: a row measured below the fold used to move scrollTop too,
+  // so every upward gesture was partly cancelled by growth the reader cannot
+  // see and the transcript stalled short of its first message.
+  it("leaves the reader alone when the resized row is below the viewport", () => {
+    expect(
+      shouldAbsorbVirtualRowResize({
+        isFollowingOutput: false,
+        blockViewportRelativeTop: BLOCK_TOP_ABOVE_VIEWPORT,
+        rowStart: 1000,
+      }),
+    ).toBe(false);
+  });
+
+  it("treats a row starting exactly at the top edge as below it", () => {
+    expect(
+      shouldAbsorbVirtualRowResize({
+        isFollowingOutput: false,
+        blockViewportRelativeTop: BLOCK_TOP_ABOVE_VIEWPORT,
+        rowStart: 900,
+      }),
+    ).toBe(false);
+  });
+
+  it("never adjusts while following, wherever the row sits", () => {
+    for (const rowStart of [200, 900, 1000]) {
+      expect(
+        shouldAbsorbVirtualRowResize({
+          isFollowingOutput: true,
+          blockViewportRelativeTop: BLOCK_TOP_ABOVE_VIEWPORT,
+          rowStart,
+        }),
+      ).toBe(false);
+    }
+  });
+
+  // At the very top of the transcript nothing is above the reader at all, which
+  // is exactly where the stall was reported.
+  it("absorbs nothing once the block starts inside the viewport", () => {
+    expect(
+      shouldAbsorbVirtualRowResize({
+        isFollowingOutput: false,
+        blockViewportRelativeTop: 16,
+        rowStart: 0,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("scrolling up past never-measured history", () => {
+  // The wall the reader hits, in the shape that produces it. Estimates for
+  // history nobody has scrolled through undershoot badly — an assistant reply
+  // nobody has mounted is guessed at 220px, a tool row at 40 — so each row the
+  // virtualizer measures on the way up reports a large positive delta. With
+  // overscan 8 that is thousands of pixels per batch, far more than a wheel
+  // tick, and any of it applied for rows BELOW the fold pushes the reader back
+  // down harder than they can scroll up. The reachable range collapses to the
+  // part of the transcript that was already measured.
+  const UNDERSHOOT_PER_ROW = 160;
+  const OVERSCAN_ROWS = 8;
+  const VIEWPORT_TOP_IN_BLOCK = 900;
+
+  function totalScrollAdjustment(rowStarts: number[]): number {
+    return rowStarts.reduce((total, rowStart) => {
+      const absorbs = shouldAbsorbVirtualRowResize({
+        isFollowingOutput: false,
+        blockViewportRelativeTop: -VIEWPORT_TOP_IN_BLOCK,
+        rowStart,
+      });
+      return absorbs ? total + UNDERSHOOT_PER_ROW : total;
+    }, 0);
+  }
+
+  it("does not move the reader for a batch measured below the fold", () => {
+    const belowFold = Array.from(
+      { length: OVERSCAN_ROWS },
+      (_, index) => VIEWPORT_TOP_IN_BLOCK + index * 200,
+    );
+
+    expect(totalScrollAdjustment(belowFold)).toBe(0);
+  });
+
+  it("still absorbs a batch measured above the reader, which is what holds the view still", () => {
+    const aboveFold = Array.from({ length: OVERSCAN_ROWS }, (_, index) => index * 100);
+
+    expect(totalScrollAdjustment(aboveFold)).toBe(OVERSCAN_ROWS * UNDERSHOOT_PER_ROW);
   });
 });

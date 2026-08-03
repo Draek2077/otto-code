@@ -59,6 +59,42 @@ export function getWebMountedRecentStreamItems(isMobileBreakpoint = false): numb
     : DEFAULT_WEB_MOUNTED_RECENT_STREAM_ITEMS;
 }
 
+/**
+ * Whether a virtualized row swapping its estimate for its measured height may
+ * move `scrollTop`.
+ *
+ * Two conditions, and dropping either one moves the reader.
+ *
+ * **Detached.** The reader owns the position, so a correction above them has to
+ * be absorbed or the rows under their eyes slide. While following, the app is
+ * heading to the bottom anyway and an adjustment would only fight the stick.
+ *
+ * **Above the viewport.** This half is TanStack Virtual's own default
+ * (`item.start < scrollOffset`), and overriding
+ * `shouldAdjustScrollPositionOnItemSizeChange` replaces it wholesale — so an
+ * override that returns a single global answer silently opts every row in,
+ * including the ones being measured *below* the fold. Growth the reader cannot
+ * see must not move them: scrolling up feeds the virtualizer a steady supply of
+ * never-measured rows (overscan 8) whose estimates undershoot, and compensating
+ * for those cancels out part of every upward gesture. The transcript then stalls
+ * short of its first message and jitters, by whatever that chat's accumulated
+ * estimate error happens to be. See docs/chat-scrolling.md.
+ *
+ * Positions are viewport-relative because that is what survives the whole
+ * container moving on screen; `rowStart` is the row's offset from the top of the
+ * virtualized block, which is the frame the virtualizer reports it in.
+ */
+export function shouldAbsorbVirtualRowResize(input: {
+  isFollowingOutput: boolean;
+  blockViewportRelativeTop: number;
+  rowStart: number;
+}): boolean {
+  if (input.isFollowingOutput) {
+    return false;
+  }
+  return input.blockViewportRelativeTop + input.rowStart < 0;
+}
+
 export interface IndexedStreamItem {
   item: StreamItem;
   index: number;

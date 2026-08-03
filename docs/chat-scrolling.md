@@ -62,21 +62,72 @@ the bottom: actions pop in one by one and then fold into a single group row,
 markdown settles, images load, older history splices in above.
 
 While detached, the web viewport keeps a **scroll anchor**: the first on-screen
-row plus its offset from the top of the viewport, measured with
-`getBoundingClientRect` against the scroll container. Not `offsetTop`, so that the
-whole container moving on screen (which is what the mobile keyboard does) cancels
-out instead of reading as drift. After every commit, and on every resize, the
-anchor's drift is measured and subtracted back off. The row under the reader's
-eyes does not move.
+row plus its offset **in the content**, measured with `getBoundingClientRect`
+against the scroll container. Not `offsetTop`, so that the whole container moving
+on screen (which is what the mobile keyboard does) cancels out instead of reading
+as drift. After every commit, and on every resize, the anchor's drift is measured
+and subtracted back off. The row under the reader's eyes does not move.
+
+**Content space, not viewport space, and that is load-bearing.** A row's
+viewport-relative top is `contentRelativeTop - scrollTop`, so the reader
+scrolling and the document reflowing move it by the same kind of number and a
+correction computed from it cannot tell the two apart. It does not have the
+information. A content-relative position is independent of `scrollTop` by
+construction: the reader can move as much as they like and the measured drift
+stays exactly zero, so the app writes nothing.
+
+That distinction has to be structural rather than inferred, because the app
+cannot win the race that would otherwise decide it. The correction runs from a
+layout effect, which React runs synchronously at commit, while the scroll event
+that reports the reader's movement is dispatched asynchronously afterwards. The
+commit is therefore first in the ordinary case, not the rare one. A viewport-space
+anchor saw the reader's own scroll as drift and wrote it straight back one
+frame before `handleDomScroll` could re-capture, and because the restored value
+then matched `programmaticScrollTopRef`, the handler classified the reader's
+movement as the app's own echo and never refreshed the anchor. The transcript
+pinned itself at the moment of detach and could not be scrolled again: measured
+on a 157-item chat, seventeen consecutive gestures produced zero net movement.
+
+The lesson generalises past this one site. `programmaticScrollTopRef` can only
+answer "did the app write this value", never "did the app write it _because of_
+the reader", so nothing downstream of a write may be the thing that decides
+whether the write was legitimate. Keep the two causes separable in the
+measurement itself.
 
 Two regions, two mechanisms, and they must not both claim the same correction:
 
 - **Mounted rows** use the scroll anchor above.
 - **The virtualizer's block** compensates `scrollTop` itself when a row swaps its
   estimate for its measured height, via TanStack Virtual's
-  `shouldAdjustScrollPositionOnItemSizeChange` (which is simply "are we
-  detached"). The anchor skips this block by its `data-stream-virtualized-block`
-  attribute; anchoring to it would count the same correction twice.
+  `shouldAdjustScrollPositionOnItemSizeChange`. The anchor skips this block by
+  its `data-stream-virtualized-block` attribute; anchoring to it would count the
+  same correction twice.
+
+That override takes **two** conditions, and it is not enough to ask "are we
+detached". Overriding the hook replaces TanStack's default guard
+(`item.start < scrollOffset`) outright, so an override that returns one global
+answer opts in every row it measures, including the overscan **below** the
+viewport. Growth the reader cannot see must not move them.
+
+Scrolling up is what feeds the virtualizer never-measured rows, and their
+estimates undershoot badly: history nobody has mounted has no cached block
+heights, so an assistant reply is guessed at 220px and a tool row at 40. Each
+measurement therefore reports a large positive delta, and with `overscan: 8`
+that is thousands of pixels per batch, far more than a wheel tick. Applied for
+rows below the fold it pushes the reader down harder than they can scroll up, so
+the reachable range collapses to the part of the transcript that was already
+measured. The reported shape is a chat that only scrolls through its last tenth
+and behaves as though 90% of the way down were the top. Both halves live in
+`shouldAbsorbVirtualRowResize` (`web-virtualization.ts`).
+
+Corrections for rows **above** the viewport are not a wall and must stay: the
+document grows above the reader by exactly what they gained, so their position in
+the content is preserved and upward progress still converges on the first
+message.
+
+This is the only thing holding the position near the top of a long transcript.
+The anchor is deliberately inert there: it skips the virtualized block, and every
+mounted row is below the fold, so `findScrollAnchor` returns `null`.
 
 The mounted/virtualized boundary is separately **pinned** while detached
 (`findMountedWindowStart` in `web-virtualization.ts`). Left free it advances as
@@ -128,10 +179,12 @@ outranks a drag. That is the user asking for the bottom.
 | `agent-stream/strategy-web.tsx`            | The web follow/detach state machine, the scroll anchor, the stick-to-bottom rAF |
 | `agent-stream/bottom-anchor-controller.ts` | The native sticky/detached state machine and its post-layout verification       |
 | `agent-stream/strategy-native.tsx`         | The inverted FlatList, keyboard settling, programmatic-scroll event budget      |
-| `agent-stream/web-virtualization.ts`       | The mounted/virtualized split and the pin that freezes it                       |
+| `agent-stream/web-virtualization.ts`       | The mounted/virtualized split, the pin that freezes it, and the resize guard    |
 | `agent-stream/view.tsx`                    | Owns `isNearBottom`, the pin state, the jump-to-bottom button                   |
 
 Tests that encode the rules above: `strategy-web.test.tsx` (scrollbar drag
-detaches, clamping does not, the anchor holds a row still) and
-`bottom-anchor-controller.test.ts` (drag beats a pending verification, a single
-layout jump does not).
+detaches, clamping does not, the anchor holds a row still, a reader scroll is not
+written back when a commit lands before the scroll event),
+`web-virtualization.test.ts` (a row resized below the fold does not move the
+reader) and `bottom-anchor-controller.test.ts` (drag beats a pending
+verification, a single layout jump does not).
