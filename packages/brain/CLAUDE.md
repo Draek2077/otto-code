@@ -48,6 +48,7 @@ otto brain calibrate --model X # measure real KV bytes/token
 otto brain sweep --model X     # find + save the best reasoning budget
 otto brain pull <model>        # download a model from the catalog
 otto brain runtime install     # download a self-contained llama.cpp runtime
+otto brain runtime install --variant vulkan   # force an accelerator (auto-picked otherwise)
 otto brain config show | set <key> <value>
 ```
 
@@ -107,6 +108,40 @@ come from": `lmstudio.ts` (discover an install; **the DLL-stub trap is documente
 here - a runtime is always paired with its vendor dir**) and `managed.ts` (download
 a pinned build into `$OTTO_HOME/otto-brain/runtimes/`, extracting with OS built-ins
 only). `args.ts` builds the child args/env; `index.ts` resolves a runtime per config.
+
+**Both providers run on Windows, macOS and Linux.** The facts that make that work
+are in the `managed.ts` header; the ones that bite hardest:
+
+- **Asset names are not derivable from the build tag.** The scheme changed at
+  least once (b4600 shipped `win-cuda-cu12.4-x64`, b10265 ships
+  `win-cuda-12.4-x64`), and the pin was left on a tag whose real asset names did
+  not match the hardcoded URL, so `runtime install` 404'd. Bumping
+  `DEFAULT_LLAMA_BUILD` means re-reading that tag's asset list
+  (`gh api repos/ggml-org/llama.cpp/releases/tags/<tag> --jq '.assets[].name'`)
+  and re-running `managed.test.ts`, which pins every generated URL.
+- **Linux has no upstream CUDA build.** The Linux GPU assets are Vulkan, ROCm and
+  SYCL only, so the Linux GPU default is Vulkan - one asset that covers NVIDIA,
+  AMD and Intel. There is no Linux CUDA URL to point at.
+- **Windows CUDA needs two archives.** The `cudart-llama-bin-win-cuda-*.zip`
+  companion carries no build tag in its name but is published under each tag.
+- macOS arm64 is Metal-accelerated in the stock `macos-arm64` asset; macOS x64 is
+  CPU-only. Windows assets are `.zip`, macOS and Linux assets are `.tar.gz`.
+- **PATH is the Windows half of the loader story only.** Linux needs
+  `LD_LIBRARY_PATH` and macOS `DYLD_LIBRARY_PATH` pointed at the runtime dir, or
+  the binary dies on an unresolved library before printing anything. `buildEnv`
+  sets all three.
+- The binary is `llama-server.exe` on Windows and `llama-server` elsewhere. An
+  extensionless path is indistinguishable from a directory, so `resolveOverride`
+  stats it rather than matching on a suffix.
+- LM Studio directory naming is verified for Windows only. On macOS and Linux a
+  shape fallback accepts any backends directory holding a `llama-server` binary.
+  That fallback is **off on Windows on purpose**: an unpaired stub launches and
+  dies silently, so a Windows runtime with no vendor dir is skipped instead.
+- More than one variant can be installed side by side, so `listManagedRuntimes`
+  ranks by accelerator (cuda, metal, vulkan, cpu) and then newest build. Note
+  that `auto` still prefers _any_ managed runtime over LM Studio, so an explicit
+  `runtime install --variant cpu` will outrank an LM Studio CUDA install; set
+  `runtime.source` or `runtime.path` to override.
 
 **Service (`src/service/`)** - `supervisor.ts` (owns the `llama-server` child as an
 EventEmitter state machine, polls `/health`, samples VRAM at ready), `router.ts`

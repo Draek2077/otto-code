@@ -3,8 +3,6 @@
  * needs. Runtime-source agnostic: works the same for an LM Studio runtime or a
  * managed one, since both resolve to a `Runtime` (exe + optional vendorDir).
  */
-import path from "node:path";
-
 import type { Profile } from "../config/schema.js";
 import type { Runtime } from "../types.js";
 
@@ -14,19 +12,32 @@ export interface ServeTarget {
 }
 
 /**
- * PATH value the child process needs so the stub can resolve its DLLs. Both the
- * runtime dir and its vendor dir go first, ahead of the inherited PATH.
+ * Loader environment the child process needs so it can resolve its shared
+ * libraries. Both the runtime dir and its vendor dir go first, ahead of the
+ * inherited values.
+ *
+ * PATH is the Windows half of this (the DLL-stub trap). The other two platforms
+ * do not read PATH for libraries at all: a llama.cpp tarball puts
+ * `libggml*.so`/`libllama.so` (or the `.dylib` equivalents) next to the binary,
+ * so Linux needs LD_LIBRARY_PATH and macOS needs DYLD_LIBRARY_PATH or the
+ * binary dies at load with an unresolved-library error before it prints a line.
+ * PATH is still set everywhere - harmless, and it keeps the shape uniform.
  */
 export function buildEnv(
   runtime: Runtime,
   baseEnv: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
 ): NodeJS.ProcessEnv {
   const parts = [runtime.dir];
   if (runtime.vendorDir) parts.push(runtime.vendorDir);
-  return {
-    ...baseEnv,
-    PATH: `${parts.join(path.delimiter)}${path.delimiter}${baseEnv.PATH || ""}`,
-  };
+  const delimiter = platform === "win32" ? ";" : ":";
+  const prepend = (existing: string | undefined): string =>
+    `${parts.join(delimiter)}${delimiter}${existing || ""}`;
+
+  const env: NodeJS.ProcessEnv = { ...baseEnv, PATH: prepend(baseEnv.PATH) };
+  if (platform === "darwin") env.DYLD_LIBRARY_PATH = prepend(baseEnv.DYLD_LIBRARY_PATH);
+  else if (platform !== "win32") env.LD_LIBRARY_PATH = prepend(baseEnv.LD_LIBRARY_PATH);
+  return env;
 }
 
 /**

@@ -4,7 +4,13 @@
  * path) and `lmstudio` (discovered from an existing LM Studio install, a
  * zero-download fast path). Selection follows config: an explicit path override
  * wins; otherwise `auto` prefers a managed runtime and falls back to LM Studio.
+ *
+ * Both providers are cross-platform. Which accelerator a managed install picks
+ * is decided in `managed.resolveRuntimeVariant` from the platform, the arch and
+ * whether an NVIDIA GPU answered - `probeNvidiaGpu` below is the one place that
+ * asks, so the download layer stays free of process spawning.
  */
+import { query as queryGpu } from "../gpu.js";
 import { resolveBrainPaths } from "../config/paths.js";
 import type { BrainConfig } from "../config/schema.js";
 import type { Runtime } from "../types.js";
@@ -14,6 +20,7 @@ import {
   installManagedRuntime,
   listManagedRuntimes,
   type InstallProgress,
+  type RuntimeTarget,
 } from "./managed.js";
 
 export { BACKENDS_DIR, LMSTUDIO_ROOT, listRuntimes as listLmStudioRuntimes } from "./lmstudio.js";
@@ -22,8 +29,14 @@ export {
   installManagedRuntime,
   listManagedRuntimes,
   defaultRuntimeSpec,
+  extractArchive,
+  resolveRuntimeVariant,
+  serverExeName,
+  supportedVariants,
   DEFAULT_LLAMA_BUILD,
   type RuntimeSpec,
+  type RuntimeTarget,
+  type RuntimeVariant,
   type InstallProgress,
 } from "./managed.js";
 
@@ -31,6 +44,15 @@ export {
 export function listAllRuntimes(env: NodeJS.ProcessEnv = process.env): Runtime[] {
   const paths = resolveBrainPaths(env);
   return [...listManagedRuntimes(paths.runtimesDir), ...listLmStudioRuntimes()];
+}
+
+/**
+ * Whether this machine has an NVIDIA GPU, for picking a managed build. Returns
+ * false rather than throwing when nvidia-smi is absent, which is the normal
+ * case on macOS and on AMD/Intel machines.
+ */
+export async function probeNvidiaGpu(): Promise<boolean> {
+  return (await queryGpu()) !== null;
 }
 
 /** The runtime to use given config, or null when none is available. */
@@ -55,10 +77,15 @@ export async function ensureRuntime(
   config: BrainConfig,
   env: NodeJS.ProcessEnv = process.env,
   onProgress?: (progress: InstallProgress) => void,
+  target: RuntimeTarget = {},
 ): Promise<Runtime> {
   const existing = resolveRuntime(config, env);
   if (existing) return existing;
 
   const paths = resolveBrainPaths(env);
-  return installManagedRuntime(defaultRuntimeSpec(), paths.runtimesDir, onProgress);
+  const resolved: RuntimeTarget = {
+    ...target,
+    hasNvidiaGpu: target.hasNvidiaGpu ?? (await probeNvidiaGpu()),
+  };
+  return installManagedRuntime(defaultRuntimeSpec(null, resolved), paths.runtimesDir, onProgress);
 }

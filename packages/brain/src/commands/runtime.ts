@@ -9,7 +9,15 @@ import type { Command } from "commander";
 import { loadBrainConfig } from "../config/index.js";
 import { resolveBrainPaths } from "../config/paths.js";
 import type { AnyCommandResult, OutputSchema } from "../output/index.js";
-import { defaultRuntimeSpec, installManagedRuntime, listAllRuntimes } from "../runtime/index.js";
+import { CommandError } from "../output/types.js";
+import {
+  defaultRuntimeSpec,
+  installManagedRuntime,
+  listAllRuntimes,
+  probeNvidiaGpu,
+  supportedVariants,
+  type RuntimeVariant,
+} from "../runtime/index.js";
 
 export interface RuntimeRow {
   label: string;
@@ -56,16 +64,36 @@ export async function runRuntimeListCommand(
 export function addRuntimeInstallOptions(cmd: Command): Command {
   return cmd
     .description("Download a self-contained llama.cpp runtime")
-    .option("--build <tag>", "llama.cpp release build tag");
+    .option("--build <tag>", "llama.cpp release build tag")
+    .option(
+      "--variant <name>",
+      `accelerator to install (${supportedVariants().join("|")}); defaults to the best one this machine can use`,
+    );
 }
 
 export async function runRuntimeInstallCommand(
-  options: { build?: string },
+  options: { build?: string; variant?: string },
   _command: Command,
 ): Promise<AnyCommandResult<RuntimeRow>> {
   loadBrainConfig();
   const { runtimesDir } = resolveBrainPaths();
-  const spec = defaultRuntimeSpec(options.build);
+
+  const available = supportedVariants();
+  if (options.variant && !available.includes(options.variant as RuntimeVariant)) {
+    throw new CommandError({
+      code: "UNSUPPORTED_VARIANT",
+      message:
+        `llama.cpp publishes no "${options.variant}" build for ${process.platform}/${process.arch}` +
+        ` - available: ${available.join(", ") || "(none)"}`,
+    });
+  }
+
+  // Only "auto" needs the GPU probe, and only to choose between CUDA and Vulkan
+  // on the platforms that have both.
+  const spec = defaultRuntimeSpec(options.build, {
+    variant: (options.variant as RuntimeVariant | undefined) ?? "auto",
+    hasNvidiaGpu: options.variant ? undefined : await probeNvidiaGpu(),
+  });
 
   process.stderr.write(`  installing ${spec.label} (${spec.version})…\n`);
   const runtime = await installManagedRuntime(spec, runtimesDir, (p) => {
