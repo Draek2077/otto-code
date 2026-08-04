@@ -879,24 +879,29 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   // height cache. The element map drops an entry when its row unmounts; the
   // *height* deliberately survives unmounting - a row leaving the mounted
   // window is exactly the moment its cached height starts mattering.
-  const registerMountedRowElement = useCallback((id: string, node: HTMLElement | null) => {
-    if (node) {
-      mountedRowElementsRef.current.set(id, node);
-    } else {
-      mountedRowElementsRef.current.delete(id);
+  const mountedRowRefCallbacksRef = useRef(new Map<string, (node: HTMLElement | null) => void>());
+  const getMountedRowRefCallback = useCallback((id: string) => {
+    const callbacks = mountedRowRefCallbacksRef.current;
+    let callback = callbacks.get(id);
+    if (!callback) {
+      callback = (node: HTMLElement | null) => {
+        if (node) {
+          mountedRowElementsRef.current.set(id, node);
+        } else {
+          mountedRowElementsRef.current.delete(id);
+        }
+      };
+      callbacks.set(id, callback);
     }
+    return callback;
   }, []);
   const mountedHistoryRows = useMemo(() => {
     return segments.historyMounted.map((item, index) => (
-      <div
-        key={item.id}
-        style={mountedRowWrapperStyle}
-        ref={(node) => registerMountedRowElement(item.id, node)}
-      >
+      <div key={item.id} style={mountedRowWrapperStyle} ref={getMountedRowRefCallback(item.id)}>
         {renderHistoryMountedRow(item, index, segments.historyMounted)}
       </div>
     ));
-  }, [registerMountedRowElement, renderHistoryMountedRow, segments.historyMounted]);
+  }, [getMountedRowRefCallback, renderHistoryMountedRow, segments.historyMounted]);
   // `liveHeadRowRevision` carries the set of tool-call groups the reader has
   // opened. Expanding one changes no item and no array identity, so without it
   // in the dependency list this memo returns the cached rows and the group does
@@ -905,15 +910,11 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   const liveHeadRows = useMemo(() => {
     void liveHeadRowRevision;
     return segments.liveHead.map((item, index) => (
-      <div
-        key={item.id}
-        style={mountedRowWrapperStyle}
-        ref={(node) => registerMountedRowElement(item.id, node)}
-      >
+      <div key={item.id} style={mountedRowWrapperStyle} ref={getMountedRowRefCallback(item.id)}>
         {renderLiveHeadRow(item, index, segments.liveHead)}
       </div>
     ));
-  }, [liveHeadRowRevision, registerMountedRowElement, renderLiveHeadRow, segments.liveHead]);
+  }, [getMountedRowRefCallback, liveHeadRowRevision, renderLiveHeadRow, segments.liveHead]);
   const liveAuxiliary = useMemo(() => {
     return renderLiveAuxiliary();
   }, [renderLiveAuxiliary]);

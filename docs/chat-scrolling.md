@@ -44,7 +44,13 @@ alone, by subtracting off the two things that move `scrollTop` without a user:
    `(previousScrollHeight - scrollHeight) + (clientHeight - previousClientHeight)`,
    and anything within that bound is the browser, not a finger.
 
-Whatever is left is the reader.
+Whatever is left is the reader - with one landing-state backstop. The bound
+above compares against the _last recorded_ metrics, and scroll events coalesce:
+several writes and clamps can land between two events and leave the recorded
+scrollHeight stale. A downward move that ends a shrink at the exact bottom of
+the document is the browser clamping to a smaller range regardless of what the
+deltas say - a reader scrolling up ends _away_ from the bottom, or the document
+did not shrink - so that case never detaches.
 
 **This must not go back to listening for `wheel` / `pointerdown` / `touchmove` on
 the scroll container.** That is what it used to do, and it had a hole big enough
@@ -139,7 +145,7 @@ the reader", so nothing downstream of a write may be the thing that decides
 whether the write was legitimate. Keep the two causes separable in the
 measurement itself.
 
-Two regions, two mechanisms, and they must not both claim the same correction:
+Two regions, two mechanisms, and **one owner per correction**:
 
 - **Mounted rows** use the scroll anchor above.
 - **The virtualizer's block** compensates `scrollTop` itself when a row swaps its
@@ -148,31 +154,57 @@ Two regions, two mechanisms, and they must not both claim the same correction:
   its `data-stream-virtualized-block` attribute; anchoring to it would count the
   same correction twice.
 
-That override asks **one** question: is the resized row above the viewport.
-Overriding the hook replaces TanStack's default guard
+Skipping the block as an anchor _candidate_ is not enough on its own, because
+the anchored row sits **below** the block, and the block reflowing moves that
+row in content space. The anchor sees it and corrects it - so if the absorb
+also fires, the same reflow is corrected twice. The double write is a ratchet:
+when estimates overshoot, every measurement batch subtracts the error twice and
+the reader walks to the very top of the transcript one commit at a time, which
+is exactly the reported "bounces to the very top" shape. The rule is ownership,
+decided in the `shouldAdjustScrollPositionOnItemSizeChange` closure in
+`strategy-web.tsx`:
+
+- **Anchor active** (detached, a mounted row on screen): the anchor owns every
+  correction; the absorb declines.
+- **Anchor null** (following - where it is null by construction - or detached
+  so deep in virtualized territory that no mounted row is on screen): the
+  absorb is the only stabilizer and stays on.
+
+When the absorb does fire, it asks **one** question: is the resized row above
+the viewport. Overriding the hook replaces TanStack's default guard
 (`item.start < scrollOffset`) outright, so an override that returns one global
 answer opts in every row it measures, including the overscan **below** the
 viewport. Growth the reader cannot see must not move them.
 
-It must **not** also ask "are we detached". It used to, on the reasoning that
-while following the app is heading to the bottom anyway and a correction would
-only fight the stick. It does not fight the stick, and skipping it is what threw
-the reader to the top of the transcript on send.
+It must also stay on **while following**. It used to be skipped there, on the
+reasoning that the app is heading to the bottom anyway and a correction would
+only fight the stick. It does not fight the stick, and skipping it is what
+threw the reader to the top of the transcript on send: the stick writes an
+**absolute** position (`scrollTop = scrollHeight`), so a relative correction
+applied before it is overwritten rather than doubled, and with nothing
+subtracting re-measurement growth back off, the once-per-frame rAF was left
+chasing a document that grew faster than it could catch.
 
-Sending is a bottom request, so it drops the mounted-window pin below, which
-hands a read-back turn to the virtualizer at estimated heights in a single
-commit. `scrollTop` clamps into the collapsed range, and then the virtualizer
-re-measures those rows in overscan-sized batches and grows the document back by
-thousands of pixels, **all of it above the viewport**. The stick-to-bottom rAF
-fires once per frame against whatever the document is at that instant, so with
-nothing subtracting the growth back off it is left chasing a document that grows
-faster than it can catch. Deep history is the bad case, because none of it has
-cached block heights: a reply estimated at 220px measuring 800 is a 580px shove
-per row.
+### The handoff is lossless
 
-Absorbing costs nothing in the following state, and that is why the two compose.
-The stick writes an **absolute** position (`scrollTop = scrollHeight`), so a
-relative correction applied before it is overwritten rather than doubled.
+Rows crossing the mounted/virtualized boundary used to swap their real heights
+for `estimateStreamItemHeight` guesses in a single commit. The document shrank
+by the total estimate error, the browser clamped `scrollTop`, and everything
+downstream of that clamp was compensation. Two of the worst bugs lived there:
+the clamp's scroll event could be misread as the reader scrolling up, detaching
+them mid-stream with no input at all; and the jump-to-bottom button re-entered
+the same collapse on every press via the pin release, undoing itself - the
+button that "does not work".
+
+Now every mounted and live-head row renders inside a plain flex-column wrapper
+(the in-flow twin of the virtual-row wrapper, so both boxes lay out
+identically), and a per-commit layout pass records each wrapper's real height
+into a per-chat cache. The virtualizer's `estimateSize` consults that cache
+before falling back to the guess. A row that was ever on screen is therefore
+handed over at its true height: no shrink, no clamp, nothing to misread and
+nothing to re-absorb. Estimates only remain for history that was **never**
+mounted this session - the older pages of a cold-loaded chat - which is the
+case the absorb rules above exist for.
 
 Scrolling up is what feeds the virtualizer never-measured rows, and their
 estimates undershoot badly: history nobody has mounted has no cached block
@@ -196,20 +228,23 @@ mounted row is below the fold, so `findScrollAnchor` returns `null`.
 
 The mounted/virtualized boundary is separately **pinned** while detached
 (`findMountedWindowStart` in `web-virtualization.ts`). Left free it advances as
-the agent streams, and the turn it hands to the virtualizer collapses from
-measured heights to estimates in one frame, which is the "thrown to the top of the
-chat" failure.
+the agent streams, and nothing already under the reader's eyes may be handed to
+the virtualizer while they are reading it.
 
-While **following**, the boundary's walk-back to a user message is capped at 40
-rows. One agentic turn can hold hundreds of promoted blocks and tool rows without
-a single user message among them, so an uncapped walk anchors on the message that
-opened the turn and keeps the whole turn in the real DOM for as long as it
-streams, which voids the 12-row mounted tail. Past the cap the window settles for
-the nearest boundary inside the turn: any self-contained row, or the first block
-of an assistant bubble group, so a bubble is never cut in half. The cap is safe
-for exactly the reason the pin releases at the bottom, and only there: the
-collapse it causes happens above the viewport, where nobody sees it. Detached,
-the full walk-back stands.
+The walk-back to the turn's opening user message is deliberately **uncapped**.
+A 40-row cap existed while the mounted tail was 12 rows, and it settled for a
+boundary inside a long streaming turn - which advanced the boundary mid-turn,
+row by row, each advance a handoff commit under a reader who was just watching.
+With the full walk, the boundary is frozen for the whole of a turn and moves
+only when a new user message enters, and a send is an explicit bottom request.
+The cost is upstream Paseo's cost: a very long turn stays fully mounted while
+it streams.
+
+The mounted tail (50 rows) and the virtualize-above threshold (100 items) are
+upstream Paseo's numbers, restored after being cut to 12/8/40 for mobile
+streaming cost. The cut parked the virtualizer against the live turn and paid
+for itself in the compensation machinery above; if mobile needs the cost back,
+win it by making rows cheaper, not by shrinking the tail.
 
 ## Native: sustained movement beats a queued re-stick
 
@@ -250,9 +285,10 @@ outranks a drag. That is the user asking for the bottom.
 
 Tests that encode the rules above: `strategy-web.test.tsx` (scrollbar drag
 detaches, clamping does not, the anchor holds a row still, a reader scroll is not
-written back when a commit lands before the scroll event),
-`web-virtualization.test.ts` (a row resized below the fold does not move the
-reader, a row resized above it is absorbed in **both** states, and the re-measure
-that follows a pin release leaves nothing over to push the reader up) and
-`bottom-anchor-controller.test.ts` (drag beats a pending verification, a single
-layout jump does not).
+written back when a commit lands before the scroll event, one older-history
+request per page), `web-virtualization.test.ts` (a row resized below the fold
+does not move the reader, a row resized above it is absorbed in **both**
+follow states, a long single turn stays fully mounted while following, and the
+re-measure that follows a pin release leaves nothing over to push the reader
+up) and `bottom-anchor-controller.test.ts` (drag beats a pending verification,
+a single layout jump does not).

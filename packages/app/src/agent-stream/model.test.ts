@@ -65,7 +65,7 @@ describe("buildAgentStreamRenderModel", () => {
     expect(model.segments.liveHead).toBe(head);
   });
 
-  it("virtualizes a long committed tail on mobile web, with a tighter mounted window", () => {
+  it("virtualizes a long committed tail on mobile web with the same window as desktop", () => {
     const tail: StreamItem[] = [];
     for (let index = 0; index < 60; index += 1) {
       const seed = index * 2;
@@ -92,10 +92,10 @@ describe("buildAgentStreamRenderModel", () => {
     expect(mobile.segments.historyVirtualized.length).toBeGreaterThan(0);
     expect(mobile.segments.historyMounted.length).toBeGreaterThan(0);
     expect(mobile.segments.liveHead.map((item) => item.id)).toEqual(["live-a"]);
-    // A phone mounts strictly less than a desktop viewport does.
-    expect(mobile.segments.historyMounted.length).toBeLessThan(
-      desktop.segments.historyMounted.length,
-    );
+    // The tighter mobile window went with the restored Paseo thresholds: one
+    // mounted-tail size for all of web, and mobile cost is won by making rows
+    // cheaper rather than by parking the virtualizer against the live turn.
+    expect(mobile.segments.historyMounted.length).toBe(desktop.segments.historyMounted.length);
   });
 
   it("never virtualizes on native, where FlatList owns the mounted window", () => {
