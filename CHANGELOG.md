@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.1 - 2026-08-04
+
+### Fixed
+
+- Installing the local brain's Linux runtime could finish successfully and still leave a runtime that failed to start
+- A local brain runtime that can't find a supported GPU now warns instead of silently running on the CPU
+- Fixed the Windows installer sometimes failing to relaunch Otto after installing or updating
+- Fixed the chat transcript no longer auto-scrolling to new messages at some display zoom levels
+- Fixed the chat transcript jumping to the very top while it was still loading earlier history
+
 ## 0.8.0 - 2026-08-03
 
 ### Added
