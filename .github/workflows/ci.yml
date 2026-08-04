@@ -35,7 +35,7 @@ jobs:
       relay: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.relay != 'false' }}
       cli: ${{ steps.filter.outputs.shared != 'false' || steps.filter.outputs.cli != 'false' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -127,7 +127,7 @@ jobs:
       # unrelated npm ci failures when Electron's CDN returns 504.
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - uses: actions/setup-node@v7
         with:
@@ -152,7 +152,7 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - uses: actions/setup-node@v7
         with:
@@ -190,7 +190,7 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - uses: actions/setup-node@v7
         with:
@@ -236,7 +236,7 @@ jobs:
         if: env.RUN_TESTS != 'true'
         run: echo "No server changes detected."
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         if: env.RUN_TESTS == 'true'
         with:
           fetch-depth: 0
@@ -309,7 +309,7 @@ jobs:
         if: env.RUN_TESTS != 'true'
         run: echo "No desktop changes detected."
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         if: env.RUN_TESTS == 'true'
 
       - uses: actions/setup-node@v7
@@ -389,7 +389,7 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - uses: actions/setup-node@v7
         with:
@@ -420,7 +420,7 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - uses: actions/setup-node@v7
         with:
@@ -489,7 +489,7 @@ jobs:
         if: env.RUN_TESTS != 'true'
         run: echo "No Playwright changes detected."
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         if: env.RUN_TESTS == 'true'
 
       - uses: actions/setup-node@v7
@@ -550,7 +550,7 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - uses: actions/setup-node@v7
         with:
@@ -587,7 +587,7 @@ jobs:
         if: env.RUN_TESTS != 'true'
         run: echo "No CLI changes detected."
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         if: env.RUN_TESTS == 'true'
 
       - uses: actions/setup-node@v7

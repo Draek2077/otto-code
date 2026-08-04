@@ -75,7 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           sparse-checkout: scripts
           ref: ${{ env.CHECKOUT_REF }}
@@ -132,7 +132,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
@@ -240,7 +240,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
@@ -331,7 +331,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
@@ -426,7 +426,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ env.CHECKOUT_REF }}
@@ -526,7 +526,7 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           sparse-checkout: |
             package.json
