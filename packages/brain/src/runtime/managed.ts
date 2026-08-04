@@ -19,10 +19,32 @@
  * the names against that tag's asset list; they are not stable across tags.
  *
  *  - Windows assets are `.zip`; macOS and Linux assets are `.tar.gz`.
- *  - **Linux has no CUDA build upstream.** The Linux GPU assets are Vulkan,
- *    ROCm and SYCL only, so the Linux GPU default is Vulkan - it is the one
- *    accelerator that covers NVIDIA, AMD and Intel from a single asset. Do not
- *    "fix" this by pointing a Linux CUDA URL at the release; there isn't one.
+ *  - **Linux has no CUDA *release asset*, and we deliberately do not source one
+ *    elsewhere.** The Linux GPU assets are Vulkan, ROCm and SYCL only, so the
+ *    Linux GPU default is Vulkan - the one accelerator covering NVIDIA, AMD and
+ *    Intel from a single asset. There is a real Linux CUDA build upstream, in
+ *    the `ghcr.io/ggml-org/llama.cpp:server-cuda-b<n>` container images (484 of
+ *    them, and 376 build numbers carry both an image and a release, so a pinned
+ *    version-aligned import is genuinely possible). It was extracted, run and
+ *    benchmarked on 2026-08-04 and then rejected on the numbers:
+ *
+ *      CUDA beats Vulkan by 1.00x-1.04x on an RTX 5090 at every prefill depth
+ *      from 512 to 8192 and at token generation, inside the run-to-run error at
+ *      three of five points, because NVIDIA's Vulkan driver exposes
+ *      NV_coopmat2 and llama.cpp's Vulkan backend uses those tensor cores.
+ *
+ *    Paying for that would mean a 40x download (1.3 GB against 32 MB) and a 14x
+ *    on-disk footprint, assembled from three origins, because `libggml-cuda.so`
+ *    also needs `libcublas`, `libcudart` and `libnccl.so.2` - and NCCL ships in
+ *    neither NVIDIA redistributable. Do not reopen this without a measurement on
+ *    hardware that does *not* report NV_coopmat2, which is the one case where
+ *    the gap could still be real. Full evidence:
+ *    findings/linux-gpu-acceleration/2026-08-04-cuda-vs-vulkan-and-cuda-asset-origins.md
+ *  - **No Linux asset ships `libgomp.so.1`**, which `llama-server` hard-links,
+ *    so a host without `libgomp1` installs a runtime that then exits 127 on
+ *    spawn. Windows bundles its OpenMP runtime (`libomp140.x86_64.dll`); Linux
+ *    bundles nothing. `buildEnv` cannot paper over it - the library is not in
+ *    the runtime dir that `LD_LIBRARY_PATH` already points at.
  *  - Windows CUDA needs a *second* archive (`cudart-llama-bin-win-cuda-*.zip`)
  *    extracted over the first, and that asset's name carries no build tag.
  *  - macOS arm64 is Metal-accelerated in the stock `macos-arm64` asset; there is
@@ -36,6 +58,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 import type { Runtime } from "../types.js";
+import { buildEnv } from "./args.js";
 
 /** The accelerator a managed runtime is built against. */
 export type RuntimeVariant = "cuda" | "metal" | "vulkan" | "cpu";
@@ -153,7 +176,9 @@ function assetNames(
     if (!slice) return null;
     if (variant === "vulkan") return [bin(`ubuntu-vulkan-${slice}`, "tar.gz")];
     if (variant === "cpu") return [bin(`ubuntu-${slice}`, "tar.gz")];
-    return null; // no upstream Linux CUDA/Metal asset
+    // No Linux CUDA/Metal *release* asset. A CUDA container image exists and was
+    // measured at parity with Vulkan; see the header before reopening this.
+    return null;
   }
 
   return null;
@@ -303,6 +328,210 @@ function run(command: string, args: string[]): Promise<void> {
   });
 }
 
+/** Spawn and collect the outcome instead of throwing, so callers can classify it. */
+function runCapture(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { windowsHide: true, env });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
+    child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+    child.on("error", (err) => resolve({ code: null, stdout, stderr: `${stderr}${err}` }));
+    child.on("close", (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
+/**
+ * Distro packages providing a library llama.cpp links but ships on no asset.
+ * Keyed by soname because that is the string the dynamic loader prints.
+ */
+const SYSTEM_LIBRARY_PACKAGES: Record<string, string> = {
+  "libgomp.so.1": "libgomp1 (Debian/Ubuntu), libgomp (Fedora/RHEL) or gcc-libs (Arch)",
+};
+
+/**
+ * Where to fetch the one library upstream leaves unmet on Linux.
+ *
+ * Debian's pool rather than Ubuntu's for two measured reasons: bookworm's
+ * `libgomp1` carries a `GLIBC_2.34` floor, which is *exactly* llama-server's own
+ * floor, so bundling it cannot narrow the set of systems the runtime already ran
+ * on; and its payload is `data.tar.xz`, which `tar` reads with the near-universal
+ * `xz`, where Ubuntu 24.04+ moved to zstd, which a minimal image does not have.
+ */
+const LIBGOMP_PACKAGE: Record<string, string> = {
+  x64: "https://deb.debian.org/debian/pool/main/g/gcc-12/libgomp1_12.2.0-14+deb12u1_amd64.deb",
+  arm64: "https://deb.debian.org/debian/pool/main/g/gcc-12/libgomp1_12.2.0-14+deb12u1_arm64.deb",
+};
+
+/**
+ * Read one member out of a Unix `ar` archive, which is the container format of a
+ * `.deb`. Parsed here rather than shelled out to `ar`, which is binutils and not
+ * present on a minimal image - the exact kind of host that needs this repair.
+ *
+ * Layout: an 8-byte magic, then per member a fixed 60-byte ASCII header whose
+ * name is bytes 0-15 and size bytes 48-57, followed by the payload padded to an
+ * even offset.
+ */
+function readArMember(archive: Buffer, member: string): Buffer | null {
+  if (archive.subarray(0, 8).toString("ascii") !== "!<arch>\n") return null;
+  let offset = 8;
+  while (offset + 60 <= archive.length) {
+    const header = archive.subarray(offset, offset + 60);
+    const name = header.subarray(0, 16).toString("ascii").trim().replace(/\/$/, "");
+    const size = Number.parseInt(header.subarray(48, 58).toString("ascii").trim(), 10);
+    if (!Number.isInteger(size) || size < 0) return null;
+    const start = offset + 60;
+    if (name === member) return archive.subarray(start, start + size);
+    offset = start + size + (size % 2);
+  }
+  return null;
+}
+
+/**
+ * Try to satisfy a missing system library by placing it beside the binary, where
+ * `buildEnv`'s loader path already looks.
+ *
+ * Only ever runs *after* the runtime has already failed to start, so it cannot
+ * regress a host that works: a system with its own `libgomp` never reaches here.
+ * Returns false on any failure, which leaves the caller reporting the actionable
+ * error it would have reported anyway. Best effort, never fatal in itself.
+ */
+async function repairMissingLibrary(
+  soname: string,
+  destDir: string,
+  arch: string,
+): Promise<boolean> {
+  if (soname !== "libgomp.so.1") return false;
+  const url = LIBGOMP_PACKAGE[arch === "x64" ? "x64" : arch === "arm64" ? "arm64" : ""];
+  if (!url) return false;
+
+  const scratch = path.join(destDir, ".libgomp-repair");
+  try {
+    fs.mkdirSync(scratch, { recursive: true });
+    const debPath = path.join(scratch, "lib.deb");
+    await downloadFile(url, debPath);
+
+    const payload = readArMember(fs.readFileSync(debPath), "data.tar.xz");
+    if (!payload) return false;
+    const tarPath = path.join(scratch, "data.tar.xz");
+    fs.writeFileSync(tarPath, payload);
+    await extractArchive(tarPath, scratch, "linux");
+
+    // The package ships `libgomp.so.1` as a symlink to the real `libgomp.so.1.0.0`;
+    // copy the target under the soname so no symlink support is needed.
+    const real = findFile(scratch, "libgomp.so.1.0.0");
+    if (!real) return false;
+    fs.copyFileSync(real, path.join(destDir, soname));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The actionable message for a dynamic-loader failure, or null when the output
+ * is not one. Pure, so the classification is testable without spawning.
+ *
+ * Returning null for an unrecognised failure is deliberate: a future llama.cpp
+ * that exits non-zero from `--version` must not turn a perfectly usable install
+ * into a hard failure. Only a positively identified missing library throws.
+ */
+export function missingLibraryFrom(stderr: string): string | null {
+  const missing =
+    // glibc's loader, and macOS dyld.
+    /error while loading shared libraries:\s*([^\s:]+)/.exec(stderr) ??
+    /Library not loaded:\s*(\S+)/.exec(stderr);
+  return missing ? missing[1] : null;
+}
+
+export function describeLoaderFailure(
+  stderr: string,
+  runtimeDir: string,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  const lib = missingLibraryFrom(stderr);
+  if (!lib) return null;
+
+  const hint = SYSTEM_LIBRARY_PACKAGES[lib.replace(/^.*[/\\]/, "")];
+  return (
+    `the runtime installed but cannot start: ${lib} is missing from this system. ` +
+    `llama.cpp links it and ships it on no ${platform} asset, so it has to come from the OS` +
+    (hint ? ` - install ${hint}` : "") +
+    `. The runtime is at ${runtimeDir}; re-run once the library is present.`
+  );
+}
+
+/**
+ * Run the freshly installed binary once, so a missing *system* library surfaces
+ * at install time naming the library, instead of hours later as an opaque
+ * supervisor crash.
+ *
+ * This is not hypothetical: no upstream Linux asset ships `libgomp.so.1`, which
+ * `llama-server` hard-links, so on a host without `libgomp1` the download and
+ * extract both succeed and the binary then dies with exit 127. `buildEnv` cannot
+ * fix that - the library is not in the runtime dir LD_LIBRARY_PATH points at.
+ */
+export async function verifyRuntimeExecutable(
+  runtime: Runtime,
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): Promise<void> {
+  const env = buildEnv(runtime, process.env, platform);
+  const first = await runCapture(runtime.exe, ["--version"], env);
+  if (first.code === 0) return;
+
+  const problem = describeLoaderFailure(first.stderr, runtime.dir, platform);
+  if (!problem) return;
+
+  // Repair before giving up. `libgomp.so.1` is missing from every upstream Linux
+  // asset, so on a minimal image this is the *expected* first outcome, not an
+  // exceptional one, and telling the user to go install a package is a worse
+  // answer than placing the library where the loader already looks.
+  const soname = missingLibraryFrom(first.stderr);
+  if (platform === "linux" && soname && (await repairMissingLibrary(soname, runtime.dir, arch))) {
+    const retry = await runCapture(runtime.exe, ["--version"], env);
+    if (retry.code === 0) return;
+    throw new Error(describeLoaderFailure(retry.stderr, runtime.dir, platform) ?? problem);
+  }
+
+  throw new Error(problem);
+}
+
+/**
+ * Device lines out of `--list-devices` stdout, which is a header followed by one
+ * indented line per device, or the literal `(none)`. Pure half of
+ * `listRuntimeDevices`.
+ */
+export function parseDeviceList(stdout: string): string[] {
+  return stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^available devices:/i.test(line) && line !== "(none)");
+}
+
+/**
+ * Devices the runtime's backends actually found, one line each. Empty means the
+ * accelerator resolved to nothing and inference would silently fall back to CPU,
+ * which is a real configuration: on WSL2 there is no NVIDIA Vulkan ICD, so a
+ * Vulkan runtime on an NVIDIA machine reports no device and runs ~41x slower at
+ * prefill without saying so. Never throws; a probe failure reads as "unknown".
+ */
+export async function listRuntimeDevices(
+  runtime: Runtime,
+  platform: NodeJS.Platform = process.platform,
+): Promise<string[]> {
+  const env = buildEnv(runtime, process.env, platform);
+  const { code, stdout } = await runCapture(runtime.exe, ["--list-devices"], env);
+  if (code !== 0) return [];
+  return parseDeviceList(stdout);
+}
+
 export async function extractArchive(
   archivePath: string,
   destDir: string,
@@ -330,7 +559,9 @@ export async function extractArchive(
     await run("tar", ["-xf", archivePath, "-C", destDir]);
     return;
   }
-  if (/\.(tar\.gz|tgz|tar)$/i.test(archivePath)) {
+  // `.tar.xz` is here for the .deb payload the Linux libgomp repair unpacks; tar
+  // picks the decompressor itself, so this stays within the OS built-ins rule.
+  if (/\.(tar\.gz|tgz|tar\.xz|tar)$/i.test(archivePath)) {
     await run("tar", ["-xf", archivePath, "-C", destDir]);
     return;
   }
@@ -363,9 +594,8 @@ export async function installManagedRuntime(
     // them; without +x the supervisor's spawn fails with a bare EACCES.
     fs.chmodSync(exe, 0o755);
   }
-  onProgress?.({ phase: "done" });
 
-  return {
+  const runtime: Runtime = {
     label: spec.label,
     version: spec.version,
     dir: path.dirname(exe),
@@ -373,4 +603,11 @@ export async function installManagedRuntime(
     vendorDir: null,
     source: "managed",
   };
+
+  // Before reporting success. An install that cannot exec is not an install, and
+  // the loader error names the cause far better than the later spawn failure does.
+  await verifyRuntimeExecutable(runtime, platform);
+
+  onProgress?.({ phase: "done" });
+  return runtime;
 }

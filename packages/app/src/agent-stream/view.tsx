@@ -419,7 +419,11 @@ function useResolvedHistoryPagination(input: {
     isLoadingOlder: override?.isLoadingOlder ?? own.isLoadingOlder,
     hasOlder: override?.hasOlder ?? own.hasOlder,
     loadOlder: override?.onLoadOlder ?? own.loadOlder,
-    olderHistoryProgressKey: override?.progressKey ?? null,
+    // The built-in hook has always produced a progress key; only the override
+    // branch was wired up, so an ordinary chat reported null. Pagination reads
+    // this to ask for a page at most once per page delivered, and a null key
+    // means "no page to dedupe against", which stops it dead.
+    olderHistoryProgressKey: override?.progressKey ?? own.progressKey,
   };
 }
 
@@ -1293,6 +1297,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                   agentId,
                   segments: renderModel.segments,
                   historyRowRevision,
+                  // Web only. The live-head rows memoize on array identity, and
+                  // opening a collapsed tool-call run changes neither the array
+                  // nor any item in it. Native repaints from historyRowRevision
+                  // above instead.
+                  liveHeadRowRevision: expandedToolCallGroupIds,
                   boundary,
                   renderers,
                   listEmptyComponent,

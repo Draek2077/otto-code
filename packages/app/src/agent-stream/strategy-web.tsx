@@ -1,5 +1,4 @@
 import React, {
-  Fragment,
   type CSSProperties,
   useCallback,
   useEffect,
@@ -13,6 +12,12 @@ import { measureElement as measureVirtualElement, useVirtualizer } from "@tansta
 import { estimateStreamItemHeight, shouldAbsorbVirtualRowResize } from "./web-virtualization";
 import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./strategy";
 import { createStreamStrategy } from "./strategy";
+import {
+  createHistoryStartPaginationState,
+  evaluateHistoryStartPagination,
+  HISTORY_START_THRESHOLD_PX,
+  rearmHistoryStartPagination,
+} from "./history-start-pagination";
 
 interface CreateWebStreamStrategyInput {
   isMobileBreakpoint: boolean;
@@ -24,7 +29,15 @@ const WEB_BOTTOM_SETTLE_TIMEOUT_MS = 200;
 const USER_SCROLL_DELTA_EPSILON = 1;
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 64;
 const AUTO_SCROLL_RESUME_THRESHOLD_PX = 1;
-const HISTORY_START_THRESHOLD_PX = 96;
+// Overscroll is a real state (elastic scrolling, `overscroll-behavior: contain`)
+// and the stick refuses to fight it. But `scrollTop` is fractional while
+// `clientHeight`/`scrollHeight` are integers, so at any display scale or browser
+// zoom that is not 100% the distance from the bottom sits permanently a fraction
+// below zero. Read literally, that made `scheduleStickToBottom` and
+// `scrollMessagesToBottom` no-ops for the whole session: the transcript stopped
+// following, and the jump-to-bottom button did nothing on the first press.
+// Windows at 125%/150% display scaling hits this every time.
+const BOTTOM_OVERSCROLL_TOLERANCE_PX = 2;
 const SCROLL_ANCHOR_DRIFT_EPSILON_PX = 0.5;
 // Marks the virtualizer's block so the scroll anchor skips it: its rows are
 // absolutely positioned off a running total that moves as they are measured, and
@@ -33,6 +46,7 @@ const SCROLL_ANCHOR_DRIFT_EPSILON_PX = 0.5;
 const VIRTUALIZED_BLOCK_ATTRIBUTE = "data-stream-virtualized-block";
 import { useWebElementScrollbar } from "@/components/use-web-scrollbar";
 import { useHasFinePointer } from "@/hooks/use-fine-pointer";
+import { useStableEvent } from "@/hooks/use-stable-event";
 
 const historyStartSlotStyle: CSSProperties = {
   display: "flex",
@@ -41,6 +55,16 @@ const historyStartSlotStyle: CSSProperties = {
   minHeight: 32,
   paddingTop: 4,
   paddingBottom: 8,
+};
+
+// Mirrors the virtual-row wrapper (flex column, full width) minus the absolute
+// positioning, so a row's box - including alignSelf alignment and vertical
+// margins - lays out identically on both sides of the mounted/virtualized
+// boundary, and a height measured here is the height the virtualizer will see.
+const mountedRowWrapperStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  width: "100%",
 };
 
 /**
@@ -149,7 +173,7 @@ function getScrollContainerDistanceFromBottom(
 function isScrollContainerOverscrolledPastBottom(
   scrollContainer: Pick<HTMLElement, "scrollTop" | "clientHeight" | "scrollHeight">,
 ): boolean {
-  return getScrollContainerDistanceFromBottom(scrollContainer) < 0;
+  return getScrollContainerDistanceFromBottom(scrollContainer) < -BOTTOM_OVERSCROLL_TOLERANCE_PX;
 }
 
 function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: boolean }) {
@@ -165,6 +189,8 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     onNearHistoryStart,
     isLoadingOlderHistory,
     hasOlderHistory,
+    olderHistoryProgressKey,
+    liveHeadRowRevision,
     scrollEnabled,
     isMobileBreakpoint,
   } = props;
@@ -193,6 +219,24 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   const lastKnownScrollTopRef = useRef(0);
   const lastScrollHeightRef = useRef(0);
   const lastClientHeightRef = useRef(0);
+  /**
+   * Real heights for every row that is (or ever was) mounted, keyed by item id,
+   * refreshed each commit. `estimateSize` consults this before falling back to
+   * `estimateStreamItemHeight`, which makes the mounted-to-virtualized handoff
+   * **lossless**: when the boundary advances or the pin releases, the rows the
+   * virtualizer takes over keep the exact heights they had in the real DOM, so
+   * the document does not shrink, `scrollTop` is not clamped, and there is no
+   * estimate-to-measured growth to re-absorb afterwards.
+   *
+   * That collapse was the root of the worst family of bugs here: the clamp's
+   * scroll event could be misread as the reader scrolling up (detaching them to
+   * the top of a live chat with no input), and the jump-to-bottom button
+   * re-triggered the same collapse on every press via the pin release, undoing
+   * itself. Eliminating the height loss removes the cause rather than
+   * compensating for the effect.
+   */
+  const measuredRowHeightsRef = useRef(new Map<string, number>());
+  const mountedRowElementsRef = useRef(new Map<string, HTMLElement>());
   // The scrollTop the app itself just wrote. The scroll event it produces is the
   // app's own echo, not the reader moving the view, and must not be read as
   // intent in either direction.
@@ -203,6 +247,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   const pendingAutoScrollTimeoutRef = useRef<number | null>(null);
   const pendingVirtualRowMeasureFramesRef = useRef(new Map<Element, number>());
   const historyStartReadyRef = useRef(false);
+  const historyStartPaginationStateRef = useRef(createHistoryStartPaginationState());
   const lastActivationKeyRef = useRef<string | null>(null);
   // Overlay scrollbar follows the pointer capability, not the breakpoint: a
   // narrow desktop window still has a mouse, a full-width phone browser doesn't.
@@ -232,7 +277,10 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     getItemKey: (index: number) => segments.historyVirtualized[index]?.id ?? index,
     estimateSize: (index: number) => {
       const row = segments.historyVirtualized[index];
-      return row ? estimateStreamItemHeight(row) : 120;
+      if (!row) {
+        return 120;
+      }
+      return measuredRowHeightsRef.current.get(row.id) ?? estimateStreamItemHeight(row);
     },
     measureElement: measureVirtualElement,
     useAnimationFrameWithResizeObserver: true,
@@ -247,6 +295,17 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       const scrollContainer = scrollContainerRef.current;
       const virtualizedBlock = virtualizedBlockRef.current;
       if (!scrollContainer || !virtualizedBlock) {
+        return false;
+      }
+      // One owner per correction. While detached with a live anchor, the anchor
+      // measures the anchored row's real position after every commit and cancels
+      // whatever the virtualized block above it did - so absorbing here too
+      // would count the same growth twice, and the double-write walked the
+      // reader to the top of the transcript one measurement batch at a time.
+      // The absorb stays on when the anchor cannot see (following, where the
+      // anchor is always null, and detached deep in virtualized territory where
+      // no mounted row is on screen).
+      if (!followOutputRef.current && scrollAnchorRef.current !== null) {
         return false;
       }
       return shouldAbsorbVirtualRowResize({
@@ -319,6 +378,46 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     onNearBottomChange(followOutputRef.current && isScrollContainerNearBottom(scrollContainer));
   }, [onNearBottomChange]);
 
+  /**
+   * Ask for the previous page of history, at most once per page that arrives.
+   *
+   * This used to be a bare `scrollTop <= 96` test inside the scroll handler, so
+   * it fired on *every* scroll event in that band. Each request splices content
+   * in above the reader, and near the top of a transcript there is nothing to
+   * hold them: the anchor skips the virtualizer's block and every mounted row is
+   * below the fold, so `findScrollAnchor` returns null by design. The result was
+   * a burst of pages and a reader thrown to the top.
+   *
+   * `olderHistoryProgressKey` changes once per page delivered, which is what
+   * makes "once per page" expressible at all: the request is recorded against
+   * the key it was made from and is not repeated until a new page moves it.
+   *
+   * Requesting data is not a scroll write, so this sits outside the rule in
+   * docs/chat-scrolling.md. The position is untouched either way, and follow /
+   * detach state is read but never changed.
+   */
+  const evaluateHistoryStart = useStableEvent(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) {
+      return;
+    }
+    // While the app is still driving itself to the bottom, its scrollTop is in
+    // transit and means nothing about where the reader is.
+    const bottomAnchorSettled =
+      !followOutputRef.current || isScrollContainerNearBottom(scrollContainer);
+    const result = evaluateHistoryStartPagination(historyStartPaginationStateRef.current, {
+      distanceFromHistoryStart: scrollContainer.scrollTop,
+      hasOlderHistory,
+      isLoadingOlderHistory,
+      isReady: historyStartReadyRef.current && bottomAnchorSettled,
+      progressKey: olderHistoryProgressKey,
+    });
+    historyStartPaginationStateRef.current = result.state;
+    if (result.shouldLoad) {
+      onNearHistoryStart();
+    }
+  });
+
   const noteProgrammaticScroll = useCallback((scrollContainer: HTMLElement) => {
     programmaticScrollTopRef.current = scrollContainer.scrollTop;
     lastKnownScrollTopRef.current = scrollContainer.scrollTop;
@@ -385,8 +484,9 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       scrollElementToBottom(scrollContainer, behavior);
       noteProgrammaticScroll(scrollContainer);
       updateScrollMetrics();
+      evaluateHistoryStart();
     },
-    [noteProgrammaticScroll, updateScrollMetrics],
+    [evaluateHistoryStart, noteProgrammaticScroll, updateScrollMetrics],
   );
 
   const scheduleStickToBottom = useCallback(() => {
@@ -443,7 +543,36 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       Math.max(0, currentClientHeight - previousClientHeight);
     const delta = currentScrollTop - previousScrollTop;
     const isInvoluntaryDrop = delta < 0 && -delta <= maxInvoluntaryDrop + USER_SCROLL_DELTA_EPSILON;
-    const isUserScroll = !isProgrammatic && !isInvoluntaryDrop;
+    // The bound above compares against the *last recorded* metrics, and scroll
+    // events coalesce: several writes and clamps can land between two events,
+    // leaving the recorded scrollHeight stale and the drop looking larger than
+    // any single shrink allows. The landing state disambiguates what the deltas
+    // cannot: a downward move that ends a shrink at the exact bottom of the
+    // document is the browser clamping to a smaller range - a reader scrolling
+    // up ends *away* from the bottom, or the document did not shrink.
+    const isShrinkClampAtBottom =
+      delta < 0 &&
+      currentScrollHeight < previousScrollHeight &&
+      isScrollContainerAtBottom(scrollContainer);
+    const isUserScroll = !isProgrammatic && !isInvoluntaryDrop && !isShrinkClampAtBottom;
+
+    // Re-arm on the way *into* the threshold band, not on every upward event
+    // inside it. Paseo re-arms from `wheel`, which both misses the overlay
+    // scrollbar (a separate element that fires no wheel or touch) and re-fires
+    // per tick, leaving only the in-flight-load guard between it and the request
+    // burst this whole state machine exists to stop. Above the band there is
+    // nothing to request, so clearing there costs nothing; inside it, the
+    // progress key is what decides, and one page arrives per request.
+    if (
+      isUserScroll &&
+      delta < -USER_SCROLL_DELTA_EPSILON &&
+      !isLoadingOlderHistory &&
+      currentScrollTop > HISTORY_START_THRESHOLD_PX
+    ) {
+      historyStartPaginationStateRef.current = rearmHistoryStartPagination(
+        historyStartPaginationStateRef.current,
+      );
+    }
 
     if (followOutputRef.current) {
       // Whatever moved the view up (wheel, touch, the overlay scrollbar thumb,
@@ -466,62 +595,41 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     }
 
     updateScrollMetrics();
-    if (
-      historyStartReadyRef.current &&
-      hasOlderHistory &&
-      currentScrollTop <= HISTORY_START_THRESHOLD_PX
-    ) {
-      onNearHistoryStart();
-    }
+    evaluateHistoryStart();
   }, [
     cancelPendingStickToBottom,
     captureScrollAnchor,
-    hasOlderHistory,
-    onNearHistoryStart,
+    evaluateHistoryStart,
+    isLoadingOlderHistory,
     updateScrollMetrics,
   ]);
 
   useEffect(() => {
+    historyStartPaginationStateRef.current = createHistoryStartPaginationState();
     const frame = window.requestAnimationFrame(() => {
       historyStartReadyRef.current = true;
+      evaluateHistoryStart();
     });
     return () => {
       window.cancelAnimationFrame(frame);
       historyStartReadyRef.current = false;
     };
-  }, [props.agentId]);
+  }, [evaluateHistoryStart, props.agentId]);
 
-  // `onNearHistoryStart` above is reachable only from the scroll handler, and a
-  // transcript shorter than its viewport never produces a scroll event. A first
-  // page that does not fill the window - a tall viewport, a short page, a
-  // collapsed run of turns - therefore leaves older history unrequested with no
-  // scrollbar to ask for it, and the reader sees a conversation that starts in
-  // the middle of itself.
-  //
-  // Requesting data is not a scroll write, so this sits outside the rule in
-  // docs/chat-scrolling.md: the position is untouched either way, and follow /
-  // detach state is not consulted or changed.
-  const requestOlderHistoryWhenUnfilled = useCallback(() => {
-    const scrollContainer = scrollContainerRef.current;
-    if (
-      !scrollContainer ||
-      !historyStartReadyRef.current ||
-      !hasOlderHistory ||
-      isLoadingOlderHistory ||
-      scrollContainer.scrollHeight > scrollContainer.clientHeight
-    ) {
-      return;
-    }
-    onNearHistoryStart();
-  }, [hasOlderHistory, isLoadingOlderHistory, onNearHistoryStart]);
-
-  // Re-checked after each page lands: pages are small, so several may be needed
-  // before the content outgrows a tall viewport. `hasOlderHistory` going false
-  // ends it, and `isLoadingOlderHistory` keeps requests from overlapping.
+  // A transcript shorter than its viewport never produces a scroll event, so a
+  // first page that does not fill the window - a tall viewport, a short page, a
+  // collapsed run of turns - would otherwise leave older history unrequested
+  // with no scrollbar to ask for it, and the reader sees a conversation that
+  // starts in the middle of itself. Re-evaluated on every content change:
+  // `scrollTop` is 0 in that state, which is inside the threshold, and the
+  // progress key stops it from asking twice for the same page.
   useEffect(() => {
-    requestOlderHistoryWhenUnfilled();
+    evaluateHistoryStart();
   }, [
-    requestOlderHistoryWhenUnfilled,
+    evaluateHistoryStart,
+    hasOlderHistory,
+    isLoadingOlderHistory,
+    olderHistoryProgressKey,
     segments.historyMounted.length,
     segments.historyVirtualized.length,
     segments.liveHead.length,
@@ -606,7 +714,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       // A window growing taller can un-fill a transcript that used to overflow,
       // which is the other way to end up with no scroll event and unrequested
       // history.
-      requestOlderHistoryWhenUnfilled();
+      evaluateHistoryStart();
       if (!followOutputRef.current) {
         // A bubble growing as its markdown settles, an image finally loading, the
         // mobile keyboard resizing the viewport: none of it may move the reader.
@@ -624,12 +732,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     return () => {
       observer.disconnect();
     };
-  }, [
-    requestOlderHistoryWhenUnfilled,
-    restoreScrollAnchor,
-    scheduleStickToBottom,
-    updateScrollMetrics,
-  ]);
+  }, [evaluateHistoryStart, restoreScrollAnchor, scheduleStickToBottom, updateScrollMetrics]);
 
   // After every commit, before paint. Whatever that render did to the document
   // above the anchored row (a run of actions folding into a group, a group
@@ -637,7 +740,20 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   // estimate for its measured height) is corrected out before the reader can
   // see it move. Deliberately dependency-free: the trigger is "the DOM changed",
   // not any particular prop.
+  //
+  // The height cache refreshes in the same pass: layout is final at this point,
+  // so the wrapper rects are the truth the virtualizer must reproduce when
+  // these rows are handed over.
   useLayoutEffect(() => {
+    for (const [id, element] of mountedRowElementsRef.current) {
+      if (!element.isConnected) {
+        continue;
+      }
+      const height = element.getBoundingClientRect().height;
+      if (height > 0) {
+        measuredRowHeightsRef.current.set(id, height);
+      }
+    }
     restoreScrollAnchor();
   });
 
@@ -758,31 +874,66 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     }),
     [],
   );
+  // Rows are wrapped in a plain flex-column div (the in-flow twin of the
+  // virtual-row wrapper) so each one has a DOM handle to measure into the
+  // height cache. The element map drops an entry when its row unmounts; the
+  // *height* deliberately survives unmounting - a row leaving the mounted
+  // window is exactly the moment its cached height starts mattering.
+  const registerMountedRowElement = useCallback((id: string, node: HTMLElement | null) => {
+    if (node) {
+      mountedRowElementsRef.current.set(id, node);
+    } else {
+      mountedRowElementsRef.current.delete(id);
+    }
+  }, []);
   const mountedHistoryRows = useMemo(() => {
     return segments.historyMounted.map((item, index) => (
-      <Fragment key={item.id}>
+      <div
+        key={item.id}
+        style={mountedRowWrapperStyle}
+        ref={(node) => registerMountedRowElement(item.id, node)}
+      >
         {renderHistoryMountedRow(item, index, segments.historyMounted)}
-      </Fragment>
+      </div>
     ));
-  }, [renderHistoryMountedRow, segments.historyMounted]);
+  }, [registerMountedRowElement, renderHistoryMountedRow, segments.historyMounted]);
+  // `liveHeadRowRevision` carries the set of tool-call groups the reader has
+  // opened. Expanding one changes no item and no array identity, so without it
+  // in the dependency list this memo returns the cached rows and the group does
+  // not open until an unrelated commit happens to invalidate it - at which point
+  // the height changes under a reader who asked for it several seconds ago.
   const liveHeadRows = useMemo(() => {
+    void liveHeadRowRevision;
     return segments.liveHead.map((item, index) => (
-      <Fragment key={item.id}>{renderLiveHeadRow(item, index, segments.liveHead)}</Fragment>
+      <div
+        key={item.id}
+        style={mountedRowWrapperStyle}
+        ref={(node) => registerMountedRowElement(item.id, node)}
+      >
+        {renderLiveHeadRow(item, index, segments.liveHead)}
+      </div>
     ));
-  }, [renderLiveHeadRow, segments.liveHead]);
+  }, [liveHeadRowRevision, registerMountedRowElement, renderLiveHeadRow, segments.liveHead]);
   const liveAuxiliary = useMemo(() => {
     return renderLiveAuxiliary();
   }, [renderLiveAuxiliary]);
+  // Reserved while there is anything left to load, not just while a load is in
+  // flight. Rendering it only during the fetch toggled ~44px in and out at the
+  // very top of the content on every page, which is height churn above the
+  // reader in the one region where no anchor holds them.
   const historyStartSlot = useMemo(() => {
-    if (!isLoadingOlderHistory) {
+    if (!hasOlderHistory && !isLoadingOlderHistory) {
       return null;
     }
     return (
-      <div style={historyStartSlotStyle} data-testid="load-older-history-spinner">
-        <ActivityIndicator size="small" />
+      <div
+        style={historyStartSlotStyle}
+        data-testid={isLoadingOlderHistory ? "load-older-history-spinner" : undefined}
+      >
+        {isLoadingOlderHistory ? <ActivityIndicator size="small" /> : null}
       </div>
     );
-  }, [isLoadingOlderHistory]);
+  }, [hasOlderHistory, isLoadingOlderHistory]);
   const shouldRenderEmpty =
     !boundary.hasMountedHistory &&
     !boundary.hasVirtualizedHistory &&

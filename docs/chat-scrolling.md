@@ -57,6 +57,44 @@ exist only to cancel a queued stick on the same frame a gesture starts, so it
 cannot land in the gap before the scroll event arrives. They no longer decide
 anything.
 
+### Overscroll needs a tolerance, and it is not cosmetic
+
+The stick refuses to fight a container that is overscrolled past its own bottom
+(elastic scrolling, `overscroll-behavior: contain`). That test needs
+`BOTTOM_OVERSCROLL_TOLERANCE_PX`, because `scrollTop` is fractional while
+`clientHeight` and `scrollHeight` are integers: at any display scale or browser
+zoom that is not 100%, the distance from the bottom sits permanently a fraction
+below zero. Read literally, both `scheduleStickToBottom` and
+`scrollMessagesToBottom` become no-ops for the whole session. The transcript
+stops following, and the jump-to-bottom button does nothing on the first press
+and appears to work on the second. Windows at 125% or 150% display scaling hits
+this every time, which is why it read as "scrolling is broken" rather than as a
+zoom bug.
+
+### Asking for older history is once per page, not once per scroll event
+
+`history-start-pagination.ts` is a state machine, and the reason it is one is
+that the naive version fires on **every** scroll event inside the 96px band.
+Each request splices a page in above the reader, and near the top of a
+transcript nothing holds them: the anchor skips the virtualized block and every
+mounted row is below the fold, so `findScrollAnchor` returns `null` **by
+design**. A burst of pages there is the "thrown to the very top" report.
+
+The dedupe key is `olderHistoryProgressKey`, which changes once per page
+delivered. A null key means "no page to dedupe against" and the machine refuses
+to load at all, so the key must be wired from the built-in hook and not only
+from the `historyPagination` override.
+
+Re-arming happens on a user scroll **into** the band from above, not on every
+upward event inside it. Deciding it from the classified scroll rather than from
+`wheel` follows the rule above (the overlay scrollbar fires no wheel event) and
+keeps the in-flight-load guard from being the only thing standing between the
+machine and the burst it exists to prevent.
+
+The same machine covers a first page that does not fill the viewport, where no
+scroll event is ever produced: `scrollTop` is 0, which is inside the band, and
+the progress key stops it asking twice.
+
 Near-bottom is reported to the view as **"the app is following"**, not
 "`scrollTop` happens to be within 64px of the end". A reader who nudged the view
 up ten pixels is reading: the jump-to-bottom button appears and the
@@ -207,6 +245,7 @@ outranks a drag. That is the user asking for the bottom.
 | `agent-stream/bottom-anchor-controller.ts` | The native sticky/detached state machine and its post-layout verification       |
 | `agent-stream/strategy-native.tsx`         | The inverted FlatList, keyboard settling, programmatic-scroll event budget      |
 | `agent-stream/web-virtualization.ts`       | The mounted/virtualized split, the pin that freezes it, and the resize guard    |
+| `agent-stream/history-start-pagination.ts` | One older-history request per page delivered, and when it re-arms               |
 | `agent-stream/view.tsx`                    | Owns `isNearBottom`, the pin state, the jump-to-bottom button                   |
 
 Tests that encode the rules above: `strategy-web.test.tsx` (scrollbar drag

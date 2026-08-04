@@ -7,7 +7,10 @@ import path from "node:path";
 import {
   DEFAULT_LLAMA_BUILD,
   defaultRuntimeSpec,
+  describeLoaderFailure,
   listManagedRuntimes,
+  missingLibraryFrom,
+  parseDeviceList,
   resolveRuntimeVariant,
   serverExeName,
   supportedVariants,
@@ -48,7 +51,11 @@ test("macOS x64 is CPU-only", () => {
   assert.deepEqual(spec.assets, [`${BASE}/llama-${DEFAULT_LLAMA_BUILD}-bin-macos-x64.tar.gz`]);
 });
 
-test("linux GPU installs Vulkan, because upstream ships no Linux CUDA asset", () => {
+// Vulkan is the Linux GPU default by measurement, not by absence: a CUDA container
+// image exists upstream and benchmarked at 1.00x-1.04x of Vulkan on an RTX 5090 for
+// 40x the download. `assetNames` must keep returning null for linux/cuda so the CLI
+// reports it as unsupported rather than 404ing mid-download. See the managed.ts header.
+test("linux GPU installs Vulkan, and cuda stays unavailable there", () => {
   const spec = defaultRuntimeSpec(null, { platform: "linux", arch: "x64", hasNvidiaGpu: true });
   assert.equal(spec.variant, "vulkan");
   assert.deepEqual(spec.assets, [
@@ -136,6 +143,59 @@ test("buildEnv keeps the vendor dir ahead of the inherited path", () => {
     buildEnv(runtime, { PATH: "C:\\Windows" }, "win32").PATH,
     "C:\\rt;C:\\vendor;C:\\Windows",
   );
+});
+
+// Verbatim stderr from llama-b10236-bin-ubuntu-x64 on a stock Ubuntu 24.04 with
+// no libgomp1: the archive extracts, then the binary exits 127. No upstream Linux
+// asset ships libgomp, so this is the default outcome on a clean host.
+const MISSING_LIBGOMP =
+  "./llama-server: error while loading shared libraries: libgomp.so.1: " +
+  "cannot open shared object file: No such file or directory\n";
+
+test("a missing system library is reported with the package that provides it", () => {
+  const message = describeLoaderFailure(MISSING_LIBGOMP, "/rt", "linux");
+  assert.ok(message, "the loader failure must be recognised");
+  assert.match(message, /libgomp\.so\.1 is missing/);
+  assert.match(message, /libgomp1 \(Debian\/Ubuntu\)/, "names the package to install");
+  assert.match(message, /\/rt/, "points at the runtime it just installed");
+});
+
+test("macOS dyld phrasing is recognised too", () => {
+  const message = describeLoaderFailure(
+    "dyld[512]: Library not loaded: @rpath/libomp.dylib\n  Referenced from: llama-server",
+    "/rt",
+    "darwin",
+  );
+  assert.match(String(message), /libomp\.dylib is missing/);
+});
+
+test("an unrecognised failure does not condemn a usable install", () => {
+  // The guard that keeps a future non-zero `--version` from failing the install.
+  assert.equal(describeLoaderFailure("some unrelated warning\n", "/rt", "linux"), null);
+  assert.equal(describeLoaderFailure("", "/rt", "linux"), null);
+});
+
+test("the missing soname is lifted out of both loader dialects", () => {
+  assert.equal(missingLibraryFrom(MISSING_LIBGOMP), "libgomp.so.1");
+  assert.equal(
+    missingLibraryFrom("dyld[1]: Library not loaded: @rpath/libomp.dylib"),
+    "@rpath/libomp.dylib",
+  );
+  assert.equal(missingLibraryFrom("nothing to see"), null);
+});
+
+test("device parsing separates a real GPU from the empty list", () => {
+  // Both captured from llama-server --list-devices at b10236.
+  assert.deepEqual(
+    parseDeviceList(
+      "Available devices:\n  CUDA0: NVIDIA GeForce RTX 5090 Laptop GPU (24462 MiB, 23119 MiB free)\n",
+    ),
+    ["CUDA0: NVIDIA GeForce RTX 5090 Laptop GPU (24462 MiB, 23119 MiB free)"],
+  );
+  // The Vulkan asset on WSL2, which has no NVIDIA ICD. Empty means the install
+  // would run on CPU, so the caller warns rather than reporting plain success.
+  assert.deepEqual(parseDeviceList("Available devices:\n  (none)\n"), []);
+  assert.deepEqual(parseDeviceList(""), []);
 });
 
 const temps: string[] = [];

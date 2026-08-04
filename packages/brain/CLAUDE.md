@@ -119,9 +119,39 @@ are in the `managed.ts` header; the ones that bite hardest:
   `DEFAULT_LLAMA_BUILD` means re-reading that tag's asset list
   (`gh api repos/ggml-org/llama.cpp/releases/tags/<tag> --jq '.assets[].name'`)
   and re-running `managed.test.ts`, which pins every generated URL.
-- **Linux has no upstream CUDA build.** The Linux GPU assets are Vulkan, ROCm and
-  SYCL only, so the Linux GPU default is Vulkan - one asset that covers NVIDIA,
-  AMD and Intel. There is no Linux CUDA URL to point at.
+- **Linux has no upstream CUDA _release asset_, and Vulkan is the measured-equal
+  default, not a consolation prize.** The Linux GPU assets are Vulkan, ROCm and
+  SYCL only, so the Linux GPU default is Vulkan - one asset covering NVIDIA, AMD
+  and Intel. A real Linux CUDA build does exist upstream as a container image
+  (`ghcr.io/ggml-org/llama.cpp:server-cuda-b<n>`); it was extracted, run and
+  benchmarked on 2026-08-04 and rejected because CUDA led Vulkan by only
+  1.00x-1.04x on an RTX 5090 across every prefill depth and at token generation,
+  while costing a 40x download and a 14x disk footprint across three origins.
+  The reasoning and the numbers are in the `managed.ts` header; the evidence is
+  [findings/linux-gpu-acceleration](../../findings/linux-gpu-acceleration/2026-08-04-cuda-vs-vulkan-and-cuda-asset-origins.md).
+  Do not reopen it without a measurement on hardware lacking `NV_coopmat2`.
+- **No Linux asset ships `libgomp.so.1`**, which `llama-server` hard-links, so on
+  a minimal image (the stock WSL Ubuntu rootfs, a slim container) the download
+  and extract both succeed and the binary dies with exit 127. Windows bundles
+  `libomp140.x86_64.dll`; Linux bundles nothing. So `installManagedRuntime`
+  **execs the binary before reporting success** (`verifyRuntimeExecutable`), and
+  on a recognised missing-library failure it **fetches `libgomp.so.1` from
+  Debian's pool and drops it beside the binary**, then retries. Only if that
+  fails does it throw, naming the library and the distro package.
+  - The repair runs **only after a failure**, so a host with its own `libgomp`
+    never reaches it and cannot be regressed by it.
+  - Debian bookworm's build specifically: its `GLIBC_2.34` floor is _exactly_
+    llama-server's own, so bundling it cannot narrow the set of systems that
+    already worked, and its payload is `data.tar.xz` where Ubuntu 24.04+ moved
+    to zstd, which a minimal image has no decompressor for. Both measured.
+  - The `.deb` container is parsed in-process (`readArMember`) rather than
+    shelled out to `ar`, which is binutils and absent on exactly the minimal
+    images that need the repair.
+- **A GPU variant that finds no device still runs, on the CPU, silently.** WSL2
+  carries no NVIDIA Vulkan ICD, so the Linux GPU default reports zero devices and
+  loses ~41x prefill with no diagnostic. `runtime install` probes
+  `--list-devices` after any non-CPU install and warns on an empty list. It warns
+  rather than failing: the runtime is installed and usable, just not accelerated.
 - **Windows CUDA needs two archives.** The `cudart-llama-bin-win-cuda-*.zip`
   companion carries no build tag in its name but is published under each tag.
 - macOS arm64 is Metal-accelerated in the stock `macos-arm64` asset; macOS x64 is

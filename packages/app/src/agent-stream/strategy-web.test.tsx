@@ -271,7 +271,7 @@ describe("createWebStreamStrategy", () => {
             onNearHistoryStart,
             isLoadingOlderHistory: false,
             hasOlderHistory: true,
-            olderHistoryProgressKey: null,
+            olderHistoryProgressKey: "epoch-1:20",
             scrollEnabled: true,
             listStyle: null,
             baseListContentContainerStyle: null,
@@ -294,6 +294,19 @@ describe("createWebStreamStrategy", () => {
     Object.defineProperty(scrollContainer, "scrollTop", { configurable: true, value: 64 });
 
     act(() => {
+      scrollContainer?.dispatchEvent(new Event("scroll"));
+    });
+
+    expect(onNearHistoryStart).toHaveBeenCalledTimes(1);
+
+    // Every further scroll event inside the threshold used to fire another
+    // request. Each one splices a page in above a reader that nothing is holding
+    // (the anchor is inert near the top by design), which is how the transcript
+    // ended up thrown to the very top. One request per page delivered.
+    act(() => {
+      Object.defineProperty(scrollContainer, "scrollTop", { configurable: true, value: 48 });
+      scrollContainer?.dispatchEvent(new Event("scroll"));
+      Object.defineProperty(scrollContainer, "scrollTop", { configurable: true, value: 32 });
       scrollContainer?.dispatchEvent(new Event("scroll"));
     });
 

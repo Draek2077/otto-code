@@ -14,6 +14,7 @@ import {
   defaultRuntimeSpec,
   installManagedRuntime,
   listAllRuntimes,
+  listRuntimeDevices,
   probeNvidiaGpu,
   supportedVariants,
   type RuntimeVariant,
@@ -104,6 +105,23 @@ export async function runRuntimeInstallCommand(
     if (p.phase === "extracting") process.stderr.write("\n  extracting…\n");
   });
   process.stderr.write("\n");
+
+  // A GPU variant that finds no device still runs - on the CPU, at roughly a
+  // fortieth of the prefill throughput, and says nothing about it. Measured on
+  // WSL2, which carries no NVIDIA Vulkan ICD. Warn rather than fail: the runtime
+  // is genuinely installed and usable, just not accelerated.
+  // One line on purpose. The daemon's BrainOpsManager keeps the *last* stderr line
+  // as the job's message, so a multi-line warning would surface in the UI as a
+  // dangling fragment. As one line it survives intact on both the CLI and the GUI.
+  if (spec.variant !== "cpu") {
+    const devices = await listRuntimeDevices(runtime);
+    if (devices.length === 0) {
+      process.stderr.write(
+        `  warning: this ${spec.variant} runtime reports no GPU device, so inference will run` +
+          ` on the CPU until a working ${spec.variant} driver for this GPU is installed.\n`,
+      );
+    }
+  }
 
   return {
     type: "single",

@@ -666,6 +666,33 @@ source**, and the blocker is React Native's text model rather than KaTeX; see
 
 ### Providers & accounting
 
+- ✅ **A managed Linux runtime no longer reports success when it cannot start.** Fixed 2026-08-04.
+  No upstream Linux asset ships `libgomp.so.1`, which `llama-server` hard-links, so on a stock
+  Ubuntu 24.04 `otto brain runtime install` used to report success and the supervisor then failed
+  with `error while loading shared libraries: libgomp.so.1` (exit 127); reproduced on both
+  `ubuntu-x64` and `ubuntu-vulkan-x64` at b10236. `buildEnv` cannot help, since the library is not in
+  the runtime directory `LD_LIBRARY_PATH` already points at, and upstream bundles its OpenMP runtime
+  on Windows (`libomp140.x86_64.dll`) but not on Linux. `installManagedRuntime` now execs the binary
+  before returning (`verifyRuntimeExecutable`) and, on a recognised missing-library failure, fetches
+  `libgomp.so.1` from Debian's pool (115 KB, `.deb` container parsed in-process so no `ar` binary is
+  needed) into the runtime dir and retries; it throws only if that fails. The repair runs **only
+  after a failure**, so a host that already has the library never reaches it. Debian bookworm's
+  build carries a `GLIBC_2.34` floor, exactly llama-server's own, so it cannot narrow compatibility.
+  **Verified end to end**: `runtime install --variant vulkan` on a clean `OTTO_HOME` on stock Ubuntu
+  24.04 with no `libgomp1` now produces a runtime that starts, and `runtime install` on Windows
+  auto-selects CUDA 12.4 and reports the GPU. Measured in
+  [findings/linux-gpu-acceleration](../findings/linux-gpu-acceleration/2026-08-04-cuda-vs-vulkan-and-cuda-asset-origins.md)
+- ✅ **A GPU runtime that finds no device now says so instead of quietly using the CPU.** Fixed
+  2026-08-04. On WSL2 there is no NVIDIA Vulkan ICD, so `--list-devices` returns none and inference
+  ran on CPU at **41x** worse prefill and 5x worse token generation with nothing said.
+  `runtime install` now probes devices after installing any non-CPU variant and warns when the list
+  is empty. It warns rather than failing: the runtime is genuinely installed and usable, just not
+  accelerated. A second CUDA asset origin was measured and rejected as the answer (same finding)
+- ✅ **Linux stays on Vulkan, decided by measurement 2026-08-04.** CUDA leads Vulkan by 1.00x-1.04x
+  on an RTX 5090 across every prefill depth from 512 to 8192 and at token generation, inside the
+  error bars at three of five points, because NVIDIA's Vulkan driver exposes `NV_coopmat2` and
+  llama.cpp uses it. A Linux CUDA runtime would cost a 40x download and a 14x disk footprint across
+  three origins for that. The reasoning lives in the `managed.ts` header so it stops resurfacing
 - ✅ **Total token accounting.** Shipped 2026-07-25. One honest number per chat: a per-agent lifetime
   in/cache/out split plus the provider's own de-inflated cost (`cumulativeUsage`,
   `COMPAT(cumulativeUsage)`), summed by one selector (`subagents/chat-totals.ts`) and surfaced in a

@@ -13,13 +13,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { BrainHostStatus, BrainJob } from "@otto-code/protocol/messages";
 import {
   Boxes,
-  Brain,
   CheckCircle,
   Gauge,
   HardDrive,
   Info,
   Layers,
   Play,
+  Psychology,
   Scissors,
   Send,
   Server,
@@ -68,7 +68,7 @@ const ThemedZap = withUnistyles(Zap);
 const ThemedBoxes = withUnistyles(Boxes);
 const ThemedSend = withUnistyles(Send);
 const ThemedCheckCircle = withUnistyles(CheckCircle);
-const ThemedBrain = withUnistyles(Brain);
+const ThemedPsychology = withUnistyles(Psychology);
 const ThemedScissors = withUnistyles(Scissors);
 const ThemedInfo = withUnistyles(Info);
 const ThemedServer = withUnistyles(Server);
@@ -389,7 +389,7 @@ function TrafficPanel({ telemetry }: { telemetry: Record<string, unknown> | null
         <StatTile Icon={ThemedCheckCircle} label="Served" value={String(telemetry?.ok ?? 0)} />
         {/* The two counters this project exists to drive to zero. */}
         <StatTile
-          Icon={ThemedBrain}
+          Icon={ThemedPsychology}
           label="Reasoning only"
           value={String(telemetry?.reasoningOnly ?? 0)}
         />

@@ -28,6 +28,8 @@ export { buildArgs, buildEnv, formatCommand, type ServeTarget } from "./args.js"
 export {
   installManagedRuntime,
   listManagedRuntimes,
+  listRuntimeDevices,
+  verifyRuntimeExecutable,
   defaultRuntimeSpec,
   extractArchive,
   resolveRuntimeVariant,

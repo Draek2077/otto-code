@@ -38,17 +38,6 @@ function assistantMessage(id: string, seed: number): StreamItem {
   };
 }
 
-function assistantBlock(groupId: string, blockIndex: number, seed: number): StreamItem {
-  return {
-    kind: "assistant_message",
-    id: `${groupId}:block:${blockIndex}`,
-    text: `block ${blockIndex}`,
-    timestamp: createTimestamp(seed),
-    blockGroupId: groupId,
-    blockIndex,
-  };
-}
-
 function toolCall(id: string, seed: number): StreamItem {
   return {
     kind: "tool_call",
@@ -150,11 +139,15 @@ describe("findMountedWindowStart", () => {
     ).toBe(39);
   });
 
-  it("gives up the walk-back on a long single turn while following, but not while pinned", () => {
+  it("keeps a long single turn fully mounted while following", () => {
     // One agentic run: a single user message, then 300 rows of tool calls and
-    // replies with no user message anywhere in them. Uncapped, the walk anchors
-    // on the line that opened the turn and the entire turn stays mounted for as
-    // long as it streams, which voids the tail cap exactly when it matters.
+    // replies with no user message anywhere in them. The walk-back is uncapped
+    // on purpose: the boundary anchors on the message that opened the turn and
+    // stays there for the whole stream. A capped walk used to advance the
+    // boundary mid-turn, and each advance handed measured rows to the
+    // virtualizer in a single frame - the document shrink whose clamp
+    // spontaneously detached a reader who was just watching the stream. See
+    // docs/chat-scrolling.md.
     const items: StreamItem[] = [userMessage("u0", 1)];
     for (let step = 0; step < 150; step += 1) {
       items.push(toolCall(`t${step}`, 2));
@@ -167,50 +160,14 @@ describe("findMountedWindowStart", () => {
         items,
         minMountedCount: 12,
       }),
-    ).toBe(289);
+    ).toBe(0);
 
-    // Detached, the contract is unchanged: the boundary the reader was looking
-    // at holds, whatever it costs. See docs/chat-scrolling.md.
+    // Detached, the same boundary holds through the pin.
     expect(
       findMountedWindowStart({
         items,
         minMountedCount: 12,
         pinnedStartItemId: "a149",
-      }),
-    ).toBe(0);
-  });
-
-  it("settles on a bubble group's first block rather than cutting the bubble in half", () => {
-    // The tail lands mid-way through a 20-block reply. Blocks sharing a
-    // blockGroupId butt together into one visible bubble, so the only place to
-    // cut is the block that starts it.
-    const items: StreamItem[] = [userMessage("u0", 1)];
-    for (let step = 0; step < 60; step += 1) {
-      items.push(toolCall(`t${step}`, 2));
-    }
-    for (let block = 0; block < 20; block += 1) {
-      items.push(assistantBlock("g", block, 3));
-    }
-    expect(items).toHaveLength(81);
-
-    const start = findMountedWindowStart({ items, minMountedCount: 12 });
-
-    expect(start).toBe(61);
-    expect(items[start]?.id).toBe("g:block:0");
-  });
-
-  it("still rewinds to a user message that sits within the cap", () => {
-    // 29 rows back is an ordinary conversational turn, which is the shape the
-    // walk-back exists for - the closer tool-call boundaries must not win.
-    const items: StreamItem[] = [userMessage("u0", 1)];
-    for (let step = 0; step < 40; step += 1) {
-      items.push(toolCall(`t${step}`, 2));
-    }
-
-    expect(
-      findMountedWindowStart({
-        items,
-        minMountedCount: 12,
       }),
     ).toBe(0);
   });
@@ -260,10 +217,11 @@ describe("mounted window size at the shipped default", () => {
   // The rest of this file passes minMountedCount explicitly, so nothing here pins what a
   // real chat actually mounts. This does: the always-mounted tail is the floor cost of
   // scrolling a long chat, because those rows are fully rendered markdown no matter how
-  // far up the reader has gone. At the old default of 50 this chat mounted 54 rows and 12
-  // assistant bubbles; the walk-back to a user boundary means the real number is always a
-  // little above the setting, so the setting has to be read against a realistic turn shape.
-  it("mounts roughly one recent turn of a long chat, not a fixed slab of it", () => {
+  // far up the reader has gone. The walk-back to a user boundary means the real number is
+  // always a little above the setting, so the setting has to be read against a realistic
+  // turn shape. 50 is upstream Paseo's number, restored deliberately - see the note on
+  // DEFAULT_WEB_MOUNTED_RECENT_STREAM_ITEMS.
+  it("mounts the last several turns of a long chat, not a fixed slab of it", () => {
     const items: StreamItem[] = [];
     for (let turn = 0; turn < 60; turn += 1) {
       const seed = turn % 60;
@@ -281,11 +239,11 @@ describe("mounted window size at the shipped default", () => {
       minMountedCount: getWebMountedRecentStreamItems(),
     });
 
-    expect(window.mountedEntries).toHaveLength(18);
-    expect(window.virtualizedEntries).toHaveLength(522);
+    expect(window.mountedEntries).toHaveLength(54);
+    expect(window.virtualizedEntries).toHaveLength(486);
     expect(
       window.mountedEntries.filter((entry) => entry.item.kind === "assistant_message"),
-    ).toHaveLength(4);
+    ).toHaveLength(12);
     // The window always starts at a user message, so a turn is never split across the
     // virtualizer boundary mid-read.
     expect(window.mountedEntries[0]?.item.kind).toBe("user_message");

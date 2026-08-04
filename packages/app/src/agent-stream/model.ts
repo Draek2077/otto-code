@@ -106,7 +106,7 @@ function splitOrderedTail(params: {
   // the heaviest case on the weakest device.
   const shouldSplitHistory =
     platform === "web" && orderedTail.length > getWebPartialVirtualizationThreshold();
-  const mountedRecentStreamItems = getWebMountedRecentStreamItems(isMobileBreakpoint);
+  const mountedRecentStreamItems = getWebMountedRecentStreamItems();
   const cacheKey = `${platform}:${isMobileBreakpoint}:${mountedRecentStreamItems}:${shouldSplitHistory}:${pinnedMountedWindowStartId ?? ""}`;
   let cachedByKey = splitHistoryCache.get(orderedTail);
   if (!cachedByKey) {
